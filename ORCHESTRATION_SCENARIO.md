@@ -138,34 +138,32 @@ time.sleep(1)
 
 #### Step 2.5: Washing Station Sequence
 ```python
-# 2.5.1 Pre-wash pump activation (10 seconds head start)
-print("Starting pump system...")
-pump.send_tag(b"1")  # Activate wash station 1
-
-# 2.5.2 Move CNC arm to washing station
+# 2.5.1 Move CNC arm to washing station location first
 print("Moving to washing station...")
 cnc.move_to_point_safe(WASH_STATION_X, WASH_STATION_Y, 0, speed=3000)
 
-# 2.5.3 Lower viscometer into washing position
-print("Lowering into wash position...")
+# 2.5.2 Start pump and run for 10 seconds
+print("Starting pump system...")
+pump.send_tag(b"1")  # Activate wash station 1
+time.sleep(10)  # Pump runs for 10 seconds
+
+# 2.5.3 Start 12V DC motor for 60 seconds and simultaneously lower CNC arm
+print("Starting DC motor and lowering viscometer...")
+# Note: ESP32 should start DC motor here (requires updated ESP32 protocol)
+# Simultaneously lower viscometer into washing position
 cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, WASH_STATION_Z, speed=1000)
+time.sleep(60)  # 12V DC motor washing action for 60 seconds
 
-# 2.5.4 Primary wash cycle (30 seconds)
-print("Primary wash cycle - pump 1 + washer 1...")
-time.sleep(30)  # Pump 1 + 12V DC motor washing action
-
-# 2.5.5 Reverse rinse cycle (15 seconds)
+# 2.5.4 Raise CNC arm to safe position and start reverse rinse cycle
+print("Raising to safe position and starting reverse rinse...")
+cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, 0, speed=500)
 print("Reverse rinse cycle - pump 2...")
-# ESP32 automatically handles pump 1->2 transition
+# ESP32 automatically handles pump 1->2 transition for reverse rinse
 time.sleep(15)  # Pump 2 reverse flow cleaning
 
-# 2.5.6 Stop all pumps and motors
+# 2.5.5 Stop all pumps and motors
 print("Stopping wash system...")
 pump.send_tag(b"0")  # Emergency stop all motors
-
-# 2.5.7 Raise viscometer to safe position
-print("Raising to safe position...")
-cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, 0, speed=500)
 ```
 
 ### Phase 3: Error Handling & Recovery
@@ -223,10 +221,10 @@ save_results_to_csv(all_collected_data, timestamp, mode)
 - **INTER_RPM_PAUSE**: 2 seconds (between RPM tests)
 
 ### Washing Timing (Adjustable)
-- **Pre-wash pump start**: 10 seconds before CNC arrival
-- **Primary wash cycle**: 30 seconds (pump 1 + DC motor)
+- **Initial pump cycle**: 10 seconds (pump 1 only)
+- **DC motor wash cycle**: 60 seconds (12V DC motor + simultaneous CNC lowering)
 - **Reverse rinse cycle**: 15 seconds (pump 2)
-- **Total wash time per cell**: ~55 seconds
+- **Total wash time per cell**: ~85 seconds
 
 ## ESP32 Washing Station Commands
 
@@ -234,16 +232,19 @@ save_results_to_csv(all_collected_data, timestamp, mode)
 ```python
 # Pump Control Commands
 b"0" # Emergency stop all pumps and motors
-b"1" # Wash station 1: Pump 1 + DC motor (forward)
+b"1" # Wash station 1: Pump 1 only (initial 10-second cycle)
 b"2" # Wash station 2: Pump 2 (reverse/rinse)
 b"3" # Wash station 3: Alternative configuration
+# Note: New sequence requires separate 12V DC motor control
+# ESP32 firmware may need updates for independent pump/motor timing
 ```
 
 ### Washing Station Hardware Configuration
-- **Pump 1**: Primary cleaning pump (forward flow)
+- **Pump 1**: Initial cleaning pump (10-second pre-cycle)
 - **Pump 2**: Rinse pump (reverse flow) 
-- **12V DC Motor**: Mechanical agitation/brushing action
+- **12V DC Motor**: Mechanical agitation/brushing action (60-second cycle with CNC lowering)
 - **Multiple valves**: Flow direction control
+- **Sequential Operation**: Pump → DC Motor + CNC lowering → CNC raising + Rinse
 
 ## Data Collection & Storage
 

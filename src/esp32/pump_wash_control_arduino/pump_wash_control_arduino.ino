@@ -40,8 +40,9 @@ const int speedPWM_G = 160; // Washer 1 speed (using Driver 1)
 const int speedPWM_H = 160; // Washer 2 speed (using Driver 2)
 const int speedPWM_I = 160; // Washer 3 speed (using Driver 3)
 
-#define PUMP_STAGE_TIME  10000  // each pump runs for 5 seconds 
-#define WASH_STAGE_TIME  20000 // each wash spinner runs for 10 seconds
+#define PUMP_STAGE_TIME  10000  // Initial pump stage: 10 seconds 
+#define WASH_STAGE_TIME  60000  // 12V DC motor wash cycle: 60 seconds
+#define RINSE_STAGE_TIME 15000  // Reverse rinse cycle: 15 seconds
 
 void setup() {
   // Setup motor control pins
@@ -86,62 +87,71 @@ void loop() {
 
 // Pumps 1, 2 + Washer 1 motor (using Driver 1)
 void washStation1() {
-  // Run Pump 1
+  // Stage 1: Run Pump 1 only for 10 seconds
+  Serial.println("Stage 1: Starting Pump 1 for 10 seconds");
   runMotor(IN1, IN2, ENABLE1, speedPWM_A);
   delay(PUMP_STAGE_TIME);
-  // Start Washer 1 
+  stopMotor(IN1, IN2, ENABLE1);
+  
+  // Stage 2: Run Washer 1 (12V DC motor) for 60 seconds  
+  Serial.println("Stage 2: Starting 12V DC motor for 60 seconds");
   runMotor(IN3, IN4, ENABLE2, speedPWM_G);
   delay(WASH_STAGE_TIME);
-  // Stop Pump 1
-  stopMotor(IN1, IN2, ENABLE1);
-  // Run Pump 2 
-  runMotorReverse(IN1, IN2, ENABLE1, speedPWM_B);
-  delay(PUMP_STAGE_TIME + WASH_STAGE_TIME);
-  // Stop Washer 1
   stopMotor(IN3, IN4, ENABLE2);
-  // Stop Pump 2
+  
+  // Stage 3: Run Pump 2 (reverse) for 15 seconds
+  Serial.println("Stage 3: Starting Pump 2 (reverse) for 15 seconds");
+  runMotorReverse(IN1, IN2, ENABLE1, speedPWM_B);
+  delay(RINSE_STAGE_TIME);
   stopMotor(IN1, IN2, ENABLE1);
-  Serial.println("Wash Station 1 DONE");
+  
+  Serial.println("Wash Station 1 DONE - New Sequence Complete");
 }
 
 // Pumps 3, 4 + Washer 2 motor (using Driver 2)
 void washStation2() {
-  // Run Pump 3
+  // Stage 1: Run Pump 3 only for 10 seconds
+  Serial.println("Stage 1: Starting Pump 3 for 10 seconds");
   runMotor(IN5, IN6, ENABLE3, speedPWM_C);
   delay(PUMP_STAGE_TIME);
-  // Start Washer 2 
+  stopMotor(IN5, IN6, ENABLE3);
+  
+  // Stage 2: Run Washer 2 (12V DC motor) for 60 seconds  
+  Serial.println("Stage 2: Starting 12V DC motor for 60 seconds");
   runMotor(IN7, IN8, ENABLE4, speedPWM_H);
   delay(WASH_STAGE_TIME);
-  // Stop Pump 3
-  stopMotor(IN5, IN6, ENABLE3);
-  // Run Pump 4
-  runMotorReverse(IN5, IN6, ENABLE3, speedPWM_D);
-  delay(PUMP_STAGE_TIME + WASH_STAGE_TIME);
-  // Stop Washer 2
   stopMotor(IN7, IN8, ENABLE4);
-  // Stop Pump 4
+  
+  // Stage 3: Run Pump 4 (reverse) for 15 seconds
+  Serial.println("Stage 3: Starting Pump 4 (reverse) for 15 seconds");
+  runMotorReverse(IN5, IN6, ENABLE3, speedPWM_D);
+  delay(RINSE_STAGE_TIME);
   stopMotor(IN5, IN6, ENABLE3);
-  Serial.println("Wash Station 2 DONE");
+  
+  Serial.println("Wash Station 2 DONE - New Sequence Complete");
 }
 
 // Pumps 5, 6 + Washer 3 motor (using Driver 3)
 void washStation3() {
-  // Run Pump 5 
+  // Stage 1: Run Pump 5 only for 10 seconds
+  Serial.println("Stage 1: Starting Pump 5 for 10 seconds");
   runMotor(IN9, IN10, ENABLE5, speedPWM_E);
   delay(PUMP_STAGE_TIME);
-  // Start Washer 3 
+  stopMotor(IN9, IN10, ENABLE5);
+  
+  // Stage 2: Run Washer 3 (12V DC motor) for 60 seconds  
+  Serial.println("Stage 2: Starting 12V DC motor for 60 seconds");
   runMotor(IN11, IN12, ENABLE6, speedPWM_I);
   delay(WASH_STAGE_TIME);
-  // Stop Pump 5
-  stopMotor(IN9, IN10, ENABLE5);
-  // Run Pump 6 (reverse direction, same pins as Pump 5)
-  runMotorReverse(IN9, IN10, ENABLE5, speedPWM_F);
-  delay(PUMP_STAGE_TIME + WASH_STAGE_TIME);
-  // Stop Washer 3
   stopMotor(IN11, IN12, ENABLE6);
-  // Stop Pump 6
+  
+  // Stage 3: Run Pump 6 (reverse) for 15 seconds
+  Serial.println("Stage 3: Starting Pump 6 (reverse) for 15 seconds");
+  runMotorReverse(IN9, IN10, ENABLE5, speedPWM_F);
+  delay(RINSE_STAGE_TIME);
   stopMotor(IN9, IN10, ENABLE5);
-  Serial.println("Wash Station 3 DONE");
+  
+  Serial.println("Wash Station 3 DONE - New Sequence Complete");
 }
 
 // Helper functions - Updated to use ENABLE pins directly
