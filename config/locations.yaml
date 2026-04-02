@@ -1,0 +1,17 @@
+main_rack_A:
+  x_origin: 9
+  y_origin: 62
+  z_origin: -66.200
+  num_x: 1
+  num_y: 6
+  x_offset: 0
+  y_offset: 67
+
+washing_station:
+  x_origin: 275
+  y_origin: 137
+  z_origin: -35
+  num_x: 1
+  num_y: 3
+  x_offset: 0
+  y_offset: 80
