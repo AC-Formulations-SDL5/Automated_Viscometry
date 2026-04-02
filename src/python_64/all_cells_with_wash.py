@@ -119,39 +119,32 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
     print(f"\nStarting washing sequence after Cell {global_cell}")
     
     try:
-        # Step 1: Start pump 1 for 10 seconds
-        print("Step 1: Starting pump 1 for 10 seconds...")
-        pump.send_tag(b"1")  # Start wash station 1 (pump 1 + washer 1)
-        print("I am sleeping 1")
-        # time.sleep(10)
-        # print("I am done sleeping 1")
-
-        # Step 2: Move CNC to wash station 1 location
-        print(f"Step 2: Moving CNC to wash station 1 (X={WASH_STATION_X}, Y={WASH_STATION_Y})")
+        # Step 1: Move CNC arm to washing station location first
+        print(f"Step 1: Moving CNC to wash station 1 (X={WASH_STATION_X}, Y={WASH_STATION_Y})")
         cnc.move_to_point_safe(WASH_STATION_X, WASH_STATION_Y, 0, speed=3000)
         
-        # Step 3: Move CNC down to washing position
-        print(f"Step 3: Moving CNC down to Z={WASH_STATION_Z}")
+        # Step 2: Start pump and run for 10 seconds
+        print("Step 2: Starting pump system for 10 seconds...")
+        pump.send_tag(b"1")  # Activate wash station 1
+        time.sleep(10)  # Pump runs for 10 seconds
+        
+        # Step 3: Start 12V DC motor for 60 seconds and simultaneously lower CNC arm
+        print("Step 3: Starting DC motor and lowering viscometer...")
+        # Note: ESP32 should start DC motor here (requires updated ESP32 protocol)
+        # Simultaneously lower viscometer into washing position
         cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, WASH_STATION_Z, speed=1000)
+        time.sleep(60)  # 12V DC motor washing action for 60 seconds
         
-        # Step 4: Continue pumping and washing for additional 20 seconds
-        # (pump 1 continues from step 1, washer 1 also running from step 1)
-        print("Step 4: Continuing wash sequence for 20 seconds (pump 1 + washer 1)...")
-        time.sleep(30)
-        
-        # Step 5: Stop pump 1, start pump 2 (reverse direction) for 15 seconds
-        print("Step 5: Switching to pump 2 (reverse) for 15 seconds...")
-        # Note: In the ESP32 code, wash station 1 uses pump 1 and pump 2 on the same motor driver
-        # The sequence in washStation1() handles this automatically
-        time.sleep(15)
-        
-        # Step 6: Stop all pumps
-        print("Step 6: Stopping all pumps...")
-        pump.send_tag(b"0")  # Emergency stop all motors
-        
-        # Step 7: Move CNC back up to safe position
-        print("Step 7: Moving CNC back to safe position (Z=0)")
+        # Step 4: Raise CNC arm to safe position and start reverse rinse cycle
+        print("Step 4: Raising to safe position and starting reverse rinse...")
         cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, 0, speed=500)
+        print("Reverse rinse cycle - pump 2...")
+        # ESP32 automatically handles pump 1->2 transition for reverse rinse
+        time.sleep(15)  # Pump 2 reverse flow cleaning
+        
+        # Step 5: Stop all pumps and motors
+        print("Step 5: Stopping wash system...")
+        pump.send_tag(b"0")  # Emergency stop all motors
         
         print(f"Washing sequence completed for Cell {global_cell}")
         
