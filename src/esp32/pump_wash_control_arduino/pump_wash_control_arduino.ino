@@ -32,6 +32,14 @@
 const int pwmFreq = 1000;    // PWM frequency
 const int pwmResolution = 8; // 8-bit resolution (0-255)
 
+// ESP32 LEDC channel assignments for PWM enable pins
+const int PWM_CHANNEL1 = 0;
+const int PWM_CHANNEL2 = 1;
+const int PWM_CHANNEL3 = 2;
+const int PWM_CHANNEL4 = 3;
+const int PWM_CHANNEL5 = 4;
+const int PWM_CHANNEL6 = 5;
+
 // Motor speeds - optimized for different components
 const int speedPump1 = 170;  // Pump 1 (wash station 1 cleaning)
 const int speedPump2 = 170;  // Pump 2 (wash station 1 rinse) - Uses Pump1 reverse
@@ -66,6 +74,9 @@ void setup() {
   pinMode(IN7, OUTPUT); pinMode(IN8, OUTPUT);
   pinMode(IN9, OUTPUT); pinMode(IN10, OUTPUT);
   pinMode(IN11, OUTPUT); pinMode(IN12, OUTPUT);
+  pinMode(ENABLE1, OUTPUT); pinMode(ENABLE2, OUTPUT);
+  pinMode(ENABLE3, OUTPUT); pinMode(ENABLE4, OUTPUT);
+  pinMode(ENABLE5, OUTPUT); pinMode(ENABLE6, OUTPUT);
   
   // Ensure all pins start LOW
   digitalWrite(IN1, LOW); digitalWrite(IN2, LOW);
@@ -74,8 +85,11 @@ void setup() {
   digitalWrite(IN7, LOW); digitalWrite(IN8, LOW);
   digitalWrite(IN9, LOW); digitalWrite(IN10, LOW);
   digitalWrite(IN11, LOW); digitalWrite(IN12, LOW);
+  digitalWrite(ENABLE1, LOW); digitalWrite(ENABLE2, LOW);
+  digitalWrite(ENABLE3, LOW); digitalWrite(ENABLE4, LOW);
+  digitalWrite(ENABLE5, LOW); digitalWrite(ENABLE6, LOW);
   
-  // Setup PWM channels using new ESP32 API
+  // Setup PWM pins using ESP32 LEDC API
   ledcAttach(ENABLE1, pwmFreq, pwmResolution);
   ledcAttach(ENABLE2, pwmFreq, pwmResolution);
   ledcAttach(ENABLE3, pwmFreq, pwmResolution);
@@ -110,16 +124,25 @@ void setup() {
   Serial.println("\\n=== SYSTEM INITIALIZED ===");
   printStatus();  // Show initial system state
 }
-  Serial.println("Legacy Commands: 1,2,3 (full sequences), 0 (emergency stop)");
-  Serial.println("Status Command: ST (get component states)");
-}
+
 
 // Enhanced main loop with individual component control
 void loop() {
   if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
+    String command = "";
+    while (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\r' || c == '\n') {
+        continue;
+      }
+      command += c;
+    }
     command.trim();
     
+    if (command.length() == 0) {
+      return;
+    }
+
     // Individual Component Control Commands
     if (command == "P1") {          // Start Pump 1
       startPump1();
@@ -425,7 +448,7 @@ void washStation3() {
 
 // Low-level motor control helper functions with debugging
 void runMotor(int in1, int in2, int enablePin, int speedPWM) {
-  Serial.println("DEBUG: runMotor() called - IN1=" + String(in1) + ", IN2=" + String(in2) + ", Enable=" + String(enablePin) + ", Speed=" + String(speedPWM));
+  Serial.println("DEBUG: runMotor() called - IN1=" + String(in1) + ", IN2=" + String(in2) + ", EnablePin=" + String(enablePin) + ", Speed=" + String(speedPWM));
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
   ledcWrite(enablePin, speedPWM);
@@ -433,7 +456,7 @@ void runMotor(int in1, int in2, int enablePin, int speedPWM) {
 }
 
 void runMotorReverse(int in1, int in2, int enablePin, int speedPWM) {
-  Serial.println("DEBUG: runMotorReverse() called - IN1=" + String(in1) + ", IN2=" + String(in2) + ", Enable=" + String(enablePin) + ", Speed=" + String(speedPWM));
+  Serial.println("DEBUG: runMotorReverse() called - IN1=" + String(in1) + ", IN2=" + String(in2) + ", EnablePin=" + String(enablePin) + ", Speed=" + String(speedPWM));
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
   ledcWrite(enablePin, speedPWM);
@@ -441,11 +464,12 @@ void runMotorReverse(int in1, int in2, int enablePin, int speedPWM) {
 }
 
 void stopMotor(int in1, int in2, int enablePin) {
-  Serial.println("DEBUG: stopMotor() called - IN1=" + String(in1) + ", IN2=" + String(in2) + ", Enable=" + String(enablePin));
+  Serial.println("DEBUG: stopMotor() called - IN1=" + String(in1) + ", IN2=" + String(in2) + ", EnablePin=" + String(enablePin));
   digitalWrite(in1, LOW);
   digitalWrite(in2, LOW);
   ledcWrite(enablePin, 0);
-  Serial.println("DEBUG: Motor stopped - IN1=LOW, IN2=LOW, PWM=0");
+  digitalWrite(enablePin, LOW);
+  Serial.println("DEBUG: Motor stopped - IN1=LOW, IN2=LOW, PWM=0, ENABLE=LOW");
 }
 
 // Emergency stop all components
