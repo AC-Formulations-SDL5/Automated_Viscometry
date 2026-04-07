@@ -66,7 +66,7 @@ TESTING_MODE = "custom"  # Change this to "full", "row", or "custom"
 SELECTED_ROWS = [2]
 # FOR CUSTOM MODE: Specify which cells to test (1-18)
 # Example: [2, 5, 8, 11, 16] tests only those specific cells
-SELECTED_CELLS = [4, 7]  # Only used when TESTING_MODE = "custom"
+SELECTED_CELLS = [1, 8]  # Only used when TESTING_MODE = "custom"
 
 # ===============================================
 
