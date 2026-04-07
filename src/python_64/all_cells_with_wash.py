@@ -11,7 +11,7 @@ from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 
-Z_STEP_SIZE = -0.2        #-0.100            
+Z_STEP_SIZE = -0.5        #-0.100            
 Z_FEED_RATE = 500               
 TORQUE_BREAK_THRESHOLD = 1000.0     #100.0   
 SETTLE_TIME = 1               
@@ -31,14 +31,14 @@ ESP32_BAUD = 115200 #9600
 PUMP_VIRTUAL = False
 
 # Wash station 1 coordinates
-WASH_STATION_X = 383    #387
-WASH_STATION_Y = 68
-WASH_STATION_Z = -67    # -67 is the contact point, so -10 is safely above that for washing position
+WASH_STATION1_X = 383    #387
+WASH_STATION1_Y = 68
+WASH_STATION1_Z = -67    # -67 is the contact point, so -10 is safely above that for washing position
 
 # Wash station 2 coordinates
-WASH_STATION_X2 = 383    #387
-WASH_STATION_Y2 = 147
-WASH_STATION_Z2 = -67    # -67 is the contact point, so -10 is safely above that for washing position
+WASH_STATION2_X = 383    #387
+WASH_STATION2_Y = 147
+WASH_STATION2_Z = -66    # -67 is the contact point, so -10 is safely above that for washing position
 
 # Row configurations: each row has different Z-parameters and BASE_X position
 ROWS = [
@@ -66,7 +66,7 @@ TESTING_MODE = "custom"  # Change this to "full", "row", or "custom"
 SELECTED_ROWS = [2]
 # FOR CUSTOM MODE: Specify which cells to test (1-18)
 # Example: [2, 5, 8, 11, 16] tests only those specific cells
-SELECTED_CELLS = [4, 7]  # Only used when TESTING_MODE = "custom"
+SELECTED_CELLS = [1, 8]  # Only used when TESTING_MODE = "custom"
 
 # ===============================================
 
@@ -122,45 +122,74 @@ def row_and_local_to_global_cell(row: int, local_cell: int) -> int:
 
 def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int):
     """Perform the washing sequence after completing a cell test"""
-    print(f"\nStarting washing sequence after Cell {global_cell}")
+    print(f"\nStarting Step 2.5: Washing Station Sequence after Cell {global_cell}")
     
     try:
-        # Step 1: Move CNC arm to washing station location first
-        print(f"Step 1: Moving CNC to wash station 1 (X={WASH_STATION_X}, Y={WASH_STATION_Y})")
-        cnc.move_to_point_safe(WASH_STATION_X, WASH_STATION_Y, 0, speed=3000)
+        # Step 2.5.1: Move CNC arm to washing station 1 location first
+        print(f"Step 2.5.1: Moving CNC to wash station 1 (X={WASH_STATION1_X}, Y={WASH_STATION1_Y}, Z=0)")
+        cnc.move_to_point_safe(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=3000)
         
-        # Step 2: Start pump and run for 10 seconds
-        print("Step 2: Starting pump system for 10 seconds...")
-        pump.send_tag(b"1")  # Activate wash station 1
+        # Step 2.5.2: Start pump and run for 10 seconds
+        print("Step 2.5.2: Starting pump system for 10 seconds...")
+        pump.send_tag(b"P1")  # Start Pump 1 only
         time.sleep(10)  # Pump runs for 10 seconds
+        pump.send_tag(b"SP1") # Stop Pump 1
         
-        # Step 3: Start 12V DC motor for 60 seconds and simultaneously lower CNC arm
-        print("Step 3: Starting DC motor and lowering viscometer...")
-        # Note: ESP32 should start DC motor here (requires updated ESP32 protocol)
+        # Step 2.5.3: Start 12V DC motor 1 for 60 seconds and simultaneously lower CNC arm
+        print("Step 2.5.3: Starting 12V DC motor 1 and lowering viscometer...")
+        pump.send_tag(b"M1")  # Start 12V DC motor 1
         # Simultaneously lower viscometer into washing position
-        cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, WASH_STATION_Z, speed=1000)
-        time.sleep(60)  # 12V DC motor washing action for 60 seconds
+        cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
+        time.sleep(60)  # 12V DC motor 1 washing action for 60 seconds
         
-        # Step 4: Raise CNC arm to safe position and start reverse rinse cycle
-        print("Step 4: Raising to safe position and starting reverse rinse...")
-        cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, 0, speed=500)
-        print("Reverse rinse cycle - pump 2...")
-        # ESP32 automatically handles pump 1->2 transition for reverse rinse
-        time.sleep(15)  # Pump 2 reverse flow cleaning
+        # Step 2.5.4: Raise CNC arm to safe position and start reverse rinse cycle
+        print("Step 2.5.4: Raising to safe position and starting reverse rinse cycle...")
+        cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
+        pump.send_tag(b"R1")  # Start reverse rinse cycle
+        time.sleep(15)  # Reverse rinse cycle
+        pump.send_tag(b"SR1") # Stop reverse rinse
         
-        # Step 5: Stop all pumps and motors
-        print("Step 5: Stopping wash system...")
-        pump.send_tag(b"0")  # Emergency stop all motors
+        # Step 2.5.5: Stop motor 1
+        print("Step 2.5.5: Stopping motor 1...")
+        pump.send_tag(b"SM1") # Stop motor 1
         
-        print(f"Washing sequence completed for Cell {global_cell}")
+        # Step 2.5.6: Move CNC to washing station 2 location
+        print(f"Step 2.5.6: Moving CNC to wash station 2 (X={WASH_STATION2_X}, Y={WASH_STATION2_Y}, Z=0)")
+        cnc.move_to_point_safe(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=3000)
+        
+        # Step 2.5.7: Start pump 3 for 10 seconds
+        print("Step 2.5.7: Starting pump 3 for 10 seconds...")
+        pump.send_tag(b"P3")  # Start Pump 3
+        time.sleep(10)
+        pump.send_tag(b"SP3") # Stop Pump 3
+        
+        # Step 2.5.8: Start 12V DC motor 2 for 60 seconds and simultaneously lower CNC arm
+        print("Step 2.5.8: Starting 12V DC motor 2 and lowering viscometer...")
+        pump.send_tag(b"M2")  # Start 12V DC motor 2
+        # Simultaneously lower viscometer into washing position
+        cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
+        time.sleep(60)  # 12V DC motor 2 washing action for 60 seconds
+        
+        # Step 2.5.9: Raise CNC arm to safe position and start reverse rinse cycle
+        print("Step 2.5.9: Raising CNC arm to safe position and starting reverse rinse cycle...")
+        cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=500)
+        pump.send_tag(b"R2")  # Start reverse rinse cycle for Station 2
+        time.sleep(15)
+        pump.send_tag(b"SR2") # Stop reverse rinse
+        
+        # Step 2.5.10: Stop motor 2
+        print("Step 2.5.10: Stopping motor 2...")
+        pump.send_tag(b"SM2") # Stop motor 2
+        
+        print(f"Step 2.5: Washing Station Sequence completed for Cell {global_cell}")
         
     except Exception as e:
         print(f"Error during washing sequence for Cell {global_cell}: {e}")
         try:
-            # Emergency stop pumps in case of error
+            # Emergency stop pumps and motors in case of error
             pump.send_tag(b"0")
             # Try to move CNC to safe position
-            cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, 0, speed=500)
+            cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
         except:
             pass
         raise
