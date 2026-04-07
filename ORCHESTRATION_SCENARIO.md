@@ -21,8 +21,9 @@ Y-positions: BASE_Y = 62mm, Y_OFFSET = 67mm per cell
 
 ### Washing Station Configuration
 ```
-Primary Wash Station: X = 387mm, Y = 68mm, Z = -67mm (contact)
-Wash Positions: Z = -10mm (safe washing height above contact)
+Wash Station 1: X = 383mm, Y = 68mm,  Z = -67mm (contact)
+Wash Station 2: X = 383mm, Y = 147mm, Z = -67mm (contact)
+Wash Positions: Z = 0mm (safe position above contact)
 ```
 
 ### Communication Interfaces
@@ -136,34 +137,54 @@ viscometer.stop()
 time.sleep(1)
 ```
 
-#### Step 2.5: Washing Station Sequence
+#### Step 2.5: Enhanced Washing Station Sequence (Two Stations)
 ```python
-# 2.5.1 Move CNC arm to washing station location first
-print("Moving to washing station...")
-cnc.move_to_point_safe(WASH_STATION_X, WASH_STATION_Y, 0, speed=3000)
+# 2.5.1 Move CNC arm to washing station 1 location first
+print("Step 2.5.1: Moving CNC to wash station 1...")
+cnc.move_to_point_safe(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=3000)
 
 # 2.5.2 Start pump and run for 10 seconds
-print("Starting pump system...")
-pump.send_tag(b"1")  # Activate wash station 1
+print("Step 2.5.2: Starting pump system for 10 seconds...")
+pump.send_tag(b"P1")  # Start Pump 1 only
 time.sleep(10)  # Pump runs for 10 seconds
+pump.send_tag(b"SP1") # Stop Pump 1
 
-# 2.5.3 Start 12V DC motor for 60 seconds and simultaneously lower CNC arm
-print("Starting DC motor and lowering viscometer...")
-# Note: ESP32 should start DC motor here (requires updated ESP32 protocol)
+# 2.5.3 Start 12V DC motor 1 for 60 seconds and simultaneously lower CNC arm
+print("Step 2.5.3: Starting 12V DC motor 1 and lowering viscometer...")
+pump.send_tag(b"M1")  # Start 12V DC motor 1
 # Simultaneously lower viscometer into washing position
-cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, WASH_STATION_Z, speed=1000)
-time.sleep(60)  # 12V DC motor washing action for 60 seconds
+cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
+time.sleep(60)  # 12V DC motor 1 washing action for 60 seconds
 
 # 2.5.4 Raise CNC arm to safe position and start reverse rinse cycle
-print("Raising to safe position and starting reverse rinse...")
-cnc.move_to_point(WASH_STATION_X, WASH_STATION_Y, 0, speed=500)
-print("Reverse rinse cycle - pump 2...")
-# ESP32 automatically handles pump 1->2 transition for reverse rinse
-time.sleep(15)  # Pump 2 reverse flow cleaning
+print("Step 2.5.4: Raising to safe position and starting reverse rinse cycle...")
+cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
+pump.send_tag(b"R1")  # Start reverse rinse cycle
+time.sleep(15)  # Reverse rinse cycle
+pump.send_tag(b"SR1") # Stop reverse rinse
 
-# 2.5.5 Stop all pumps and motors
-print("Stopping wash system...")
-pump.send_tag(b"0")  # Emergency stop all motors
+# 2.5.5 Stop all pumps and motor 1
+print("Step 2.5.5: Stopping all pumps and motor 1...")
+pump.send_tag(b"SM1") # Stop motor 1
+
+# 2.5.6 Move CNC to washing station 2 location
+print("Step 2.5.6: Moving CNC to wash station 2...")
+cnc.move_to_point_safe(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=3000)
+
+# 2.5.7 Start 12V DC motor 2 for 60 seconds and simultaneously lower CNC arm
+print("Step 2.5.7: Starting 12V DC motor 2 and lowering viscometer...")
+pump.send_tag(b"M2")  # Start 12V DC motor 2
+# Simultaneously lower viscometer into washing position
+cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
+time.sleep(60)  # 12V DC motor 2 washing action for 60 seconds
+
+# 2.5.8 Raise CNC arm to safe position
+print("Step 2.5.8: Raising CNC arm to safe position...")
+cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=500)
+
+# 2.5.9 Stop motor 2
+print("Step 2.5.9: Stopping motor 2...")
+pump.send_tag(b"SM2") # Stop motor 2
 ```
 
 ### Phase 3: Error Handling & Recovery
@@ -226,25 +247,54 @@ save_results_to_csv(all_collected_data, timestamp, mode)
 - **Reverse rinse cycle**: 15 seconds (pump 2)
 - **Total wash time per cell**: ~85 seconds
 
-## ESP32 Washing Station Commands
+## Enhanced ESP32 Washing Station Commands
 
-### Command Protocol
+### Individual Component Control Protocol
 ```python
 # Pump Control Commands
-b"0" # Emergency stop all pumps and motors
-b"1" # Wash station 1: Pump 1 only (initial 10-second cycle)
-b"2" # Wash station 2: Pump 2 (reverse/rinse)
-b"3" # Wash station 3: Alternative configuration
-# Note: New sequence requires separate 12V DC motor control
-# ESP32 firmware may need updates for independent pump/motor timing
+b"P1"  # Start Pump 1 (wash station 1 cleaning)
+b"SP1" # Stop Pump 1
+b"P2"  # Start Pump 2 (wash station 1 rinse)
+b"SP2" # Stop Pump 2
+b"P3"  # Start Pump 3 (wash station 2 cleaning)
+b"SP3" # Stop Pump 3
+b"P4"  # Start Pump 4 (wash station 2 rinse)
+b"SP4" # Stop Pump 4
+
+# Motor Control Commands
+b"M1"  # Start 12V DC Motor 1 (wash station 1)
+b"SM1" # Stop 12V DC Motor 1
+b"M2"  # Start 12V DC Motor 2 (wash station 2)
+b"SM2" # Stop 12V DC Motor 2
+
+# Reverse Rinse Commands
+b"R1"  # Start reverse rinse cycle (station 1)
+b"SR1" # Stop reverse rinse (station 1)
+b"R2"  # Start reverse rinse cycle (station 2)
+b"SR2" # Stop reverse rinse (station 2)
+
+# System Control
+b"0"   # Emergency stop all pumps and motors
+b"ST"  # Status request (returns current component states)
+```
+
+### Legacy Sequence Commands (Backward Compatibility)
+```python
+# Automated Sequence Commands (for backward compatibility)
+b"1"   # Run complete wash station 1 sequence (P1→M1→R1)
+b"2"   # Run complete wash station 2 sequence (P3→M2→R2)
+b"3"   # Run complete wash station 3 sequence (if configured)
 ```
 
 ### Washing Station Hardware Configuration
-- **Pump 1**: Initial cleaning pump (10-second pre-cycle)
-- **Pump 2**: Rinse pump (reverse flow) 
-- **12V DC Motor**: Mechanical agitation/brushing action (60-second cycle with CNC lowering)
+- **Pump 1**: Initial cleaning pump (wash station 1)
+- **Pump 2**: Rinse pump (reverse flow for wash station 1) 
+- **12V DC Motor 1**: Mechanical agitation for wash station 1 (60-second cycle)
+- **Pump 3**: Initial cleaning pump (wash station 2)
+- **Pump 4**: Rinse pump (reverse flow for wash station 2)
+- **12V DC Motor 2**: Mechanical agitation for wash station 2 (60-second cycle)
 - **Multiple valves**: Flow direction control
-- **Sequential Operation**: Pump → DC Motor + CNC lowering → CNC raising + Rinse
+- **Sequential Operation**: Independent control of each component for coordinated CNC movement
 
 ## Data Collection & Storage
 
