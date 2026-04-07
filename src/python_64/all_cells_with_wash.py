@@ -11,7 +11,7 @@ from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 
-Z_STEP_SIZE = -0.5        #-0.100            
+Z_STEP_SIZE = -0.2        #-0.100            
 Z_FEED_RATE = 500               
 TORQUE_BREAK_THRESHOLD = 1000.0     #100.0   
 SETTLE_TIME = 1               
@@ -66,7 +66,7 @@ TESTING_MODE = "custom"  # Change this to "full", "row", or "custom"
 SELECTED_ROWS = [2]
 # FOR CUSTOM MODE: Specify which cells to test (1-18)
 # Example: [2, 5, 8, 11, 16] tests only those specific cells
-SELECTED_CELLS = [1, 8]  # Only used when TESTING_MODE = "custom"
+SELECTED_CELLS = [4, 7]  # Only used when TESTING_MODE = "custom"
 
 # ===============================================
 
