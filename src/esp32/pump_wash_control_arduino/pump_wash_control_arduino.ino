@@ -67,6 +67,14 @@ void setup() {
   pinMode(IN9, OUTPUT); pinMode(IN10, OUTPUT);
   pinMode(IN11, OUTPUT); pinMode(IN12, OUTPUT);
   
+  // Ensure all pins start LOW
+  digitalWrite(IN1, LOW); digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW); digitalWrite(IN4, LOW);
+  digitalWrite(IN5, LOW); digitalWrite(IN6, LOW);
+  digitalWrite(IN7, LOW); digitalWrite(IN8, LOW);
+  digitalWrite(IN9, LOW); digitalWrite(IN10, LOW);
+  digitalWrite(IN11, LOW); digitalWrite(IN12, LOW);
+  
   // Setup PWM channels using new ESP32 API
   ledcAttach(ENABLE1, pwmFreq, pwmResolution);
   ledcAttach(ENABLE2, pwmFreq, pwmResolution);
@@ -75,9 +83,33 @@ void setup() {
   ledcAttach(ENABLE5, pwmFreq, pwmResolution);
   ledcAttach(ENABLE6, pwmFreq, pwmResolution);
   
+  // Initialize all PWM to 0 (motors stopped)
+  ledcWrite(ENABLE1, 0);
+  ledcWrite(ENABLE2, 0);
+  ledcWrite(ENABLE3, 0);
+  ledcWrite(ENABLE4, 0);
+  ledcWrite(ENABLE5, 0);
+  ledcWrite(ENABLE6, 0);
+  
+  // Explicitly initialize state variables
+  pump1_running = false;
+  pump3_running = false;
+  pump5_running = false;
+  motor1_running = false;
+  motor2_running = false;
+  motor3_running = false;
+  reverse1_running = false;
+  reverse2_running = false;
+  
   Serial.begin(115200);
-  Serial.println("Enhanced Washing Station Control v2.0");
+  delay(1000);  // Allow serial to initialize
+  Serial.println("Enhanced Washing Station Control v2.1 - DEBUGGED");
   Serial.println("Individual Commands: P1,SP1,M1,SM1,R1,SR1,P3,SP3,M2,SM2,R2,SR2");
+  Serial.println("Legacy Commands: 1,2,3 (full sequences), 0 (emergency stop)");
+  Serial.println("Status Command: ST (get component states)");
+  Serial.println("\\n=== SYSTEM INITIALIZED ===");
+  printStatus();  // Show initial system state
+}
   Serial.println("Legacy Commands: 1,2,3 (full sequences), 0 (emergency stop)");
   Serial.println("Status Command: ST (get component states)");
 }
@@ -140,143 +172,193 @@ void loop() {
 
 // Pump 1 (Wash Station 1 cleaning)
 void startPump1() {
+  Serial.println("DEBUG: startPump1() called");
+  Serial.println("State check - pump1_running: " + String(pump1_running) + ", reverse1_running: " + String(reverse1_running));
+  
   if (!pump1_running && !reverse1_running) {
     runMotor(IN1, IN2, ENABLE1, speedPump1);
     pump1_running = true;
-    Serial.println("Pump 1 STARTED");
+    Serial.println("SUCCESS: Pump 1 STARTED at speed " + String(speedPump1));
   } else {
-    Serial.println("ERROR: Pump 1 conflict - check reverse/pump state");
+    Serial.println("ERROR: Pump 1 conflict - pump1: " + String(pump1_running) + ", reverse1: " + String(reverse1_running));
   }
 }
 
 void stopPump1() {
+  Serial.println("DEBUG: stopPump1() called");
   stopMotor(IN1, IN2, ENABLE1);
   pump1_running = false;
-  Serial.println("Pump 1 STOPPED");
+  Serial.println("SUCCESS: Pump 1 STOPPED");
 }
 
 // Pump 3 (Wash Station 2 cleaning)
 void startPump3() {
+  Serial.println("DEBUG: startPump3() called");
+  Serial.println("State check - pump3_running: " + String(pump3_running) + ", reverse2_running: " + String(reverse2_running));
+  
   if (!pump3_running && !reverse2_running) {
     runMotor(IN5, IN6, ENABLE3, speedPump3);
     pump3_running = true;
-    Serial.println("Pump 3 STARTED");
+    Serial.println("SUCCESS: Pump 3 STARTED at speed " + String(speedPump3));
   } else {
-    Serial.println("ERROR: Pump 3 conflict - check reverse/pump state");
+    Serial.println("ERROR: Pump 3 conflict - pump3: " + String(pump3_running) + ", reverse2: " + String(reverse2_running));
   }
 }
 
 void stopPump3() {
+  Serial.println("DEBUG: stopPump3() called");
   stopMotor(IN5, IN6, ENABLE3);
   pump3_running = false;
-  Serial.println("Pump 3 STOPPED");
+  Serial.println("SUCCESS: Pump 3 STOPPED");
 }
 
 // Motor 1 (12V DC Motor Wash Station 1)
 void startMotor1() {
+  Serial.println("DEBUG: startMotor1() called");
+  Serial.println("State check - motor1_running: " + String(motor1_running));
+  
   if (!motor1_running) {
     runMotor(IN3, IN4, ENABLE2, speedMotor1);
     motor1_running = true;
-    Serial.println("Motor 1 STARTED (12V DC)");
+    Serial.println("SUCCESS: Motor 1 STARTED (12V DC) at speed " + String(speedMotor1));
   } else {
     Serial.println("ERROR: Motor 1 already running");
   }
 }
 
 void stopMotor1() {
+  Serial.println("DEBUG: stopMotor1() called");
   stopMotor(IN3, IN4, ENABLE2);
   motor1_running = false;
-  Serial.println("Motor 1 STOPPED");
+  Serial.println("SUCCESS: Motor 1 STOPPED");
 }
 
 // Motor 2 (12V DC Motor Wash Station 2)
 void startMotor2() {
+  Serial.println("DEBUG: startMotor2() called");
+  Serial.println("State check - motor2_running: " + String(motor2_running));
+  
   if (!motor2_running) {
     runMotor(IN7, IN8, ENABLE4, speedMotor2);
     motor2_running = true;
-    Serial.println("Motor 2 STARTED (12V DC)");
+    Serial.println("SUCCESS: Motor 2 STARTED (12V DC) at speed " + String(speedMotor2));
   } else {
     Serial.println("ERROR: Motor 2 already running");
   }
 }
 
 void stopMotor2() {
+  Serial.println("DEBUG: stopMotor2() called");
   stopMotor(IN7, IN8, ENABLE4);
   motor2_running = false;
-  Serial.println("Motor 2 STOPPED");
+  Serial.println("SUCCESS: Motor 2 STOPPED");
 }
 
 // Reverse 1 (Pump 2 functionality - reverse direction of Pump 1)
 void startReverse1() {
+  Serial.println("DEBUG: startReverse1() called");
+  Serial.println("State check - reverse1_running: " + String(reverse1_running) + ", pump1_running: " + String(pump1_running));
+  
   if (!reverse1_running && !pump1_running) {
     runMotorReverse(IN1, IN2, ENABLE1, speedPump2);
     reverse1_running = true;
-    Serial.println("Reverse 1 STARTED (Rinse Station 1)");
+    Serial.println("SUCCESS: Reverse 1 STARTED (Rinse Station 1) at speed " + String(speedPump2));
   } else {
-    Serial.println("ERROR: Reverse 1 conflict - check pump/reverse state");
+    Serial.println("ERROR: Reverse 1 conflict - reverse1: " + String(reverse1_running) + ", pump1: " + String(pump1_running));
   }
 }
 
 void stopReverse1() {
+  Serial.println("DEBUG: stopReverse1() called");
   stopMotor(IN1, IN2, ENABLE1);
   reverse1_running = false;
-  Serial.println("Reverse 1 STOPPED");
+  Serial.println("SUCCESS: Reverse 1 STOPPED");
 }
 
 // Reverse 2 (Pump 4 functionality - reverse direction of Pump 3)
 void startReverse2() {
+  Serial.println("DEBUG: startReverse2() called");
+  Serial.println("State check - reverse2_running: " + String(reverse2_running) + ", pump3_running: " + String(pump3_running));
+  
   if (!reverse2_running && !pump3_running) {
     runMotorReverse(IN5, IN6, ENABLE3, speedPump4);
     reverse2_running = true;
-    Serial.println("Reverse 2 STARTED (Rinse Station 2)");
+    Serial.println("SUCCESS: Reverse 2 STARTED (Rinse Station 2) at speed " + String(speedPump4));
   } else {
-    Serial.println("ERROR: Reverse 2 conflict - check pump/reverse state");
+    Serial.println("ERROR: Reverse 2 conflict - reverse2: " + String(reverse2_running) + ", pump3: " + String(pump3_running));
   }
 }
 
 void stopReverse2() {
+  Serial.println("DEBUG: stopReverse2() called");
   stopMotor(IN5, IN6, ENABLE3);
   reverse2_running = false;
-  Serial.println("Reverse 2 STOPPED");
+  Serial.println("SUCCESS: Reverse 2 STOPPED");
 }
 
-// Status reporting
+// Status reporting with enhanced debugging
 void printStatus() {
-  Serial.println("=== COMPONENT STATUS ===");
-  Serial.println("Pump 1: " + String(pump1_running ? "RUNNING" : "STOPPED"));
-  Serial.println("Pump 3: " + String(pump3_running ? "RUNNING" : "STOPPED"));
-  Serial.println("Motor 1: " + String(motor1_running ? "RUNNING" : "STOPPED"));
-  Serial.println("Motor 2: " + String(motor2_running ? "RUNNING" : "STOPPED"));
-  Serial.println("Reverse 1: " + String(reverse1_running ? "RUNNING" : "STOPPED"));
-  Serial.println("Reverse 2: " + String(reverse2_running ? "RUNNING" : "STOPPED"));
-  Serial.println("========================");
+  Serial.println("\\n=== COMPONENT STATUS REPORT ===");
+  Serial.println("Wash Station 1:");
+  Serial.println("  Pump 1: " + String(pump1_running ? "RUNNING" : "STOPPED"));
+  Serial.println("  Motor 1: " + String(motor1_running ? "RUNNING" : "STOPPED"));
+  Serial.println("  Reverse 1: " + String(reverse1_running ? "RUNNING" : "STOPPED"));
+  Serial.println("Wash Station 2:");
+  Serial.println("  Pump 3: " + String(pump3_running ? "RUNNING" : "STOPPED"));
+  Serial.println("  Motor 2: " + String(motor2_running ? "RUNNING" : "STOPPED"));
+  Serial.println("  Reverse 2: " + String(reverse2_running ? "RUNNING" : "STOPPED"));
+  Serial.println("Future Use:");
+  Serial.println("  Pump 5: " + String(pump5_running ? "RUNNING" : "STOPPED"));
+  Serial.println("  Motor 3: " + String(motor3_running ? "RUNNING" : "STOPPED"));
+  Serial.println("\\nTiming Constants:");
+  Serial.println("  Pump Stage: " + String(PUMP_STAGE_TIME/1000) + " seconds");
+  Serial.println("  Wash Stage: " + String(WASH_STAGE_TIME/1000) + " seconds");
+  Serial.println("  Rinse Stage: " + String(RINSE_STAGE_TIME/1000) + " seconds");
+  Serial.println("================================\\n");
 }
 
 // Legacy sequence functions (for backward compatibility)
 
 // Wash Station 1: Pump 1 → Motor 1 → Reverse 1
 void washStation1() {
-  Serial.println("=== WASH STATION 1 LEGACY SEQUENCE ===");
+  Serial.println("\n=== WASH STATION 1 LEGACY SEQUENCE START ===");
+  printStatus();  // Show initial state
   
   // Stage 1: Run Pump 1 for 10 seconds
-  Serial.println("Stage 1: Starting Pump 1 for 10 seconds");
+  Serial.println("\n--- Stage 1: Starting Pump 1 for " + String(PUMP_STAGE_TIME/1000) + " seconds ---");
   startPump1();
-  delay(PUMP_STAGE_TIME);
-  stopPump1();
+  if (pump1_running) {
+    Serial.println("Pump 1 running for " + String(PUMP_STAGE_TIME/1000) + " seconds...");
+    delay(PUMP_STAGE_TIME);
+    stopPump1();
+  } else {
+    Serial.println("ERROR: Pump 1 failed to start, skipping stage 1");
+  }
   
   // Stage 2: Run Motor 1 (12V DC motor) for 60 seconds  
-  Serial.println("Stage 2: Starting 12V DC Motor 1 for 60 seconds");
+  Serial.println("\n--- Stage 2: Starting 12V DC Motor 1 for " + String(WASH_STAGE_TIME/1000) + " seconds ---");
   startMotor1();
-  delay(WASH_STAGE_TIME);
-  stopMotor1();
+  if (motor1_running) {
+    Serial.println("Motor 1 washing for " + String(WASH_STAGE_TIME/1000) + " seconds...");
+    delay(WASH_STAGE_TIME);
+    stopMotor1();
+  } else {
+    Serial.println("ERROR: Motor 1 failed to start, skipping stage 2");
+  }
   
   // Stage 3: Run Reverse 1 for 15 seconds
-  Serial.println("Stage 3: Starting Reverse 1 (rinse) for 15 seconds");
+  Serial.println("\n--- Stage 3: Starting Reverse 1 (rinse) for " + String(RINSE_STAGE_TIME/1000) + " seconds ---");
   startReverse1();
-  delay(RINSE_STAGE_TIME);
-  stopReverse1();
+  if (reverse1_running) {
+    Serial.println("Reverse rinse for " + String(RINSE_STAGE_TIME/1000) + " seconds...");
+    delay(RINSE_STAGE_TIME);
+    stopReverse1();
+  } else {
+    Serial.println("ERROR: Reverse 1 failed to start, skipping stage 3");
+  }
   
-  Serial.println("Wash Station 1 Legacy Sequence COMPLETE");
+  Serial.println("\n=== WASH STATION 1 LEGACY SEQUENCE COMPLETE ===");
+  printStatus();  // Show final state
 }
 
 // Wash Station 2: Pump 3 → Motor 2 → Reverse 2  
@@ -341,33 +423,52 @@ void washStation3() {
   Serial.println("Wash Station 3 Legacy Sequence COMPLETE");
 }
 
-// Low-level motor control helper functions
+// Low-level motor control helper functions with debugging
 void runMotor(int in1, int in2, int enablePin, int speedPWM) {
+  Serial.println("DEBUG: runMotor() called - IN1=" + String(in1) + ", IN2=" + String(in2) + ", Enable=" + String(enablePin) + ", Speed=" + String(speedPWM));
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
   ledcWrite(enablePin, speedPWM);
+  Serial.println("DEBUG: Motor pins set - IN1=HIGH, IN2=LOW, PWM=" + String(speedPWM));
 }
 
 void runMotorReverse(int in1, int in2, int enablePin, int speedPWM) {
+  Serial.println("DEBUG: runMotorReverse() called - IN1=" + String(in1) + ", IN2=" + String(in2) + ", Enable=" + String(enablePin) + ", Speed=" + String(speedPWM));
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
   ledcWrite(enablePin, speedPWM);
+  Serial.println("DEBUG: Motor pins set - IN1=LOW, IN2=HIGH, PWM=" + String(speedPWM));
 }
 
 void stopMotor(int in1, int in2, int enablePin) {
+  Serial.println("DEBUG: stopMotor() called - IN1=" + String(in1) + ", IN2=" + String(in2) + ", Enable=" + String(enablePin));
   digitalWrite(in1, LOW);
   digitalWrite(in2, LOW);
   ledcWrite(enablePin, 0);
+  Serial.println("DEBUG: Motor stopped - IN1=LOW, IN2=LOW, PWM=0");
 }
 
 // Emergency stop all components
 void stopAll() {
-  // Stop all motors and reset state tracking
+  Serial.println("\n=== EMERGENCY STOP ALL COMPONENTS ===");
+  
+  // Stop all motors with individual debugging
+  Serial.println("Stopping Pump 1 / Reverse 1...");
   stopMotor(IN1, IN2, ENABLE1);   // Pump 1 / Reverse 1
+  
+  Serial.println("Stopping Motor 1...");
   stopMotor(IN3, IN4, ENABLE2);   // Motor 1
+  
+  Serial.println("Stopping Pump 3 / Reverse 2...");
   stopMotor(IN5, IN6, ENABLE3);   // Pump 3 / Reverse 2
+  
+  Serial.println("Stopping Motor 2...");
   stopMotor(IN7, IN8, ENABLE4);   // Motor 2
+  
+  Serial.println("Stopping Pump 5 / Pump 6...");
   stopMotor(IN9, IN10, ENABLE5);  // Pump 5 / Pump 6
+  
+  Serial.println("Stopping Motor 3...");
   stopMotor(IN11, IN12, ENABLE6); // Motor 3
   
   // Reset all state flags
@@ -380,6 +481,7 @@ void stopAll() {
   reverse1_running = false;
   reverse2_running = false;
   
-  Serial.println("EMERGENCY STOP: All motors and pumps STOPPED");
+  Serial.println("EMERGENCY STOP COMPLETE: All motors and pumps STOPPED");
   Serial.println("All component states RESET");
+  printStatus();
 }
