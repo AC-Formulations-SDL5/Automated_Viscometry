@@ -11,7 +11,7 @@ from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 
-Z_STEP_SIZE = -1        #-0.100            
+Z_STEP_SIZE = -0.2        #-0.100            
 Z_FEED_RATE = 500               
 TORQUE_BREAK_THRESHOLD = 1000.0     #100.0   
 SETTLE_TIME = 1               
@@ -31,9 +31,9 @@ ESP32_BAUD = 115200 #9600
 PUMP_VIRTUAL = False
 
 # Wash station coordinates
-WASH_STATION_X = 387
+WASH_STATION_X = 383    #387
 WASH_STATION_Y = 68
-WASH_STATION_Z = -67 # -67 is the contact point, so -10 is safely above that for washing position
+WASH_STATION_Z = -67    # -67 is the contact point, so -10 is safely above that for washing position
 # Row configurations: each row has different Z-parameters and BASE_X position
 ROWS = [
     {'row_number': 1, 'base_x': 10, 'safe_z': -65.5, 'max_z_travel': -66.500},
@@ -42,7 +42,7 @@ ROWS = [
 ]
 
 # Array of RPMs to test at each Z-position (similar to analysis_methods.py)
-TEST_RPMS = [3.0] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
+TEST_RPMS = [3.4] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
 DWELL_SECONDS = 2.0            
 INTER_RPM_PAUSE = 2.0           
 
@@ -60,7 +60,7 @@ TESTING_MODE = "custom"  # Change this to "full", "row", or "custom"
 SELECTED_ROWS = [2]
 # FOR CUSTOM MODE: Specify which cells to test (1-18)
 # Example: [2, 5, 8, 11, 16] tests only those specific cells
-SELECTED_CELLS = [3, 9]  # Only used when TESTING_MODE = "custom"
+SELECTED_CELLS = [4, 7]  # Only used when TESTING_MODE = "custom"
 
 # ===============================================
 
