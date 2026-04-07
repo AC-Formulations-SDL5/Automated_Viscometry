@@ -30,10 +30,16 @@ ESP32_PORT = "COM11"                # "COM8"
 ESP32_BAUD = 115200 #9600
 PUMP_VIRTUAL = False
 
-# Wash station coordinates
+# Wash station 1 coordinates
 WASH_STATION_X = 383    #387
 WASH_STATION_Y = 68
 WASH_STATION_Z = -67    # -67 is the contact point, so -10 is safely above that for washing position
+
+# Wash station 2 coordinates
+WASH_STATION_X2 = 383    #387
+WASH_STATION_Y2 = 147
+WASH_STATION_Z2 = -67    # -67 is the contact point, so -10 is safely above that for washing position
+
 # Row configurations: each row has different Z-parameters and BASE_X position
 ROWS = [
     {'row_number': 1, 'base_x': 10, 'safe_z': -65.5, 'max_z_travel': -66.500},
