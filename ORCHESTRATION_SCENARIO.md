@@ -171,22 +171,27 @@ print("Moving CNC to wash station 1...")
 cnc.move_to_point_safe(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=3000)
 
 # 2.5.2 Initial Pump Cycle (Station 1)  
-print("Starting pump 1 for 10 seconds...")
+print("Starting pump 1 for 15 seconds...")
 pump.send_tag(b"P1")  # Start Pump 1
-time.sleep(10)
+time.sleep(15)
 pump.send_tag(b"SP1") # Stop Pump 1
 
 # 2.5.3 Mechanical Wash Cycle (Station 1)
-print("Starting motor 1 and lowering viscometer...")
+print("Starting motor 1 and performing oscillating wash movements...")
 pump.send_tag(b"M1")  # Start 12V DC Motor 1
 cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-time.sleep(60)  # 60-second wash cycle
+# Perform 5 oscillating movements from x=383 to x=390 and back
+for i in range(5):
+    cnc.move_to_point(390, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)  # Move to extended position
+    time.sleep(1)
+    cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)  # Move back
+    time.sleep(1)
 
 # 2.5.4 Raise and Rinse Cycle (Station 1)
 print("Raising and starting reverse rinse...")
 cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
 pump.send_tag(b"R1")  # Start reverse rinse (Pump 1 reversed)
-time.sleep(15)  # 15-second rinse 
+time.sleep(20)  # 20-second rinse 
 pump.send_tag(b"SR1") # Stop reverse rinse
 pump.send_tag(b"SM1") # Stop Motor 1
 
@@ -195,22 +200,27 @@ print("Moving CNC to wash station 2...")
 cnc.move_to_point_safe(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=3000)
 
 # 2.5.6 Initial Pump Cycle (Station 2)
-print("Starting pump 3 for 10 seconds...")
+print("Starting pump 3 for 15 seconds...")
 pump.send_tag(b"P3")  # Start Pump 3
-time.sleep(10)
+time.sleep(15)
 pump.send_tag(b"SP3") # Stop Pump 3
 
 # 2.5.7 Mechanical Wash Cycle (Station 2)
-print("Starting motor 2 and lowering viscometer...")
+print("Starting motor 2 and performing oscillating wash movements...")
 pump.send_tag(b"M2")  # Start 12V DC Motor 2
 cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-time.sleep(60)  # 60-second wash cycle
+# Perform 5 oscillating movements from x=383 to x=390 and back
+for i in range(5):
+    cnc.move_to_point(390, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)  # Move to extended position
+    time.sleep(1)
+    cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)  # Move back
+    time.sleep(1)
 
 # 2.5.8 Final Raise and Rinse (Station 2) 
 print("Raising and starting reverse rinse...")
 cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=500)
 pump.send_tag(b"R2")  # Start reverse rinse (Pump 3 reversed)
-time.sleep(15)  # 15-second rinse
+time.sleep(20)  # 20-second rinse
 pump.send_tag(b"SR2") # Stop reverse rinse  
 pump.send_tag(b"SM2") # Stop Motor 2
 
@@ -389,11 +399,11 @@ headers = ["row", "cell", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%"]
 - **AUTO_ZERO_DELAY**: 5 seconds (viscometer auto-zero settling time)
 
 ### Washing Timing (Per Station - Actual Implementation)
-- **Initial pump cycle**: 10 seconds (pump only)
-- **DC motor wash cycle**: 60 seconds (12V DC motor + simultaneous CNC lowering)
-- **Reverse rinse cycle**: 15 seconds (reverse pump flow)
-- **Total wash time per station**: ~85 seconds
-- **Total wash time per cell**: ~170 seconds (both stations)
+- **Initial pump cycle**: 15 seconds (pump only)
+- **DC motor wash cycle**: ~10 seconds (12V DC motor + 5 oscillating movements)
+- **Reverse rinse cycle**: 20 seconds (reverse pump flow)
+- **Total wash time per station**: ~45 seconds per station
+- **Total wash time per cell**: ~90 seconds (both stations)
 
 ## Enhanced ESP32 Washing Station Commands
 

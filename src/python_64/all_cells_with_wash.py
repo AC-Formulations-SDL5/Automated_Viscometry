@@ -155,24 +155,33 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         print(f"Step 2.5.1: Moving CNC to wash station 1 (X={WASH_STATION1_X}, Y={WASH_STATION1_Y}, Z=0)")
         cnc.move_to_point_safe(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=3000)
         
-        # Step 2.5.2: Start pump and run for 10 seconds
-        print("Step 2.5.2: Starting pump system for 10 seconds...")
+        # Step 2.5.2: Start pump and run for 15 seconds
+        print("Step 2.5.2: Starting pump system for 15 seconds...")
         if not reliable_pump_command(b"P1", "Start Pump 1"):
             raise Exception("Failed to start Pump 1")
         
-        time.sleep(10)  # Pump runs for 10 seconds
+        time.sleep(15)  # Pump runs for 15 seconds
         
         if not reliable_pump_command(b"SP1", "Stop Pump 1"):
             print("Warning: Failed to confirm Pump 1 stop")
         
-        # Step 2.5.3: Start 12V DC motor 1 for 60 seconds and simultaneously lower CNC arm
-        print("Step 2.5.3: Starting 12V DC motor 1 and lowering viscometer...")
+        # Step 2.5.3: Start 12V DC motor 1 and perform oscillating wash movements
+        print("Step 2.5.3: Starting 12V DC motor 1 and performing oscillating wash movements...")
         if not reliable_pump_command(b"M1", "Start 12V DC Motor 1"):
             raise Exception("Failed to start Motor 1")
             
-        # Simultaneously lower viscometer into washing position
+        # Lower viscometer into washing position
         cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-        time.sleep(60)  # 12V DC motor 1 washing action for 60 seconds
+        
+        # Perform 5 oscillating movements from x=383 to x=390 and back
+        print("  Performing 5 oscillating wash movements...")
+        for i in range(5):
+            print(f"  Oscillation {i+1}/5: Moving to X=390")
+            cnc.move_to_point(390, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
+            time.sleep(1)  # Brief pause at extended position
+            print(f"  Oscillation {i+1}/5: Moving back to X=383")
+            cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
+            time.sleep(1)  # Brief pause at home position
         
         # Step 2.5.4: Raise CNC arm to safe position and start reverse rinse cycle
         print("Step 2.5.4: Raising to safe position and starting reverse rinse cycle...")
@@ -181,7 +190,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         if not reliable_pump_command(b"R1", "Start Reverse Rinse 1"):
             print("Warning: Failed to start reverse rinse")
             
-        time.sleep(15)  # Reverse rinse cycle
+        time.sleep(20)  # Reverse rinse cycle
         
         if not reliable_pump_command(b"SR1", "Stop Reverse Rinse 1"):
             print("Warning: Failed to confirm reverse rinse stop")
@@ -195,24 +204,33 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         print(f"Step 2.5.6: Moving CNC to wash station 2 (X={WASH_STATION2_X}, Y={WASH_STATION2_Y}, Z=0)")
         cnc.move_to_point_safe(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=3000)
         
-        # Step 2.5.7: Start pump 3 for 10 seconds
-        print("Step 2.5.7: Starting pump 3 for 10 seconds...")
+        # Step 2.5.7: Start pump 3 for 15 seconds
+        print("Step 2.5.7: Starting pump 3 for 15 seconds...")
         if not reliable_pump_command(b"P3", "Start Pump 3"):
             raise Exception("Failed to start Pump 3")
             
-        time.sleep(10)
+        time.sleep(15)
         
         if not reliable_pump_command(b"SP3", "Stop Pump 3"):
             print("Warning: Failed to confirm Pump 3 stop")
         
-        # Step 2.5.8: Start 12V DC motor 2 for 60 seconds and simultaneously lower CNC arm
-        print("Step 2.5.8: Starting 12V DC motor 2 and lowering viscometer...")
+        # Step 2.5.8: Start 12V DC motor 2 and perform oscillating wash movements
+        print("Step 2.5.8: Starting 12V DC motor 2 and performing oscillating wash movements...")
         if not reliable_pump_command(b"M2", "Start 12V DC Motor 2"):
             raise Exception("Failed to start Motor 2")
             
-        # Simultaneously lower viscometer into washing position
+        # Lower viscometer into washing position
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-        time.sleep(60)  # 12V DC motor 2 washing action for 60 seconds
+        
+        # Perform 5 oscillating movements from x=383 to x=390 and back
+        print("  Performing 5 oscillating wash movements...")
+        for i in range(5):
+            print(f"  Oscillation {i+1}/5: Moving to X=390")
+            cnc.move_to_point(390, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
+            time.sleep(1)  # Brief pause at extended position
+            print(f"  Oscillation {i+1}/5: Moving back to X=383")
+            cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
+            time.sleep(1)  # Brief pause at home position
         
         # Step 2.5.9: Raise CNC arm to safe position and start reverse rinse cycle
         print("Step 2.5.9: Raising CNC arm to safe position and starting reverse rinse cycle...")
@@ -221,7 +239,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         if not reliable_pump_command(b"R2", "Start Reverse Rinse 2"):
             print("Warning: Failed to start reverse rinse 2")
             
-        time.sleep(15)
+        time.sleep(20)
         
         if not reliable_pump_command(b"SR2", "Stop Reverse Rinse 2"):
             print("Warning: Failed to confirm reverse rinse 2 stop")
