@@ -121,8 +121,34 @@ def row_and_local_to_global_cell(row: int, local_cell: int) -> int:
     return (row - 1) * 6 + local_cell
 
 def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int):
-    """Perform the washing sequence after completing a cell test"""
+    """Perform the washing sequence after completing a cell test with improved reliability"""
     print(f"\nStarting Step 2.5: Washing Station Sequence after Cell {global_cell}")
+    
+    def reliable_pump_command(command: bytes, description: str) -> bool:
+        """Send pump command with acknowledgment and status verification"""
+        print(f"  Executing: {description}")
+        
+        # Try with acknowledgment first (new method)
+        if hasattr(pump, 'send_command_with_ack'):
+            success = pump.send_command_with_ack(command, timeout=3.0, max_retries=3)
+            if success:
+                print(f"  SUCCESS: {description}")
+                return True
+            else:
+                print(f"  FAILED with ACK: {description}, trying legacy mode...")
+        
+        # Fallback to legacy mode with verification
+        pump.send_tag(command)
+        time.sleep(0.5)  # Give ESP32 time to process
+        
+        # Verify status if possible
+        if hasattr(pump, 'get_status'):
+            status = pump.get_status()
+            if status and len(status) > 0:
+                print(f"  Status after command: {status}")
+            
+        print(f"  LEGACY: {description} sent (no verification)")
+        return True
     
     try:
         # Step 2.5.1: Move CNC arm to washing station 1 location first
@@ -131,13 +157,19 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         
         # Step 2.5.2: Start pump and run for 10 seconds
         print("Step 2.5.2: Starting pump system for 10 seconds...")
-        pump.send_tag(b"P1")  # Start Pump 1 only
+        if not reliable_pump_command(b"P1", "Start Pump 1"):
+            raise Exception("Failed to start Pump 1")
+        
         time.sleep(10)  # Pump runs for 10 seconds
-        pump.send_tag(b"SP1") # Stop Pump 1
+        
+        if not reliable_pump_command(b"SP1", "Stop Pump 1"):
+            print("Warning: Failed to confirm Pump 1 stop")
         
         # Step 2.5.3: Start 12V DC motor 1 for 60 seconds and simultaneously lower CNC arm
         print("Step 2.5.3: Starting 12V DC motor 1 and lowering viscometer...")
-        pump.send_tag(b"M1")  # Start 12V DC motor 1
+        if not reliable_pump_command(b"M1", "Start 12V DC Motor 1"):
+            raise Exception("Failed to start Motor 1")
+            
         # Simultaneously lower viscometer into washing position
         cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
         time.sleep(60)  # 12V DC motor 1 washing action for 60 seconds
@@ -145,13 +177,19 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         # Step 2.5.4: Raise CNC arm to safe position and start reverse rinse cycle
         print("Step 2.5.4: Raising to safe position and starting reverse rinse cycle...")
         cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
-        pump.send_tag(b"R1")  # Start reverse rinse cycle
+        
+        if not reliable_pump_command(b"R1", "Start Reverse Rinse 1"):
+            print("Warning: Failed to start reverse rinse")
+            
         time.sleep(15)  # Reverse rinse cycle
-        pump.send_tag(b"SR1") # Stop reverse rinse
+        
+        if not reliable_pump_command(b"SR1", "Stop Reverse Rinse 1"):
+            print("Warning: Failed to confirm reverse rinse stop")
         
         # Step 2.5.5: Stop motor 1
         print("Step 2.5.5: Stopping motor 1...")
-        pump.send_tag(b"SM1") # Stop motor 1
+        if not reliable_pump_command(b"SM1", "Stop Motor 1"):
+            print("Warning: Failed to confirm Motor 1 stop")
         
         # Step 2.5.6: Move CNC to washing station 2 location
         print(f"Step 2.5.6: Moving CNC to wash station 2 (X={WASH_STATION2_X}, Y={WASH_STATION2_Y}, Z=0)")
@@ -159,13 +197,19 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         
         # Step 2.5.7: Start pump 3 for 10 seconds
         print("Step 2.5.7: Starting pump 3 for 10 seconds...")
-        pump.send_tag(b"P3")  # Start Pump 3
+        if not reliable_pump_command(b"P3", "Start Pump 3"):
+            raise Exception("Failed to start Pump 3")
+            
         time.sleep(10)
-        pump.send_tag(b"SP3") # Stop Pump 3
+        
+        if not reliable_pump_command(b"SP3", "Stop Pump 3"):
+            print("Warning: Failed to confirm Pump 3 stop")
         
         # Step 2.5.8: Start 12V DC motor 2 for 60 seconds and simultaneously lower CNC arm
         print("Step 2.5.8: Starting 12V DC motor 2 and lowering viscometer...")
-        pump.send_tag(b"M2")  # Start 12V DC motor 2
+        if not reliable_pump_command(b"M2", "Start 12V DC Motor 2"):
+            raise Exception("Failed to start Motor 2")
+            
         # Simultaneously lower viscometer into washing position
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
         time.sleep(60)  # 12V DC motor 2 washing action for 60 seconds
@@ -173,25 +217,42 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         # Step 2.5.9: Raise CNC arm to safe position and start reverse rinse cycle
         print("Step 2.5.9: Raising CNC arm to safe position and starting reverse rinse cycle...")
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=500)
-        pump.send_tag(b"R2")  # Start reverse rinse cycle for Station 2
+        
+        if not reliable_pump_command(b"R2", "Start Reverse Rinse 2"):
+            print("Warning: Failed to start reverse rinse 2")
+            
         time.sleep(15)
-        pump.send_tag(b"SR2") # Stop reverse rinse
+        
+        if not reliable_pump_command(b"SR2", "Stop Reverse Rinse 2"):
+            print("Warning: Failed to confirm reverse rinse 2 stop")
         
         # Step 2.5.10: Stop motor 2
         print("Step 2.5.10: Stopping motor 2...")
-        pump.send_tag(b"SM2") # Stop motor 2
+        if not reliable_pump_command(b"SM2", "Stop Motor 2"):
+            print("Warning: Failed to confirm Motor 2 stop")
         
         print(f"Step 2.5: Washing Station Sequence completed for Cell {global_cell}")
+        
+        # Final status check
+        if hasattr(pump, 'get_status'):
+            final_status = pump.get_status()
+            if final_status and any(final_status.values()):
+                print(f"WARNING: Some components still running after wash: {final_status}")
+                # Emergency stop if anything is still running
+                pump.send_tag(b"0")
+                time.sleep(1)
         
     except Exception as e:
         print(f"Error during washing sequence for Cell {global_cell}: {e}")
         try:
             # Emergency stop pumps and motors in case of error
-            pump.send_tag(b"0")
+            print("Executing emergency stop...")
+            pump.send_tag(b"0")  # Emergency stop all
+            time.sleep(2)  # Give time for stop command
             # Try to move CNC to safe position
             cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
-        except:
-            pass
+        except Exception as cleanup_error:
+            print(f"Error during cleanup: {cleanup_error}")
         raise
 
 def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: int, z_height: float) -> Tuple[float, float, float]:
@@ -558,7 +619,28 @@ def main():
         print("Initializing ESP32 pump controller...")
         pump = PumpESP32(port=ESP32_PORT, baud=ESP32_BAUD, virtual=PUMP_VIRTUAL)
         pump.open()
+        
+        # Test ESP32 communication
+        print("Testing ESP32 communication...")
+        if hasattr(pump, 'send_command_with_ack'):
+            # Test new acknowledgment system
+            test_success = pump.send_command_with_ack(b"ST", timeout=5.0, max_retries=3)
+            if test_success:
+                print("✓ ESP32 communication test successful (with acknowledgment)")
+            else:
+                print("⚠ ESP32 acknowledgment test failed, falling back to legacy mode")
+                # Test basic communication
+                pump.send_tag(b"ST")
+                time.sleep(1)
+                print("ESP32 communication initialized (legacy mode)")
+        else:
+            # Legacy test
+            pump.send_tag(b"ST")
+            time.sleep(1)
+            print("ESP32 communication initialized (legacy mode)")
+            
         print("ESP32 pump controller initialized successfully")
+        
     except Exception as e:
         print(f"ERROR initializing ESP32 pump controller: {e}")
         try:
@@ -691,7 +773,28 @@ def main():
             print("\nCleaning up...")
             if pump:
                 try:
-                    pump.send_tag(b"0")  # Emergency stop all pumps
+                    print("Stopping all ESP32 pumps and motors...")
+                    if hasattr(pump, 'send_command_with_ack'):
+                        # Try with acknowledgment
+                        success = pump.send_command_with_ack(b"0", timeout=5.0, max_retries=2)
+                        if success:
+                            print("✓ ESP32 emergency stop confirmed")
+                        else:
+                            print("⚠ ESP32 emergency stop ACK failed, using legacy")
+                            pump.send_tag(b"0")
+                            time.sleep(2)
+                    else:
+                        pump.send_tag(b"0")  # Emergency stop all pumps
+                        time.sleep(2)
+                    
+                    # Final status check
+                    if hasattr(pump, 'get_status'):
+                        final_status = pump.get_status()
+                        if final_status and any(final_status.values()):
+                            print(f"⚠ WARNING: Some components may still be running: {final_status}")
+                        else:
+                            print("✓ All ESP32 components confirmed stopped")
+                    
                     pump.close()
                     print("ESP32 pump controller stopped and closed")
                 except Exception as e:

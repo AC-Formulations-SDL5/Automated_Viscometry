@@ -130,60 +130,90 @@ void setup() {
 void loop() {
   if (Serial.available()) {
     String command = "";
-    while (Serial.available()) {
-      char c = Serial.read();
-      if (c == '\r' || c == '\n') {
-        continue;
+    unsigned long start_time = millis();
+    
+    // Read command with timeout protection
+    while (Serial.available() || (millis() - start_time < 100)) {
+      if (Serial.available()) {
+        char c = Serial.read();
+        if (c == '\r' || c == '\n') {
+          if (command.length() > 0) {
+            break;  // Complete command received
+          }
+          continue;  // Skip empty lines
+        }
+        command += c;
+        start_time = millis();  // Reset timeout
       }
-      command += c;
+      delay(1);  // Small delay to prevent excessive polling
     }
+    
     command.trim();
     
     if (command.length() == 0) {
       return;
     }
+    
+    Serial.println("\\n--- Received command: '" + command + "' ---");
 
     // Individual Component Control Commands
     if (command == "P1") {          // Start Pump 1
       startPump1();
+      Serial.println("ACK:P1");
     } else if (command == "SP1") {  // Stop Pump 1
       stopPump1();
+      Serial.println("ACK:SP1");
     } else if (command == "P3") {   // Start Pump 3
       startPump3();
+      Serial.println("ACK:P3");
     } else if (command == "SP3") {  // Stop Pump 3
       stopPump3();
+      Serial.println("ACK:SP3");
     } else if (command == "M1") {   // Start Motor 1
       startMotor1();
+      Serial.println("ACK:M1");
     } else if (command == "SM1") {  // Stop Motor 1
       stopMotor1();
+      Serial.println("ACK:SM1");
     } else if (command == "M2") {   // Start Motor 2
       startMotor2();
+      Serial.println("ACK:M2");
     } else if (command == "SM2") {  // Stop Motor 2
       stopMotor2();
+      Serial.println("ACK:SM2");
     } else if (command == "R1") {   // Start Reverse 1
       startReverse1();
+      Serial.println("ACK:R1");
     } else if (command == "SR1") {  // Stop Reverse 1
       stopReverse1();
+      Serial.println("ACK:SR1");
     } else if (command == "R2") {   // Start Reverse 2
       startReverse2();
+      Serial.println("ACK:R2");
     } else if (command == "SR2") {  // Stop Reverse 2
       stopReverse2();
+      Serial.println("ACK:SR2");
     } else if (command == "ST") {   // Status request
       printStatus();
+      Serial.println("ACK:ST");
       
     // Legacy sequence commands (backward compatibility)
     } else if (command == "1") {
       Serial.println("Starting Legacy Wash Station 1 Sequence...");
       washStation1();
+      Serial.println("ACK:1");
     } else if (command == "2") {
       Serial.println("Starting Legacy Wash Station 2 Sequence...");
       washStation2();
+      Serial.println("ACK:2");
     } else if (command == "3") {
       Serial.println("Starting Legacy Wash Station 3 Sequence...");
       washStation3();
+      Serial.println("ACK:3");
     } else if (command == "0") {
       Serial.println("EMERGENCY STOP - All components stopping!");
       stopAll();
+      Serial.println("ACK:0");
     } else {
       Serial.println("Unknown command: " + command);
       Serial.println("Valid commands: P1,SP1,M1,SM1,R1,SR1,P3,SP3,M2,SM2,R2,SR2,ST,1,2,3,0");
