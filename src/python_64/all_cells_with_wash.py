@@ -33,7 +33,7 @@ PUMP_VIRTUAL = False
 # Wash station 1 coordinates
 WASH_STATION1_X = 383    #387
 WASH_STATION1_Y = 68
-WASH_STATION1_Z = -67    # -67 is the contact point, so -10 is safely above that for washing position
+WASH_STATION1_Z = -66    # -67 is the contact point, so -10 is safely above that for washing position
 
 # Wash station 2 coordinates
 WASH_STATION2_X = 383    #387
