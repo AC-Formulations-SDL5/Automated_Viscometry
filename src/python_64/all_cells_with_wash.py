@@ -11,9 +11,9 @@ from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 
-Z_STEP_SIZE = -0.2        #-0.100            
+Z_STEP_SIZE = -1       #-0.100            
 Z_FEED_RATE = 500               
-TORQUE_BREAK_THRESHOLD = 1000.0     #100.0   
+TORQUE_BREAK_THRESHOLD = 100.0     #100.0   
 SETTLE_TIME = 1               
 TORQUE_READ_TIMEOUT = 2.0       
 SPINDLE_SETTLE_TIME = 1.0      
@@ -33,12 +33,12 @@ PUMP_VIRTUAL = False
 # Wash station 1 coordinates
 WASH_STATION1_X = 383    #387
 WASH_STATION1_Y = 68
-WASH_STATION1_Z = -66    # -67 is the contact point, so -10 is safely above that for washing position
+WASH_STATION1_Z = -67    # -67 is the contact point, so -10 is safely above that for washing position
 
 # Wash station 2 coordinates
 WASH_STATION2_X = 383    #387
 WASH_STATION2_Y = 147
-WASH_STATION2_Z = -66    # -67 is the contact point, so -10 is safely above that for washing position
+WASH_STATION2_Z = -67    # -67 is the contact point, so -10 is safely above that for washing position
 
 # Row configurations: each row has different Z-parameters and BASE_X position
 ROWS = [
@@ -48,7 +48,7 @@ ROWS = [
 ]
 
 # Array of RPMs to test at each Z-position (similar to analysis_methods.py)
-TEST_RPMS = [0.1] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
+TEST_RPMS = [1] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
 DWELL_SECONDS = 2.0            
 INTER_RPM_PAUSE = 2.0           
 
@@ -66,7 +66,7 @@ TESTING_MODE = "custom"  # Change this to "full", "row", or "custom"
 SELECTED_ROWS = [2]
 # FOR CUSTOM MODE: Specify which cells to test (1-18)
 # Example: [2, 5, 8, 11, 16] tests only those specific cells
-SELECTED_CELLS = [4,7]  # Only used when TESTING_MODE = "custom"
+SELECTED_CELLS = [13]  # Only used when TESTING_MODE = "custom"
 
 # ===============================================
 
@@ -155,24 +155,33 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         print(f"Step 2.5.1: Moving CNC to wash station 1 (X={WASH_STATION1_X}, Y={WASH_STATION1_Y}, Z=0)")
         cnc.move_to_point_safe(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=3000)
         
-        # Step 2.5.2: Start pump and run for 10 seconds
-        print("Step 2.5.2: Starting pump system for 10 seconds...")
+        # Step 2.5.2: Start pump and run for 15 seconds
+        print("Step 2.5.2: Starting pump system for 15 seconds...")
         if not reliable_pump_command(b"P1", "Start Pump 1"):
             raise Exception("Failed to start Pump 1")
         
-        time.sleep(10)  # Pump runs for 10 seconds
+        time.sleep(15)  # Pump runs for 15 seconds
         
         if not reliable_pump_command(b"SP1", "Stop Pump 1"):
             print("Warning: Failed to confirm Pump 1 stop")
         
-        # Step 2.5.3: Start 12V DC motor 1 for 60 seconds and simultaneously lower CNC arm
-        print("Step 2.5.3: Starting 12V DC motor 1 and lowering viscometer...")
+        # Step 2.5.3: Start 12V DC motor 1 and perform oscillating wash movements
+        print("Step 2.5.3: Starting 12V DC motor 1 and performing oscillating wash movements...")
         if not reliable_pump_command(b"M1", "Start 12V DC Motor 1"):
             raise Exception("Failed to start Motor 1")
             
-        # Simultaneously lower viscometer into washing position
+        # Lower viscometer into washing position
         cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-        time.sleep(60)  # 12V DC motor 1 washing action for 60 seconds
+        
+        # Perform 5 oscillating movements from x=383 to x=390 and back
+        print("  Performing 5 oscillating wash movements...")
+        for i in range(5):
+            print(f"  Oscillation {i+1}/5: Moving to X=390")
+            cnc.move_to_point(390, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
+            time.sleep(1)  # Brief pause at extended position
+            print(f"  Oscillation {i+1}/5: Moving back to X=383")
+            cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
+            time.sleep(1)  # Brief pause at home position
         
         # Step 2.5.4: Raise CNC arm to safe position and start reverse rinse cycle
         print("Step 2.5.4: Raising to safe position and starting reverse rinse cycle...")
@@ -181,7 +190,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         if not reliable_pump_command(b"R1", "Start Reverse Rinse 1"):
             print("Warning: Failed to start reverse rinse")
             
-        time.sleep(15)  # Reverse rinse cycle
+        time.sleep(20)  # Reverse rinse cycle
         
         if not reliable_pump_command(b"SR1", "Stop Reverse Rinse 1"):
             print("Warning: Failed to confirm reverse rinse stop")
@@ -195,24 +204,33 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         print(f"Step 2.5.6: Moving CNC to wash station 2 (X={WASH_STATION2_X}, Y={WASH_STATION2_Y}, Z=0)")
         cnc.move_to_point_safe(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=3000)
         
-        # Step 2.5.7: Start pump 3 for 10 seconds
-        print("Step 2.5.7: Starting pump 3 for 10 seconds...")
+        # Step 2.5.7: Start pump 3 for 15 seconds
+        print("Step 2.5.7: Starting pump 3 for 15 seconds...")
         if not reliable_pump_command(b"P3", "Start Pump 3"):
             raise Exception("Failed to start Pump 3")
             
-        time.sleep(10)
+        time.sleep(15)
         
         if not reliable_pump_command(b"SP3", "Stop Pump 3"):
             print("Warning: Failed to confirm Pump 3 stop")
         
-        # Step 2.5.8: Start 12V DC motor 2 for 60 seconds and simultaneously lower CNC arm
-        print("Step 2.5.8: Starting 12V DC motor 2 and lowering viscometer...")
+        # Step 2.5.8: Start 12V DC motor 2 and perform oscillating wash movements
+        print("Step 2.5.8: Starting 12V DC motor 2 and performing oscillating wash movements...")
         if not reliable_pump_command(b"M2", "Start 12V DC Motor 2"):
             raise Exception("Failed to start Motor 2")
             
-        # Simultaneously lower viscometer into washing position
+        # Lower viscometer into washing position
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-        time.sleep(60)  # 12V DC motor 2 washing action for 60 seconds
+        
+        # Perform 5 oscillating movements from x=383 to x=390 and back
+        print("  Performing 5 oscillating wash movements...")
+        for i in range(5):
+            print(f"  Oscillation {i+1}/5: Moving to X=390")
+            cnc.move_to_point(390, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
+            time.sleep(1)  # Brief pause at extended position
+            print(f"  Oscillation {i+1}/5: Moving back to X=383")
+            cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
+            time.sleep(1)  # Brief pause at home position
         
         # Step 2.5.9: Raise CNC arm to safe position and start reverse rinse cycle
         print("Step 2.5.9: Raising CNC arm to safe position and starting reverse rinse cycle...")
@@ -221,7 +239,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         if not reliable_pump_command(b"R2", "Start Reverse Rinse 2"):
             print("Warning: Failed to start reverse rinse 2")
             
-        time.sleep(15)
+        time.sleep(20)
         
         if not reliable_pump_command(b"SR2", "Stop Reverse Rinse 2"):
             print("Warning: Failed to confirm reverse rinse 2 stop")
@@ -277,7 +295,7 @@ def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: 
 
 def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps"""
-    MEASUREMENT_DURATION = 40.0      #35.0
+    MEASUREMENT_DURATION = 10.0      #35.0
     SAMPLE_INTERVAL = 10.0       #2.0
 
     try:

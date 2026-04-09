@@ -1,0 +1,20 @@
+# Dynamic Analysis - Mode: CUSTOM (PARTIAL RESULTS)
+# Test RPMs: [3.4]
+# Timestamp: 20260409_111416
+"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"
+# Completed cells: [4]
+# WARNING: Experiment was terminated early - these are partial results
+
+row,cell,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%
+1,4,-65.500,3.4,10.05,0.010
+1,4,-65.500,3.4,20.05,0.010
+1,4,-65.500,3.4,30.05,0.030
+1,4,-65.700,3.4,10.06,0.010
+1,4,-65.700,3.4,20.05,0.040
+1,4,-65.700,3.4,30.05,0.010
+1,4,-65.900,3.4,10.05,0.010
+1,4,-65.900,3.4,20.05,0.010
+1,4,-65.900,3.4,30.05,0.010
+1,4,-66.100,3.4,10.05,1.370
+1,4,-66.100,3.4,20.05,9.760
+1,4,-66.300,3.4,30.06,0.810
