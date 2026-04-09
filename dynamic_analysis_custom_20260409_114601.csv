@@ -1,0 +1,6 @@
+# Dynamic Analysis - Mode: CUSTOM
+# Test RPMs: [3.4]
+# Timestamp: 20260409_114601
+"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"
+
+row,cell,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%

@@ -11,9 +11,9 @@ from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 
-Z_STEP_SIZE = -0.2        #-0.100            
+Z_STEP_SIZE = -0.02       #-0.100            
 Z_FEED_RATE = 500               
-TORQUE_BREAK_THRESHOLD = 1000.0     #100.0   
+TORQUE_BREAK_THRESHOLD = 100.0     #100.0   
 SETTLE_TIME = 1               
 TORQUE_READ_TIMEOUT = 2.0       
 SPINDLE_SETTLE_TIME = 1.0      
@@ -33,12 +33,12 @@ PUMP_VIRTUAL = False
 # Wash station 1 coordinates
 WASH_STATION1_X = 383    #387
 WASH_STATION1_Y = 68
-WASH_STATION1_Z = -66    # -67 is the contact point, so -10 is safely above that for washing position
+WASH_STATION1_Z = -67    # -67 is the contact point, so -10 is safely above that for washing position
 
 # Wash station 2 coordinates
 WASH_STATION2_X = 383    #387
 WASH_STATION2_Y = 147
-WASH_STATION2_Z = -66    # -67 is the contact point, so -10 is safely above that for washing position
+WASH_STATION2_Z = -67    # -67 is the contact point, so -10 is safely above that for washing position
 
 # Row configurations: each row has different Z-parameters and BASE_X position
 ROWS = [
@@ -48,7 +48,7 @@ ROWS = [
 ]
 
 # Array of RPMs to test at each Z-position (similar to analysis_methods.py)
-TEST_RPMS = [3.4] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
+TEST_RPMS = [0.8] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
 DWELL_SECONDS = 2.0            
 INTER_RPM_PAUSE = 2.0           
 
