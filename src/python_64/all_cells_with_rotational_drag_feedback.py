@@ -13,9 +13,9 @@ from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 from feedback_helper_function import RotationalDragFeedbackController
 
-Z_STEP_SIZE = -1       #-0.100            
-Z_FEED_RATE = 500               
-TORQUE_BREAK_THRESHOLD = 100.0     #100.0   
+Z_STEP_SIZE = -1       #-0.100
+Z_FEED_RATE = 500
+TORQUE_BREAK_THRESHOLD = 100.0     #100.0
 
 # ========== FEEDBACK CONTROLLER CONFIGURATION ==========
 # Rotational drag feedback controller parameters
@@ -28,11 +28,11 @@ TREND_R_SQUARED_MIN = 0.8                  # Minimum R² for valid trend line
 HIT_POINT_CONFIDENCE_THRESHOLD = 0.6       # Confidence threshold for hit-point detection
 
 # ===============================================
-SETTLE_TIME = 1               
-TORQUE_READ_TIMEOUT = 2.0       
-SPINDLE_SETTLE_TIME = 1.0      
-NUM_CELLS = 6                  
-BASE_Y = 62                    
+SETTLE_TIME = 1.0                   # Time to wait after moving before taking measurements
+TORQUE_READ_TIMEOUT = 2.0
+SPINDLE_SETTLE_TIME = 1.0           # Time to wait after setting spindle speed before taking measurements
+NUM_CELLS = 6
+BASE_Y = 62
 Y_OFFSET = 67                  
 PYTHON32 = ".\\.venv32\\Scripts\\python.exe"
 VISCO_PORT = "COM6"
@@ -63,8 +63,8 @@ ROWS = [
 
 # Array of RPMs to test at each Z-position (similar to analysis_methods.py)
 TEST_RPMS = [1] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
-DWELL_SECONDS = 2.0            
-INTER_RPM_PAUSE = 2.0           
+DWELL_SECONDS = 2.0
+INTER_RPM_PAUSE = 2.0
 
 # ========== TESTING MODE CONFIGURATION ==========
 # Set the testing mode and parameters here (no runtime input required)
@@ -221,14 +221,14 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         cnc.move_to_point_safe(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=3000)
         
         # Step 2.5.7: Start pump 3 for 15 seconds
-        print("Step 2.5.7: Starting pump 3 for 15 seconds...")
-        if not reliable_pump_command(b"P3", "Start Pump 3"):
-            raise Exception("Failed to start Pump 3")
+        # print("Step 2.5.7: Starting pump 3 for 15 seconds...")
+        # if not reliable_pump_command(b"P3", "Start Pump 3"):
+        #     raise Exception("Failed to start Pump 3")
             
-        time.sleep(15)
+        # time.sleep(15)
         
-        if not reliable_pump_command(b"SP3", "Stop Pump 3"):
-            print("Warning: Failed to confirm Pump 3 stop")
+        # if not reliable_pump_command(b"SP3", "Stop Pump 3"):
+        #     print("Warning: Failed to confirm Pump 3 stop")
         
         # Step 2.5.8: Start 12V DC motor 2 and perform oscillating wash movements
         print("Step 2.5.8: Starting 12V DC motor 2 and performing oscillating wash movements...")
@@ -252,13 +252,13 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         print("Step 2.5.9: Raising CNC arm to safe position and starting reverse rinse cycle...")
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=500)
         
-        if not reliable_pump_command(b"R2", "Start Reverse Rinse 2"):
-            print("Warning: Failed to start reverse rinse 2")
+        # if not reliable_pump_command(b"R2", "Start Reverse Rinse 2"):
+        #     print("Warning: Failed to start reverse rinse 2")
             
-        time.sleep(20)
+        # time.sleep(20)
         
-        if not reliable_pump_command(b"SR2", "Stop Reverse Rinse 2"):
-            print("Warning: Failed to confirm reverse rinse 2 stop")
+        # if not reliable_pump_command(b"SR2", "Stop Reverse Rinse 2"):
+        #     print("Warning: Failed to confirm reverse rinse 2 stop")
         
         # Step 2.5.10: Stop motor 2
         print("Step 2.5.10: Stopping motor 2...")
