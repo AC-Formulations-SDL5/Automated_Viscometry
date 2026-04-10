@@ -20,11 +20,11 @@ TORQUE_BREAK_THRESHOLD = 100.0     #100.0
 # Rotational drag feedback controller parameters
 FEEDBACK_CONTROL_ENABLED = True             # Enable/disable feedback controller
 MIN_DATA_POINTS_FOR_TREND = 8              # Minimum z-levels needed for trend analysis
-SECOND_DERIVATIVE_THRESHOLD = -0.5          # Threshold for detecting trend break (negative second derivative)
-CV_JUMP_THRESHOLD = 0.2                     # Coefficient of variation jump threshold for oscillation detection
+SECOND_DERIVATIVE_THRESHOLD = -2.0          # Threshold for detecting trend break (negative second derivative) - LESS STRICT
+CV_JUMP_THRESHOLD = 0.4                     # Coefficient of variation jump threshold for oscillation detection - LESS STRICT
 PLATEAU_DETECTION_ENABLED = True            # Enable plateau detection using CV
-TREND_R_SQUARED_MIN = 0.8                  # Minimum R² for valid trend line
-HIT_POINT_CONFIDENCE_THRESHOLD = 0.6       # Confidence threshold for hit-point detection
+TREND_R_SQUARED_MIN = 0.5                  # Minimum R² for valid trend line - LESS STRICT
+HIT_POINT_CONFIDENCE_THRESHOLD = 0.8       # Confidence threshold for hit-point detection - MORE STRICT
 
 # ===============================================
 SETTLE_TIME = 1.0                   # Time to wait after moving before taking measurements
@@ -533,6 +533,20 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
             print(f"    Detection confidence: {summary['hit_point_confidence']:.2f}")
         print(f"    Total Z-levels analyzed: {summary['total_z_levels']}")
         print(f"    RPMs tested: {len(TEST_RPMS)}")
+        
+        # Print detailed results table for user review
+        print(f"\n  DETAILED RESULTS TABLE:")
+        print(f"    Z_Height_mm\tLatest_Rotational_Drag")
+        for z_height in sorted(cell_z_rpm_data.keys(), reverse=True):
+            for rpm in TEST_RPMS:
+                if rpm in cell_z_rpm_data[z_height] and cell_z_rpm_data[z_height][rpm] is not None:
+                    # Calculate latest rotational drag for display  
+                    measurements = cell_z_rpm_data[z_height][rpm]
+                    latest_measurement = measurements[-1]
+                    torque_percent = latest_measurement['torque_percent']
+                    latest_rotational_drag = abs(torque_percent) / rpm if rpm > 0 else float('inf')
+                    print(f"    {z_height:.2f}\t\t{latest_rotational_drag:.8f}")
+                    break  # Only show first valid RPM per Z-height
     
     print(f"Cell {global_cell} dynamic analysis completed: {len(cell_z_rpm_data)} Z-positions tested")
     return cell_z_rpm_data
@@ -626,7 +640,7 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         headers = ["row", "cell", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag"]
         csv_writer.writerow(headers)
         
-        # Write all individual measurements with calculated rotational drag
+        # Write all individual measurements with calculated rotational drag (LATEST ONLY)
         for global_cell in sorted(all_data.keys()):
             row_number, local_cell = global_cell_to_row_and_local(global_cell)
             cell_data = all_data[global_cell]
@@ -640,21 +654,21 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                     for rpm in TEST_RPMS:
                         measurements = rpm_data.get(rpm)
                         if measurements is not None:
-                            for measurement in measurements:
-                                # Calculate rotational drag for this measurement
-                                torque_percent = measurement['torque_percent']
-                                rotational_drag = abs(torque_percent) / rpm if rpm > 0 else float('inf')
-                                
-                                data_row = [
-                                    str(row_number),                              # row
-                                    str(global_cell),                            # cell (global numbering)
-                                    f"{z_height:.3f}",                          # Z_Height_mm
-                                    f"{rpm:.1f}",                               # RPM
-                                    f"{measurement['elapsed_time']:.2f}",        # Elapsed_Time_s
-                                    f"{measurement['torque_percent']:.3f}",      # Torque_%
-                                    f"{rotational_drag:.6f}"                    # Rotational_Drag
-                                ]
-                                csv_writer.writerow(data_row)
+                            # Use LATEST measurement only (as requested by user)
+                            latest_measurement = measurements[-1]  # Take the last measurement
+                            torque_percent = latest_measurement['torque_percent']
+                            rotational_drag = abs(torque_percent) / rpm if rpm > 0 else float('inf')
+                            
+                            data_row = [
+                                str(row_number),                              # row
+                                str(global_cell),                            # cell (global numbering)
+                                f"{z_height:.3f}",                          # Z_Height_mm
+                                f"{rpm:.1f}",                               # RPM
+                                f"{latest_measurement['elapsed_time']:.2f}", # Elapsed_Time_s
+                                f"{latest_measurement['torque_percent']:.3f}", # Torque_%
+                                f"{rotational_drag:.6f}"                    # Rotational_Drag
+                            ]
+                            csv_writer.writerow(data_row)
     
     print(f"All data saved to: {csv_filename}")
     return csv_filename

@@ -120,8 +120,9 @@ class RotationalDragFeedbackController:
                 drag = self.calculate_rotational_drag(torque_percent, rpm)
                 drag_values.append(drag)
             
-            # Calculate average rotational drag for this RPM at this Z-height
+            # Use LATEST rotational drag value instead of average (as requested by user)
             if drag_values:
+                latest_drag = drag_values[-1]  # Take the last measurement
                 avg_drag = _mean(drag_values)
                 cv = _std(drag_values, avg_drag) / avg_drag if avg_drag > 0 else 0
                 
@@ -129,11 +130,12 @@ class RotationalDragFeedbackController:
                     'measurements': measurements,
                     'drag_values': drag_values,
                     'avg_drag': avg_drag,
+                    'latest_drag': latest_drag,  # Store latest drag value
                     'cv': cv,
                     'num_samples': len(drag_values)
                 }
                 
-                print(f"      RPM {rpm}: Avg Rotational_Drag = {avg_drag:.4f}, CV = {cv:.3f}")
+                print(f"      RPM {rpm}: Latest Rotational_Drag = {latest_drag:.4f}, Avg = {avg_drag:.4f}, CV = {cv:.3f}")
     
     def analyze_trend_for_rpm(self, rpm: float) -> Dict:
         """
@@ -152,7 +154,8 @@ class RotationalDragFeedbackController:
         for z_height in sorted(self.z_rpm_drag_data.keys(), reverse=True):
             if rpm in self.z_rpm_drag_data[z_height]:
                 z_heights.append(z_height)
-                drag_values.append(self.z_rpm_drag_data[z_height][rpm]['avg_drag'])
+                # Use latest drag instead of average as requested by user
+                drag_values.append(self.z_rpm_drag_data[z_height][rpm]['latest_drag'])
         
         if len(z_heights) < self.min_data_points:
             return {'valid': False, 'reason': 'insufficient_data'}
@@ -302,12 +305,16 @@ class RotationalDragFeedbackController:
             trend_analysis = self.analyze_trend_for_rpm(rpm)
             
             if trend_analysis['valid']:
+                # Print ALL 3 METRICS clearly as requested by user
+                second_deriv_str = f"{trend_analysis['second_derivative']:.4f}" if trend_analysis['second_derivative'] is not None else "N/A"
+                print(f"    RPM {rpm} METRICS: 2nd-Derivative = {second_deriv_str}, R² = {trend_analysis['trend_r_squared']:.4f}, CV = {trend_analysis['plateau_score']:.3f}")
+                
                 if trend_analysis['hit_detected']:
                     hit_detections.append(rpm)
                     total_confidence += trend_analysis['hit_confidence']
                     print(f"    RPM {rpm}: HIT DETECTED (confidence: {trend_analysis['hit_confidence']:.2f}) - {', '.join(trend_analysis['hit_reasons'])}")
                 else:
-                    print(f"    RPM {rpm}: Normal trend (slope: {trend_analysis['trend_slope']:.4f}, R²: {trend_analysis['trend_r_squared']:.3f})")
+                    print(f"    RPM {rpm}: Normal trend (slope: {trend_analysis['trend_slope']:.4f})")
             else:
                 print(f"    RPM {rpm}: {trend_analysis['reason']}")
         
