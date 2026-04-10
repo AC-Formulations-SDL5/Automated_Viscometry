@@ -8,14 +8,56 @@ Version: 1.0
 Module: feedback_helper_function
 """
 
-import numpy as np
-from typing import Dict, List, Optional
+import math
+import statistics
+from typing import Dict, List, Optional, Tuple
 
 # Module verification function
 def verify_import():
+
     """Verify that the module has been imported correctly."""
     print("✓ feedback_helper_function v1.0 imported successfully")
     return True
+
+
+def _mean(values: List[float]) -> float:
+    return statistics.mean(values) if values else 0.0
+
+
+def _std(values: List[float], mean_value: Optional[float] = None) -> float:
+    if not values:
+        return 0.0
+    if mean_value is None:
+        mean_value = statistics.mean(values)
+    return statistics.pstdev(values, mu=mean_value)
+
+
+def _linear_regression(x: List[float], y: List[float]) -> Tuple[float, float, float]:
+    n = len(x)
+    if n == 0:
+        return 0.0, 0.0, 0.0
+    x_mean = _mean(x)
+    y_mean = _mean(y)
+    ss_xy = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, y))
+    ss_xx = sum((xi - x_mean) ** 2 for xi in x)
+    slope = ss_xy / ss_xx if ss_xx != 0 else 0.0
+    intercept = y_mean - slope * x_mean
+    y_pred = [slope * xi + intercept for xi in x]
+    ss_res = sum((yi - yp) ** 2 for yi, yp in zip(y, y_pred))
+    ss_tot = sum((yi - y_mean) ** 2 for yi in y)
+    r_squared = 1.0 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+    return slope, intercept, r_squared
+
+
+def _approximate_second_derivative(z_heights: List[float], drag_values: List[float]) -> Optional[float]:
+    if len(z_heights) < 3:
+        return None
+    x0, x1, x2 = z_heights[-3], z_heights[-2], z_heights[-1]
+    y0, y1, y2 = drag_values[-3], drag_values[-2], drag_values[-1]
+    if x1 == x0 or x2 == x1 or x2 == x0:
+        return None
+    return 2 * (((y2 - y1) / (x2 - x1)) - ((y1 - y0) / (x1 - x0))) / (x2 - x0)
+
 
 class RotationalDragFeedbackController:
     """
@@ -80,8 +122,8 @@ class RotationalDragFeedbackController:
             
             # Calculate average rotational drag for this RPM at this Z-height
             if drag_values:
-                avg_drag = np.mean(drag_values)
-                cv = np.std(drag_values) / avg_drag if avg_drag > 0 else 0
+                avg_drag = _mean(drag_values)
+                cv = _std(drag_values, avg_drag) / avg_drag if avg_drag > 0 else 0
                 
                 self.z_rpm_drag_data[z_height][rpm] = {
                     'measurements': measurements,
@@ -115,21 +157,11 @@ class RotationalDragFeedbackController:
         if len(z_heights) < self.min_data_points:
             return {'valid': False, 'reason': 'insufficient_data'}
         
-        # Convert to numpy arrays for analysis
-        z_array = np.array(z_heights)
-        drag_array = np.array(drag_values)
-        
-        # Fit linear trend line (expected: positive slope as Z decreases)
-        coeffs = np.polyfit(z_array, drag_array, 1)
-        trend_slope = coeffs[0]
-        trend_r_squared = self._calculate_r_squared(z_array, drag_array, coeffs)
-        
-        # Calculate second derivative if we have enough points
-        second_derivative = None
-        if len(z_heights) >= 3:
-            # Fit quadratic and get second derivative
-            quad_coeffs = np.polyfit(z_array, drag_array, 2)
-            second_derivative = 2 * quad_coeffs[0]  # Second derivative of ax²+bx+c is 2a
+        # Perform linear regression analysis
+        trend_slope, _, trend_r_squared = _linear_regression(z_heights, drag_values)
+
+        # Calculate second derivative approximation if we have enough points
+        second_derivative = _approximate_second_derivative(z_heights, drag_values)
         
         # Detect plateau/oscillation behavior using CV analysis
         plateau_score = self._detect_plateau_behavior(rpm, z_heights[-3:] if len(z_heights) >= 3 else z_heights)
@@ -178,11 +210,12 @@ class RotationalDragFeedbackController:
             'hit_reasons': hit_reasons
         }
     
-    def _calculate_r_squared(self, x_data: np.ndarray, y_data: np.ndarray, coeffs: np.ndarray) -> float:
+    def _calculate_r_squared(self, x_data: List[float], y_data: List[float], coeffs: List[float]) -> float:
         """Calculate R-squared for linear fit"""
-        y_pred = np.polyval(coeffs, x_data)
-        ss_res = np.sum((y_data - y_pred) ** 2)
-        ss_tot = np.sum((y_data - np.mean(y_data)) ** 2)
+        y_pred = [coeffs[0] * x + coeffs[1] for x in x_data]
+        ss_res = sum((y - yp) ** 2 for y, yp in zip(y_data, y_pred))
+        y_mean = _mean(y_data)
+        ss_tot = sum((y - y_mean) ** 2 for y in y_data)
         return 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
     
     def _detect_plateau_behavior(self, rpm: float, recent_z_heights: List[float]) -> float:
@@ -216,10 +249,10 @@ class RotationalDragFeedbackController:
         
         # Calculate baseline CV (average of first 2/3 of measurements)
         baseline_count = max(2, len(all_cv_values) * 2 // 3)
-        baseline_cv = np.mean(all_cv_values[:baseline_count])
+        baseline_cv = _mean(all_cv_values[:baseline_count])
         
         # Calculate recent CV (average of most recent measurements)
-        recent_cv = np.mean(recent_cv_values)
+        recent_cv = _mean(recent_cv_values)
         
         # Detect jump: recent CV significantly higher than baseline
         if baseline_cv > 0:

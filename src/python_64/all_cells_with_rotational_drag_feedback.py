@@ -6,21 +6,20 @@ import glob
 import os
 import datetime
 import traceback
-import numpy as np
 from typing import Dict, List, Optional, Tuple
 from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 from feedback_helper_function import RotationalDragFeedbackController
 
-Z_STEP_SIZE = -1       #-0.100
+Z_STEP_SIZE = -0.02       #-0.100
 Z_FEED_RATE = 500
 TORQUE_BREAK_THRESHOLD = 100.0     #100.0
 
 # ========== FEEDBACK CONTROLLER CONFIGURATION ==========
 # Rotational drag feedback controller parameters
 FEEDBACK_CONTROL_ENABLED = True             # Enable/disable feedback controller
-MIN_DATA_POINTS_FOR_TREND = 3              # Minimum z-levels needed for trend analysis
+MIN_DATA_POINTS_FOR_TREND = 8              # Minimum z-levels needed for trend analysis
 SECOND_DERIVATIVE_THRESHOLD = -0.5          # Threshold for detecting trend break (negative second derivative)
 CV_JUMP_THRESHOLD = 0.2                     # Coefficient of variation jump threshold for oscillation detection
 PLATEAU_DETECTION_ENABLED = True            # Enable plateau detection using CV
@@ -62,7 +61,7 @@ ROWS = [
 ]
 
 # Array of RPMs to test at each Z-position (similar to analysis_methods.py)
-TEST_RPMS = [1] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
+TEST_RPMS = [0.8] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
 DWELL_SECONDS = 2.0
 INTER_RPM_PAUSE = 2.0
 
@@ -80,9 +79,9 @@ TESTING_MODE = "custom"  # Change this to "full", "row", or "custom"
 SELECTED_ROWS = [2]
 # FOR CUSTOM MODE: Specify which cells to test (1-18)
 # Example: [2, 5, 8, 11, 16] tests only those specific cells
-SELECTED_CELLS = [13]  # Only used when TESTING_MODE = "custom"
+SELECTED_CELLS = [1]  # Only used when TESTING_MODE = "custom"
 
-# ===============================================
+# ================================================
 
 
 
@@ -311,7 +310,7 @@ def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: 
 
 def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps"""
-    MEASUREMENT_DURATION = 10.0      #35.0
+    MEASUREMENT_DURATION = 40.0      #35.0
     SAMPLE_INTERVAL = 10.0       #2.0
 
     try:
