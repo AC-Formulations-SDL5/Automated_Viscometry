@@ -452,12 +452,14 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
                 break
             
             # Add measurements to feedback controller for rotational drag analysis
+            # Always calculate and store metrics for consistent CSV output
+            metrics_data = {}
+            
             if FEEDBACK_CONTROL_ENABLED and rpm_data:
                 print(f"  Rotational Drag Analysis:")
                 feedback_controller.add_measurements_at_z(z_rounded, rpm_data)
                 
                 # Extract and store metrics for each RPM at this Z-level
-                metrics_data = {}
                 for rpm in TEST_RPMS:
                     if rpm in rpm_data and rpm_data[rpm] is not None:
                         trend_analysis = feedback_controller.analyze_trend_for_rpm(rpm)
@@ -476,10 +478,15 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
                                 'Second_derivative': 0.0,
                                 'Hit_Point_Confidence': 0.0
                             }
-                
-                # Store metrics alongside RPM data
-                cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
-                
+                    else:
+                        # Default values when no measurements available
+                        metrics_data[rpm] = {
+                            'CV': 0.0,
+                            'R2': 0.0,
+                            'Second_derivative': 0.0,
+                            'Hit_Point_Confidence': 0.0
+                        }
+                        
                 # Evaluate hit point detection after this Z-level
                 hit_point_detected = feedback_controller.evaluate_hit_point_detection(TEST_RPMS)
                 
@@ -489,14 +496,38 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
                     print(f"  Estimated hit Z: {summary['hit_point_z']:.3f}")
                     print(f"  Detection confidence: {summary['hit_point_confidence']:.2f}")
                     print(f"  Terminating Cell {global_cell} due to hit-point detection")
+                    # Store metrics before breaking
+                    cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
                     break
+            else:
+                # Feedback control disabled or no data - store default metrics
+                for rpm in TEST_RPMS:
+                    metrics_data[rpm] = {
+                        'CV': 0.0,
+                        'R2': 0.0,
+                        'Second_derivative': 0.0,
+                        'Hit_Point_Confidence': 0.0
+                    }
+            
+            # Always store metrics alongside RPM data for consistent CSV structure
+            cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
                 
             print(f"  Completed Z={z_rounded:.3f}: {len([t for t in rpm_data.values() if t is not None])}/{len(TEST_RPMS)} successful RPM tests")
             
         except Exception as e:
             print(f"  Error testing Cell {global_cell} at Z={z_rounded:.3f}: {e}")
-            # Fill with None values for all RPMs at this Z-height
+            # Fill with None values for all RPMs at this Z-height and add default metrics
             cell_z_rpm_data[z_rounded] = {rpm: None for rpm in TEST_RPMS}
+            # Add default metrics for consistent CSV structure
+            error_metrics_data = {}
+            for rpm in TEST_RPMS:
+                error_metrics_data[rpm] = {
+                    'CV': 0.0,
+                    'R2': 0.0,
+                    'Second_derivative': 0.0,
+                    'Hit_Point_Confidence': 0.0
+                }
+            cell_z_rpm_data[z_rounded]['_metrics'] = error_metrics_data
         
         # Move to next Z position
         current_z += Z_STEP_SIZE
