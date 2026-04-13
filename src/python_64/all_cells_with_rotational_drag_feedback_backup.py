@@ -81,6 +81,9 @@ SELECTED_ROWS = [2]
 # Example: [2, 5, 8, 11, 16] tests only those specific cells
 SELECTED_CELLS = [1]  # Only used when TESTING_MODE = "custom"
 
+# ================================================
+
+
 
 def get_selected_cells():
     """Get the list of cells to test based on configuration parameters"""
@@ -216,6 +219,16 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         print(f"Step 2.5.6: Moving CNC to wash station 2 (X={WASH_STATION2_X}, Y={WASH_STATION2_Y}, Z=0)")
         cnc.move_to_point_safe(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=3000)
         
+        # Step 2.5.7: Start pump 3 for 15 seconds
+        # print("Step 2.5.7: Starting pump 3 for 15 seconds...")
+        # if not reliable_pump_command(b"P3", "Start Pump 3"):
+        #     raise Exception("Failed to start Pump 3")
+            
+        # time.sleep(15)
+        
+        # if not reliable_pump_command(b"SP3", "Stop Pump 3"):
+        #     print("Warning: Failed to confirm Pump 3 stop")
+        
         # Step 2.5.8: Start 12V DC motor 2 and perform oscillating wash movements
         print("Step 2.5.8: Starting 12V DC motor 2 and performing oscillating wash movements...")
         if not reliable_pump_command(b"M2", "Start 12V DC Motor 2"):
@@ -234,9 +247,17 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
             cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
             time.sleep(1)  # Brief pause at home position
         
-        # Step 2.5.9: Raise CNC arm to safe position
-        print("Step 2.5.9: Raising CNC arm to safe position...")
+        # Step 2.5.9: Raise CNC arm to safe position and start reverse rinse cycle
+        print("Step 2.5.9: Raising CNC arm to safe position and starting reverse rinse cycle...")
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=500)
+        
+        # if not reliable_pump_command(b"R2", "Start Reverse Rinse 2"):
+        #     print("Warning: Failed to start reverse rinse 2")
+            
+        # time.sleep(20)
+        
+        # if not reliable_pump_command(b"SR2", "Stop Reverse Rinse 2"):
+        #     print("Warning: Failed to confirm reverse rinse 2 stop")
         
         # Step 2.5.10: Stop motor 2
         print("Step 2.5.10: Stopping motor 2...")
@@ -511,6 +532,8 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
         
         x_pos = base_x
         y_pos = BASE_Y + (local_cell - 1) * Y_OFFSET
+        # Start viscometer at low RPM while moving to safe position
+        #client.set_speed(0.5)
         cnc.move_to_point(x_pos, y_pos, z=0, speed=Z_FEED_RATE)
         time.sleep(1)
         # Stop viscometer once at safe position
@@ -534,6 +557,20 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
             print(f"    Detection confidence: {summary['hit_point_confidence']:.2f}")
         print(f"    Total Z-levels analyzed: {summary['total_z_levels']}")
         print(f"    RPMs tested: {len(TEST_RPMS)}")
+        
+        # Print detailed results table for user review
+        print(f"\n  DETAILED RESULTS TABLE:")
+        print(f"    Z_Height_mm\tLatest_Rotational_Drag")
+        for z_height in sorted(cell_z_rpm_data.keys(), reverse=True):
+            for rpm in TEST_RPMS:
+                if rpm in cell_z_rpm_data[z_height] and cell_z_rpm_data[z_height][rpm] is not None:
+                    # Calculate latest rotational drag for display  
+                    measurements = cell_z_rpm_data[z_height][rpm]
+                    latest_measurement = measurements[-1]
+                    torque_percent = latest_measurement['torque_percent']
+                    latest_rotational_drag = abs(torque_percent) / rpm if rpm > 0 else float('inf')
+                    print(f"    {z_height:.2f}\t\t{latest_rotational_drag:.8f}")
+                    break  # Only show first valid RPM per Z-height
     
     print(f"Cell {global_cell} dynamic analysis completed: {len(cell_z_rpm_data)} Z-positions tested")
     return cell_z_rpm_data
@@ -610,15 +647,12 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                                     f"{rpm_metrics['R2']:.6f}",                 # R2
                                     f"{rpm_metrics['Second_derivative']:.6f}",   # Second_derivative
                                     f"{rpm_metrics['Hit_Point_Confidence']:.6f}" # Hit_Point_Confidence
-                                ]
-                                csv_writer.writerow(data_row)
-    
     print(f"Partial results saved to: {csv_filename}")
     return csv_filename
 
 def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]], 
                               timestamp: str, mode: str) -> str:
-    """Save dynamic analysis data - single CSV file for entire run with columns including metrics"""
+    """Save dynamic analysis data - single CSV file for entire run with columns: row, cell, Z_Height_mm, RPM, Elapsed_Time_s, Torque_%, Rotational_Drag"""
     
     # Create single CSV filename
     csv_filename = f"dynamic_analysis_{mode}_{timestamp}.csv"
@@ -863,48 +897,84 @@ def main():
                     save_partial_data(all_data, timestamp, mode, completed_cells)
                 raise  # Re-raise to trigger cleanup
         
-        # All testing completed successfully
-        print(f"\nAll dynamic analysis completed successfully!")
-        print(f"Tested {len(completed_cells)} cells: {completed_cells}")
-        print(f"Saving final results...")
-        
+        # Save all data to single CSV file
         csv_filename = save_dynamic_analysis_data(all_data, timestamp, mode)
-        print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
-        print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        print(f"\n{'='*80}")
+        print("DYNAMIC ANALYSIS COMPLETED SUCCESSFULLY!")
+        print(f"Mode: {mode.upper()}")
+        print(f"Total cells tested: {len(completed_cells)}")
+        print(f"Tested cells: {completed_cells}")
+        print(f"Results saved to: {csv_filename}")
+        print(f"{'='*80}")
         
     except KeyboardInterrupt:
-        print(f"\nExperiment interrupted by user")
+        print(f"\n\nEXPERIMENT INTERRUPTED BY USER (Ctrl+C)")
+        print(f"Saving partial results...")
         if all_data:
-            print("Saving partial results...")
-            save_partial_data(all_data, timestamp, mode, completed_cells)
+            partial_filename = save_partial_data(all_data, timestamp, mode, completed_cells)
+            print(f"Partial results saved to: {partial_filename}")
+        else:
+            print("No data collected to save.")
+        
     except Exception as e:
-        print(f"Critical error during experiment: {e}")
+        print(f"ERROR during dynamic analysis: {e}")
+        print(f"Saving partial results...")
         traceback.print_exc()
         if all_data:
-            print("Saving partial results...")
-            save_partial_data(all_data, timestamp, mode, completed_cells)
+            partial_filename = save_partial_data(all_data, timestamp, mode, completed_cells)
+            print(f"Partial results saved to: {partial_filename}")
+        else:
+            print("No data collected to save.")
+    
     finally:
-        # Cleanup hardware
-        print("Cleaning up hardware...")
+        # Safely home the CNC machine and close connections
         try:
+            print("\nCleaning up...")
+            if pump:
+                try:
+                    print("Stopping all ESP32 pumps and motors...")
+                    if hasattr(pump, 'send_command_with_ack'):
+                        # Try with acknowledgment
+                        success = pump.send_command_with_ack(b"0", timeout=5.0, max_retries=2)
+                        if success:
+                            print("✓ ESP32 emergency stop confirmed")
+                        else:
+                            print("⚠ ESP32 emergency stop ACK failed, using legacy")
+                            pump.send_tag(b"0")
+                            time.sleep(2)
+                    else:
+                        pump.send_tag(b"0")  # Emergency stop all pumps
+                        time.sleep(2)
+                    
+                    # Final status check
+                    if hasattr(pump, 'get_status'):
+                        final_status = pump.get_status()
+                        if final_status and any(final_status.values()):
+                            print(f"⚠ WARNING: Some components may still be running: {final_status}")
+                        else:
+                            print("✓ All ESP32 components confirmed stopped")
+                    
+                    pump.close()
+                    print("ESP32 pump controller stopped and closed")
+                except Exception as e:
+                    print(f"Warning: Error stopping pump: {e}")
+            
             if client:
                 client.stop()
-        except:
-            pass
-        try:
-            if pump:
-                # Emergency stop all pumps and motors
-                pump.send_tag(b"0")
-                time.sleep(1)
-                pump.close()
-        except:
-            pass
+                client.close()
+                print("Viscometer connection closed")
+        except Exception as e:
+            print(f"Warning: Error closing connections: {e}")
+        
         try:
             if cnc:
                 cnc.home()
-        except:
-            pass
-        print("Hardware cleanup completed")
+                print("CNC machine homed safely")
+        except Exception as e:
+            print(f"Warning: Error homing CNC: {e}")
+        
+        print("Cleanup completed")
 
 if __name__ == "__main__":
     main()
