@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automated Viscometry Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <!-- Header Banner -->
+    <div class="banner">
+        <div class="banner-text">
+            <h1>Self-Driving Lab. #5</h1>
+            <h2>Acceleration Consortium - Formulation</h2>
+            <h3>Automated Viscometry Platform</h3>
+        </div>
+        <div class="banner-logo">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Lab Logo" id="logo">
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="label">Status:</span>
+                <span id="status-message" class="value">Ready</span>
+            </div>
+            <div class="status-item">
+                <span class="label">Current Cell:</span>
+                <span id="current-cell" class="value">-</span>
+            </div>
+            <div class="status-item">
+                <span class="label">Current RPM:</span>
+                <span id="current-rpm" class="value">0</span>
+            </div>
+            <div class="status-item">
+                <span class="label">Position:</span>
+                <span id="position" class="value">X: 0, Y: 0, Z: 0</span>
+            </div>
+            <div class="status-item">
+                <span class="label">Running:</span>
+                <span id="running-indicator" class="value status-stopped">STOPPED</span>
+            </div>
+        </div>
+
+        <!-- Content Grid -->
+        <div class="content-grid">
+            <!-- Left Panel - Platform Map -->
+            <div class="left-panel">
+                <h3>CNC Platform Map</h3>
+                <div class="map-container">
+                    <svg id="platform-map" viewBox="0 0 500 450">
+                        <!-- CNC Machine Bed Background -->
+                        <rect x="5" y="5" width="440" height="390" 
+                              fill="#2a2a2a" stroke="#555555" stroke-width="2" 
+                              class="cnc-bed"/>
+                        
+                        <!-- Platform working area -->
+                        <rect x="15" y="15" width="420" height="370" 
+                              fill="#1a1a1a" stroke="#666666" stroke-width="1" 
+                              class="platform-boundary"/>
+                        
+                        <!-- Grid lines for CNC reference -->
+                        <defs>
+                            <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+                                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#333333" stroke-width="0.5"/>
+                            </pattern>
+                        </defs>
+                        <rect x="15" y="15" width="420" height="370" fill="url(#grid)"/>
+                        
+                        <!-- Major grid lines -->
+                        <g class="major-grid">
+                            <line x1="115" y1="15" x2="115" y2="385" stroke="#444444" stroke-width="1"/>
+                            <line x1="215" y1="15" x2="215" y2="385" stroke="#444444" stroke-width="1"/>
+                            <line x1="315" y1="15" x2="315" y2="385" stroke="#444444" stroke-width="1"/>
+                            <line x1="15" y1="115" x2="435" y2="115" stroke="#444444" stroke-width="1"/>
+                            <line x1="15" y1="215" x2="435" y2="215" stroke="#444444" stroke-width="1"/>
+                            <line x1="15" y1="315" x2="435" y2="315" stroke="#444444" stroke-width="1"/>
+                        </g>
+                        
+                        <!-- Axis Labels -->
+                        <g class="axis-labels">
+                            <!-- X-axis title and labels -->
+                            <text x="225" y="440" class="axis-title" text-anchor="middle">X-axis (mm)</text>
+                            <text x="35" y="410" class="axis-label">0</text>
+                            <text x="135" y="410" class="axis-label">100</text>
+                            <text x="235" y="410" class="axis-label">200</text>
+                            <text x="335" y="410" class="axis-label">300</text>
+                            <text x="415" y="410" class="axis-label">400</text>
+                            
+                            <!-- Y-axis title and labels -->
+                            <text x="5" y="200" class="axis-title" text-anchor="middle" transform="rotate(-90, 5, 200)">Y-axis (mm)</text>
+                            <text x="5" y="380" class="axis-label">0</text>
+                            <text x="5" y="280" class="axis-label">100</text>
+                            <text x="5" y="180" class="axis-label">200</text>
+                            <text x="5" y="80" class="axis-label">300</text>
+                            <text x="5" y="25" class="axis-label">400</text>
+                        </g>
+                        
+                        <!-- Cells will be added dynamically -->
+                        <g id="cells-group"></g>
+                        
+                        <!-- Wash stations will be added dynamically -->
+                        <g id="wash-stations-group"></g>
+                        
+                        <!-- Viscometer position with enhanced styling -->
+                        <circle id="viscometer" cx="0" cy="0" r="10" 
+                                fill="#ff4444" stroke="#ffffff" stroke-width="3"
+                                opacity="0.9">
+                            <title>Viscometer Position</title>
+                        </circle>
+                        <circle id="viscometer-glow" cx="0" cy="0" r="15" 
+                                fill="none" stroke="#ff4444" stroke-width="1"
+                                opacity="0.3">
+                        </circle>
+                    </svg>
+                </div>
+                
+                <!-- Updated Legend -->
+                <div class="map-legend">
+                    <div class="legend-item">
+                        <circle class="legend-circle" style="fill: #666666;"></circle>
+                        <span>Empty Cells</span>
+                    </div>
+                    <div class="legend-item">
+                        <circle class="legend-circle" style="fill: #00aa00;"></circle>
+                        <span>Tested Cells</span>
+                    </div>
+                    <div class="legend-item">
+                        <circle class="legend-circle" style="fill: #ff8800;"></circle>
+                        <span>Testing Now</span>
+                    </div>
+                    <div class="legend-item">
+                        <circle class="legend-circle" style="fill: #2196F3;"></circle>
+                        <span>Wash Stations</span>
+                    </div>
+                    <div class="legend-item">
+                        <circle class="legend-circle" style="fill: #ff4444;"></circle>
+                        <span>Viscometer</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Scatter Plot -->
+            <div class="right-panel">
+                <h3>Rotational Drag vs Height</h3>
+                <div id="scatter-plot" class="plot-container"></div>
+                
+                <!-- Compact Plot Controls -->
+                <div class="plot-controls">
+                    <div class="control-group">
+                        <label class="compact-label">
+                            <input type="checkbox" id="show-all-cells" checked> All Cells
+                        </label>
+                        <label class="compact-label">
+                            <input type="checkbox" id="show-current-only"> Current Only
+                        </label>
+                    </div>
+                    <div class="control-group">
+                        <button id="clear-data" class="control-button-small">Clear</button>
+                        <button id="export-data" class="control-button-small">Export</button>
+                    </div>
+                </div>
+                
+                <!-- Data Summary -->
+                <div class="data-summary">
+                    <div class="summary-item">
+                        <span class="label">Total Points:</span>
+                        <span id="total-points" class="value">0</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Current Height:</span>
+                        <span id="current-height" class="value">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label">Current Drag:</span>
+                        <span id="current-drag" class="value">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Fixed Controls Panel -->
+    <div class="controls">
+        <button id="start-experiment" class="btn-green">
+            Start Experiment
+            <span id="recording-dot" class="recording-indicator hidden"></span>
+        </button>
+        <button id="stop-experiment" class="btn-red" disabled>Stop Experiment</button>
+        <button id="export-results" class="btn-blue" style="display:none">Export Results</button>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

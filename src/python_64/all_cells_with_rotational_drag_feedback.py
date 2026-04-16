@@ -11,6 +11,7 @@ from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 from feedback_helper_function import RotationalDragFeedbackController
+from web_interface import web_interface
 
 Z_STEP_SIZE = -0.02       #-0.100
 Z_FEED_RATE = 500
@@ -135,6 +136,10 @@ def row_and_local_to_global_cell(row: int, local_cell: int) -> int:
 def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int):
     """Perform the washing sequence after completing a cell test with improved reliability"""
     print(f"\nStarting Step 2.5: Washing Station Sequence after Cell {global_cell}")
+    
+    # Update web interface
+    web_interface.update_status(f"Washing after Cell {global_cell}")
+    web_interface.update_position(WASH_STATION1_X, WASH_STATION1_Y, None)
     
     def reliable_pump_command(command: bytes, description: str) -> bool:
         """Send pump command with acknowledgment and status verification"""
@@ -283,6 +288,12 @@ def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: 
     y_pos = BASE_Y + (local_cell_number - 1) * Y_OFFSET
     global_cell = row_and_local_to_global_cell(row_number, local_cell_number)
     print(f"Moving to Cell {global_cell} (Row {row_number}, Local Cell {local_cell_number}): X={x_pos}, Y={y_pos}, Z={z_height:.3f}")
+    
+    # Update web interface with current cell and position
+    web_interface.set_current_cell(global_cell)
+    web_interface.update_status(f"Moving to Cell {global_cell}")
+    web_interface.update_position(x_pos, y_pos, z_height)
+    
     cnc.move_to_point_safe(x_pos, y_pos, z_height, speed=3000)
     time.sleep(SETTLE_TIME)
     return x_pos, y_pos, z_height
@@ -295,6 +306,8 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List
     try:
         # Set spindle speed
         client.set_speed(rpm)
+        web_interface.set_current_rpm(rpm)
+        web_interface.update_status(f"Measuring at {rpm} RPM")
         time.sleep(DWELL_SECONDS)  # Allow spindle to settle at new RPM
         
         # Collect torque measurements over duration
@@ -325,6 +338,7 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List
         
         # Stop spindle after measurement
         client.stop()
+        web_interface.set_current_rpm(0)
         time.sleep(INTER_RPM_PAUSE)
         
         # Report measurement summary
@@ -343,6 +357,7 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List
         print(f"      Error measuring torque at RPM {rpm}: {e}")
         try:
             client.stop()
+            web_interface.set_current_rpm(0)
         except:
             pass
         return None
@@ -699,6 +714,14 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                             torque_percent = latest_measurement['torque_percent']
                             rotational_drag = abs(torque_percent) / rpm if rpm > 0 else float('inf')
                             
+                            # Add measurement to web interface
+                            web_interface.add_measurement_point(
+                                height=z_height,
+                                rotational_drag=rotational_drag,
+                                rpm=rpm,
+                                cell_id=global_cell
+                            )
+                            
                             data_row = [
                                 str(row_number),                              # row
                                 str(global_cell),                            # cell (global numbering)
@@ -723,6 +746,16 @@ def main():
     print("WITH ROTATIONAL DRAG FEEDBACK CONTROLLER")
     print(f"Testing RPMs: {TEST_RPMS}")
     print(f"Total available: {len(ROWS)} rows x {NUM_CELLS} cells = {len(ROWS) * NUM_CELLS} cells")
+    
+    # Start web interface in background thread
+    print("\nStarting web interface...")
+    try:
+        web_interface.start_in_thread(debug=False)
+        print("Web interface started at http://localhost:5000")
+        web_interface.update_status("Initializing hardware...")
+        web_interface.set_running_state(True)
+    except Exception as e:
+        print(f"Warning: Could not start web interface: {e}")
     
     # Display feedback control configuration
     print(f"\nFEEDBACK CONTROL CONFIGURATION:")
@@ -899,24 +932,32 @@ def main():
         print(f"Tested {len(completed_cells)} cells: {completed_cells}")
         print(f"Saving final results...")
         
+        web_interface.update_status("Saving final results...")
+        
         csv_filename = save_dynamic_analysis_data(all_data, timestamp, mode)
         print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
         print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
+        web_interface.update_status("Experiment completed successfully")
+        
     except KeyboardInterrupt:
         print(f"\nExperiment interrupted by user")
+        web_interface.update_status("Experiment interrupted by user")
         if all_data:
             print("Saving partial results...")
             save_partial_data(all_data, timestamp, mode, completed_cells)
     except Exception as e:
         print(f"Critical error during experiment: {e}")
         traceback.print_exc()
+        web_interface.update_status(f"Error: {str(e)}")
         if all_data:
             print("Saving partial results...")
             save_partial_data(all_data, timestamp, mode, completed_cells)
     finally:
         # Cleanup hardware
         print("Cleaning up hardware...")
+        web_interface.update_status("Cleaning up hardware...")
+        web_interface.set_running_state(False)
         try:
             if client:
                 client.stop()
@@ -933,9 +974,11 @@ def main():
         try:
             if cnc:
                 cnc.home()
+                web_interface.update_position(0, 0, 0)
         except:
             pass
         print("Hardware cleanup completed")
+        web_interface.update_status("Ready")
 
 if __name__ == "__main__":
     main()
