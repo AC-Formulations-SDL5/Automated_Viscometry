@@ -802,243 +802,249 @@ def main():
         print(f"Web interface started at http://localhost:{web_interface.port}")
         web_interface.update_status("Configure the run in the web interface, then press Start")
         web_interface.set_running_state(False)
+    except Exception as e:
+        print(f"Warning: Could not start web interface: {e}")
+        return
+    
+    # Main loop to keep the web interface running and accept multiple runs
+    while True:
         web_interface.consume_start_command()
         print("Waiting for Start Run command from the web interface...")
         started = web_interface.wait_for_start_command()
         if not started:
             web_interface.update_status("Start cancelled before run")
             print("Start cancelled before run")
-            return
+            continue  # Continue waiting for next start command
+        
         apply_runtime_settings_from_web()
         web_interface.consume_start_command()
         web_interface.update_status("Initializing hardware...")
         web_interface.set_running_state(True)
-    except Exception as e:
-        print(f"Warning: Could not start web interface: {e}")
-    
-    # Display feedback control configuration
-    print(f"\nFEEDBACK CONTROL CONFIGURATION:")
-    print(f"  Enabled: {'YES' if FEEDBACK_CONTROL_ENABLED else 'NO'}")
-    if FEEDBACK_CONTROL_ENABLED:
-        print(f"  Min data points for trend: {MIN_DATA_POINTS_FOR_TREND}")
-        print(f"  Second derivative threshold: {SECOND_DERIVATIVE_THRESHOLD}")
-        print(f"  CV jump threshold: {CV_JUMP_THRESHOLD}")
-        print(f"  Hit point confidence threshold: {HIT_POINT_CONFIDENCE_THRESHOLD}")
-        print(f"  Trend R² minimum: {TREND_R_SQUARED_MIN}")
-    
-    for row in ROWS:
-        start_cell = row_and_local_to_global_cell(row['row_number'], 1)
-        end_cell = row_and_local_to_global_cell(row['row_number'], 6)
-        print(f"  Row {row['row_number']}: cells {start_cell}-{end_cell}, BASE_X = {row['base_x']}, Safe Z = {row['safe_z']:.3f}, Max Z = {row['max_z_travel']:.3f}")
-    print("="*80)
-    
-    # Get selected cells based on configuration parameters
-    try:
-        mode, selected_cells = get_selected_cells()
-        print(f"\nConfigured mode: {mode.upper()}")
-        if mode == "row":
-            print(f"Selected rows: {SELECTED_ROWS}")
-        elif mode == "custom":
-            print(f"Selected cells: {SELECTED_CELLS}")
-        print(f"Testing {len(selected_cells)} cells: {selected_cells}")
-    except ValueError as e:
-        print(f"\nCONFIGURATION ERROR: {e}")
-        print("Please check TESTING_MODE, SELECTED_ROWS, and SELECTED_CELLS parameters at the top of the file.")
-        return
-    
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Initialize hardware with proper error handling
-    cnc = None
-    client = None
-    pump = None
-    
-    try:
-        print("Initializing CNC machine...")
-        cnc = CNC_Machine(virtual=False)
-        cnc.home()
-        sleep_with_stop(1.0)
-        print("CNC machine initialized and homed")
-    except Exception as e:
-        print(f"ERROR initializing CNC machine: {e}")
-        return
-    
-    # Initialize ESP32 pump controller
-    try:
-        print("Initializing ESP32 pump controller...")
-        pump = PumpESP32(port=ESP32_PORT, baud=ESP32_BAUD, virtual=PUMP_VIRTUAL)
-        pump.open()
         
-        # Test ESP32 communication
-        print("Testing ESP32 communication...")
-        if hasattr(pump, 'send_command_with_ack'):
-            # Test new acknowledgment system
-            test_success = pump.send_command_with_ack(b"ST", timeout=5.0, max_retries=3)
-            if test_success:
-                print("✓ ESP32 communication test successful (with acknowledgment)")
+        # Display feedback control configuration
+        print(f"\nFEEDBACK CONTROL CONFIGURATION:")
+        print(f"  Enabled: {'YES' if FEEDBACK_CONTROL_ENABLED else 'NO'}")
+        if FEEDBACK_CONTROL_ENABLED:
+            print(f"  Min data points for trend: {MIN_DATA_POINTS_FOR_TREND}")
+            print(f"  Second derivative threshold: {SECOND_DERIVATIVE_THRESHOLD}")
+            print(f"  CV jump threshold: {CV_JUMP_THRESHOLD}")
+            print(f"  Hit point confidence threshold: {HIT_POINT_CONFIDENCE_THRESHOLD}")
+            print(f"  Trend R² minimum: {TREND_R_SQUARED_MIN}")
+        
+        for row in ROWS:
+            start_cell = row_and_local_to_global_cell(row['row_number'], 1)
+            end_cell = row_and_local_to_global_cell(row['row_number'], 6)
+            print(f"  Row {row['row_number']}: cells {start_cell}-{end_cell}, BASE_X = {row['base_x']}, Safe Z = {row['safe_z']:.3f}, Max Z = {row['max_z_travel']:.3f}")
+        print("="*80)
+        
+        # Get selected cells based on configuration parameters
+        try:
+            mode, selected_cells = get_selected_cells()
+            print(f"\nConfigured mode: {mode.upper()}")
+            if mode == "row":
+                print(f"Selected rows: {SELECTED_ROWS}")
+            elif mode == "custom":
+                print(f"Selected cells: {SELECTED_CELLS}")
+            print(f"Testing {len(selected_cells)} cells: {selected_cells}")
+        except ValueError as e:
+            print(f"\nCONFIGURATION ERROR: {e}")
+            print("Please check TESTING_MODE, SELECTED_ROWS, and SELECTED_CELLS parameters at the top of the file.")
+            continue
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Initialize hardware with proper error handling
+        cnc = None
+        client = None
+        pump = None
+        
+        try:
+            print("Initializing CNC machine...")
+            cnc = CNC_Machine(virtual=False)
+            cnc.home()
+            sleep_with_stop(1.0)
+            print("CNC machine initialized and homed")
+        except Exception as e:
+            print(f"ERROR initializing CNC machine: {e}")
+            continue
+    
+        # Initialize ESP32 pump controller
+        try:
+            print("Initializing ESP32 pump controller...")
+            pump = PumpESP32(port=ESP32_PORT, baud=ESP32_BAUD, virtual=PUMP_VIRTUAL)
+            pump.open()
+            
+            # Test ESP32 communication
+            print("Testing ESP32 communication...")
+            if hasattr(pump, 'send_command_with_ack'):
+                # Test new acknowledgment system
+                test_success = pump.send_command_with_ack(b"ST", timeout=5.0, max_retries=3)
+                if test_success:
+                    print("✓ ESP32 communication test successful (with acknowledgment)")
+                else:
+                    print("⚠ ESP32 acknowledgment test failed, falling back to legacy mode")
+                    # Test basic communication
+                    pump.send_tag(b"ST")
+                    sleep_with_stop(1)
+                    print("ESP32 communication initialized (legacy mode)")
             else:
-                print("⚠ ESP32 acknowledgment test failed, falling back to legacy mode")
-                # Test basic communication
+                # Legacy test
                 pump.send_tag(b"ST")
                 sleep_with_stop(1)
                 print("ESP32 communication initialized (legacy mode)")
-        else:
-            # Legacy test
-            pump.send_tag(b"ST")
-            sleep_with_stop(1)
-            print("ESP32 communication initialized (legacy mode)")
-            
-        print("ESP32 pump controller initialized successfully")
-        
-    except Exception as e:
-        print(f"ERROR initializing ESP32 pump controller: {e}")
-        try:
-            if cnc:
-                cnc.home()
-        except:
-            pass
-        return
-    
-    # Initialize viscometer
-    try:
-        print("Initializing viscometer...")
-        worker_path = pathlib.Path(__file__).resolve().parents[0] / ".." / "python_32" / "worker32.py"
-        client = ViscometerClient(PYTHON32, worker_path)
-        client.init(port=VISCO_PORT, baud=VISCO_BAUD, timeout=VISCO_TOUT, spindle_k=SPINDLE_K)
-        print("Viscometer initialized successfully")
-        
-        # Test viscometer communication
-        test_data = client.read_single(timeout=5.0)
-        if test_data and test_data.get("torque_valid"):
-            print(f"Viscometer test successful: Torque = {test_data.get('torque_percent', 0):.1f}%")
-        else:
-            print("WARNING: Viscometer test failed ")
-        
-    except Exception as e:
-        print(f"ERROR initializing viscometer: {e}")
-        try:
-            if cnc:
-                cnc.home()
-        except:
-            pass
-        return
-    
-    # Data structure: all_data[global_cell] = cell_z_rpm_data
-    all_data = {}
-    completed_cells = []  # Track completed cells for partial saving
-    
-    try:
-        print(f"\nStarting dynamic analysis...")
-        print(f"Testing {len(selected_cells)} cells with {len(TEST_RPMS)} RPMs per Z-position")
-        
-        # Go through each selected cell
-        for i, global_cell in enumerate(selected_cells):
-            raise_if_stop_requested()
-            row_number, local_cell = global_cell_to_row_and_local(global_cell)
-            
-            # Find row configuration
-            row_config = None
-            for row in ROWS:
-                if row['row_number'] == row_number:
-                    row_config = row
-                    break
-            
-            if row_config is None:
-                print(f"Error: Could not find configuration for row {row_number}")
-                continue
                 
-            print(f"\n{'='*60}")
-            print(f"TESTING CELL {global_cell} ({i+1}/{len(selected_cells)})")
-            print(f"Row {row_number}, Local Cell {local_cell}, BASE_X = {row_config['base_x']}")
-            print(f"{'='*60}")
-                
-            # Auto-zero the viscometer sensor before testing each cell
+            print("ESP32 pump controller initialized successfully")
+            
+        except Exception as e:
+            print(f"ERROR initializing ESP32 pump controller: {e}")
             try:
-                print(f"Auto-zeroing viscometer for Cell {global_cell}...")
-                client.zero()
-                print("Viscometer auto-zero completed")
-            except Exception as e:
-                print(f"Warning: Failed to auto-zero viscometer: {e}")
-
-            sleep_with_stop(5)
-            # Stop viscometer once at safe position
-            client.stop()
+                if cnc:
+                    cnc.home()
+            except:
+                pass
+            continue
+    
+        # Initialize viscometer
+        try:
+            print("Initializing viscometer...")
+            worker_path = pathlib.Path(__file__).resolve().parents[0] / ".." / "python_32" / "worker32.py"
+            client = ViscometerClient(PYTHON32, worker_path)
+            client.init(port=VISCO_PORT, baud=VISCO_BAUD, timeout=VISCO_TOUT, spindle_k=SPINDLE_K)
+            print("Viscometer initialized successfully")
             
+            # Test viscometer communication
+            test_data = client.read_single(timeout=5.0)
+            if test_data and test_data.get("torque_valid"):
+                print(f"Viscometer test successful: Torque = {test_data.get('torque_percent', 0):.1f}%")
+            else:
+                print("WARNING: Viscometer test failed ")
+            
+        except Exception as e:
+            print(f"ERROR initializing viscometer: {e}")
             try:
-                cell_data = test_cell_dynamic_z_series(cnc, client, global_cell, row_config['safe_z'], row_config['max_z_travel'])
-                all_data[global_cell] = cell_data
-                completed_cells.append(global_cell)
-                print(f"Cell {global_cell} testing completed")
+                if cnc:
+                    cnc.home()
+            except:
+                pass
+            continue
+    
+        # Data structure: all_data[global_cell] = cell_z_rpm_data
+        all_data = {}
+        completed_cells = []  # Track completed cells for partial saving
+        
+        try:
+            print(f"\nStarting dynamic analysis...")
+            print(f"Testing {len(selected_cells)} cells with {len(TEST_RPMS)} RPMs per Z-position")
+        
+            # Go through each selected cell
+            for i, global_cell in enumerate(selected_cells):
+                raise_if_stop_requested()
+                row_number, local_cell = global_cell_to_row_and_local(global_cell)
                 
-                # Perform washing sequence after each cell completion
-                if pump:
-                    perform_washing_sequence(cnc, pump, global_cell)
-                else:
-                    print(f"Warning: Pump not available, skipping washing sequence for Cell {global_cell}")
+                # Find row configuration
+                row_config = None
+                for row in ROWS:
+                    if row['row_number'] == row_number:
+                        row_config = row
+                        break
+                
+                if row_config is None:
+                    print(f"Error: Could not find configuration for row {row_number}")
+                    continue
                     
-                print(f"Cell {global_cell} fully completed (including wash)")
+                print(f"\n{'='*60}")
+                print(f"TESTING CELL {global_cell} ({i+1}/{len(selected_cells)})")
+                print(f"Row {row_number}, Local Cell {local_cell}, BASE_X = {row_config['base_x']}")
+                print(f"{'='*60}")
+                    
+                # Auto-zero the viscometer sensor before testing each cell
+                try:
+                    print(f"Auto-zeroing viscometer for Cell {global_cell}...")
+                    client.zero()
+                    print("Viscometer auto-zero completed")
+                except Exception as e:
+                    print(f"Warning: Failed to auto-zero viscometer: {e}")
+
+                sleep_with_stop(5)
+                # Stop viscometer once at safe position
+                client.stop()
                 
-            except Exception as e:
-                print(f"Error during testing of Cell {global_cell}: {e}")
-                print(f"Saving partial results and terminating...")
-                traceback.print_exc()
-                # Save partial data before exiting
+                try:
+                    cell_data = test_cell_dynamic_z_series(cnc, client, global_cell, row_config['safe_z'], row_config['max_z_travel'])
+                    all_data[global_cell] = cell_data
+                    completed_cells.append(global_cell)
+                    print(f"Cell {global_cell} testing completed")
+                    
+                    # Perform washing sequence after each cell completion
+                    if pump:
+                        perform_washing_sequence(cnc, pump, global_cell)
+                    else:
+                        print(f"Warning: Pump not available, skipping washing sequence for Cell {global_cell}")
+                        
+                    print(f"Cell {global_cell} fully completed (including wash)")
+                    
+                except Exception as e:
+                    print(f"Error during testing of Cell {global_cell}: {e}")
+                    print(f"Saving partial results and terminating...")
+                    traceback.print_exc()
+                    # Save partial data before exiting
                 if all_data:
                     save_partial_data(all_data, timestamp, mode, completed_cells)
                 raise  # Re-raise to trigger cleanup
         
-        # All testing completed successfully
-        print(f"\nAll dynamic analysis completed successfully!")
-        print(f"Tested {len(completed_cells)} cells: {completed_cells}")
-        print(f"Saving final results...")
-        
-        web_interface.update_status("Saving final results...")
-        
-        csv_filename = save_dynamic_analysis_data(all_data, timestamp, mode)
-        print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
-        print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        web_interface.update_status("Experiment completed successfully")
-        
-    except KeyboardInterrupt:
-        print(f"\nExperiment interrupted by user")
-        web_interface.update_status("Experiment interrupted by user")
-        if all_data:
-            print("Saving partial results...")
-            save_partial_data(all_data, timestamp, mode, completed_cells)
-    except Exception as e:
-        print(f"Critical error during experiment: {e}")
-        traceback.print_exc()
-        web_interface.update_status(f"Error: {str(e)}")
-        if all_data:
-            print("Saving partial results...")
-            save_partial_data(all_data, timestamp, mode, completed_cells)
-    finally:
-        # Cleanup hardware
-        print("Cleaning up hardware...")
-        web_interface.update_status("Cleaning up hardware...")
-        web_interface.set_running_state(False)
-        try:
-            if client:
-                client.stop()
-        except:
-            pass
-        try:
-            if pump:
-                # Emergency stop all pumps and motors
-                pump.send_tag(b"0")
-                sleep_with_stop(1)
-                pump.close()
-        except:
-            pass
-        try:
-            if cnc:
-                cnc.home()
-                web_interface.update_position(0, 0, 0)
-        except:
-            pass
+            # All testing completed successfully
+            print(f"\nAll dynamic analysis completed successfully!")
+            print(f"Tested {len(completed_cells)} cells: {completed_cells}")
+            print(f"Saving final results...")
+            
+            web_interface.update_status("Saving final results...")
+            
+            csv_filename = save_dynamic_analysis_data(all_data, timestamp, mode)
+            print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
+            print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            web_interface.update_status("Experiment completed successfully")
+            
+        except KeyboardInterrupt:
+            print(f"\nExperiment interrupted by user")
+            web_interface.update_status("Experiment interrupted by user")
+            if all_data:
+                print("Saving partial results...")
+                save_partial_data(all_data, timestamp, mode, completed_cells)
+        except Exception as e:
+            print(f"Critical error during experiment: {e}")
+            traceback.print_exc()
+            web_interface.update_status(f"Error: {str(e)}")
+            if all_data:
+                print("Saving partial results...")
+                save_partial_data(all_data, timestamp, mode, completed_cells)
+        finally:
+            # Cleanup hardware
+            print("Cleaning up hardware...")
+            web_interface.update_status("Cleaning up hardware...")
+            web_interface.set_running_state(False)
+            try:
+                if client:
+                    client.stop()
+            except:
+                pass
+            try:
+                if pump:
+                    # Emergency stop all pumps and motors
+                    pump.send_tag(b"0")
+                    sleep_with_stop(1)
+                    pump.close()
+            except:
+                pass
+            try:
+                if cnc:
+                    cnc.home()
+                    web_interface.update_position(0, 0, 0)
+            except:
+                pass
         print("Hardware cleanup completed")
-        web_interface.update_status("Ready")
+        web_interface.update_status("Ready - Configure next run and press Start")
+        # Continue the loop to wait for next start command
 
 if __name__ == "__main__":
     main()

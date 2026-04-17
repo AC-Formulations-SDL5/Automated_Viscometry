@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Automated Viscometry Platform</title>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
@@ -42,232 +42,269 @@
     </div>
 
     <main class="dashboard">
-        <section class="card map-card skeleton-host">
-            <div class="card-title-row">
-                <h2>Platform Map</h2>
-                <div class="legend-inline">
-                    <span><i class="swatch pending"></i>Pending</span>
-                    <span><i class="swatch active"></i>Active</span>
-                    <span><i class="swatch measuring"></i>Measuring</span>
-                    <span><i class="swatch washing"></i>Washing</span>
-                    <span><i class="swatch completed"></i>Done</span>
+        <!-- Tab Navigation -->
+        <nav class="tab-nav">
+            <button class="tab-button active" data-tab="layout-tab">Layout & Timeline</button>
+            <button class="tab-button" data-tab="controls-tab">Parameters & Tracking</button>
+            <button class="tab-button" data-tab="data-tab">Data Management</button>
+        </nav>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+            <!-- Tab 1: Layout & Timeline -->
+            <div id="layout-tab" class="tab-panel active">
+                <section class="card map-card skeleton-host">
+                    <div class="card-title-row">
+                        <h2>Platform Map</h2>
+                        <div class="legend-inline">
+                            <span><i class="swatch pending"></i>Pending</span>
+                            <span><i class="swatch active"></i>Active</span>
+                            <span><i class="swatch measuring"></i>Measuring</span>
+                            <span><i class="swatch washing"></i>Washing</span>
+                            <span><i class="swatch completed"></i>Done</span>
+                        </div>
+                    </div>
+                    <div id="platform-map" class="platform-map">
+                        <div class="map-grid-label-row">
+                            <span class="map-grid-label pump-label">Pump Station</span>
+                            <span class="map-grid-label">Row 1</span>
+                            <span class="map-grid-label">Row 2</span>
+                            <span class="map-grid-label">Row 3</span>
+                            <span class="map-grid-label">Row 4</span>
+                            <span class="map-grid-label">Row 5</span>
+                            <span class="map-grid-label">Row 6</span>
+                            <span class="map-grid-label">Row 7</span>
+                        </div>
+                        <div class="map-grid-body">
+                            <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="platform-grid" aria-hidden="true">
+                                <defs>
+                                    <pattern id="tinyGrid" width="8" height="8" patternUnits="userSpaceOnUse">
+                                        <path d="M 8 0 L 0 0 0 8" fill="none" stroke="rgba(123, 146, 255, 0.18)" stroke-width="0.2"></path>
+                                    </pattern>
+                                </defs>
+                                <rect x="0" y="0" width="100" height="100" fill="url(#tinyGrid)"></rect>
+                            </svg>
+                            <div id="wash-layer" class="map-layer"></div>
+                            <div id="cell-layer" class="map-layer"></div>
+                            <div id="arm-dot" class="arm-dot" title="Viscometer arm"></div>
+                        </div>
+                    </div>
+                    <div class="map-meta">
+                        <span>Bounds: X 0-450 mm</span>
+                        <span>Y 0-400 mm</span>
+                        <span>Z 0 to -75 mm</span>
+                    </div>
+                    <div class="skeleton-lines">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                    </div>
+                </section>
+
+                <section class="card timeline-card skeleton-host">
+                    <div class="card-title-row">
+                        <h2>Protocol Timeline</h2>
+                    </div>
+                    <ol id="timeline" class="timeline">
+                        <li data-phase="1">Move to Cell</li>
+                        <li data-phase="2">Auto-Zero</li>
+                        <li data-phase="3">Z-Descent + Measure</li>
+                        <li data-phase="4">Raise Z</li>
+                        <li data-phase="5">Wash Station 1</li>
+                        <li data-phase="6">Wash Station 2</li>
+                    </ol>
+                    <div id="timeline-fill" class="timeline-fill"></div>
+                    <div class="skeleton-lines">
+                        <div class="skeleton-line"></div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Tab 2: Parameters & Tracking -->
+            <div id="controls-tab" class="tab-panel">
+                <div class="controls-tracking-grid">
+                    <section class="card parameters-card">
+                        <div class="card-title-row">
+                            <h2>Run Parameters</h2>
+                        </div>
+                        <form id="run-settings-form" class="run-settings-form">
+                            <label>
+                                <span>Mode</span>
+                                <select id="testing-mode" name="testing_mode">
+                                    <option value="full">Full</option>
+                                    <option value="row">Row</option>
+                                    <option value="custom" selected>Custom</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>Target RPMs</span>
+                                <input id="test-rpms" name="test_rpms" type="text" value="0.8" placeholder="0.8,1.0">
+                            </label>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Rows</span>
+                                    <input id="selected-rows" name="selected_rows" type="text" value="2" placeholder="1,3">
+                                </label>
+                                <label>
+                                    <span>Cells</span>
+                                    <input id="selected-cells" name="selected_cells" type="text" value="1" placeholder="1,4,7">
+                                </label>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Z Step</span>
+                                    <input id="z-step-size" name="z_step_size" type="number" step="0.001" value="-0.02">
+                                </label>
+                                <label>
+                                    <span>Measure (s)</span>
+                                    <input id="measurement-duration" name="measurement_duration" type="number" step="1" value="40">
+                                </label>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Sample Interval</span>
+                                    <input id="sample-interval" name="sample_interval" type="number" step="0.1" value="10">
+                                </label>
+                                <label>
+                                    <span>Dwell (s)</span>
+                                    <input id="dwell-seconds" name="dwell_seconds" type="number" step="0.1" value="2">
+                                </label>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Inter-RPM Pause</span>
+                                    <input id="inter-rpm-pause" name="inter_rpm_pause" type="number" step="0.1" value="2">
+                                </label>
+                                <label>
+                                    <span>Torque Break %</span>
+                                    <input id="torque-break-threshold" name="torque_break_threshold" type="number" step="0.1" value="100">
+                                </label>
+                            </div>
+                            <label class="checkbox-row">
+                                <input id="feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
+                                <span>Feedback control enabled</span>
+                            </label>
+                            <div class="control-actions">
+                                <button type="button" id="apply-settings" class="btn">Apply Settings</button>
+                                <button type="button" id="start-run" class="btn btn-start">Start Run</button>
+                                <button type="button" id="stop-run" class="btn btn-stop">Stop Run</button>
+                            </div>
+                            <div id="control-status" class="control-status">Ready</div>
+                        </form>
+                    </section>
+
+                    <section class="card tracking-card">
+                        <div class="card-title-row">
+                            <h2>Live Tracking</h2>
+                        </div>
+                        <div class="tracking-grid">
+                            <div class="status-block gauge-block">
+                                <div class="status-label">RPM Gauge</div>
+                                <svg id="rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
+                                    <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
+                                    <circle id="gauge-value" cx="110" cy="110" r="72" class="gauge-value"></circle>
+                                    <line id="gauge-needle" x1="110" y1="110" x2="110" y2="44" class="gauge-needle"></line>
+                                    <circle cx="110" cy="110" r="5" class="gauge-core"></circle>
+                                    <text id="gauge-rpm" x="110" y="118" text-anchor="middle" class="gauge-text">0.0</text>
+                                    <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
+                                </svg>
+                            </div>
+
+                            <div class="status-block xyz-grid mono">
+                                <div class="xyz-item"><span>X</span><strong id="xyz-x">0.0</strong></div>
+                                <div class="xyz-item"><span>Y</span><strong id="xyz-y">0.0</strong></div>
+                                <div class="xyz-item"><span>Z</span><strong id="xyz-z">0.0</strong></div>
+                            </div>
+
+                            <div class="status-block">
+                                <div class="status-label">Torque %</div>
+                                <div class="torque-shell">
+                                    <div id="torque-fill" class="torque-fill"></div>
+                                </div>
+                                <div id="torque-value" class="mono">0.0%</div>
+                            </div>
+
+                            <div class="status-block">
+                                <div class="status-label">Current Cell</div>
+                                <div id="cell-flip" class="cell-flip" data-cell="-">-</div>
+                                <div id="cell-meta" class="status-subtext">Row -, local -</div>
+                            </div>
+
+                            <div class="status-block">
+                                <div class="status-label">Elapsed</div>
+                                <div id="elapsed" class="mono">00:00:00</div>
+                                <div id="elapsed-cell" class="status-subtext">Cell 00:00:00</div>
+                            </div>
+
+                            <div class="status-block">
+                                <div class="status-label">Z-Descent Sparkline</div>
+                                <svg id="sparkline" viewBox="0 0 220 60" class="sparkline">
+                                    <polyline id="sparkline-line" points="" fill="none"></polyline>
+                                </svg>
+                            </div>
+                        </div>
+                    </section>
                 </div>
-            </div>
-            <div id="platform-map" class="platform-map">
-                <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="platform-grid" aria-hidden="true">
-                    <defs>
-                        <pattern id="tinyGrid" width="8" height="8" patternUnits="userSpaceOnUse">
-                            <path d="M 8 0 L 0 0 0 8" fill="none" stroke="rgba(139,148,158,0.12)" stroke-width="0.2"></path>
-                        </pattern>
-                    </defs>
-                    <rect x="0" y="0" width="100" height="100" fill="url(#tinyGrid)"></rect>
-                </svg>
-                <div id="wash-layer" class="map-layer"></div>
-                <div id="cell-layer" class="map-layer"></div>
-                <div id="arm-dot" class="arm-dot" title="Viscometer arm"></div>
-            </div>
-            <div class="map-meta">
-                <span>Bounds: X 0-450 mm</span>
-                <span>Y 0-400 mm</span>
-                <span>Z 0 to -75 mm</span>
-            </div>
-            <div class="skeleton-lines">
-                <div class="skeleton-line"></div>
-                <div class="skeleton-line short"></div>
-            </div>
-        </section>
 
-        <section class="card plot-card skeleton-host">
-            <div class="card-title-row">
-                <h2>Live Scatter Plot</h2>
-                <div class="plot-tools">
-                    <div class="segmented" role="group" aria-label="Plot mode">
-                        <button id="toggle-all" class="seg active">All Cells</button>
-                        <button id="toggle-current" class="seg">Current Cell Only</button>
+                <section class="card plot-card skeleton-host">
+                    <div class="card-title-row">
+                        <h2>Live Scatter Plot</h2>
+                        <div class="plot-tools">
+                            <div class="segmented" role="group" aria-label="Plot mode">
+                                <button id="toggle-all" class="seg active">All Cells</button>
+                                <button id="toggle-current" class="seg">Current Cell Only</button>
+                            </div>
+                            <button id="plot-export" class="btn subtle">Export CSV</button>
+                        </div>
                     </div>
-                    <button id="plot-export" class="btn subtle">Export CSV</button>
-                </div>
-            </div>
-            <div id="scatter-plot" class="plot-shell"></div>
-            <div id="plot-empty" class="plot-empty">No data yet</div>
-            <div class="skeleton-lines">
-                <div class="skeleton-line"></div>
-                <div class="skeleton-line"></div>
-            </div>
-        </section>
-
-        <aside class="card sidebar-card skeleton-host">
-            <div class="card-title-row">
-                <h2>Status</h2>
-            </div>
-
-            <section class="control-panel">
-                <div class="status-label">Run Control</div>
-                <form id="run-settings-form" class="run-settings-form">
-                    <label>
-                        <span>Mode</span>
-                        <select id="testing-mode" name="testing_mode">
-                            <option value="full">Full</option>
-                            <option value="row">Row</option>
-                            <option value="custom" selected>Custom</option>
-                        </select>
-                    </label>
-                    <label>
-                        <span>Target RPMs</span>
-                        <input id="test-rpms" name="test_rpms" type="text" value="0.8" placeholder="0.8,1.0">
-                    </label>
-                    <div class="dual-fields">
-                        <label>
-                            <span>Rows</span>
-                            <input id="selected-rows" name="selected_rows" type="text" value="2" placeholder="1,3">
-                        </label>
-                        <label>
-                            <span>Cells</span>
-                            <input id="selected-cells" name="selected_cells" type="text" value="1" placeholder="1,4,7">
-                        </label>
+                    <div id="scatter-plot" class="plot-shell"></div>
+                    <div id="plot-empty" class="plot-empty">No data yet</div>
+                    <div class="skeleton-lines">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line"></div>
                     </div>
-                    <div class="dual-fields">
-                        <label>
-                            <span>Z Step</span>
-                            <input id="z-step-size" name="z_step_size" type="number" step="0.001" value="-0.02">
-                        </label>
-                        <label>
-                            <span>Measure (s)</span>
-                            <input id="measurement-duration" name="measurement_duration" type="number" step="1" value="40">
-                        </label>
+                </section>
+            </div>
+
+            <!-- Tab 3: Data Management -->
+            <div id="data-tab" class="tab-panel">
+                <section class="card table-card skeleton-host">
+                    <div class="card-title-row">
+                        <h2>Recent Measurements</h2>
+                        <div class="data-actions">
+                            <button id="table-export" class="btn">Export All CSV</button>
+                            <button id="clear-data" class="btn subtle">Clear Data</button>
+                        </div>
                     </div>
-                    <div class="dual-fields">
-                        <label>
-                            <span>Sample Interval</span>
-                            <input id="sample-interval" name="sample_interval" type="number" step="0.1" value="10">
-                        </label>
-                        <label>
-                            <span>Dwell (s)</span>
-                            <input id="dwell-seconds" name="dwell_seconds" type="number" step="0.1" value="2">
-                        </label>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Cell</th>
+                                    <th>Z (mm)</th>
+                                    <th>Torque (%)</th>
+                                    <th>RPM</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="measurement-table"></tbody>
+                        </table>
                     </div>
-                    <div class="dual-fields">
-                        <label>
-                            <span>Inter-RPM Pause</span>
-                            <input id="inter-rpm-pause" name="inter_rpm_pause" type="number" step="0.1" value="2">
-                        </label>
-                        <label>
-                            <span>Torque Break %</span>
-                            <input id="torque-break-threshold" name="torque_break_threshold" type="number" step="0.1" value="100">
-                        </label>
+                    <div class="skeleton-lines">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
                     </div>
-                    <label class="checkbox-row">
-                        <input id="feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
-                        <span>Feedback control enabled</span>
-                    </label>
-                    <div class="control-actions">
-                        <button type="button" id="apply-settings" class="btn">Apply Settings</button>
-                        <button type="button" id="start-run" class="btn btn-start">Start Run</button>
-                        <button type="button" id="stop-run" class="btn btn-stop">Stop Run</button>
+                </section>
+
+                <section class="card status-log-card">
+                    <div class="card-title-row">
+                        <h2>Status Log</h2>
+                        <button id="clear-log" class="btn subtle">Clear Log</button>
                     </div>
-                    <div id="control-status" class="control-status">Ready</div>
-                </form>
-            </section>
-
-            <div class="status-block">
-                <div class="status-label">Current Cell</div>
-                <div id="cell-flip" class="cell-flip" data-cell="-">-</div>
-                <div id="cell-meta" class="status-subtext">Row -, local -</div>
+                    <ul id="status-log" class="status-log"></ul>
+                </section>
             </div>
-
-            <div class="status-block gauge-block">
-                <div class="status-label">RPM Gauge</div>
-                <svg id="rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
-                    <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
-                    <circle id="gauge-value" cx="110" cy="110" r="72" class="gauge-value"></circle>
-                    <line id="gauge-needle" x1="110" y1="110" x2="110" y2="44" class="gauge-needle"></line>
-                    <circle cx="110" cy="110" r="5" class="gauge-core"></circle>
-                    <text id="gauge-rpm" x="110" y="118" text-anchor="middle" class="gauge-text">0.0</text>
-                    <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
-                </svg>
-            </div>
-
-            <div class="status-block xyz-grid mono">
-                <div class="xyz-item"><span>X</span><strong id="xyz-x">0.0</strong></div>
-                <div class="xyz-item"><span>Y</span><strong id="xyz-y">0.0</strong></div>
-                <div class="xyz-item"><span>Z</span><strong id="xyz-z">0.0</strong></div>
-            </div>
-
-            <div class="status-block">
-                <div class="status-label">Torque %</div>
-                <div class="torque-shell">
-                    <div id="torque-fill" class="torque-fill"></div>
-                </div>
-                <div id="torque-value" class="mono">0.0%</div>
-            </div>
-
-            <div class="status-block">
-                <div class="status-label">Elapsed</div>
-                <div id="elapsed" class="mono">00:00:00</div>
-                <div id="elapsed-cell" class="status-subtext">Cell 00:00:00</div>
-            </div>
-
-            <div class="status-block">
-                <div class="status-label">Z-Descent Sparkline</div>
-                <svg id="sparkline" viewBox="0 0 220 60" class="sparkline">
-                    <polyline id="sparkline-line" points="" fill="none"></polyline>
-                </svg>
-            </div>
-
-            <div class="status-block">
-                <div class="status-label">Status Log</div>
-                <ul id="status-log" class="status-log"></ul>
-            </div>
-            <div class="skeleton-lines">
-                <div class="skeleton-line"></div>
-                <div class="skeleton-line short"></div>
-                <div class="skeleton-line"></div>
-            </div>
-        </aside>
-
-        <section class="card timeline-card skeleton-host">
-            <div class="card-title-row">
-                <h2>Protocol Timeline</h2>
-            </div>
-            <ol id="timeline" class="timeline">
-                <li data-phase="1">Move to Cell</li>
-                <li data-phase="2">Auto-Zero</li>
-                <li data-phase="3">Z-Descent + Measure</li>
-                <li data-phase="4">Raise Z</li>
-                <li data-phase="5">Wash Station 1</li>
-                <li data-phase="6">Wash Station 2</li>
-            </ol>
-            <div id="timeline-fill" class="timeline-fill"></div>
-            <div class="skeleton-lines">
-                <div class="skeleton-line"></div>
-            </div>
-        </section>
-
-        <section class="card table-card skeleton-host">
-            <div class="card-title-row">
-                <h2>Recent Measurements</h2>
-                <button id="table-export" class="btn">Export All CSV</button>
-            </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Cell</th>
-                            <th>Z (mm)</th>
-                            <th>Torque (%)</th>
-                            <th>RPM</th>
-                            <th>Time</th>
-                        </tr>
-                    </thead>
-                    <tbody id="measurement-table"></tbody>
-                </table>
-            </div>
-            <div class="skeleton-lines">
-                <div class="skeleton-line"></div>
-                <div class="skeleton-line"></div>
-                <div class="skeleton-line short"></div>
-            </div>
-        </section>
+        </div>
     </main>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

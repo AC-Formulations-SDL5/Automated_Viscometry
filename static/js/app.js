@@ -48,6 +48,10 @@ class ViscometryDashboard {
         this.startTimerLoop();
         this.fetchInitialData();
         this.loadControlSettings();
+
+        // Restore active tab from localStorage
+        const activeTab = localStorage.getItem("activeTab") || "layout-tab";
+        this.switchTab(activeTab);
         this.connectSocket();
     }
 
@@ -101,7 +105,9 @@ class ViscometryDashboard {
             toggleCurrent: document.getElementById("toggle-current"),
             exportPlot: document.getElementById("plot-export"),
             exportTable: document.getElementById("table-export"),
-            themeToggle: document.getElementById("theme-toggle")
+            themeToggle: document.getElementById("theme-toggle"),
+            tabButtons: document.querySelectorAll(".tab-button"),
+            tabPanels: document.querySelectorAll(".tab-panel")
         };
     }
 
@@ -122,6 +128,29 @@ class ViscometryDashboard {
         });
 
         window.addEventListener("resize", () => this.renderMap());
+
+        // Tab switching functionality
+        this.el.tabButtons.forEach(button => {
+            button.addEventListener("click", () => this.switchTab(button.dataset.tab));
+        });
+    }
+
+    switchTab(tabId) {
+        // Remove active class from all buttons and panels
+        this.el.tabButtons.forEach(button => button.classList.remove("active"));
+        this.el.tabPanels.forEach(panel => panel.classList.remove("active"));
+
+        // Add active class to selected button and panel
+        const activeButton = document.querySelector(`[data-tab="${tabId}"]`);
+        const activePanel = document.getElementById(tabId);
+
+        if (activeButton && activePanel) {
+            activeButton.classList.add("active");
+            activePanel.classList.add("active");
+        }
+
+        // Store active tab in localStorage
+        localStorage.setItem("activeTab", tabId);
     }
 
     handleLogoFallback() {
@@ -136,8 +165,8 @@ class ViscometryDashboard {
     initStaticLayout() {
         this.platform.cells = this.buildCells();
         this.platform.washStations = [
-            { id: "W1", x: 383, y: 68 },
-            { id: "W2", x: 383, y: 147 }
+            { id: "W1", x: 27, y: 86 },
+            { id: "W2", x: 42, y: 86 }
         ];
 
         this.platform.cells.forEach((cell) => {
@@ -149,24 +178,21 @@ class ViscometryDashboard {
     }
 
     buildCells() {
-        const rows = [
-            { row: 1, baseX: 10, ids: [1, 2, 3, 4, 5, 6] },
-            { row: 2, baseX: 85, ids: [7, 8, 9, 10, 11, 12] },
-            { row: 3, baseX: 309, ids: [13, 14, 15, 16, 17, 18] }
-        ];
-
+        const rowY = { 1: 16, 2: 33, 5: 62 };
+        const columnX = [12, 26, 40, 54, 68, 82, 96];
         const cells = [];
-        rows.forEach((r) => {
-            r.ids.forEach((id, index) => {
-                const local = index + 1;
+        [1, 2, 5].forEach((gridRow) => {
+            for (let index = 0; index < 7; index += 1) {
+                const col = index + 1;
                 cells.push({
-                    id,
-                    row: r.row,
-                    local,
-                    x: r.baseX,
-                    y: 62 + index * 67
+                    id: `${gridRow}-${col}`,
+                    label: `Cell ${col}`,
+                    row: gridRow,
+                    col,
+                    x: columnX[index],
+                    y: rowY[gridRow]
                 });
-            });
+            }
         });
         return cells;
     }
@@ -192,10 +218,10 @@ class ViscometryDashboard {
 
             node.className = `map-node cell-node ${state}`;
             node.dataset.cellId = String(cell.id);
-            node.dataset.tip = `Cell ${cell.id}, Row ${cell.row}, X ${cell.x}, Y ${cell.y}${torque}`;
+            node.dataset.tip = `${cell.label}, Row ${cell.row}, Column ${cell.col}${torque}`;
             node.style.left = `${pct.x}%`;
             node.style.top = `${pct.y}%`;
-            node.textContent = String(cell.id);
+            node.textContent = cell.label;
             this.el.cellLayer.appendChild(node);
         });
 
