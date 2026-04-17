@@ -346,7 +346,7 @@ def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: 
     sleep_with_stop(SETTLE_TIME)
     return x_pos, y_pos, z_height
 
-def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List[Dict]]:
+def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps"""
     try:
         # Set spindle speed
@@ -376,6 +376,17 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List
                             "rpm": rpm
                         }
                         measurements.append(measurement)
+                        web_interface.update_live_torque(
+                            torque_percent=data["torque_percent"],
+                            rpm=rpm,
+                            elapsed=current_time - measurement_start_time,
+                        )
+                        web_interface.add_measurement_point(
+                            height=z_height,
+                            rotational_drag=abs(data["torque_percent"]) / rpm if rpm > 0 else 0.0,
+                            rpm=rpm,
+                            cell_id=web_interface.current_cell,
+                        )
                     next_sample_time += SAMPLE_INTERVAL
                 except Exception as e:
                     print(f"      Measurement error at RPM {rpm}: {e}")
@@ -415,7 +426,7 @@ def test_dynamic_analysis_at_z(client: ViscometerClient, z_height: float) -> Tup
     first_rpm_exceeded_threshold = False
     
     for i, rpm in enumerate(TEST_RPMS):
-        measurements = measure_torque_at_rpm(client, rpm)
+        measurements = measure_torque_at_rpm(client, rpm, z_height)
         rpm_torque_data[rpm] = measurements
         
         # Check if measurements are invalid (high resistance condition) or exceed threshold
@@ -482,6 +493,7 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
         raise_if_stop_requested()
         step_count += 1
         z_rounded = round(current_z, 3)
+        web_interface.set_current_z(z_rounded)
         
         print(f"\nCell {global_cell} - Z-Step {step_count}: Z={z_rounded:.3f}")
         
@@ -502,6 +514,10 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
                 print(f"  Moving directly to Z={current_z:.3f} (no retraction)")
                 raise_if_stop_requested()
                 cnc.move_to_point(x_pos, y_pos, current_z, speed=Z_FEED_RATE)
+                web_interface.update_position(x_pos, y_pos, current_z)
+                web_interface.update_status(
+                    f"Cell {global_cell} | Z-step {step_count} | Z={z_rounded:.3f} mm"
+                )
                 sleep_with_stop(SETTLE_TIME)
             
             # Test all RPMs at this Z-height

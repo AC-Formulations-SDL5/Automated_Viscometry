@@ -12,6 +12,8 @@ class ViscometryDashboard {
         this.isRunning = false;
         this.currentCell = null;
         this.currentRPM = 0;
+        this.currentTorquePercent = 0;
+        this.currentMeasuringZ = null;
         this.position = { x: 0, y: 0, z: 0 };
         this.statusLog = [];
         this.measurements = [];
@@ -97,6 +99,8 @@ class ViscometryDashboard {
             xyzZ: document.getElementById("xyz-z"),
             torqueFill: document.getElementById("torque-fill"),
             torqueValue: document.getElementById("torque-value"),
+            torqueDisplay: document.getElementById("torque-display"),
+            zMeasuringDisplay: document.getElementById("z-measuring-display"),
             elapsed: document.getElementById("elapsed"),
             elapsedCell: document.getElementById("elapsed-cell"),
             sparklineLine: document.getElementById("sparkline-line"),
@@ -478,7 +482,21 @@ class ViscometryDashboard {
         });
 
         this.socket.on("new_measurement", (data) => {
-            this.ingestMeasurement(data, false);
+            this.addPointToChart(data.cell_id, data.height, data.rotational_drag, data.rpm, data.timestamp);
+        });
+
+        this.socket.on("torque_update", (data) => {
+            const torquePercent = Number(data.torque_percent);
+            if (!Number.isNaN(torquePercent)) {
+                this.updateLiveTorqueDisplay(torquePercent);
+            }
+        });
+
+        this.socket.on("z_update", (data) => {
+            const currentZ = Number(data.current_z);
+            if (!Number.isNaN(currentZ)) {
+                this.updateMeasuringZDisplay(currentZ);
+            }
         });
 
         this.socket.on("running_state_update", (data) => {
@@ -523,6 +541,20 @@ class ViscometryDashboard {
         if (status.current_rpm !== undefined) {
             this.currentRPM = Number(status.current_rpm) || 0;
             this.updateGauge(this.currentRPM);
+        }
+
+        if (status.current_torque_percent !== undefined) {
+            const torquePercent = Number(status.current_torque_percent);
+            if (!Number.isNaN(torquePercent)) {
+                this.updateLiveTorqueDisplay(torquePercent);
+            }
+        }
+
+        if (status.current_z_measuring !== undefined && status.current_z_measuring !== null) {
+            const currentZ = Number(status.current_z_measuring);
+            if (!Number.isNaN(currentZ)) {
+                this.updateMeasuringZDisplay(currentZ);
+            }
         }
 
         if (status.is_running !== undefined) {
@@ -922,6 +954,30 @@ class ViscometryDashboard {
             this.el.torqueFill.style.background = "linear-gradient(180deg, #39c5bb, #2ea043)";
             this.el.torqueFill.style.filter = "drop-shadow(0 0 8px rgba(57,197,187,0.42))";
         }
+    }
+
+    updateLiveTorqueDisplay(value) {
+        this.currentTorquePercent = value;
+        if (this.el.torqueDisplay) {
+            this.el.torqueDisplay.textContent = `${value.toFixed(2)}%`;
+        }
+    }
+
+    updateMeasuringZDisplay(value) {
+        this.currentMeasuringZ = value;
+        if (this.el.zMeasuringDisplay) {
+            this.el.zMeasuringDisplay.textContent = `${value.toFixed(3)} mm`;
+        }
+    }
+
+    addPointToChart(cellId, height, rotationalDrag, rpm, timestamp) {
+        this.ingestMeasurement({
+            cell_id: cellId,
+            height,
+            rotational_drag: rotationalDrag,
+            rpm,
+            timestamp
+        }, false);
     }
 
     updateSparkline() {

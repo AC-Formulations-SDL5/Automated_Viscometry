@@ -28,6 +28,8 @@ class ViscometryWebInterface:
         self.measurement_data = []
         self.current_cell = None
         self.current_rpm = 0
+        self.current_torque_percent = 0.0
+        self.current_z_measuring = None
         self.is_running = False
         self.status_message = "Ready"
         self.control_lock = threading.Lock()
@@ -98,6 +100,8 @@ class ViscometryWebInterface:
                 'position': self.current_position,
                 'current_cell': self.current_cell,
                 'current_rpm': self.current_rpm,
+                'current_torque_percent': self.current_torque_percent,
+                'current_z_measuring': self.current_z_measuring,
                 'is_running': self.is_running,
                 'status_message': self.status_message,
                 'cell_positions': self.get_cell_positions(),
@@ -184,6 +188,8 @@ class ViscometryWebInterface:
             'position': self.current_position,
             'current_cell': self.current_cell,
             'current_rpm': self.current_rpm,
+            'current_torque_percent': self.current_torque_percent,
+            'current_z_measuring': self.current_z_measuring,
             'is_running': self.is_running,
             'status_message': self.status_message,
             'measurement_data': self.measurement_data[-100:],  # Last 100 points
@@ -303,6 +309,20 @@ class ViscometryWebInterface:
         """Set current RPM"""
         self.current_rpm = rpm
         self.socketio.emit('rpm_update', {'current_rpm': rpm})
+
+    def update_live_torque(self, torque_percent: float, rpm: float, elapsed: float):
+        """Broadcast the most recent raw torque reading to connected clients."""
+        self.current_torque_percent = torque_percent
+        self.socketio.emit('torque_update', {
+            'torque_percent': torque_percent,
+            'rpm': rpm,
+            'elapsed': elapsed,
+        })
+
+    def set_current_z(self, z: float):
+        """Broadcast the Z-height currently under active measurement."""
+        self.current_z_measuring = z
+        self.socketio.emit('z_update', {'current_z': z})
         
     def add_measurement_point(self, height: float, rotational_drag: float, rpm: float, cell_id: int):
         """Add a new measurement point"""
