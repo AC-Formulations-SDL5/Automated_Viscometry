@@ -4,196 +4,271 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Automated Viscometry Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 </head>
-<body>
-    <!-- Header Banner -->
-    <div class="banner">
-        <div class="banner-text">
-            <h1>Self-Driving Lab. #5</h1>
-            <h2>Acceleration Consortium - Formulation</h2>
-            <h3>Automated Viscometry Platform</h3>
-        </div>
-        <div class="banner-logo">
-            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Lab Logo" id="logo">
-        </div>
+<body class="theme-dark loading">
+    <div id="disconnect-banner" class="disconnect-banner hidden" role="alert" aria-live="polite">
+        <span class="banner-icon">!</span>
+        <span>Disconnected from instrument, attempting to reconnect...</span>
     </div>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        <!-- Status Bar -->
-        <div class="status-bar">
-            <div class="status-item">
-                <span class="label">Status:</span>
-                <span id="status-message" class="value">Ready</span>
+    <header class="app-header">
+        <div class="header-left">
+            <div class="wordmark-wrap">
+                <img id="ac-logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="Acceleration Consortium logo">
+                <div id="logo-fallback" class="logo-fallback hidden">AC</div>
             </div>
-            <div class="status-item">
-                <span class="label">Current Cell:</span>
-                <span id="current-cell" class="value">-</span>
-            </div>
-            <div class="status-item">
-                <span class="label">Current RPM:</span>
-                <span id="current-rpm" class="value">0</span>
-            </div>
-            <div class="status-item">
-                <span class="label">Position:</span>
-                <span id="position" class="value">X: 0, Y: 0, Z: 0</span>
-            </div>
-            <div class="status-item">
-                <span class="label">Running:</span>
-                <span id="running-indicator" class="value status-stopped">STOPPED</span>
+            <div class="lab-tag">SELF-DRIVING LAB #5 - FORMULATION</div>
+        </div>
+        <div class="header-center">AUTOMATED VISCOMETRY PLATFORM</div>
+        <div class="header-right">
+            <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark light theme">Light</button>
+            <div id="run-pill" class="run-pill idle">IDLE</div>
+            <div class="connection-wrap">
+                <span class="connection-label">LINK</span>
+                <span id="connection-dot" class="connection-dot disconnected"></span>
             </div>
         </div>
+        <div id="header-sweep" class="header-sweep"></div>
+    </header>
 
-        <!-- Content Grid -->
-        <div class="content-grid">
-            <!-- Left Panel - Platform Map -->
-            <div class="left-panel">
-                <h3>CNC Platform Map</h3>
-                <div class="map-container">
-                    <svg id="platform-map" viewBox="0 0 500 450">
-                        <!-- CNC Machine Bed Background -->
-                        <rect x="5" y="5" width="440" height="390" 
-                              fill="#2a2a2a" stroke="#555555" stroke-width="2" 
-                              class="cnc-bed"/>
-                        
-                        <!-- Platform working area -->
-                        <rect x="15" y="15" width="420" height="370" 
-                              fill="#1a1a1a" stroke="#666666" stroke-width="1" 
-                              class="platform-boundary"/>
-                        
-                        <!-- Grid lines for CNC reference -->
-                        <defs>
-                            <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
-                                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#333333" stroke-width="0.5"/>
-                            </pattern>
-                        </defs>
-                        <rect x="15" y="15" width="420" height="370" fill="url(#grid)"/>
-                        
-                        <!-- Major grid lines -->
-                        <g class="major-grid">
-                            <line x1="115" y1="15" x2="115" y2="385" stroke="#444444" stroke-width="1"/>
-                            <line x1="215" y1="15" x2="215" y2="385" stroke="#444444" stroke-width="1"/>
-                            <line x1="315" y1="15" x2="315" y2="385" stroke="#444444" stroke-width="1"/>
-                            <line x1="15" y1="115" x2="435" y2="115" stroke="#444444" stroke-width="1"/>
-                            <line x1="15" y1="215" x2="435" y2="215" stroke="#444444" stroke-width="1"/>
-                            <line x1="15" y1="315" x2="435" y2="315" stroke="#444444" stroke-width="1"/>
-                        </g>
-                        
-                        <!-- Axis Labels -->
-                        <g class="axis-labels">
-                            <!-- X-axis title and labels -->
-                            <text x="225" y="440" class="axis-title" text-anchor="middle">X-axis (mm)</text>
-                            <text x="35" y="410" class="axis-label">0</text>
-                            <text x="135" y="410" class="axis-label">100</text>
-                            <text x="235" y="410" class="axis-label">200</text>
-                            <text x="335" y="410" class="axis-label">300</text>
-                            <text x="415" y="410" class="axis-label">400</text>
-                            
-                            <!-- Y-axis title and labels -->
-                            <text x="5" y="200" class="axis-title" text-anchor="middle" transform="rotate(-90, 5, 200)">Y-axis (mm)</text>
-                            <text x="5" y="380" class="axis-label">0</text>
-                            <text x="5" y="280" class="axis-label">100</text>
-                            <text x="5" y="180" class="axis-label">200</text>
-                            <text x="5" y="80" class="axis-label">300</text>
-                            <text x="5" y="25" class="axis-label">400</text>
-                        </g>
-                        
-                        <!-- Cells will be added dynamically -->
-                        <g id="cells-group"></g>
-                        
-                        <!-- Wash stations will be added dynamically -->
-                        <g id="wash-stations-group"></g>
-                        
-                        <!-- Viscometer position with enhanced styling -->
-                        <circle id="viscometer" cx="0" cy="0" r="10" 
-                                fill="#ff4444" stroke="#ffffff" stroke-width="3"
-                                opacity="0.9">
-                            <title>Viscometer Position</title>
-                        </circle>
-                        <circle id="viscometer-glow" cx="0" cy="0" r="15" 
-                                fill="none" stroke="#ff4444" stroke-width="1"
-                                opacity="0.3">
-                        </circle>
-                    </svg>
-                </div>
-                
-                <!-- Updated Legend -->
-                <div class="map-legend">
-                    <div class="legend-item">
-                        <circle class="legend-circle" style="fill: #666666;"></circle>
-                        <span>Empty Cells</span>
-                    </div>
-                    <div class="legend-item">
-                        <circle class="legend-circle" style="fill: #00aa00;"></circle>
-                        <span>Tested Cells</span>
-                    </div>
-                    <div class="legend-item">
-                        <circle class="legend-circle" style="fill: #ff8800;"></circle>
-                        <span>Testing Now</span>
-                    </div>
-                    <div class="legend-item">
-                        <circle class="legend-circle" style="fill: #2196F3;"></circle>
-                        <span>Wash Stations</span>
-                    </div>
-                    <div class="legend-item">
-                        <circle class="legend-circle" style="fill: #ff4444;"></circle>
-                        <span>Viscometer</span>
-                    </div>
+    <div class="completion-track">
+        <div id="completion-bar" class="completion-bar"></div>
+        <div id="completion-ticks" class="completion-ticks"></div>
+        <div id="completion-text" class="completion-text">0 / 18 cells complete</div>
+    </div>
+
+    <main class="dashboard">
+        <section class="card map-card skeleton-host">
+            <div class="card-title-row">
+                <h2>Platform Map</h2>
+                <div class="legend-inline">
+                    <span><i class="swatch pending"></i>Pending</span>
+                    <span><i class="swatch active"></i>Active</span>
+                    <span><i class="swatch measuring"></i>Measuring</span>
+                    <span><i class="swatch washing"></i>Washing</span>
+                    <span><i class="swatch completed"></i>Done</span>
                 </div>
             </div>
+            <div id="platform-map" class="platform-map">
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="platform-grid" aria-hidden="true">
+                    <defs>
+                        <pattern id="tinyGrid" width="8" height="8" patternUnits="userSpaceOnUse">
+                            <path d="M 8 0 L 0 0 0 8" fill="none" stroke="rgba(139,148,158,0.12)" stroke-width="0.2"></path>
+                        </pattern>
+                    </defs>
+                    <rect x="0" y="0" width="100" height="100" fill="url(#tinyGrid)"></rect>
+                </svg>
+                <div id="wash-layer" class="map-layer"></div>
+                <div id="cell-layer" class="map-layer"></div>
+                <div id="arm-dot" class="arm-dot" title="Viscometer arm"></div>
+            </div>
+            <div class="map-meta">
+                <span>Bounds: X 0-450 mm</span>
+                <span>Y 0-400 mm</span>
+                <span>Z 0 to -75 mm</span>
+            </div>
+            <div class="skeleton-lines">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line short"></div>
+            </div>
+        </section>
 
-            <!-- Right Panel - Scatter Plot -->
-            <div class="right-panel">
-                <h3>Rotational Drag vs Height</h3>
-                <div id="scatter-plot" class="plot-container"></div>
-                
-                <!-- Compact Plot Controls -->
-                <div class="plot-controls">
-                    <div class="control-group">
-                        <label class="compact-label">
-                            <input type="checkbox" id="show-all-cells" checked> All Cells
-                        </label>
-                        <label class="compact-label">
-                            <input type="checkbox" id="show-current-only"> Current Only
-                        </label>
+        <section class="card plot-card skeleton-host">
+            <div class="card-title-row">
+                <h2>Live Scatter Plot</h2>
+                <div class="plot-tools">
+                    <div class="segmented" role="group" aria-label="Plot mode">
+                        <button id="toggle-all" class="seg active">All Cells</button>
+                        <button id="toggle-current" class="seg">Current Cell Only</button>
                     </div>
-                    <div class="control-group">
-                        <button id="clear-data" class="control-button-small">Clear</button>
-                        <button id="export-data" class="control-button-small">Export</button>
-                    </div>
-                </div>
-                
-                <!-- Data Summary -->
-                <div class="data-summary">
-                    <div class="summary-item">
-                        <span class="label">Total Points:</span>
-                        <span id="total-points" class="value">0</span>
-                    </div>
-                    <div class="summary-item">
-                        <span class="label">Current Height:</span>
-                        <span id="current-height" class="value">-</span>
-                    </div>
-                    <div class="summary-item">
-                        <span class="label">Current Drag:</span>
-                        <span id="current-drag" class="value">-</span>
-                    </div>
+                    <button id="plot-export" class="btn subtle">Export CSV</button>
                 </div>
             </div>
-        </div>
+            <div id="scatter-plot" class="plot-shell"></div>
+            <div id="plot-empty" class="plot-empty">No data yet</div>
+            <div class="skeleton-lines">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line"></div>
+            </div>
+        </section>
+
+        <aside class="card sidebar-card skeleton-host">
+            <div class="card-title-row">
+                <h2>Status</h2>
+            </div>
+
+            <section class="control-panel">
+                <div class="status-label">Run Control</div>
+                <form id="run-settings-form" class="run-settings-form">
+                    <label>
+                        <span>Mode</span>
+                        <select id="testing-mode" name="testing_mode">
+                            <option value="full">Full</option>
+                            <option value="row">Row</option>
+                            <option value="custom" selected>Custom</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Target RPMs</span>
+                        <input id="test-rpms" name="test_rpms" type="text" value="0.8" placeholder="0.8,1.0">
+                    </label>
+                    <div class="dual-fields">
+                        <label>
+                            <span>Rows</span>
+                            <input id="selected-rows" name="selected_rows" type="text" value="2" placeholder="1,3">
+                        </label>
+                        <label>
+                            <span>Cells</span>
+                            <input id="selected-cells" name="selected_cells" type="text" value="1" placeholder="1,4,7">
+                        </label>
+                    </div>
+                    <div class="dual-fields">
+                        <label>
+                            <span>Z Step</span>
+                            <input id="z-step-size" name="z_step_size" type="number" step="0.001" value="-0.02">
+                        </label>
+                        <label>
+                            <span>Measure (s)</span>
+                            <input id="measurement-duration" name="measurement_duration" type="number" step="1" value="40">
+                        </label>
+                    </div>
+                    <div class="dual-fields">
+                        <label>
+                            <span>Sample Interval</span>
+                            <input id="sample-interval" name="sample_interval" type="number" step="0.1" value="10">
+                        </label>
+                        <label>
+                            <span>Dwell (s)</span>
+                            <input id="dwell-seconds" name="dwell_seconds" type="number" step="0.1" value="2">
+                        </label>
+                    </div>
+                    <div class="dual-fields">
+                        <label>
+                            <span>Inter-RPM Pause</span>
+                            <input id="inter-rpm-pause" name="inter_rpm_pause" type="number" step="0.1" value="2">
+                        </label>
+                        <label>
+                            <span>Torque Break %</span>
+                            <input id="torque-break-threshold" name="torque_break_threshold" type="number" step="0.1" value="100">
+                        </label>
+                    </div>
+                    <label class="checkbox-row">
+                        <input id="feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
+                        <span>Feedback control enabled</span>
+                    </label>
+                    <div class="control-actions">
+                        <button type="button" id="apply-settings" class="btn">Apply Settings</button>
+                        <button type="button" id="start-run" class="btn btn-start">Start Run</button>
+                        <button type="button" id="stop-run" class="btn btn-stop">Stop Run</button>
+                    </div>
+                    <div id="control-status" class="control-status">Ready</div>
+                </form>
+            </section>
+
+            <div class="status-block">
+                <div class="status-label">Current Cell</div>
+                <div id="cell-flip" class="cell-flip" data-cell="-">-</div>
+                <div id="cell-meta" class="status-subtext">Row -, local -</div>
+            </div>
+
+            <div class="status-block gauge-block">
+                <div class="status-label">RPM Gauge</div>
+                <svg id="rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
+                    <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
+                    <circle id="gauge-value" cx="110" cy="110" r="72" class="gauge-value"></circle>
+                    <line id="gauge-needle" x1="110" y1="110" x2="110" y2="44" class="gauge-needle"></line>
+                    <circle cx="110" cy="110" r="5" class="gauge-core"></circle>
+                    <text id="gauge-rpm" x="110" y="118" text-anchor="middle" class="gauge-text">0.0</text>
+                    <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
+                </svg>
+            </div>
+
+            <div class="status-block xyz-grid mono">
+                <div class="xyz-item"><span>X</span><strong id="xyz-x">0.0</strong></div>
+                <div class="xyz-item"><span>Y</span><strong id="xyz-y">0.0</strong></div>
+                <div class="xyz-item"><span>Z</span><strong id="xyz-z">0.0</strong></div>
+            </div>
+
+            <div class="status-block">
+                <div class="status-label">Torque %</div>
+                <div class="torque-shell">
+                    <div id="torque-fill" class="torque-fill"></div>
+                </div>
+                <div id="torque-value" class="mono">0.0%</div>
+            </div>
+
+            <div class="status-block">
+                <div class="status-label">Elapsed</div>
+                <div id="elapsed" class="mono">00:00:00</div>
+                <div id="elapsed-cell" class="status-subtext">Cell 00:00:00</div>
+            </div>
+
+            <div class="status-block">
+                <div class="status-label">Z-Descent Sparkline</div>
+                <svg id="sparkline" viewBox="0 0 220 60" class="sparkline">
+                    <polyline id="sparkline-line" points="" fill="none"></polyline>
+                </svg>
+            </div>
+
+            <div class="status-block">
+                <div class="status-label">Status Log</div>
+                <ul id="status-log" class="status-log"></ul>
+            </div>
+            <div class="skeleton-lines">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line"></div>
+            </div>
+        </aside>
+
+        <section class="card timeline-card skeleton-host">
+            <div class="card-title-row">
+                <h2>Protocol Timeline</h2>
+            </div>
+            <ol id="timeline" class="timeline">
+                <li data-phase="1">Move to Cell</li>
+                <li data-phase="2">Auto-Zero</li>
+                <li data-phase="3">Z-Descent + Measure</li>
+                <li data-phase="4">Raise Z</li>
+                <li data-phase="5">Wash Station 1</li>
+                <li data-phase="6">Wash Station 2</li>
+            </ol>
+            <div id="timeline-fill" class="timeline-fill"></div>
+            <div class="skeleton-lines">
+                <div class="skeleton-line"></div>
+            </div>
+        </section>
+
+        <section class="card table-card skeleton-host">
+            <div class="card-title-row">
+                <h2>Recent Measurements</h2>
+                <button id="table-export" class="btn">Export All CSV</button>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Cell</th>
+                            <th>Z (mm)</th>
+                            <th>Torque (%)</th>
+                            <th>RPM</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="measurement-table"></tbody>
+                </table>
+            </div>
+            <div class="skeleton-lines">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line short"></div>
+            </div>
+        </section>
     </main>
-
-    <!-- Fixed Controls Panel -->
-    <div class="controls">
-        <button id="start-experiment" class="btn-green">
-            Start Experiment
-            <span id="recording-dot" class="recording-indicator hidden"></span>
-        </button>
-        <button id="stop-experiment" class="btn-red" disabled>Stop Experiment</button>
-        <button id="export-results" class="btn-blue" style="display:none">Export Results</button>
-    </div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

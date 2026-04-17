@@ -65,6 +65,8 @@ ROWS = [
 TEST_RPMS = [0.8] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
 DWELL_SECONDS = 2.0
 INTER_RPM_PAUSE = 2.0
+MEASUREMENT_DURATION = 40.0
+SAMPLE_INTERVAL = 10.0
 
 # ========== TESTING MODE CONFIGURATION ==========
 # Set the testing mode and parameters here (no runtime input required)
@@ -81,6 +83,48 @@ SELECTED_ROWS = [2]
 # FOR CUSTOM MODE: Specify which cells to test (1-18)
 # Example: [2, 5, 8, 11, 16] tests only those specific cells
 SELECTED_CELLS = [1]  # Only used when TESTING_MODE = "custom"
+
+
+def apply_runtime_settings_from_web():
+    """Synchronize module-level run settings from the web interface."""
+    global TESTING_MODE, SELECTED_ROWS, SELECTED_CELLS, TEST_RPMS
+    global Z_STEP_SIZE, DWELL_SECONDS, INTER_RPM_PAUSE, MEASUREMENT_DURATION, SAMPLE_INTERVAL
+    global FEEDBACK_CONTROL_ENABLED, MIN_DATA_POINTS_FOR_TREND, SECOND_DERIVATIVE_THRESHOLD
+    global CV_JUMP_THRESHOLD, TREND_R_SQUARED_MIN, HIT_POINT_CONFIDENCE_THRESHOLD, TORQUE_BREAK_THRESHOLD
+
+    settings = web_interface.get_runtime_settings()
+
+    TESTING_MODE = settings.get('testing_mode', TESTING_MODE)
+    SELECTED_ROWS = settings.get('selected_rows', SELECTED_ROWS)
+    SELECTED_CELLS = settings.get('selected_cells', SELECTED_CELLS)
+    TEST_RPMS = settings.get('test_rpms', TEST_RPMS)
+    Z_STEP_SIZE = float(settings.get('z_step_size', Z_STEP_SIZE))
+    DWELL_SECONDS = float(settings.get('dwell_seconds', DWELL_SECONDS))
+    INTER_RPM_PAUSE = float(settings.get('inter_rpm_pause', INTER_RPM_PAUSE))
+    MEASUREMENT_DURATION = float(settings.get('measurement_duration', MEASUREMENT_DURATION))
+    SAMPLE_INTERVAL = float(settings.get('sample_interval', SAMPLE_INTERVAL))
+    FEEDBACK_CONTROL_ENABLED = bool(settings.get('feedback_control_enabled', FEEDBACK_CONTROL_ENABLED))
+    MIN_DATA_POINTS_FOR_TREND = int(settings.get('min_data_points_for_trend', MIN_DATA_POINTS_FOR_TREND))
+    SECOND_DERIVATIVE_THRESHOLD = float(settings.get('second_derivative_threshold', SECOND_DERIVATIVE_THRESHOLD))
+    CV_JUMP_THRESHOLD = float(settings.get('cv_jump_threshold', CV_JUMP_THRESHOLD))
+    TREND_R_SQUARED_MIN = float(settings.get('trend_r_squared_min', TREND_R_SQUARED_MIN))
+    HIT_POINT_CONFIDENCE_THRESHOLD = float(settings.get('hit_point_confidence_threshold', HIT_POINT_CONFIDENCE_THRESHOLD))
+    TORQUE_BREAK_THRESHOLD = float(settings.get('torque_break_threshold', TORQUE_BREAK_THRESHOLD))
+
+
+def sleep_with_stop(seconds: float, check_interval: float = 0.25):
+    """Sleep in short intervals so a web stop request can interrupt the run."""
+    deadline = time.time() + max(0.0, seconds)
+    while time.time() < deadline:
+        if web_interface.should_stop():
+            raise KeyboardInterrupt("Stop requested from web interface")
+        time.sleep(min(check_interval, max(0.0, deadline - time.time())))
+
+
+def raise_if_stop_requested():
+    """Raise KeyboardInterrupt if the web UI has requested a stop."""
+    if web_interface.should_stop():
+        raise KeyboardInterrupt("Stop requested from web interface")
 
 
 def get_selected_cells():
@@ -156,7 +200,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         
         # Fallback to legacy mode with verification
         pump.send_tag(command)
-        time.sleep(0.5)  # Give ESP32 time to process
+        sleep_with_stop(0.5)  # Give ESP32 time to process
         
         # Verify status if possible
         if hasattr(pump, 'get_status'):
@@ -168,6 +212,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         return True
     
     try:
+        raise_if_stop_requested()
         # Step 2.5.1: Move CNC arm to washing station 1 location first
         print(f"Step 2.5.1: Moving CNC to wash station 1 (X={WASH_STATION1_X}, Y={WASH_STATION1_Y}, Z=0)")
         cnc.move_to_point_safe(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=3000)
@@ -177,7 +222,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         if not reliable_pump_command(b"P1", "Start Pump 1"):
             raise Exception("Failed to start Pump 1")
         
-        time.sleep(15)  # Pump runs for 15 seconds
+        sleep_with_stop(15)  # Pump runs for 15 seconds
         
         if not reliable_pump_command(b"SP1", "Stop Pump 1"):
             print("Warning: Failed to confirm Pump 1 stop")
@@ -193,12 +238,13 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         # Perform 5 oscillating movements from x=383 to x=390 and back
         print("  Performing 5 oscillating wash movements...")
         for i in range(5):
+            raise_if_stop_requested()
             print(f"  Oscillation {i+1}/5: Moving to X=390")
             cnc.move_to_point(390, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-            time.sleep(1)  # Brief pause at extended position
+            sleep_with_stop(1)  # Brief pause at extended position
             print(f"  Oscillation {i+1}/5: Moving back to X=383")
             cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-            time.sleep(1)  # Brief pause at home position
+            sleep_with_stop(1)  # Brief pause at home position
         
         # Step 2.5.4: Raise CNC arm to safe position and start reverse rinse cycle
         print("Step 2.5.4: Raising to safe position and starting reverse rinse cycle...")
@@ -207,7 +253,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         if not reliable_pump_command(b"R1", "Start Reverse Rinse 1"):
             print("Warning: Failed to start reverse rinse")
             
-        time.sleep(20)  # Reverse rinse cycle
+        sleep_with_stop(20)  # Reverse rinse cycle
         
         if not reliable_pump_command(b"SR1", "Stop Reverse Rinse 1"):
             print("Warning: Failed to confirm reverse rinse stop")
@@ -232,12 +278,13 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
         # Perform 5 oscillating movements from x=383 to x=390 and back
         print("  Performing 5 oscillating wash movements...")
         for i in range(5):
+            raise_if_stop_requested()
             print(f"  Oscillation {i+1}/5: Moving to X=390")
             cnc.move_to_point(390, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-            time.sleep(1)  # Brief pause at extended position
+            sleep_with_stop(1)  # Brief pause at extended position
             print(f"  Oscillation {i+1}/5: Moving back to X=383")
             cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-            time.sleep(1)  # Brief pause at home position
+            sleep_with_stop(1)  # Brief pause at home position
         
         # Step 2.5.9: Raise CNC arm to safe position
         print("Step 2.5.9: Raising CNC arm to safe position...")
@@ -257,7 +304,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
                 print(f"WARNING: Some components still running after wash: {final_status}")
                 # Emergency stop if anything is still running
                 pump.send_tag(b"0")
-                time.sleep(1)
+                sleep_with_stop(1)
         
     except Exception as e:
         print(f"Error during washing sequence for Cell {global_cell}: {e}")
@@ -265,7 +312,7 @@ def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int
             # Emergency stop pumps and motors in case of error
             print("Executing emergency stop...")
             pump.send_tag(b"0")  # Emergency stop all
-            time.sleep(2)  # Give time for stop command
+            sleep_with_stop(2)  # Give time for stop command
             # Try to move CNC to safe position
             cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
         except Exception as cleanup_error:
@@ -294,21 +341,19 @@ def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: 
     web_interface.update_status(f"Moving to Cell {global_cell}")
     web_interface.update_position(x_pos, y_pos, z_height)
     
+    raise_if_stop_requested()
     cnc.move_to_point_safe(x_pos, y_pos, z_height, speed=3000)
-    time.sleep(SETTLE_TIME)
+    sleep_with_stop(SETTLE_TIME)
     return x_pos, y_pos, z_height
 
 def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps"""
-    MEASUREMENT_DURATION = 40.0      #35.0
-    SAMPLE_INTERVAL = 10.0       #2.0
-
     try:
         # Set spindle speed
         client.set_speed(rpm)
         web_interface.set_current_rpm(rpm)
         web_interface.update_status(f"Measuring at {rpm} RPM")
-        time.sleep(DWELL_SECONDS)  # Allow spindle to settle at new RPM
+        sleep_with_stop(DWELL_SECONDS)  # Allow spindle to settle at new RPM
         
         # Collect torque measurements over duration
         measurements = []
@@ -317,6 +362,7 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List
         next_sample_time = start_time + SAMPLE_INTERVAL
         
         while time.time() - start_time < MEASUREMENT_DURATION:
+            raise_if_stop_requested()
             current_time = time.time()
             
             if current_time >= next_sample_time:
@@ -334,12 +380,12 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float) -> Optional[List
                 except Exception as e:
                     print(f"      Measurement error at RPM {rpm}: {e}")
             
-            time.sleep(0.1)
+            sleep_with_stop(0.1)
         
         # Stop spindle after measurement
         client.stop()
         web_interface.set_current_rpm(0)
-        time.sleep(INTER_RPM_PAUSE)
+        sleep_with_stop(INTER_RPM_PAUSE)
         
         # Report measurement summary
         if measurements:
@@ -433,6 +479,7 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
     
     step_count = 0
     while current_z >= max_z_travel:
+        raise_if_stop_requested()
         step_count += 1
         z_rounded = round(current_z, 3)
         
@@ -453,8 +500,9 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
                 x_pos = base_x
                 y_pos = BASE_Y + (local_cell - 1) * Y_OFFSET
                 print(f"  Moving directly to Z={current_z:.3f} (no retraction)")
+                raise_if_stop_requested()
                 cnc.move_to_point(x_pos, y_pos, current_z, speed=Z_FEED_RATE)
-                time.sleep(SETTLE_TIME)
+                sleep_with_stop(SETTLE_TIME)
             
             # Test all RPMs at this Z-height
             rpm_data, first_rpm_exceeded = test_dynamic_analysis_at_z(client, z_rounded)
@@ -558,7 +606,7 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
         x_pos = base_x
         y_pos = BASE_Y + (local_cell - 1) * Y_OFFSET
         cnc.move_to_point(x_pos, y_pos, z=0, speed=Z_FEED_RATE)
-        time.sleep(1)
+        sleep_with_stop(1)
         # Stop viscometer once at safe position
         client.stop()
         print(f"Cell {global_cell} returned to safe Z position")
@@ -751,7 +799,18 @@ def main():
     print("\nStarting web interface...")
     try:
         web_interface.start_in_thread(debug=False)
-        print("Web interface started at http://localhost:5000")
+        print(f"Web interface started at http://localhost:{web_interface.port}")
+        web_interface.update_status("Configure the run in the web interface, then press Start")
+        web_interface.set_running_state(False)
+        web_interface.consume_start_command()
+        print("Waiting for Start Run command from the web interface...")
+        started = web_interface.wait_for_start_command()
+        if not started:
+            web_interface.update_status("Start cancelled before run")
+            print("Start cancelled before run")
+            return
+        apply_runtime_settings_from_web()
+        web_interface.consume_start_command()
         web_interface.update_status("Initializing hardware...")
         web_interface.set_running_state(True)
     except Exception as e:
@@ -798,7 +857,7 @@ def main():
         print("Initializing CNC machine...")
         cnc = CNC_Machine(virtual=False)
         cnc.home()
-        time.sleep(1.0)
+        sleep_with_stop(1.0)
         print("CNC machine initialized and homed")
     except Exception as e:
         print(f"ERROR initializing CNC machine: {e}")
@@ -821,12 +880,12 @@ def main():
                 print("⚠ ESP32 acknowledgment test failed, falling back to legacy mode")
                 # Test basic communication
                 pump.send_tag(b"ST")
-                time.sleep(1)
+                sleep_with_stop(1)
                 print("ESP32 communication initialized (legacy mode)")
         else:
             # Legacy test
             pump.send_tag(b"ST")
-            time.sleep(1)
+            sleep_with_stop(1)
             print("ESP32 communication initialized (legacy mode)")
             
         print("ESP32 pump controller initialized successfully")
@@ -874,6 +933,7 @@ def main():
         
         # Go through each selected cell
         for i, global_cell in enumerate(selected_cells):
+            raise_if_stop_requested()
             row_number, local_cell = global_cell_to_row_and_local(global_cell)
             
             # Find row configuration
@@ -900,7 +960,7 @@ def main():
             except Exception as e:
                 print(f"Warning: Failed to auto-zero viscometer: {e}")
 
-            time.sleep(5)
+            sleep_with_stop(5)
             # Stop viscometer once at safe position
             client.stop()
             
@@ -967,7 +1027,7 @@ def main():
             if pump:
                 # Emergency stop all pumps and motors
                 pump.send_tag(b"0")
-                time.sleep(1)
+                sleep_with_stop(1)
                 pump.close()
         except:
             pass

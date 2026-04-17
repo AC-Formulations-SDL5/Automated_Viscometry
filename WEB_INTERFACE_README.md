@@ -7,6 +7,7 @@ This web interface provides real-time monitoring and visualization for the autom
 - **Real-time Platform Map**: Visual representation of the 18-cell layout with live viscometer position tracking
 - **Interactive Scatter Plot**: Real-time plotting of rotational drag vs height measurements
 - **Status Dashboard**: Live monitoring of system status, current cell, RPM, and position
+- **Browser Run Control**: Configure RPMs, cell selection, step size, and sampling parameters, then start or stop the run from the dashboard
 - **Data Export**: Export measurement data to CSV format
 - **Responsive Design**: Works on desktop and mobile devices
 
@@ -19,13 +20,15 @@ pip install -r requirements_web.txt
 
 2. Run the main analysis script:
 ```bash
-python all_cells_with_rotational_drag_feedback.py
+python src/python_64/all_cells_with_rotational_drag_feedback.py
 ```
 
 3. Open your web browser and navigate to:
 ```
-http://localhost:5000
+http://localhost:5001
 ```
+
+4. Use the **Run Control** panel in the sidebar to choose the mode and runtime parameters, then press **Start Run**.
 
 ## Interface Layout
 
@@ -39,6 +42,12 @@ http://localhost:5000
 - Current RPM
 - Viscometer position (X, Y, Z)
 - Running/Stopped indicator
+
+### Run Control Panel
+- Select full, row, or custom operation mode
+- Set target RPMs, Z step size, measurement length, and sampling interval
+- Choose row or cell lists for row/custom runs
+- Apply settings, then start or stop the program from the browser
 
 ### Left Panel - Platform Map
 - Visual representation of the 450mm x 400mm platform
