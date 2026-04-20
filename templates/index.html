@@ -35,6 +35,24 @@
         <div id="header-sweep" class="header-sweep"></div>
     </header>
 
+    <div class="instrument-status-strip">
+        <div id="cnc-status" class="instrument-pill disconnected">
+            <span class="instrument-dot"></span>
+            <span class="instrument-name">CNC</span>
+            <span class="instrument-state">disconnected</span>
+        </div>
+        <div id="viscometer-status" class="instrument-pill disconnected">
+            <span class="instrument-dot"></span>
+            <span class="instrument-name">Viscometer</span>
+            <span class="instrument-state">disconnected</span>
+        </div>
+        <div id="pump-status" class="instrument-pill disconnected">
+            <span class="instrument-dot"></span>
+            <span class="instrument-name">Pump</span>
+            <span class="instrument-state">disconnected</span>
+        </div>
+    </div>
+
     <div class="completion-track">
         <div id="completion-bar" class="completion-bar"></div>
         <div id="completion-ticks" class="completion-ticks"></div>
@@ -47,6 +65,7 @@
             <button class="tab-button active" data-tab="layout-tab">Layout & Timeline</button>
             <button class="tab-button" data-tab="controls-tab">Parameters & Tracking</button>
             <button class="tab-button" data-tab="data-tab">Data Management</button>
+            <button class="tab-button" data-tab="summary-tab">Experimental Summary</button>
         </nav>
 
         <!-- Tab Content -->
@@ -65,27 +84,18 @@
                         </div>
                     </div>
                     <div id="platform-map" class="platform-map">
-                        <div class="map-grid-label-row">
-                            <span class="map-grid-label pump-label">Pump Station</span>
-                            <span class="map-grid-label">Row 1</span>
-                            <span class="map-grid-label">Row 2</span>
-                            <span class="map-grid-label">Row 3</span>
-                            <span class="map-grid-label">Row 4</span>
-                            <span class="map-grid-label">Row 5</span>
-                            <span class="map-grid-label">Row 6</span>
-                            <span class="map-grid-label">Row 7</span>
-                        </div>
-                        <div class="map-grid-body">
-                            <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="platform-grid" aria-hidden="true">
-                                <defs>
-                                    <pattern id="tinyGrid" width="8" height="8" patternUnits="userSpaceOnUse">
-                                        <path d="M 8 0 L 0 0 0 8" fill="none" stroke="rgba(123, 146, 255, 0.18)" stroke-width="0.2"></path>
-                                    </pattern>
-                                </defs>
-                                <rect x="0" y="0" width="100" height="100" fill="url(#tinyGrid)"></rect>
-                            </svg>
-                            <div id="wash-layer" class="map-layer"></div>
-                            <div id="cell-layer" class="map-layer"></div>
+                        <div class="platform-grid-wrap">
+                            <div class="pg-header-row">
+                                <div class="pg-col-header pump-col">Pump Station</div>
+                                <div class="pg-col-header">Row 1</div>
+                                <div class="pg-col-header">Row 2</div>
+                                <div class="pg-col-header">Row 3</div>
+                                <div class="pg-col-header">Row 4</div>
+                                <div class="pg-col-header">Row 5</div>
+                                <div class="pg-col-header">Row 6</div>
+                                <div class="pg-col-header">Row 7</div>
+                            </div>
+                            <div class="pg-body" id="platform-grid-body"></div>
                             <div id="arm-dot" class="arm-dot" title="Viscometer arm"></div>
                         </div>
                     </div>
@@ -124,7 +134,7 @@
                 <div class="controls-tracking-grid">
                     <section class="card parameters-card">
                         <div class="card-title-row">
-                            <h2>Run Parameters</h2>
+                            <h2>Design Experiment</h2>
                         </div>
                         <form id="run-settings-form" class="run-settings-form">
                             <label>
@@ -184,9 +194,9 @@
                                 <span>Feedback control enabled</span>
                             </label>
                             <div class="control-actions">
-                                <button type="button" id="apply-settings" class="btn">Apply Settings</button>
-                                <button type="button" id="start-run" class="btn btn-start">Start Run</button>
-                                <button type="button" id="stop-run" class="btn btn-stop">Stop Run</button>
+                                <button type="button" id="apply-settings" class="btn control-btn control-btn-neutral">Apply Settings</button>
+                                <button type="button" id="start-run" class="btn btn-start control-btn control-btn-start">Start Run</button>
+                                <button type="button" id="stop-run" class="btn btn-stop control-btn control-btn-stop">Stop Run</button>
                             </div>
                             <div id="control-status" class="control-status">Ready</div>
                         </form>
@@ -220,8 +230,16 @@
                                 <div class="torque-shell">
                                     <div id="torque-fill" class="torque-fill"></div>
                                 </div>
-                                <div id="torque-value" class="mono">0.0%</div>
-                                <div class="status-subtext mono">Live: <span id="torque-display">0.00%</span></div>
+                                <div id="torque-value" class="mono">0.00%</div>
+                                <div class="live-feed-item">
+                                    <span class="live-feed-label">Torque</span>
+                                    <span id="torque-display" class="live-feed-value mono">0.00 %</span>
+                                </div>
+                                <div id="drag-live-box" class="live-feed-item drag-box">
+                                    <span class="live-feed-label">Rotational Drag</span>
+                                    <span id="rotational-drag-display" class="live-feed-value mono">0.00</span>
+                                    <span class="live-feed-unit">torque / RPM</span>
+                                </div>
                             </div>
 
                             <div class="status-block">
@@ -310,6 +328,30 @@
                     </div>
                     <ul id="status-log" class="status-log"></ul>
                 </section>
+            </div>
+
+            <div id="summary-tab" class="tab-panel">
+                <div class="summary-layout">
+                    <section class="card summary-list-card">
+                        <div class="card-title-row">
+                            <h2>Recent Experiments</h2>
+                        </div>
+                        <div id="experiment-cards" class="experiment-cards">
+                            <p class="summary-empty" id="summary-empty">
+                                No experiments recorded yet. Completed runs will appear here.
+                            </p>
+                        </div>
+                    </section>
+
+                    <section class="card summary-detail-card hidden" id="summary-detail">
+                        <div class="card-title-row">
+                            <h2>Experiment Detail</h2>
+                            <button id="summary-download" class="btn">Download CSV</button>
+                        </div>
+                        <div id="summary-meta" class="summary-meta"></div>
+                        <div id="summary-plot" class="summary-plot"></div>
+                    </section>
+                </div>
             </div>
         </div>
     </main>

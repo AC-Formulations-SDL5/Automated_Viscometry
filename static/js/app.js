@@ -34,6 +34,11 @@ class ViscometryDashboard {
         this.disconnectedBannerTimeout = null;
         this.statusError = false;
         this.sparklineData = [];
+        this.uiState = "idle";
+        this.experimentHistory = [];
+        this.selectedExperimentId = null;
+        this.runMeasurementStartIndex = 0;
+        this.summaryPlotInitialized = false;
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -47,9 +52,11 @@ class ViscometryDashboard {
         this.initStaticLayout();
         this.initPlot();
         this.initGauge();
+        this.initSummaryPlot();
         this.startTimerLoop();
         this.fetchInitialData();
         this.loadControlSettings();
+        this.loadExperimentHistory();
 
         // Restore active tab from localStorage
         const activeTab = localStorage.getItem("activeTab") || "layout-tab";
@@ -66,8 +73,6 @@ class ViscometryDashboard {
             completionBar: document.getElementById("completion-bar"),
             completionText: document.getElementById("completion-text"),
             map: document.getElementById("platform-map"),
-            cellLayer: document.getElementById("cell-layer"),
-            washLayer: document.getElementById("wash-layer"),
             armDot: document.getElementById("arm-dot"),
             timeline: document.getElementById("timeline"),
             timelineFill: document.getElementById("timeline-fill"),
@@ -100,6 +105,8 @@ class ViscometryDashboard {
             torqueFill: document.getElementById("torque-fill"),
             torqueValue: document.getElementById("torque-value"),
             torqueDisplay: document.getElementById("torque-display"),
+            rotationalDragDisplay: document.getElementById("rotational-drag-display"),
+            dragLiveBox: document.getElementById("drag-live-box"),
             zMeasuringDisplay: document.getElementById("z-measuring-display"),
             elapsed: document.getElementById("elapsed"),
             elapsedCell: document.getElementById("elapsed-cell"),
@@ -110,6 +117,15 @@ class ViscometryDashboard {
             exportPlot: document.getElementById("plot-export"),
             exportTable: document.getElementById("table-export"),
             themeToggle: document.getElementById("theme-toggle"),
+            cncStatus: document.getElementById("cnc-status"),
+            viscometerStatus: document.getElementById("viscometer-status"),
+            pumpStatus: document.getElementById("pump-status"),
+            summaryCards: document.getElementById("experiment-cards"),
+            summaryEmpty: document.getElementById("summary-empty"),
+            summaryDetail: document.getElementById("summary-detail"),
+            summaryMeta: document.getElementById("summary-meta"),
+            summaryDownload: document.getElementById("summary-download"),
+            summaryPlot: document.getElementById("summary-plot"),
             tabButtons: document.querySelectorAll(".tab-button"),
             tabPanels: document.querySelectorAll(".tab-panel")
         };
@@ -124,6 +140,9 @@ class ViscometryDashboard {
         this.el.startRun.addEventListener("click", () => this.startRunFromUI());
         this.el.stopRun.addEventListener("click", () => this.stopRunFromUI());
         this.el.themeToggle.addEventListener("click", () => this.toggleTheme());
+        if (this.el.summaryDownload) {
+            this.el.summaryDownload.addEventListener("click", () => this.downloadSelectedCSV());
+        }
 
         document.addEventListener("keydown", (event) => {
             if (event.key.toLowerCase() === "e") {
@@ -131,7 +150,16 @@ class ViscometryDashboard {
             }
         });
 
-        window.addEventListener("resize", () => this.renderMap());
+        window.addEventListener("resize", () => this.applyArmPosition());
+
+        const settingsForm = document.getElementById("run-settings-form");
+        if (settingsForm) {
+            settingsForm.addEventListener("input", () => {
+                if (!this.isRunning && this.uiState === "ready") {
+                    this.setUiState("idle");
+                }
+            });
+        }
 
         // Tab switching functionality
         this.el.tabButtons.forEach(button => {
@@ -178,26 +206,21 @@ class ViscometryDashboard {
         });
 
         this.renderMap();
+        this.setUiState("idle");
         this.updateCompletionBar();
     }
 
     buildCells() {
-        const rowY = { 1: 16, 2: 33, 5: 62 };
-        const columnX = [12, 26, 40, 54, 68, 82, 96];
         const cells = [];
-        [1, 2, 5].forEach((gridRow) => {
-            for (let index = 0; index < 7; index += 1) {
-                const col = index + 1;
-                cells.push({
-                    id: `${gridRow}-${col}`,
-                    label: `Cell ${col}`,
-                    row: gridRow,
-                    col,
-                    x: columnX[index],
-                    y: rowY[gridRow]
-                });
-            }
-        });
+        for (let r = 1; r <= 6; r += 1) {
+            cells.push({ id: r, label: `Cell ${r}`, col: 2, row: r });
+        }
+        for (let r = 1; r <= 6; r += 1) {
+            cells.push({ id: 6 + r, label: `Cell ${6 + r}`, col: 3, row: r });
+        }
+        for (let r = 1; r <= 6; r += 1) {
+            cells.push({ id: 12 + r, label: `Cell ${12 + r}`, col: 6, row: r });
+        }
         return cells;
     }
 
@@ -209,45 +232,69 @@ class ViscometryDashboard {
     }
 
     renderMap() {
-        this.el.cellLayer.innerHTML = "";
-        this.el.washLayer.innerHTML = "";
+        const body = document.getElementById("platform-grid-body");
+        if (!body) {
+            return;
+        }
+        body.innerHTML = "";
 
+        const occupied = new Map();
         this.platform.cells.forEach((cell) => {
-            const pct = this.mmToPct(cell.x, cell.y);
-            const node = document.createElement("div");
-            const state = this.cellStates.get(cell.id) || "pending";
-            const torque = this.latestTorqueByCell.has(cell.id)
-                ? `, last torque ${this.latestTorqueByCell.get(cell.id).toFixed(2)}%`
-                : "";
-
-            node.className = `map-node cell-node ${state}`;
-            node.dataset.cellId = String(cell.id);
-            node.dataset.tip = `${cell.label}, Row ${cell.row}, Column ${cell.col}${torque}`;
-            node.style.left = `${pct.x}%`;
-            node.style.top = `${pct.y}%`;
-            node.textContent = cell.label;
-            this.el.cellLayer.appendChild(node);
+            occupied.set(`${cell.col}-${cell.row}`, { type: "cell", cell });
         });
+        occupied.set("7-1", { type: "station", id: "WASH", label: "WASH" });
+        occupied.set("7-2", { type: "station", id: "DRY", label: "DRY" });
 
-        this.platform.washStations.forEach((station) => {
-            const pct = this.mmToPct(station.x, station.y);
-            const node = document.createElement("div");
-            node.className = "map-node wash-node";
-            node.dataset.station = station.id;
-            node.dataset.tip = `Wash ${station.id}, X ${station.x}, Y ${station.y}`;
-            node.style.left = `${pct.x}%`;
-            node.style.top = `${pct.y}%`;
-            node.textContent = station.id;
-            this.el.washLayer.appendChild(node);
-        });
+        for (let row = 1; row <= 7; row += 1) {
+            for (let col = 1; col <= 8; col += 1) {
+                const key = `${col}-${row}`;
+                const slot = occupied.get(key);
+                const node = document.createElement("div");
+
+                if (!slot) {
+                    node.className = "pg-empty";
+                } else if (slot.type === "station") {
+                    node.className = "pg-station";
+                    node.id = `station-${slot.id}`;
+                    node.dataset.station = slot.id;
+                    node.textContent = slot.label;
+                } else {
+                    const cell = slot.cell;
+                    const state = this.cellStates.get(cell.id) || "pending";
+                    node.className = `pg-cell state-${state}`;
+                    node.id = `cell-node-${cell.id}`;
+                    node.dataset.cellId = String(cell.id);
+                    node.textContent = cell.label;
+
+                    const torque = this.latestTorqueByCell?.get(cell.id);
+                    if (torque !== undefined) {
+                        node.title = `${cell.label} - last torque ${torque.toFixed(2)}%`;
+                    }
+                }
+
+                body.appendChild(node);
+            }
+        }
 
         this.applyArmPosition();
     }
 
+    updateCellNode(cellId) {
+        const node = document.getElementById(`cell-node-${cellId}`);
+        if (!node) {
+            return;
+        }
+        const state = this.cellStates.get(cellId) || "pending";
+        node.className = `pg-cell state-${state}`;
+    }
+
     applyArmPosition() {
-        const pct = this.mmToPct(this.position.x, this.position.y);
-        this.el.armDot.style.left = `${pct.x}%`;
-        this.el.armDot.style.top = `${pct.y}%`;
+        const xPct = (this.position.x / 450) * 100;
+        const yPct = (this.position.y / 400) * 100;
+        if (this.el.armDot) {
+            this.el.armDot.style.left = `${xPct}%`;
+            this.el.armDot.style.top = `${yPct}%`;
+        }
     }
 
     initPlot() {
@@ -390,6 +437,9 @@ class ViscometryDashboard {
                 if (!silent) {
                     this.setControlStatus("Settings applied");
                 }
+                if (!silent && !this.isRunning) {
+                    this.setUiState("ready");
+                }
                 return saved;
             })
             .catch((error) => {
@@ -399,6 +449,11 @@ class ViscometryDashboard {
     }
 
     startRunFromUI() {
+        if (this.uiState !== "ready") {
+            this.setControlStatus("Apply settings before starting");
+            return;
+        }
+        this.setUiState("running");
         this.applyControlSettings(true)
             .then((settings) => fetch("/api/run/start", {
                 method: "POST",
@@ -410,11 +465,13 @@ class ViscometryDashboard {
                 this.setControlStatus(result.status_message || "Run started");
             })
             .catch(() => {
+                this.setUiState("idle");
                 this.setControlStatus("Failed to start run");
             });
     }
 
     stopRunFromUI() {
+        this.setUiState("idle");
         fetch("/api/run/stop", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -483,13 +540,24 @@ class ViscometryDashboard {
 
         this.socket.on("new_measurement", (data) => {
             this.addPointToChart(data.cell_id, data.height, data.rotational_drag, data.rpm, data.timestamp);
+            const torquePercent = Number.isFinite(Number(data.torque_percent))
+                ? Number(data.torque_percent)
+                : (Number(data.rotational_drag) || 0) * (Number(data.rpm) || 0);
+            this.updateTorqueBar(torquePercent);
+            this.updateLiveTorqueDisplay(torquePercent);
+            this.updateLiveRotationalDragDisplay(data.rotational_drag);
         });
 
         this.socket.on("torque_update", (data) => {
             const torquePercent = Number(data.torque_percent);
             if (!Number.isNaN(torquePercent)) {
+                this.updateTorqueBar(torquePercent);
                 this.updateLiveTorqueDisplay(torquePercent);
             }
+            const drag = Number.isFinite(Number(data.rotational_drag))
+                ? Number(data.rotational_drag)
+                : ((Number(data.torque_percent) || 0) / (Number(data.rpm) || 1));
+            this.updateLiveRotationalDragDisplay(drag);
         });
 
         this.socket.on("z_update", (data) => {
@@ -500,7 +568,27 @@ class ViscometryDashboard {
         });
 
         this.socket.on("running_state_update", (data) => {
+            if (data.is_running && !this.isRunning) {
+                this.runMeasurementStartIndex = this.measurements.length;
+            }
+            if (!data.is_running && this.isRunning) {
+                this.saveCompletedExperiment();
+            }
             this.setRunningState(Boolean(data.is_running));
+            if (data.is_running) {
+                this.setUiState("running");
+            } else {
+                this.setUiState("idle");
+            }
+        });
+
+        this.socket.on("instrument_status_update", (status) => {
+            if (!status) {
+                return;
+            }
+            this.setInstrumentStatus("cnc", Boolean(status.cnc));
+            this.setInstrumentStatus("viscometer", Boolean(status.viscometer));
+            this.setInstrumentStatus("pump", Boolean(status.pump));
         });
     }
 
@@ -517,8 +605,9 @@ class ViscometryDashboard {
         if (Array.isArray(status.cell_positions) && status.cell_positions.length === 18) {
             this.platform.cells = status.cell_positions.map((c) => ({
                 id: c.id,
-                row: c.row,
+                row: c.local_cell,
                 local: c.local_cell,
+                col: c.row === 1 ? 2 : (c.row === 2 ? 3 : (c.row === 3 ? 6 : 8)),
                 x: c.x,
                 y: c.y
             }));
@@ -546,8 +635,20 @@ class ViscometryDashboard {
         if (status.current_torque_percent !== undefined) {
             const torquePercent = Number(status.current_torque_percent);
             if (!Number.isNaN(torquePercent)) {
+                this.updateTorqueBar(torquePercent);
                 this.updateLiveTorqueDisplay(torquePercent);
             }
+        }
+
+        const statusDrag = Number(status.current_torque_percent) / (Number(status.current_rpm) || 1);
+        if (!Number.isNaN(statusDrag) && Number.isFinite(statusDrag)) {
+            this.updateLiveRotationalDragDisplay(statusDrag);
+        }
+
+        if (status.instrument_status) {
+            this.setInstrumentStatus("cnc", Boolean(status.instrument_status.cnc));
+            this.setInstrumentStatus("viscometer", Boolean(status.instrument_status.viscometer));
+            this.setInstrumentStatus("pump", Boolean(status.instrument_status.pump));
         }
 
         if (status.current_z_measuring !== undefined && status.current_z_measuring !== null) {
@@ -651,12 +752,12 @@ class ViscometryDashboard {
 
     updateCellVisuals() {
         const statusLower = (this.statusLog[0] || "").toLowerCase();
-        let washStation = null;
+        let stationId = null;
 
         if (statusLower.includes("wash station 1")) {
-            washStation = "W1";
+            stationId = "WASH";
         } else if (statusLower.includes("wash station 2")) {
-            washStation = "W2";
+            stationId = "DRY";
         }
 
         this.platform.cells.forEach((cell) => {
@@ -679,17 +780,15 @@ class ViscometryDashboard {
             }
 
             this.cellStates.set(cell.id, state);
+            this.updateCellNode(cell.id);
         });
 
-        this.renderMap();
-
-        const stationNodes = this.el.washLayer.querySelectorAll(".wash-node");
-        stationNodes.forEach((node) => {
-            if (washStation && node.dataset.station === washStation) {
-                node.classList.add("active");
-            } else {
-                node.classList.remove("active");
+        ["WASH", "DRY"].forEach((id) => {
+            const node = document.getElementById(`station-${id}`);
+            if (!node) {
+                return;
             }
+            node.classList.toggle("active", stationId === id);
         });
     }
 
@@ -750,6 +849,9 @@ class ViscometryDashboard {
             timestamp: Number(rawMeasurement.timestamp) || Date.now() / 1000,
             height: Number(rawMeasurement.height) || 0,
             rotational_drag: Number(rawMeasurement.rotational_drag) || 0,
+            torque_percent: Number.isFinite(Number(rawMeasurement.torque_percent))
+                ? Number(rawMeasurement.torque_percent)
+                : (Number(rawMeasurement.rotational_drag) || 0) * (Number(rawMeasurement.rpm) || 0),
             rpm: Number(rawMeasurement.rpm) || 0,
             cell_id: Number(rawMeasurement.cell_id) || 0
         };
@@ -768,10 +870,12 @@ class ViscometryDashboard {
         }
         this.measurementsByCell.get(measurement.cell_id).push(measurement);
 
-        this.latestTorqueByCell.set(measurement.cell_id, measurement.rotational_drag);
+        this.latestTorqueByCell.set(measurement.cell_id, measurement.torque_percent);
 
         if (this.currentCell === measurement.cell_id) {
-            this.updateTorqueBar(measurement.rotational_drag);
+            this.updateTorqueBar(measurement.torque_percent);
+            this.updateLiveTorqueDisplay(measurement.torque_percent);
+            this.updateLiveRotationalDragDisplay(measurement.rotational_drag);
             this.sparklineData.push({
                 x: measurement.height,
                 y: measurement.rotational_drag
@@ -940,26 +1044,93 @@ class ViscometryDashboard {
     }
 
     updateTorqueBar(value) {
-        const pct = Math.max(0, Math.min(100, value));
+        const torquePercent = Number(value) || 0;
+        const pct = Math.max(0, Math.min(100, torquePercent));
         this.el.torqueFill.style.height = `${pct}%`;
-        this.el.torqueValue.textContent = `${pct.toFixed(1)}%`;
+        this.el.torqueValue.textContent = `${torquePercent.toFixed(2)}%`;
 
         if (pct > 80) {
             this.el.torqueFill.style.background = "linear-gradient(180deg, #f85149, #c2322b)";
-            this.el.torqueFill.style.filter = "drop-shadow(0 0 8px rgba(248,81,73,0.6))";
         } else if (pct > 50) {
             this.el.torqueFill.style.background = "linear-gradient(180deg, #f5a623, #d5891d)";
-            this.el.torqueFill.style.filter = "drop-shadow(0 0 8px rgba(245,166,35,0.5))";
         } else {
-            this.el.torqueFill.style.background = "linear-gradient(180deg, #39c5bb, #2ea043)";
-            this.el.torqueFill.style.filter = "drop-shadow(0 0 8px rgba(57,197,187,0.42))";
+            this.el.torqueFill.style.background = "linear-gradient(180deg, #2ea043, #1a7431)";
         }
     }
 
     updateLiveTorqueDisplay(value) {
-        this.currentTorquePercent = value;
+        const torque = Number(value) || 0;
+        this.currentTorquePercent = torque;
         if (this.el.torqueDisplay) {
-            this.el.torqueDisplay.textContent = `${value.toFixed(2)}%`;
+            this.el.torqueDisplay.textContent = `${torque.toFixed(2)} %`;
+        }
+    }
+
+    updateLiveRotationalDragDisplay(value) {
+        const drag = Math.max(0, Number(value) || 0);
+        if (this.el.rotationalDragDisplay) {
+            this.el.rotationalDragDisplay.textContent = drag.toFixed(3);
+        }
+        if (this.el.dragLiveBox) {
+            const intensity = Math.min(1.0, drag / 100);
+            const r = Math.round(46 + 209 * intensity);
+            const g = Math.round(160 - 150 * intensity);
+            const b = Math.round(67 - 50 * intensity);
+            this.el.dragLiveBox.style.background = `rgba(${r},${g},${b},0.22)`;
+            this.el.dragLiveBox.style.borderColor = `rgba(${r},${g},${b},0.7)`;
+        }
+    }
+
+    setUiState(state) {
+        this.uiState = state;
+
+        const applyBtn = this.el.applySettings;
+        const startBtn = this.el.startRun;
+        const stopBtn = this.el.stopRun;
+
+        [applyBtn, startBtn, stopBtn].forEach((btn) => {
+            btn.classList.remove("is-active", "is-idle");
+        });
+
+        if (state === "idle") {
+            applyBtn.classList.add("is-active");
+            startBtn.classList.add("is-idle");
+            stopBtn.classList.add("is-idle");
+            startBtn.disabled = true;
+            stopBtn.disabled = true;
+            applyBtn.disabled = false;
+        } else if (state === "ready") {
+            applyBtn.classList.add("is-idle");
+            startBtn.classList.add("is-active");
+            stopBtn.classList.add("is-idle");
+            applyBtn.disabled = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        } else if (state === "running") {
+            applyBtn.classList.add("is-idle");
+            startBtn.classList.add("is-idle");
+            stopBtn.classList.add("is-active");
+            applyBtn.disabled = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        }
+    }
+
+    setInstrumentStatus(name, connected) {
+        const map = {
+            cnc: this.el.cncStatus,
+            viscometer: this.el.viscometerStatus,
+            pump: this.el.pumpStatus
+        };
+        const node = map[name];
+        if (!node) {
+            return;
+        }
+        node.classList.toggle("connected", connected);
+        node.classList.toggle("disconnected", !connected);
+        const stateEl = node.querySelector(".instrument-state");
+        if (stateEl) {
+            stateEl.textContent = connected ? "connected" : "disconnected";
         }
     }
 
@@ -1018,8 +1189,6 @@ class ViscometryDashboard {
         this.el.runPill.classList.toggle("running", isRunning);
         this.el.runPill.classList.toggle("idle", !isRunning);
         this.el.body.classList.toggle("running", isRunning);
-        this.el.startRun.disabled = isRunning;
-        this.el.stopRun.disabled = !isRunning;
 
         if (isRunning && !this.experimentStart) {
             this.experimentStart = Date.now();
@@ -1031,6 +1200,198 @@ class ViscometryDashboard {
             this.playChime(720, 0.14);
             this.setControlStatus("Run stopped");
         }
+    }
+
+    initSummaryPlot() {
+        if (!this.el.summaryPlot) {
+            return;
+        }
+        this.summaryPlotLayout = {
+            xaxis: { title: "Z-Height (mm)", autorange: "reversed", tickformat: ".3f" },
+            yaxis: { title: "Rotational Drag (torque / RPM)", rangemode: "tozero" },
+            margin: { t: 20, r: 16, b: 56, l: 64 },
+            paper_bgcolor: "rgba(0,0,0,0)",
+            plot_bgcolor: "rgba(0,0,0,0)",
+            font: { color: "#c9d1d9" },
+            legend: { orientation: "h", y: -0.22 }
+        };
+        Plotly.newPlot(this.el.summaryPlot, [], this.summaryPlotLayout,
+            { responsive: true, displayModeBar: false });
+        this.summaryPlotInitialized = true;
+    }
+
+    loadExperimentHistory() {
+        try {
+            const raw = localStorage.getItem("viscometryExperimentHistory");
+            this.experimentHistory = raw ? JSON.parse(raw) : [];
+        } catch (_error) {
+            this.experimentHistory = [];
+        }
+        this.renderExperimentCards();
+    }
+
+    saveExperimentHistory() {
+        localStorage.setItem("viscometryExperimentHistory", JSON.stringify(this.experimentHistory));
+    }
+
+    saveCompletedExperiment() {
+        const runData = this.measurements.slice(this.runMeasurementStartIndex);
+        if (runData.length === 0) {
+            return;
+        }
+
+        const latestByKey = new Map();
+        runData.forEach((m) => {
+            const k = `${m.cell_id}|${Number(m.height).toFixed(3)}|${m.rpm}`;
+            latestByKey.set(k, m);
+        });
+
+        const cells = [...new Set(runData.map((m) => m.cell_id))].sort((a, b) => a - b);
+        const rpms = [...new Set(runData.map((m) => Number(m.rpm.toFixed(3))))].sort((a, b) => a - b);
+
+        const csvHeader = "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n";
+        const csvBody = runData.map((m) => {
+            const iso = new Date(m.timestamp * 1000).toISOString();
+            return `${iso},${m.cell_id},${m.height},${m.torque_percent},${m.rotational_drag},${m.rpm}`;
+        }).join("\n");
+
+        const exp = {
+            id: `exp-${Date.now()}`,
+            created_at: Date.now(),
+            measurement_count: runData.length,
+            cells,
+            rpms,
+            settings: this.readControlSettings ? this.readControlSettings() : {},
+            latestPerZ: [...latestByKey.values()],
+            csv: csvHeader + csvBody
+        };
+
+        this.experimentHistory.unshift(exp);
+        this.experimentHistory = this.experimentHistory.slice(0, 40);
+        this.saveExperimentHistory();
+        this.renderExperimentCards();
+    }
+
+    renderExperimentCards() {
+        if (!this.el.summaryCards) {
+            return;
+        }
+
+        if (this.experimentHistory.length === 0) {
+            this.el.summaryCards.innerHTML = "<p class=\"summary-empty\">No experiments recorded yet.</p>";
+            if (this.el.summaryDetail) {
+                this.el.summaryDetail.classList.add("hidden");
+            }
+            return;
+        }
+
+        this.el.summaryCards.innerHTML = "";
+        this.experimentHistory.forEach((exp) => {
+            const card = document.createElement("div");
+            card.className = `experiment-card${exp.id === this.selectedExperimentId ? " active" : ""}`;
+            card.innerHTML = `
+            <div class="experiment-card-row">
+                <strong>${new Date(exp.created_at).toLocaleString()}</strong>
+                <span>${exp.measurement_count} pts</span>
+            </div>
+            <div class="experiment-card-row">
+                <span>Cells</span><span>${exp.cells.join(", ") || "-"}</span>
+            </div>
+            <div class="experiment-card-row">
+                <span>RPMs</span><span>${exp.rpms.join(", ") || "-"}</span>
+            </div>`;
+
+            const del = document.createElement("button");
+            del.className = "experiment-delete";
+            del.textContent = "x";
+            del.addEventListener("click", (e) => {
+                e.stopPropagation();
+                this.deleteExperiment(exp.id);
+            });
+            card.appendChild(del);
+            card.addEventListener("click", () => this.selectExperiment(exp.id));
+            this.el.summaryCards.appendChild(card);
+        });
+    }
+
+    selectExperiment(id) {
+        const exp = this.experimentHistory.find((e) => e.id === id);
+        if (!exp) {
+            return;
+        }
+
+        this.selectedExperimentId = id;
+        this.renderExperimentCards();
+
+        if (this.el.summaryDetail) {
+            this.el.summaryDetail.classList.remove("hidden");
+        }
+
+        const s = exp.settings || {};
+        this.el.summaryMeta.innerHTML = [
+            `<strong>Date:</strong> ${new Date(exp.created_at).toLocaleString()}`,
+            `<strong>Cells tested:</strong> ${exp.cells.join(", ") || "-"}`,
+            `<strong>RPMs:</strong> ${exp.rpms.join(", ") || "-"}`,
+            `<strong>Z step:</strong> ${s.z_step_size ?? "-"} mm`,
+            `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
+            `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
+            `<strong>Points collected:</strong> ${exp.measurement_count}`
+        ].map((line) => `<div>${line}</div>`).join("");
+
+        const byRpm = {};
+        (exp.latestPerZ || []).forEach((p) => {
+            const k = String(Number(p.rpm).toFixed(3));
+            if (!byRpm[k]) {
+                byRpm[k] = [];
+            }
+            byRpm[k].push(p);
+        });
+
+        const traces = Object.entries(byRpm).map(([rpm, pts]) => {
+            pts.sort((a, b) => a.height - b.height);
+            return {
+                x: pts.map((p) => p.height),
+                y: pts.map((p) => p.rotational_drag),
+                mode: "lines+markers",
+                type: "scatter",
+                name: `${rpm} RPM`,
+                marker: { size: 7 },
+                line: { width: 2 }
+            };
+        });
+
+        if (this.summaryPlotInitialized && this.el.summaryPlot) {
+            Plotly.react(this.el.summaryPlot, traces, this.summaryPlotLayout,
+                { responsive: true, displayModeBar: false });
+        }
+    }
+
+    deleteExperiment(id) {
+        this.experimentHistory = this.experimentHistory.filter((e) => e.id !== id);
+        if (this.selectedExperimentId === id) {
+            this.selectedExperimentId = null;
+            if (this.el.summaryDetail) {
+                this.el.summaryDetail.classList.add("hidden");
+            }
+        }
+        this.saveExperimentHistory();
+        this.renderExperimentCards();
+    }
+
+    downloadSelectedCSV() {
+        const exp = this.experimentHistory.find((e) => e.id === this.selectedExperimentId);
+        if (!exp) {
+            return;
+        }
+        const blob = new Blob([exp.csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `viscometry_${exp.id}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 
     updateTimers() {
