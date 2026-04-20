@@ -20,7 +20,8 @@ class ViscometryWebInterface:
         
         self.app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
         self.app.config['SECRET_KEY'] = 'viscometry_secret_key'
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        # Configure SocketIO with threading support and proper async mode
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading', threading=True, logger=True, engineio_logger=False)
         self.port = port
         
         # Current state
@@ -49,6 +50,8 @@ class ViscometryWebInterface:
         self.control_lock = threading.Lock()
         self.start_requested_event = threading.Event()
         self.stop_requested_event = threading.Event()
+        self._status_broadcast_thread = None
+        self._broadcast_running = False
         self.runtime_settings = {
             'testing_mode': 'custom',
             'selected_rows': [2],
@@ -333,22 +336,22 @@ class ViscometryWebInterface:
             self.current_position['z'] = z
             
         # Emit update to connected clients
-        self.socketio.emit('position_update', self.current_position)
+        self.socketio.emit('position_update', self.current_position, namespace='/')
         
     def update_status(self, message: str):
         """Update status message"""
         self.status_message = message
-        self.socketio.emit('status_update', {'status_message': message})
+        self.socketio.emit('status_update', {'status_message': message}, namespace='/')
         
     def set_current_cell(self, cell_id: int):
         """Set the currently active cell"""
         self.current_cell = cell_id
-        self.socketio.emit('cell_update', {'current_cell': cell_id})
+        self.socketio.emit('cell_update', {'current_cell': cell_id}, namespace='/')
         
     def set_current_rpm(self, rpm: float):
         """Set current RPM"""
         self.current_rpm = rpm
-        self.socketio.emit('rpm_update', {'current_rpm': rpm})
+        self.socketio.emit('rpm_update', {'current_rpm': rpm}, namespace='/')
 
     def set_instrument_status(self, cnc: Optional[bool] = None, viscometer: Optional[bool] = None, pump: Optional[bool] = None):
         """Set live instrument connection states for CNC, viscometer, and pump."""
@@ -358,7 +361,7 @@ class ViscometryWebInterface:
             self.instrument_status['viscometer'] = bool(viscometer)
         if pump is not None:
             self.instrument_status['pump'] = bool(pump)
-        self.socketio.emit('instrument_status_update', self.instrument_status)
+        self.socketio.emit('instrument_status_update', self.instrument_status, namespace='/')
 
     def set_instrument_initialization_status(self, cnc: Optional[bool] = None, viscometer: Optional[bool] = None, pump: Optional[bool] = None):
         """Set initialization status for instruments (current run only)"""
@@ -368,12 +371,12 @@ class ViscometryWebInterface:
             self.instrument_initialization_status['viscometer'] = bool(viscometer)
         if pump is not None:
             self.instrument_initialization_status['pump'] = bool(pump)
-        self.socketio.emit('instrument_initialization_status_update', self.instrument_initialization_status)
+        self.socketio.emit('instrument_initialization_status_update', self.instrument_initialization_status, namespace='/')
 
     def reset_instrument_initialization_status(self):
         """Reset initialization status at start of run"""
         self.instrument_initialization_status = {'cnc': None, 'viscometer': None, 'pump': None}
-        self.socketio.emit('instrument_initialization_status_update', self.instrument_initialization_status)
+        self.socketio.emit('instrument_initialization_status_update', self.instrument_initialization_status, namespace='/')
 
     def update_live_torque(self, torque_percent: float, rpm: float, elapsed: float):
         """Broadcast the most recent raw torque reading to connected clients."""
@@ -384,12 +387,12 @@ class ViscometryWebInterface:
             'rotational_drag': rotational_drag,
             'rpm': rpm,
             'elapsed': elapsed,
-        })
+        }, namespace='/')
 
     def set_current_z(self, z: float):
         """Broadcast the Z-height currently under active measurement."""
         self.current_z_measuring = z
-        self.socketio.emit('z_update', {'current_z': z})
+        self.socketio.emit('z_update', {'current_z': z}, namespace='/')
         
     def add_measurement_point(self, height: float, rotational_drag: float, rpm: float, cell_id: int, torque_percent: Optional[float] = None):
         """Add a new measurement point"""
@@ -417,7 +420,7 @@ class ViscometryWebInterface:
         self._latest_per_z[key] = measurement
             
         # Emit to connected clients
-        self.socketio.emit('new_measurement', measurement)
+        self.socketio.emit('new_measurement', measurement, namespace='/')
         self.socketio.emit('latest_per_z_update', {
             'cell_id': cell_id,
             'height': height,
@@ -425,7 +428,7 @@ class ViscometryWebInterface:
             'torque_percent': torque_percent,
             'rpm': rpm,
             'timestamp': measurement['timestamp'],
-        })
+        }, namespace='/')
         
     def set_running_state(self, is_running: bool):
         """Set running state"""
@@ -439,12 +442,50 @@ class ViscometryWebInterface:
             'is_running': is_running,
             'run_start_time': self.run_start_time,
             'server_time': time.time(),
-        })
+        }, namespace='/')
         
     def start_server(self, debug=False):
         """Start the web server"""
         print(f"Starting Viscometry Web Interface on http://localhost:{self.port}")
-        self.socketio.run(self.app, host='0.0.0.0', port=self.port, debug=debug, allow_unsafe_werkzeug=True)
+        # Start periodic status broadcast in a separate thread
+        self._broadcast_running = True
+        self._status_broadcast_thread = threading.Thread(target=self._periodic_status_broadcast, daemon=True)
+        self._status_broadcast_thread.start()
+        
+        # Run the socketio server (this blocks)
+        try:
+            self.socketio.run(self.app, host='0.0.0.0', port=self.port, debug=debug, allow_unsafe_werkzeug=True)
+        finally:
+            self._broadcast_running = False
+    
+    def _periodic_status_broadcast(self):
+        """Periodically broadcast status updates to ensure all clients receive live data."""
+        # Wait a bit for the server to start up
+        time.sleep(2.0)
+        
+        while self._broadcast_running:
+            try:
+                if not self.is_running:
+                    time.sleep(0.5)
+                    continue
+                
+                # Broadcast current status to all clients
+                self.socketio.emit('status_heartbeat', {
+                    'position': self.current_position,
+                    'current_cell': self.current_cell,
+                    'current_rpm': self.current_rpm,
+                    'current_torque_percent': self.current_torque_percent,
+                    'current_z_measuring': self.current_z_measuring,
+                    'is_running': self.is_running,
+                    'instrument_status': self.instrument_status,
+                    'server_time': time.time(),
+                }, namespace='/')
+                
+                time.sleep(0.5)  # Broadcast every 500ms
+            except Exception as e:
+                # Silently skip if emit fails (server not ready yet or other issues)
+                time.sleep(0.5)
+                continue
         
     def start_in_thread(self, debug=False):
         """Start web server in background thread"""

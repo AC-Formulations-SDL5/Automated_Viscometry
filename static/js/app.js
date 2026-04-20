@@ -761,6 +761,55 @@ class ViscometryDashboard {
             this.applyTimeSync(data.server_time, data.run_start_time);
             this.setRunningState(Boolean(data.is_running), data.run_start_time ?? null);
         });
+
+        // Periodic heartbeat for continuous status updates during active runs
+        this.socket.on("status_heartbeat", (data) => {
+            if (!data || typeof data !== "object") {
+                return;
+            }
+            // Update position
+            if (data.position) {
+                this.position = {
+                    x: Number(data.position.x) || 0,
+                    y: Number(data.position.y) || 0,
+                    z: Number(data.position.z) || 0
+                };
+                this.queueRender();
+            }
+            // Update cell
+            if (data.current_cell !== undefined && data.current_cell !== this.currentCell) {
+                this.setActiveCell(data.current_cell);
+            }
+            // Update RPM
+            if (data.current_rpm !== undefined) {
+                const rpm = Number(data.current_rpm) || 0;
+                if (rpm !== this.currentRPM) {
+                    this.currentRPM = rpm;
+                    this.updateGauge(this.currentRPM);
+                }
+            }
+            // Update torque
+            if (data.current_torque_percent !== undefined) {
+                const torque = Number(data.current_torque_percent);
+                if (!Number.isNaN(torque)) {
+                    this.updateLiveTorqueDisplay(torque);
+                    this.updateTorqueBar(torque);
+                }
+            }
+            // Update Z
+            if (data.current_z_measuring !== undefined && data.current_z_measuring !== null) {
+                const z = Number(data.current_z_measuring);
+                if (!Number.isNaN(z)) {
+                    this.updateMeasuringZDisplay(z);
+                }
+            }
+            // Update instrument status
+            if (data.instrument_status && typeof data.instrument_status === "object") {
+                this.setInstrumentStatus("cnc", Boolean(data.instrument_status.cnc));
+                this.setInstrumentStatus("viscometer", Boolean(data.instrument_status.viscometer));
+                this.setInstrumentStatus("pump", Boolean(data.instrument_status.pump));
+            }
+        });
     }
 
     applyStatusSnapshot(status) {

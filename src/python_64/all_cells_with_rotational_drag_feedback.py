@@ -886,9 +886,11 @@ def main():
             sleep_with_stop(1.0)
             print("CNC machine initialized and homed")
             web_interface.set_instrument_initialization_status(cnc=True)
+            web_interface.set_instrument_status(cnc=True)
         except Exception as e:
             print(f"ERROR initializing CNC machine: {e}")
             web_interface.set_instrument_initialization_status(cnc=False)
+            web_interface.set_instrument_status(cnc=False)
             continue
     
         # Initialize ESP32 pump controller
@@ -918,10 +920,12 @@ def main():
                 
             print("ESP32 pump controller initialized successfully")
             web_interface.set_instrument_initialization_status(pump=True)
+            web_interface.set_instrument_status(pump=True)
             
         except Exception as e:
             print(f"ERROR initializing ESP32 pump controller: {e}")
             web_interface.set_instrument_initialization_status(pump=False)
+            web_interface.set_instrument_status(pump=False)
             try:
                 if cnc:
                     cnc.home()
@@ -944,10 +948,12 @@ def main():
             else:
                 print("WARNING: Viscometer test failed ")
             web_interface.set_instrument_initialization_status(viscometer=True)
+            web_interface.set_instrument_status(viscometer=True)
             
         except Exception as e:
             print(f"ERROR initializing viscometer: {e}")
             web_interface.set_instrument_initialization_status(viscometer=False)
+            web_interface.set_instrument_status(viscometer=False)
             try:
                 if cnc:
                     cnc.home()
