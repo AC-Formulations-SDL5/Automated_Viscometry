@@ -187,19 +187,19 @@ class ViscometryWebInterface:
         @self.socketio.on('update_control_settings')
         def handle_update_control_settings(payload):
             settings = self.update_runtime_settings(payload or {})
-            emit('control_settings_update', settings, broadcast=True)
+            self._emit_all('control_settings_update', settings)
 
         @self.socketio.on('start_run')
         def handle_start_run(payload=None):
             if isinstance(payload, dict) and payload:
                 self.update_runtime_settings(payload)
             self.request_start()
-            emit('status_update', {'status_message': 'Start command received from web interface'}, broadcast=True)
+            self._emit_all('status_update', {'status_message': 'Start command received from web interface'})
 
         @self.socketio.on('stop_run')
         def handle_stop_run():
             self.request_stop()
-            emit('status_update', {'status_message': 'Stop command received from web interface'}, broadcast=True)
+            self._emit_all('status_update', {'status_message': 'Stop command received from web interface'})
             
     def get_cell_positions(self) -> List[Dict]:
         """Calculate positions for all 18 cells"""
@@ -327,6 +327,15 @@ class ViscometryWebInterface:
     def clear_stop_request(self):
         """Clear any pending stop request."""
         self.stop_requested_event.clear()
+
+    def _emit_all(self, event: str, payload: Dict):
+        """Emit an event to all connected clients across SocketIO versions."""
+        try:
+            # Older Flask-SocketIO/python-socketio stacks accept broadcast=True.
+            self.socketio.emit(event, payload, broadcast=True)
+        except TypeError:
+            # Newer stacks removed broadcast kwarg; default emit already reaches all clients here.
+            self.socketio.emit(event, payload)
         
     def update_position(self, x: Optional[float] = None, y: Optional[float] = None, z: Optional[float] = None):
         """Update viscometer position"""
@@ -338,22 +347,22 @@ class ViscometryWebInterface:
             self.current_position['z'] = z
             
         # Emit update to connected clients
-        self.socketio.emit('position_update', self.current_position, broadcast=True)
+        self._emit_all('position_update', self.current_position)
         
     def update_status(self, message: str):
         """Update status message"""
         self.status_message = message
-        self.socketio.emit('status_update', {'status_message': message}, broadcast=True)
+        self._emit_all('status_update', {'status_message': message})
         
     def set_current_cell(self, cell_id: int):
         """Set the currently active cell"""
         self.current_cell = cell_id
-        self.socketio.emit('cell_update', {'current_cell': cell_id}, broadcast=True)
+        self._emit_all('cell_update', {'current_cell': cell_id})
         
     def set_current_rpm(self, rpm: float):
         """Set current RPM"""
         self.current_rpm = rpm
-        self.socketio.emit('rpm_update', {'current_rpm': rpm}, broadcast=True)
+        self._emit_all('rpm_update', {'current_rpm': rpm})
 
     def set_instrument_status(self, cnc: Optional[bool] = None, viscometer: Optional[bool] = None, pump: Optional[bool] = None):
         """Set live instrument connection states for CNC, viscometer, and pump."""
@@ -363,7 +372,7 @@ class ViscometryWebInterface:
             self.instrument_status['viscometer'] = bool(viscometer)
         if pump is not None:
             self.instrument_status['pump'] = bool(pump)
-        self.socketio.emit('instrument_status_update', self.instrument_status, broadcast=True)
+        self._emit_all('instrument_status_update', self.instrument_status)
 
     def set_instrument_initialization_status(self, cnc: Optional[bool] = None, viscometer: Optional[bool] = None, pump: Optional[bool] = None):
         """Set initialization status for instruments (current run only)"""
@@ -373,28 +382,28 @@ class ViscometryWebInterface:
             self.instrument_initialization_status['viscometer'] = bool(viscometer)
         if pump is not None:
             self.instrument_initialization_status['pump'] = bool(pump)
-        self.socketio.emit('instrument_initialization_status_update', self.instrument_initialization_status, broadcast=True)
+        self._emit_all('instrument_initialization_status_update', self.instrument_initialization_status)
 
     def reset_instrument_initialization_status(self):
         """Reset initialization status at start of run"""
         self.instrument_initialization_status = {'cnc': None, 'viscometer': None, 'pump': None}
-        self.socketio.emit('instrument_initialization_status_update', self.instrument_initialization_status, broadcast=True)
+        self._emit_all('instrument_initialization_status_update', self.instrument_initialization_status)
 
     def update_live_torque(self, torque_percent: float, rpm: float, elapsed: float):
         """Broadcast the most recent raw torque reading to connected clients."""
         self.current_torque_percent = torque_percent
         rotational_drag = abs(torque_percent) / rpm if rpm else 0.0
-        self.socketio.emit('torque_update', {
+        self._emit_all('torque_update', {
             'torque_percent': torque_percent,
             'rotational_drag': rotational_drag,
             'rpm': rpm,
             'elapsed': elapsed,
-        }, broadcast=True)
+        })
 
     def set_current_z(self, z: float):
         """Broadcast the Z-height currently under active measurement."""
         self.current_z_measuring = z
-        self.socketio.emit('z_update', {'current_z': z}, broadcast=True)
+        self._emit_all('z_update', {'current_z': z})
         
     def add_measurement_point(self, height: float, rotational_drag: float, rpm: float, cell_id: int, torque_percent: Optional[float] = None):
         """Add a new measurement point"""
@@ -421,16 +430,16 @@ class ViscometryWebInterface:
         key = (cell_id, round(height, 3), rpm)
         self._latest_per_z[key] = measurement
             
-        # Emit to connected clients (broadcast=True ensures all clients receive the update)
-        self.socketio.emit('new_measurement', measurement, broadcast=True)
-        self.socketio.emit('latest_per_z_update', {
+        # Emit to connected clients.
+        self._emit_all('new_measurement', measurement)
+        self._emit_all('latest_per_z_update', {
             'cell_id': cell_id,
             'height': height,
             'rotational_drag': rotational_drag,
             'torque_percent': torque_percent,
             'rpm': rpm,
             'timestamp': measurement['timestamp'],
-        }, broadcast=True)
+        })
         
     def set_running_state(self, is_running: bool):
         """Set running state"""
@@ -440,11 +449,11 @@ class ViscometryWebInterface:
             self.run_start_time = None
 
         self.is_running = is_running
-        self.socketio.emit('running_state_update', {
+        self._emit_all('running_state_update', {
             'is_running': is_running,
             'run_start_time': self.run_start_time,
             'server_time': time.time(),
-        }, broadcast=True)
+        })
         
     def start_server(self, debug=False, background_task=None):
         """Start the web server"""
@@ -474,7 +483,7 @@ class ViscometryWebInterface:
         while self._broadcast_running:
             try:
                 # Broadcast current status to all clients
-                self.socketio.emit('status_heartbeat', {
+                self._emit_all('status_heartbeat', {
                     'position': self.current_position,
                     'current_cell': self.current_cell,
                     'current_rpm': self.current_rpm,
@@ -483,7 +492,7 @@ class ViscometryWebInterface:
                     'is_running': self.is_running,
                     'instrument_status': self.instrument_status,
                     'server_time': time.time(),
-                }, broadcast=True)
+                })
 
                 time.sleep(5.0)  # Fallback heartbeat every 5 seconds
             except Exception as e:
