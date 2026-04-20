@@ -591,23 +591,33 @@ class ViscometryDashboard {
     }
 
     startRunFromUI() {
-        this.setRunningState(true, Date.now() / 1000);
-        this.setControlStatus("Starting run...");
+        this.setControlStatus("Applying settings...");
 
         this.applyControlSettings(true)
-            .then((settings) => fetch("/api/run/start", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(settings)
-            }))
-            .then((response) => response.json())
+            .then((settings) => {
+                this.setRunningState(true, Date.now() / 1000);
+                this.setControlStatus("Starting run...");
+                return fetch("/api/run/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(settings)
+                });
+            })
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
             .then((result) => {
                 this.setControlStatus(result.status_message || "Run started");
                 this.updateControlButtons();
             })
-            .catch(() => {
+            .catch((error) => {
+                console.error("Start run failed:", error);
                 this.setRunningState(false, null);
-                this.setControlStatus("Failed to start run");
+                this.setControlStatus("Failed to start run: " + error.message);
+                this.updateControlButtons();
             });
     }
 

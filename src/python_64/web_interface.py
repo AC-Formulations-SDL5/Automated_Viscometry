@@ -34,9 +34,9 @@ class ViscometryWebInterface:
         self.is_running = False
         self.status_message = "Ready"
         self.instrument_status = {
-            'cnc': False,
-            'viscometer': False,
-            'pump': False,
+            'cnc': True,
+            'viscometer': True,
+            'pump': True,
         }
         # Track initialization status for current run
         self.instrument_initialization_status = {
