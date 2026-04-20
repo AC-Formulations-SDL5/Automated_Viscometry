@@ -35,12 +35,6 @@
         <div id="header-sweep" class="header-sweep"></div>
     </header>
 
-    <div class="completion-track">
-        <div id="completion-bar" class="completion-bar"></div>
-        <div id="completion-ticks" class="completion-ticks"></div>
-        <div id="completion-text" class="completion-text">0 / 18 cells complete</div>
-    </div>
-
     <div class="instrument-status-strip">
         <div id="cnc-status" class="instrument-pill disconnected">CNC: disconnected</div>
         <div id="viscometer-status" class="instrument-pill disconnected">Viscometer: disconnected</div>
@@ -273,19 +267,9 @@
                     </section>
                 </div>
 
-                <section class="card plot-card skeleton-host">
+                <section class="card plot-card skeleton-host full-width-chart">
                     <div class="card-title-row">
-                        <h2>Live Scatter Plot</h2>
-                        <div class="plot-tools">
-                            <div class="segmented" role="group" aria-label="Plot mode">
-                                <button id="toggle-all" class="seg active">All Cells</button>
-                                <button id="toggle-current" class="seg">Current Cell Only</button>
-                            </div>
-                            <button id="btn-trendline" class="toggle-btn" data-active="false">Trendline: OFF</button>
-                            <button id="btn-latest-z" class="toggle-btn" data-active="false">Final Z-Points: OFF</button>
-                            <button id="btn-latest-z-line" class="toggle-btn" data-active="false" disabled>Connect Finals: OFF</button>
-                            <button id="plot-export" class="btn subtle">Export CSV</button>
-                        </div>
+                        <h2>Live Torque</h2>
                     </div>
                     <div id="scatter-plot" class="plot-shell"></div>
                     <div id="plot-empty" class="plot-empty">No data yet</div>
@@ -295,12 +279,22 @@
                     </div>
                 </section>
 
-                <section class="chart-card" id="drag-z-card">
-                    <div class="chart-card-header">
-                        <span>Rotational Drag vs Z-Height</span>
-                        <span id="drag-z-cell-label" class="chart-subtitle">All Cells</span>
+                <section class="card plot-card skeleton-host full-width-chart">
+                    <div class="card-title-row">
+                        <div>
+                            <h2>Live Rotational Drag</h2>
+                            <span id="drag-z-cell-label" class="chart-subtitle">All Cells</span>
+                        </div>
+                        <div class="plot-tools">
+                            <div class="segmented" role="group" aria-label="Filter mode">
+                                <button id="drag-toggle-all" class="seg active">All Cells</button>
+                                <button id="drag-toggle-current" class="seg">Current Cell Only</button>
+                            </div>
+                            <button id="btn-drag-connect" class="toggle-btn" data-active="false">Connect Dots: OFF</button>
+                            <button id="plot-export" class="btn subtle">Export CSV</button>
+                        </div>
                     </div>
-                    <div id="drag-z-chart"></div>
+                    <div id="drag-z-chart" class="plot-shell"></div>
                 </section>
             </div>
 
