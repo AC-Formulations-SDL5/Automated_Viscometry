@@ -386,6 +386,7 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
                             rotational_drag=abs(data["torque_percent"]) / rpm if rpm > 0 else 0.0,
                             rpm=rpm,
                             cell_id=web_interface.current_cell,
+                            torque_percent=data["torque_percent"],
                         )
                     next_sample_time += SAMPLE_INTERVAL
                 except Exception as e:
@@ -783,7 +784,8 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 height=z_height,
                                 rotational_drag=rotational_drag,
                                 rpm=rpm,
-                                cell_id=global_cell
+                                cell_id=global_cell,
+                                torque_percent=torque_percent
                             )
                             
                             data_row = [

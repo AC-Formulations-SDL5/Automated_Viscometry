@@ -30,8 +30,16 @@ class ViscometryWebInterface:
         self.current_rpm = 0
         self.current_torque_percent = 0.0
         self.current_z_measuring = None
+        self.run_start_time: Optional[float] = None
         self.is_running = False
         self.status_message = "Ready"
+        self.instrument_status = {
+            'cnc': True,
+            'viscometer': True,
+            'pump': True,
+        }
+        # Keep the latest measurement per (cell_id, z_height, rpm).
+        self._latest_per_z: Dict[Tuple, Dict] = {}
         self.control_lock = threading.Lock()
         self.start_requested_event = threading.Event()
         self.stop_requested_event = threading.Event()
@@ -102,7 +110,10 @@ class ViscometryWebInterface:
                 'current_rpm': self.current_rpm,
                 'current_torque_percent': self.current_torque_percent,
                 'current_z_measuring': self.current_z_measuring,
+                'run_start_time': self.run_start_time,
+                'server_time': time.time(),
                 'is_running': self.is_running,
+                'instrument_status': self.instrument_status,
                 'status_message': self.status_message,
                 'cell_positions': self.get_cell_positions(),
                 'wash_stations': [
@@ -147,6 +158,21 @@ class ViscometryWebInterface:
         def handle_connect():
             emit('status_update', self.get_status_dict())
             emit('control_settings_update', self.get_runtime_settings())
+            emit('full_history', {
+                'measurement_data': self.measurement_data,
+                'latest_per_z': self._serialize_latest_per_z(),
+                'run_start_time': self.run_start_time,
+                'server_time': time.time(),
+            })
+
+        @self.socketio.on('request_full_history')
+        def handle_full_history():
+            emit('full_history', {
+                'measurement_data': self.measurement_data,
+                'latest_per_z': self._serialize_latest_per_z(),
+                'run_start_time': self.run_start_time,
+                'server_time': time.time(),
+            })
 
         @self.socketio.on('update_control_settings')
         def handle_update_control_settings(payload):
@@ -190,11 +216,18 @@ class ViscometryWebInterface:
             'current_rpm': self.current_rpm,
             'current_torque_percent': self.current_torque_percent,
             'current_z_measuring': self.current_z_measuring,
+            'run_start_time': self.run_start_time,
+            'server_time': time.time(),
             'is_running': self.is_running,
+            'instrument_status': self.instrument_status,
             'status_message': self.status_message,
             'measurement_data': self.measurement_data[-100:],  # Last 100 points
             'control_settings': self.get_runtime_settings()
         }
+
+    def _serialize_latest_per_z(self) -> List[Dict]:
+        """Serialize latest-per-Z measurement values for socket replay."""
+        return list(self._latest_per_z.values())
 
     def get_runtime_settings(self) -> Dict:
         """Get a copy of the current runtime settings."""
@@ -260,8 +293,7 @@ class ViscometryWebInterface:
     def request_stop(self):
         """Mark that the experiment should stop."""
         self.stop_requested_event.set()
-        self.is_running = False
-        self.socketio.emit('running_state_update', {'is_running': False})
+        self.set_running_state(False)
 
     def wait_for_start_command(self, poll_interval=0.2):
         """Block until a start request is received from the web UI."""
@@ -310,11 +342,23 @@ class ViscometryWebInterface:
         self.current_rpm = rpm
         self.socketio.emit('rpm_update', {'current_rpm': rpm})
 
+    def set_instrument_status(self, cnc: Optional[bool] = None, viscometer: Optional[bool] = None, pump: Optional[bool] = None):
+        """Set live instrument connection states for CNC, viscometer, and pump."""
+        if cnc is not None:
+            self.instrument_status['cnc'] = bool(cnc)
+        if viscometer is not None:
+            self.instrument_status['viscometer'] = bool(viscometer)
+        if pump is not None:
+            self.instrument_status['pump'] = bool(pump)
+        self.socketio.emit('instrument_status_update', self.instrument_status)
+
     def update_live_torque(self, torque_percent: float, rpm: float, elapsed: float):
         """Broadcast the most recent raw torque reading to connected clients."""
         self.current_torque_percent = torque_percent
+        rotational_drag = abs(torque_percent) / rpm if rpm else 0.0
         self.socketio.emit('torque_update', {
             'torque_percent': torque_percent,
+            'rotational_drag': rotational_drag,
             'rpm': rpm,
             'elapsed': elapsed,
         })
@@ -324,28 +368,55 @@ class ViscometryWebInterface:
         self.current_z_measuring = z
         self.socketio.emit('z_update', {'current_z': z})
         
-    def add_measurement_point(self, height: float, rotational_drag: float, rpm: float, cell_id: int):
+    def add_measurement_point(self, height: float, rotational_drag: float, rpm: float, cell_id: int, torque_percent: Optional[float] = None):
         """Add a new measurement point"""
+        if torque_percent is None and rpm:
+            torque_percent = rotational_drag * rpm
+        elif torque_percent is None:
+            torque_percent = 0.0
+
         measurement = {
             'timestamp': time.time(),
             'height': height,
             'rotational_drag': rotational_drag,
+            'torque_percent': torque_percent,
             'rpm': rpm,
             'cell_id': cell_id
         }
         self.measurement_data.append(measurement)
         
-        # Keep only last 1000 measurements
-        if len(self.measurement_data) > 1000:
-            self.measurement_data = self.measurement_data[-1000:]
+        # Keep only last 5000 measurements
+        if len(self.measurement_data) > 5000:
+            self.measurement_data = self.measurement_data[-5000:]
+
+        # Overwrite with the latest reading for this (cell, z, rpm) key.
+        key = (cell_id, round(height, 3), rpm)
+        self._latest_per_z[key] = measurement
             
         # Emit to connected clients
         self.socketio.emit('new_measurement', measurement)
+        self.socketio.emit('latest_per_z_update', {
+            'cell_id': cell_id,
+            'height': height,
+            'rotational_drag': rotational_drag,
+            'torque_percent': torque_percent,
+            'rpm': rpm,
+            'timestamp': measurement['timestamp'],
+        })
         
     def set_running_state(self, is_running: bool):
         """Set running state"""
+        if is_running and self.run_start_time is None:
+            self.run_start_time = time.time()
+        elif not is_running:
+            self.run_start_time = None
+
         self.is_running = is_running
-        self.socketio.emit('running_state_update', {'is_running': is_running})
+        self.socketio.emit('running_state_update', {
+            'is_running': is_running,
+            'run_start_time': self.run_start_time,
+            'server_time': time.time(),
+        })
         
     def start_server(self, debug=False):
         """Start the web server"""
