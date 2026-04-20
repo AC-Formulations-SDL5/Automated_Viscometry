@@ -1,0 +1,11 @@
+# 32-bit Python Environment Requirements
+# For Brookfield DV2T-RV viscometer DLL interface support
+
+# Hardware communication (for Brookfield viscometer RS-232/USB)
+pyserial==3.5
+
+# Configuration file handling
+PyYAML==6.0.3
+
+# Optional: numpy for data analysis (may have compatibility issues with 32-bit)
+# numpy>=1.20.0
