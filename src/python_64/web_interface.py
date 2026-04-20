@@ -34,9 +34,15 @@ class ViscometryWebInterface:
         self.is_running = False
         self.status_message = "Ready"
         self.instrument_status = {
-            'cnc': True,
-            'viscometer': True,
-            'pump': True,
+            'cnc': False,
+            'viscometer': False,
+            'pump': False,
+        }
+        # Track initialization status for current run
+        self.instrument_initialization_status = {
+            'cnc': None,
+            'viscometer': None,
+            'pump': None,
         }
         # Keep the latest measurement per (cell_id, z_height, rpm).
         self._latest_per_z: Dict[Tuple, Dict] = {}
@@ -114,6 +120,7 @@ class ViscometryWebInterface:
                 'server_time': time.time(),
                 'is_running': self.is_running,
                 'instrument_status': self.instrument_status,
+                'instrument_initialization_status': self.instrument_initialization_status,
                 'status_message': self.status_message,
                 'cell_positions': self.get_cell_positions(),
                 'wash_stations': [
@@ -352,6 +359,21 @@ class ViscometryWebInterface:
         if pump is not None:
             self.instrument_status['pump'] = bool(pump)
         self.socketio.emit('instrument_status_update', self.instrument_status)
+
+    def set_instrument_initialization_status(self, cnc: Optional[bool] = None, viscometer: Optional[bool] = None, pump: Optional[bool] = None):
+        """Set initialization status for instruments (current run only)"""
+        if cnc is not None:
+            self.instrument_initialization_status['cnc'] = bool(cnc)
+        if viscometer is not None:
+            self.instrument_initialization_status['viscometer'] = bool(viscometer)
+        if pump is not None:
+            self.instrument_initialization_status['pump'] = bool(pump)
+        self.socketio.emit('instrument_initialization_status_update', self.instrument_initialization_status)
+
+    def reset_instrument_initialization_status(self):
+        """Reset initialization status at start of run"""
+        self.instrument_initialization_status = {'cnc': None, 'viscometer': None, 'pump': None}
+        self.socketio.emit('instrument_initialization_status_update', self.instrument_initialization_status)
 
     def update_live_torque(self, torque_percent: float, rpm: float, elapsed: float):
         """Broadcast the most recent raw torque reading to connected clients."""

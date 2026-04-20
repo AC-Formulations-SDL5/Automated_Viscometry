@@ -36,9 +36,18 @@
     </header>
 
     <div class="instrument-status-strip">
-        <div id="cnc-status" class="instrument-pill disconnected">CNC: disconnected</div>
-        <div id="viscometer-status" class="instrument-pill disconnected">Viscometer: disconnected</div>
-        <div id="pump-status" class="instrument-pill disconnected">Pump: disconnected</div>
+        <div id="cnc-status" class="instrument-pill disconnected">
+            <div class="instrument-name">CNC: disconnected</div>
+            <div id="cnc-init" class="instrument-init"></div>
+        </div>
+        <div id="viscometer-status" class="instrument-pill disconnected">
+            <div class="instrument-name">Viscometer: disconnected</div>
+            <div id="viscometer-init" class="instrument-init"></div>
+        </div>
+        <div id="pump-status" class="instrument-pill disconnected">
+            <div class="instrument-name">Pump: disconnected</div>
+            <div id="pump-init" class="instrument-init"></div>
+        </div>
     </div>
 
     <main class="dashboard">

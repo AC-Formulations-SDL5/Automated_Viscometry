@@ -86,6 +86,9 @@ class ViscometryDashboard {
             cncStatus: document.getElementById("cnc-status"),
             viscometerStatus: document.getElementById("viscometer-status"),
             pumpStatus: document.getElementById("pump-status"),
+            cncInit: document.getElementById("cnc-init"),
+            viscometerInit: document.getElementById("viscometer-init"),
+            pumpInit: document.getElementById("pump-init"),
             completionBar: document.getElementById("completion-bar"),
             completionText: document.getElementById("completion-text"),
             map: document.getElementById("platform-map"),
@@ -524,7 +527,36 @@ class ViscometryDashboard {
         }
         node.classList.toggle("connected", connected);
         node.classList.toggle("disconnected", !connected);
-        node.textContent = `${name.charAt(0).toUpperCase() + name.slice(1)}: ${connected ? "connected" : "disconnected"}`;
+        const statusText = node.querySelector(".instrument-name") || node;
+        statusText.textContent = `${name.charAt(0).toUpperCase() + name.slice(1)}: ${connected ? "connected" : "disconnected"}`;
+    }
+
+    setInstrumentInitializationStatus(name, status) {
+        const lookup = {
+            cnc: this.el.cncInit,
+            viscometer: this.el.viscometerInit,
+            pump: this.el.pumpInit
+        };
+        const node = lookup[name];
+        if (!node) {
+            return;
+        }
+        
+        if (status === null) {
+            // Not yet initialized
+            node.classList.remove("initialized-true", "initialized-false");
+            node.textContent = "";
+        } else if (status === true) {
+            // Successfully initialized
+            node.classList.remove("initialized-false");
+            node.classList.add("initialized-true");
+            node.textContent = "initialized";
+        } else {
+            // Failed to initialize
+            node.classList.remove("initialized-true");
+            node.classList.add("initialized-false");
+            node.textContent = "failed";
+        }
     }
 
     setAllInstrumentStatus(connected) {
@@ -640,6 +672,15 @@ class ViscometryDashboard {
             this.setInstrumentStatus("pump", Boolean(status.pump));
         });
 
+        this.socket.on("instrument_initialization_status_update", (status) => {
+            if (!status || typeof status !== "object") {
+                return;
+            }
+            this.setInstrumentInitializationStatus("cnc", status.cnc);
+            this.setInstrumentInitializationStatus("viscometer", status.viscometer);
+            this.setInstrumentInitializationStatus("pump", status.pump);
+        });
+
         this.socket.on("position_update", (data) => {
             this.position = {
                 x: Number(data.x) || 0,
@@ -747,6 +788,12 @@ class ViscometryDashboard {
             this.setInstrumentStatus("cnc", Boolean(status.instrument_status.cnc));
             this.setInstrumentStatus("viscometer", Boolean(status.instrument_status.viscometer));
             this.setInstrumentStatus("pump", Boolean(status.instrument_status.pump));
+        }
+
+        if (status.instrument_initialization_status && typeof status.instrument_initialization_status === "object") {
+            this.setInstrumentInitializationStatus("cnc", status.instrument_initialization_status.cnc);
+            this.setInstrumentInitializationStatus("viscometer", status.instrument_initialization_status.viscometer);
+            this.setInstrumentInitializationStatus("pump", status.instrument_initialization_status.pump);
         }
 
         if (status.current_z_measuring !== undefined && status.current_z_measuring !== null) {

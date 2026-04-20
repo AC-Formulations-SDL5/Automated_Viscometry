@@ -305,6 +305,40 @@ body.running .header-sweep {
     border: 1px solid rgba(255, 200, 66, 0.24);
     background: rgba(255, 255, 255, 0.03);
     color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.instrument-name {
+    font-size: 0.74rem;
+}
+
+.instrument-init {
+    font-size: 0.60rem;
+    letter-spacing: 0.05em;
+    text-transform: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+}
+
+.instrument-init::before {
+    content: "•";
+    font-size: 0.85em;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.instrument-init.initialized-true::before {
+    opacity: 1;
+    color: #94E2AE;
+}
+
+.instrument-init.initialized-false::before {
+    opacity: 1;
+    color: #FF6B35;
 }
 
 .instrument-pill.connected {
