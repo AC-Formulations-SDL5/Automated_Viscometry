@@ -30,7 +30,6 @@ class ViscometryWebInterface:
         self.current_rpm = 0
         self.current_torque_percent = 0.0
         self.current_z_measuring = None
-        self.instrument_status = {'cnc': False, 'viscometer': False, 'pump': False}
         self.is_running = False
         self.status_message = "Ready"
         self.control_lock = threading.Lock()
@@ -103,7 +102,6 @@ class ViscometryWebInterface:
                 'current_rpm': self.current_rpm,
                 'current_torque_percent': self.current_torque_percent,
                 'current_z_measuring': self.current_z_measuring,
-                'instrument_status': self.instrument_status,
                 'is_running': self.is_running,
                 'status_message': self.status_message,
                 'cell_positions': self.get_cell_positions(),
@@ -192,7 +190,6 @@ class ViscometryWebInterface:
             'current_rpm': self.current_rpm,
             'current_torque_percent': self.current_torque_percent,
             'current_z_measuring': self.current_z_measuring,
-            'instrument_status': self.instrument_status,
             'is_running': self.is_running,
             'status_message': self.status_message,
             'measurement_data': self.measurement_data[-100:],  # Last 100 points
@@ -312,15 +309,6 @@ class ViscometryWebInterface:
         """Set current RPM"""
         self.current_rpm = rpm
         self.socketio.emit('rpm_update', {'current_rpm': rpm})
-
-    def set_instrument_status(self, cnc=None, viscometer=None, pump=None):
-        if cnc is not None:
-            self.instrument_status['cnc'] = bool(cnc)
-        if viscometer is not None:
-            self.instrument_status['viscometer'] = bool(viscometer)
-        if pump is not None:
-            self.instrument_status['pump'] = bool(pump)
-        self.socketio.emit('instrument_status_update', self.instrument_status, broadcast=True)
 
     def update_live_torque(self, torque_percent: float, rpm: float, elapsed: float):
         """Broadcast the most recent raw torque reading to connected clients."""

@@ -68,9 +68,6 @@ class ViscometryDashboard {
         this.el = {
             body: document.body,
             disconnectBanner: document.getElementById("disconnect-banner"),
-            runPill: document.getElementById("run-pill"),
-            connectionDot: document.getElementById("connection-dot"),
-            completionBar: document.getElementById("completion-bar"),
             completionText: document.getElementById("completion-text"),
             map: document.getElementById("platform-map"),
             armDot: document.getElementById("arm-dot"),
@@ -117,9 +114,6 @@ class ViscometryDashboard {
             exportPlot: document.getElementById("plot-export"),
             exportTable: document.getElementById("table-export"),
             themeToggle: document.getElementById("theme-toggle"),
-            cncStatus: document.getElementById("cnc-status"),
-            viscometerStatus: document.getElementById("viscometer-status"),
-            pumpStatus: document.getElementById("pump-status"),
             summaryCards: document.getElementById("experiment-cards"),
             summaryEmpty: document.getElementById("summary-empty"),
             summaryDetail: document.getElementById("summary-detail"),
@@ -582,14 +576,6 @@ class ViscometryDashboard {
             }
         });
 
-        this.socket.on("instrument_status_update", (status) => {
-            if (!status) {
-                return;
-            }
-            this.setInstrumentStatus("cnc", Boolean(status.cnc));
-            this.setInstrumentStatus("viscometer", Boolean(status.viscometer));
-            this.setInstrumentStatus("pump", Boolean(status.pump));
-        });
     }
 
     applyStatusSnapshot(status) {
@@ -643,12 +629,6 @@ class ViscometryDashboard {
         const statusDrag = Number(status.current_torque_percent) / (Number(status.current_rpm) || 1);
         if (!Number.isNaN(statusDrag) && Number.isFinite(statusDrag)) {
             this.updateLiveRotationalDragDisplay(statusDrag);
-        }
-
-        if (status.instrument_status) {
-            this.setInstrumentStatus("cnc", Boolean(status.instrument_status.cnc));
-            this.setInstrumentStatus("viscometer", Boolean(status.instrument_status.viscometer));
-            this.setInstrumentStatus("pump", Boolean(status.instrument_status.pump));
         }
 
         if (status.current_z_measuring !== undefined && status.current_z_measuring !== null) {
@@ -1116,32 +1096,14 @@ class ViscometryDashboard {
         }
     }
 
-    setInstrumentStatus(name, connected) {
-        const map = {
-            cnc: this.el.cncStatus,
-            viscometer: this.el.viscometerStatus,
-            pump: this.el.pumpStatus
-        };
-        const node = map[name];
-        if (!node) {
-            return;
-        }
-        node.classList.toggle("connected", connected);
-        node.classList.toggle("disconnected", !connected);
-        const stateEl = node.querySelector(".instrument-state");
-        if (stateEl) {
-            stateEl.textContent = connected ? "connected" : "disconnected";
-        }
-    }
-
     updateMeasuringZDisplay(value) {
         this.currentMeasuringZ = value;
         if (this.el.zMeasuringDisplay) {
             this.el.zMeasuringDisplay.textContent = `${value.toFixed(3)} mm`;
         }
     }
+        }
 
-    addPointToChart(cellId, height, rotationalDrag, rpm, timestamp) {
         this.ingestMeasurement({
             cell_id: cellId,
             height,
