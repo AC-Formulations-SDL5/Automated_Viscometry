@@ -638,7 +638,7 @@ class ViscometryDashboard {
     }
 
     connectSocket() {
-        this.socket = io({ transports: ["websocket"], reconnectionAttempts: 5 });
+        this.socket = io({ reconnectionAttempts: 5 });
 
         this.socket.on("connect", () => {
             this.isConnected = true;

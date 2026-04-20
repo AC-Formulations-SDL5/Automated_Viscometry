@@ -4,6 +4,9 @@ Simulation script for Viscometry Platform Web Interface
 Simulates the complete experiment workflow without hardware
 """
 
+import eventlet
+eventlet.monkey_patch()
+
 import time
 import random
 import threading

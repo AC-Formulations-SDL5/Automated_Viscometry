@@ -3,6 +3,9 @@ Web Interface for Automated Viscometry Platform
 Provides real-time monitoring and control interface
 """
 
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 import threading
@@ -20,8 +23,8 @@ class ViscometryWebInterface:
         
         self.app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
         self.app.config['SECRET_KEY'] = 'viscometry_secret_key'
-        # Configure SocketIO with threading support and proper async mode
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading', threading=True, logger=True, engineio_logger=False)
+        # Eventlet async mode keeps websocket heartbeats responsive during long hardware runs.
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='eventlet', logger=True, engineio_logger=False)
         self.port = port
         
         # Current state
@@ -311,7 +314,7 @@ class ViscometryWebInterface:
         while not self.start_requested_event.is_set():
             if self.stop_requested_event.is_set():
                 return False
-            time.sleep(poll_interval)
+            self.socketio.sleep(poll_interval)
         return True
 
     def consume_start_command(self):
@@ -444,29 +447,32 @@ class ViscometryWebInterface:
             'server_time': time.time(),
         }, namespace='/')
         
-    def start_server(self, debug=False):
+    def start_server(self, debug=False, background_task=None):
         """Start the web server"""
         print(f"Starting Viscometry Web Interface on http://localhost:{self.port}")
-        # Start periodic status broadcast in a separate thread
+        # Start periodic status broadcast as a cooperative SocketIO background task.
         self._broadcast_running = True
-        self._status_broadcast_thread = threading.Thread(target=self._periodic_status_broadcast, daemon=True)
-        self._status_broadcast_thread.start()
+        self.socketio.start_background_task(self._periodic_status_broadcast)
+
+        # Optional hardware runner started by the caller.
+        if background_task is not None:
+            self.socketio.start_background_task(background_task)
         
-        # Run the socketio server (this blocks)
+        # Run SocketIO server on the main thread.
         try:
-            self.socketio.run(self.app, host='0.0.0.0', port=self.port, debug=debug, allow_unsafe_werkzeug=True)
+            self.socketio.run(self.app, host='0.0.0.0', port=self.port, debug=debug)
         finally:
             self._broadcast_running = False
     
     def _periodic_status_broadcast(self):
         """Periodically broadcast status updates to ensure all clients receive live data."""
-        # Wait a bit for the server to start up
-        time.sleep(2.0)
+        # Wait briefly for server startup.
+        self.socketio.sleep(2.0)
         
         while self._broadcast_running:
             try:
                 if not self.is_running:
-                    time.sleep(0.5)
+                    self.socketio.sleep(0.5)
                     continue
                 
                 # Broadcast current status to all clients
@@ -481,10 +487,10 @@ class ViscometryWebInterface:
                     'server_time': time.time(),
                 }, namespace='/')
                 
-                time.sleep(0.5)  # Broadcast every 500ms
+                self.socketio.sleep(0.5)  # Broadcast every 500ms
             except Exception as e:
                 # Silently skip if emit fails (server not ready yet or other issues)
-                time.sleep(0.5)
+                self.socketio.sleep(0.5)
                 continue
         
     def start_in_thread(self, debug=False):

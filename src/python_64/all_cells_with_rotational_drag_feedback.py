@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 import time
 import pathlib
 import csv
@@ -118,7 +121,8 @@ def sleep_with_stop(seconds: float, check_interval: float = 0.25):
     while time.time() < deadline:
         if web_interface.should_stop():
             raise KeyboardInterrupt("Stop requested from web interface")
-        time.sleep(min(check_interval, max(0.0, deadline - time.time())))
+        # Cooperative yield keeps Socket.IO heartbeats/data flowing during hardware waits.
+        web_interface.socketio.sleep(min(check_interval, max(0.0, deadline - time.time())))
 
 
 def raise_if_stop_requested():
@@ -806,23 +810,14 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
     print(f"All data saved to: {csv_filename}")
     return csv_filename
 
-def main():
+def run_automation_loop():
     print("="*80)
     print("MULTI-ROW DYNAMIC ANALYSIS - Z-GAP vs TORQUE at MULTIPLE RPMs")
     print("WITH ROTATIONAL DRAG FEEDBACK CONTROLLER")
     print(f"Testing RPMs: {TEST_RPMS}")
     print(f"Total available: {len(ROWS)} rows x {NUM_CELLS} cells = {len(ROWS) * NUM_CELLS} cells")
-    
-    # Start web interface in background thread
-    print("\nStarting web interface...")
-    try:
-        web_interface.start_in_thread(debug=False)
-        print(f"Web interface started at http://localhost:{web_interface.port}")
-        web_interface.update_status("Configure the run in the web interface, then press Start")
-        web_interface.set_running_state(False)
-    except Exception as e:
-        print(f"Warning: Could not start web interface: {e}")
-        return
+    web_interface.update_status("Configure the run in the web interface, then press Start")
+    web_interface.set_running_state(False)
     
     # Main loop to keep the web interface running and accept multiple runs
     while True:
@@ -1078,6 +1073,11 @@ def main():
         print("Hardware cleanup completed")
         web_interface.update_status("Ready - Configure next run and press Start")
         # Continue the loop to wait for next start command
+
+def main():
+    print("\nStarting web interface...")
+    print(f"Web interface available at http://localhost:{web_interface.port}")
+    web_interface.start_server(debug=False, background_task=run_automation_loop)
 
 if __name__ == "__main__":
     main()

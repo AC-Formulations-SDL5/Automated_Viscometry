@@ -4,6 +4,9 @@ Standalone Web Interface Starter for Viscometry Platform
 Starts the web interface without running the main analysis
 """
 
+import eventlet
+eventlet.monkey_patch()
+
 import sys
 import os
 import pathlib
