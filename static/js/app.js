@@ -132,8 +132,9 @@ class ViscometryDashboard {
             elapsedCell: document.getElementById("elapsed-cell"),
             sparklineLine: document.getElementById("sparkline-line"),
             tableBody: document.getElementById("measurement-table"),
-            toggleAll: document.getElementById("toggle-all"),
-            toggleCurrent: document.getElementById("toggle-current"),
+            dragToggleAll: document.getElementById("drag-toggle-all"),
+            dragToggleCurrent: document.getElementById("drag-toggle-current"),
+            dragConnectToggle: document.getElementById("btn-drag-connect"),
             exportPlot: document.getElementById("plot-export"),
             exportTable: document.getElementById("table-export"),
             themeToggle: document.getElementById("theme-toggle"),
@@ -149,17 +150,15 @@ class ViscometryDashboard {
     }
 
     bindUI() {
-        this.el.toggleAll.addEventListener("click", () => this.setPlotMode("all"));
-        this.el.toggleCurrent.addEventListener("click", () => this.setPlotMode("current"));
+        this.el.dragToggleAll.addEventListener("click", () => this.setDragPlotMode("all"));
+        this.el.dragToggleCurrent.addEventListener("click", () => this.setDragPlotMode("current"));
+        this.el.dragConnectToggle.addEventListener("click", () => this.toggleDragConnect());
         this.el.exportPlot.addEventListener("click", () => this.exportCSV());
         this.el.exportTable.addEventListener("click", () => this.exportCSV());
         this.el.applySettings.addEventListener("click", () => this.applyControlSettings());
         this.el.startRun.addEventListener("click", () => this.startRunFromUI());
         this.el.stopRun.addEventListener("click", () => this.stopRunFromUI());
         this.el.themeToggle.addEventListener("click", () => this.toggleTheme());
-        this.el.trendlineToggle.addEventListener("click", () => this.toggleTrendline());
-        this.el.latestZToggle.addEventListener("click", () => this.toggleLatestZ());
-        this.el.latestZLineToggle.addEventListener("click", () => this.toggleLatestZLine());
         this.el.summaryDownload.addEventListener("click", () => this.downloadSelectedSummaryCSV());
 
         const settingsForm = document.getElementById("run-settings-form");
@@ -314,7 +313,7 @@ class ViscometryDashboard {
                 zeroline: false
             },
             yaxis: {
-                title: "Rotational Drag (%)",
+                title: "Torque (%)",
                 gridcolor: "#21262D",
                 zeroline: false
             },
@@ -978,10 +977,20 @@ class ViscometryDashboard {
 
     setPlotMode(mode) {
         this.plotMode = mode;
-        this.el.toggleAll.classList.toggle("active", mode === "all");
-        this.el.toggleCurrent.classList.toggle("active", mode === "current");
-        this.rebuildPlot();
+        this.el.dragToggleAll.classList.toggle("active", mode === "all");
+        this.el.dragToggleCurrent.classList.toggle("active", mode === "current");
         this.updateDragZSubtitle();
+        this.updateDragZChart();
+    }
+
+    setDragPlotMode(mode) {
+        this.setPlotMode(mode);
+    }
+
+    toggleDragConnect() {
+        this.latestZLineVisible = !this.latestZLineVisible;
+        this.el.dragConnectToggle.textContent = this.latestZLineVisible ? "Connect Dots: ON" : "Connect Dots: OFF";
+        this.el.dragConnectToggle.dataset.active = this.latestZLineVisible ? "true" : "false";
         this.updateDragZChart();
     }
 
@@ -1057,17 +1066,13 @@ class ViscometryDashboard {
     }
 
     buildTracesForMode() {
+        // Always show all torque data points from all cells (no cell filtering)
         const traces = [];
-        const selectedCell = this.plotMode === "current" ? this.currentCell : null;
 
         this.measurementsByCell.forEach((arr, cellId) => {
-            if (selectedCell && cellId !== selectedCell) {
-                return;
-            }
-
             traces.push({
                 x: arr.map((m) => m.height),
-                y: arr.map((m) => m.rotational_drag),
+                y: arr.map((m) => m.torque_percent),
                 mode: "markers",
                 type: "scatter",
                 name: `Cell ${cellId}`,
@@ -1076,7 +1081,7 @@ class ViscometryDashboard {
                     size: arr.map(() => 8),
                     opacity: 0.88
                 },
-                hovertemplate: "Cell %{text}<br>Height %{x:.3f} mm<br>Drag %{y:.2f}%<extra></extra>",
+                hovertemplate: "Cell %{text}<br>Height %{x:.3f} mm<br>Torque %{y:.2f}%<extra></extra>",
                 text: arr.map(() => String(cellId))
             });
         });
@@ -1090,14 +1095,8 @@ class ViscometryDashboard {
         }
 
         const traces = this.buildTracesForMode();
-        const trendlineTrace = this.buildTrendlineTrace();
-        if (trendlineTrace) {
-            traces.push(trendlineTrace);
-        }
 
         Plotly.react(this.el.plot, traces, this.plotLayout, { responsive: true });
-        this.updatePlotShapes();
-        this.renderLatestZTrace();
         this.updatePlotEmptyState();
     }
 
@@ -1297,10 +1296,11 @@ class ViscometryDashboard {
 
         const traces = Object.entries(byRpm).map(([rpm, pts]) => {
             pts.sort((a, b) => a.height - b.height);
+            const mode = this.latestZLineVisible ? "lines+markers" : "markers";
             return {
                 x: pts.map((p) => p.height),
                 y: pts.map((p) => p.rotational_drag),
-                mode: "lines+markers",
+                mode: mode,
                 type: "scatter",
                 name: `${rpm} RPM`,
                 marker: { size: 7 },
@@ -1312,9 +1312,6 @@ class ViscometryDashboard {
     }
 
     appendPointToPlot(measurement) {
-        if (this.plotMode === "current" && this.currentCell && measurement.cell_id !== this.currentCell) {
-            return;
-        }
 
         const existingTraces = this.el.plot.data || [];
         let traceIndex = existingTraces.findIndex((trace) => trace.name === `Cell ${measurement.cell_id}`);
@@ -1331,7 +1328,7 @@ class ViscometryDashboard {
 
         Plotly.extendTraces(this.el.plot, {
             x: [[measurement.height]],
-            y: [[measurement.rotational_drag]],
+            y: [[measurement.torque_percent]],
             text: [[String(measurement.cell_id)]],
             "marker.size": [[0]]
         }, [traceIndex]);

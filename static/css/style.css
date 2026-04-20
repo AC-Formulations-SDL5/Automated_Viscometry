@@ -250,6 +250,7 @@ body.running .header-sweep {
 }
 
 .completion-track {
+    display: none !important;
     position: relative;
     height: 28px;
     border-bottom: 1px solid var(--border-subtle);
@@ -509,6 +510,12 @@ h2 {
 .sidebar-card { grid-area: sidebar; min-height: 430px; }
 .timeline-card { grid-area: timeline; }
 .table-card { grid-area: table; }
+
+.full-width-chart {
+    grid-area: unset !important;
+    width: 100% !important;
+    margin-bottom: 20px;
+}
 
 .platform-map {
     position: relative;
