@@ -207,6 +207,22 @@ class ViscometryDashboard {
 
         // Store active tab in localStorage
         localStorage.setItem("activeTab", tabId);
+
+        // Resize charts when their tab becomes visible.
+        if (tabId === "controls-tab") {
+            requestAnimationFrame(() => {
+                if (this.plotInitialized && this.el.plot) {
+                    Plotly.Plots.resize(this.el.plot);
+                }
+                if (this.dragZPlotInitialized && this.el.dragZChart) {
+                    Plotly.Plots.resize(this.el.dragZChart);
+                }
+            });
+        }
+
+        if (tabId === "summary-tab" && this.el.summaryPlot) {
+            requestAnimationFrame(() => Plotly.Plots.resize(this.el.summaryPlot));
+        }
     }
 
     handleLogoFallback() {
@@ -439,6 +455,7 @@ class ViscometryDashboard {
             })
             .catch(() => {
                 this.statusError = true;
+                this.el.body.classList.remove("loading");
                 this.pushStatusMessage("Status bootstrap failed, waiting for live socket updates");
                 this.showDisconnectedBanner(true);
             });
@@ -452,6 +469,7 @@ class ViscometryDashboard {
                 this.el.body.classList.remove("loading");
             })
             .catch(() => {
+                this.el.body.classList.remove("loading");
                 this.setControlStatus("Unable to load control settings");
             });
     }
@@ -638,7 +656,11 @@ class ViscometryDashboard {
     }
 
     connectSocket() {
-        this.socket = io({ reconnectionAttempts: 5 });
+        this.socket = io({
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 10000
+        });
 
         this.socket.on("connect", () => {
             this.isConnected = true;
@@ -717,6 +739,16 @@ class ViscometryDashboard {
             this.applyTimeSync(data.server_time, data.run_start_time);
             this.bulkLoadScatterPoints(Array.isArray(data.measurement_data) ? data.measurement_data : []);
             this.bulkLoadLatestPerZ(Array.isArray(data.latest_per_z) ? data.latest_per_z : []);
+
+            // Charts may initialize while hidden in another tab.
+            requestAnimationFrame(() => {
+                if (this.plotInitialized && this.el.plot) {
+                    Plotly.Plots.resize(this.el.plot);
+                }
+                if (this.dragZPlotInitialized && this.el.dragZChart) {
+                    Plotly.Plots.resize(this.el.dragZChart);
+                }
+            });
         });
 
         this.socket.on("latest_per_z_update", (data) => {

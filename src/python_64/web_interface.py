@@ -21,7 +21,7 @@ class ViscometryWebInterface:
         self.app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
         self.app.config['SECRET_KEY'] = 'viscometry_secret_key'
         # Threading async mode for WebSocket support (compatible with Python 3.13)
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading', logger=True, engineio_logger=False)
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading', logger=False, engineio_logger=False)
         self.port = port
         
         # Current state
@@ -296,9 +296,11 @@ class ViscometryWebInterface:
         return self.get_runtime_settings()
 
     def request_start(self):
-        """Mark that the experiment should start."""
+        """Signal that the experiment should start.
+
+        Caller sets running state after hardware initialization succeeds.
+        """
         self.stop_requested_event.clear()
-        self.set_running_state(True)
         self.start_requested_event.set()
 
     def request_stop(self):
@@ -308,9 +310,9 @@ class ViscometryWebInterface:
 
     def wait_for_start_command(self, poll_interval=0.2):
         """Block until a start request is received from the web UI."""
+        # Clear residual stop requests from previous runs before waiting.
+        self.stop_requested_event.clear()
         while not self.start_requested_event.is_set():
-            if self.stop_requested_event.is_set():
-                return False
             time.sleep(poll_interval)  # Use time.sleep() for threading mode compatibility
         return True
 
@@ -457,21 +459,20 @@ class ViscometryWebInterface:
         
         # Run SocketIO server on the main thread.
         try:
-            self.socketio.run(self.app, host='0.0.0.0', port=self.port, debug=debug)
+            self.socketio.run(self.app, host='0.0.0.0', port=self.port, debug=debug, allow_unsafe_werkzeug=True)
         finally:
             self._broadcast_running = False
     
     def _periodic_status_broadcast(self):
-        """Periodically broadcast status updates to ensure all clients receive live data."""
+        """Fallback heartbeat for late-joining clients.
+
+        Real-time updates are pushed through dedicated emitters.
+        """
         # Wait briefly for server startup.
-        time.sleep(2.0)
+        time.sleep(3.0)
         
         while self._broadcast_running:
             try:
-                if not self.is_running:
-                    time.sleep(0.5)
-                    continue
-                
                 # Broadcast current status to all clients
                 self.socketio.emit('status_heartbeat', {
                     'position': self.current_position,
@@ -483,11 +484,11 @@ class ViscometryWebInterface:
                     'instrument_status': self.instrument_status,
                     'server_time': time.time(),
                 }, broadcast=True)
-                
-                time.sleep(0.5)  # Broadcast every 500ms
+
+                time.sleep(5.0)  # Fallback heartbeat every 5 seconds
             except Exception as e:
                 # Silently skip if emit fails (server not ready yet or other issues)
-                time.sleep(0.5)
+                time.sleep(5.0)
                 continue
         
     def start_in_thread(self, debug=False):

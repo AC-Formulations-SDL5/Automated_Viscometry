@@ -829,7 +829,6 @@ def run_automation_loop():
         apply_runtime_settings_from_web()
         web_interface.consume_start_command()
         web_interface.update_status("Initializing hardware...")
-        web_interface.set_running_state(True)
         
         # Display feedback control configuration
         print(f"\nFEEDBACK CONTROL CONFIGURATION:")
@@ -941,6 +940,10 @@ def run_automation_loop():
                 print("WARNING: Viscometer test failed ")
             web_interface.set_instrument_initialization_status(viscometer=True)
             web_interface.set_instrument_status(viscometer=True)
+
+            # Hardware is ready at this point, so mark run as active.
+            web_interface.set_running_state(True)
+            web_interface.consume_start_command()
             
         except Exception as e:
             print(f"ERROR initializing viscometer: {e}")
