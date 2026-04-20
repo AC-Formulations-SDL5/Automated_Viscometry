@@ -288,6 +288,7 @@ class ViscometryWebInterface:
     def request_start(self):
         """Mark that the experiment should start."""
         self.stop_requested_event.clear()
+        self.set_running_state(True)
         self.start_requested_event.set()
 
     def request_stop(self):

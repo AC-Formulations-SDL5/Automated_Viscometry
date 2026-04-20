@@ -30,6 +30,7 @@ class ViscometryDashboard {
         this.plotInitialized = false;
         this.dragZPlotInitialized = false;
         this.timerInterval = null;
+        this.statusPollInterval = null;
         this.experimentStart = null;
         this.cellStart = null;
         this.serverClockOffset = 0;
@@ -46,6 +47,7 @@ class ViscometryDashboard {
         this.disconnectedBannerTimeout = null;
         this.statusError = false;
         this.sparklineData = [];
+        this.lastMeasurementTimestamp = 0;
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -65,6 +67,7 @@ class ViscometryDashboard {
         this.loadExperimentHistory();
         this.updateControlButtons();
         this.startTimerLoop();
+        this.startStatusPolling();
         this.fetchInitialData();
         this.loadControlSettings();
 
@@ -383,6 +386,46 @@ class ViscometryDashboard {
         }, 1000);
     }
 
+    startStatusPolling() {
+        this.statusPollInterval = window.setInterval(() => {
+            fetch("/api/status")
+                .then((response) => response.json())
+                .then((status) => {
+                    this.applyStatusSnapshot(status);
+                    this.showDisconnectedBanner(false);
+
+                    // If socket transport is down, poll measurements so charts still update.
+                    if (!this.isConnected) {
+                        this.syncMeasurementsFromApi();
+                    }
+                })
+                .catch(() => {
+                    this.showDisconnectedBanner(true);
+                });
+        }, 2000);
+    }
+
+    syncMeasurementsFromApi() {
+        fetch("/api/measurement_data")
+            .then((response) => response.json())
+            .then((data) => {
+                const points = Array.isArray(data) ? data : [];
+                if (points.length === 0) {
+                    return;
+                }
+
+                const newestTimestamp = Number(points[points.length - 1].timestamp) || 0;
+                if (newestTimestamp <= this.lastMeasurementTimestamp && this.measurements.length > 0) {
+                    return;
+                }
+
+                this.bulkLoadScatterPoints(points);
+            })
+            .catch(() => {
+                // Ignore transient polling errors; socket updates may still be healthy.
+            });
+    }
+
     fetchInitialData() {
         fetch("/api/status")
             .then((r) => r.json())
@@ -516,6 +559,9 @@ class ViscometryDashboard {
     }
 
     startRunFromUI() {
+        this.setRunningState(true, Date.now() / 1000);
+        this.setControlStatus("Starting run...");
+
         this.applyControlSettings(true)
             .then((settings) => fetch("/api/run/start", {
                 method: "POST",
@@ -528,6 +574,7 @@ class ViscometryDashboard {
                 this.updateControlButtons();
             })
             .catch(() => {
+                this.setRunningState(false, null);
                 this.setControlStatus("Failed to start run");
             });
     }
@@ -555,7 +602,6 @@ class ViscometryDashboard {
             this.isConnected = true;
             this.el.connectionDot.classList.remove("disconnected");
             this.el.connectionDot.classList.add("connected");
-            this.setAllInstrumentStatus(true);
             this.showDisconnectedBanner(false);
             this.pushStatusMessage("Socket connection established");
             this.socket.emit("request_full_history");
@@ -565,7 +611,6 @@ class ViscometryDashboard {
             this.isConnected = false;
             this.el.connectionDot.classList.remove("connected");
             this.el.connectionDot.classList.add("disconnected");
-            this.setAllInstrumentStatus(false);
             this.showDisconnectedBanner(true);
         });
 
@@ -1236,6 +1281,10 @@ class ViscometryDashboard {
             this.measurements = this.measurements.slice(-4000);
         }
 
+        this.lastMeasurementTimestamp = this.measurements.length > 0
+            ? this.measurements[this.measurements.length - 1].timestamp
+            : 0;
+
         if (this.currentCell && this.measurementsByCell.has(this.currentCell)) {
             const currentCellPoints = this.measurementsByCell.get(this.currentCell);
             const latestCurrent = currentCellPoints[currentCellPoints.length - 1];
@@ -1461,12 +1510,14 @@ class ViscometryDashboard {
     }
 
     addPointToChart(cellId, height, rotationalDrag, rpm, timestamp, torquePercent = null) {
+        const ts = Number(timestamp) || Date.now() / 1000;
+        this.lastMeasurementTimestamp = Math.max(this.lastMeasurementTimestamp, ts);
         this.ingestMeasurement({
             cell_id: cellId,
             height,
             rotational_drag: rotationalDrag,
             rpm,
-            timestamp,
+            timestamp: ts,
             torque_percent: torquePercent
         }, false);
     }
