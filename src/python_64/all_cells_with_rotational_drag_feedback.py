@@ -828,6 +828,7 @@ def main():
         print("Waiting for Start Run command from the web interface...")
         started = web_interface.wait_for_start_command()
         if not started:
+            web_interface.clear_stop_request()
             web_interface.update_status("Start cancelled before run")
             print("Start cancelled before run")
             continue  # Continue waiting for next start command

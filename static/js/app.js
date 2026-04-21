@@ -1102,8 +1102,8 @@ class ViscometryDashboard {
             this.el.zMeasuringDisplay.textContent = `${value.toFixed(3)} mm`;
         }
     }
-        }
 
+    addPointToChart(cellId, height, rotationalDrag, rpm, timestamp) {
         this.ingestMeasurement({
             cell_id: cellId,
             height,
