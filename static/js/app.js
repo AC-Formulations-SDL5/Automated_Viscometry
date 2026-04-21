@@ -22,11 +22,14 @@ class ViscometryDashboard {
         this.completedCells = new Set();
         this.cellStates = new Map();
         this.hitPoints = new Map();
-        this.plotMode = "all";
+        this.selectedGraphCell = null;
+        this.zLatestOnly = false;
+        this.zConnectDots = false;
         this.currentPhase = 0;
         this.gaugeDisplayRPM = 0;
         this.gaugeAnimationFrame = null;
-        this.plotInitialized = false;
+        this.zPlotInitialized = false;
+        this.torquePlotInitialized = false;
         this.timerInterval = null;
         this.experimentStart = null;
         this.cellStart = null;
@@ -70,15 +73,17 @@ class ViscometryDashboard {
             disconnectBanner: document.getElementById("disconnect-banner"),
             runPill: document.getElementById("run-pill"),
             connectionDot: document.getElementById("connection-dot"),
-            completionBar: document.getElementById("completion-bar"),
-            completionText: document.getElementById("completion-text"),
+            completionChip: document.getElementById("completion-chip"),
             map: document.getElementById("platform-map"),
             armDot: document.getElementById("arm-dot"),
             timeline: document.getElementById("timeline"),
             timelineFill: document.getElementById("timeline-fill"),
             statusLog: document.getElementById("status-log"),
-            plot: document.getElementById("scatter-plot"),
-            plotEmpty: document.getElementById("plot-empty"),
+            zSparklinePlot: document.getElementById("z-sparkline-plot"),
+            zSparklineEmpty: document.getElementById("z-sparkline-empty"),
+            torqueZPlot: document.getElementById("torque-z-plot"),
+            torqueZEmpty: document.getElementById("torque-z-empty"),
+            graphCellTabs: document.getElementById("graph-cell-tabs"),
             testingMode: document.getElementById("testing-mode"),
             testRpms: document.getElementById("test-rpms"),
             selectedRows: document.getElementById("selected-rows"),
@@ -110,10 +115,10 @@ class ViscometryDashboard {
             zMeasuringDisplay: document.getElementById("z-measuring-display"),
             elapsed: document.getElementById("elapsed"),
             elapsedCell: document.getElementById("elapsed-cell"),
-            sparklineLine: document.getElementById("sparkline-line"),
             tableBody: document.getElementById("measurement-table"),
-            toggleAll: document.getElementById("toggle-all"),
-            toggleCurrent: document.getElementById("toggle-current"),
+            zFilterAll: document.getElementById("z-filter-all"),
+            zFilterLatest: document.getElementById("z-filter-latest"),
+            zConnectDots: document.getElementById("z-connect-dots"),
             exportPlot: document.getElementById("plot-export"),
             exportTable: document.getElementById("table-export"),
             themeToggle: document.getElementById("theme-toggle"),
@@ -132,14 +137,33 @@ class ViscometryDashboard {
     }
 
     bindUI() {
-        this.el.toggleAll.addEventListener("click", () => this.setPlotMode("all"));
-        this.el.toggleCurrent.addEventListener("click", () => this.setPlotMode("current"));
         this.el.exportPlot.addEventListener("click", () => this.exportCSV());
         this.el.exportTable.addEventListener("click", () => this.exportCSV());
         this.el.applySettings.addEventListener("click", () => this.applyControlSettings());
         this.el.startRun.addEventListener("click", () => this.startRunFromUI());
         this.el.stopRun.addEventListener("click", () => this.stopRunFromUI());
         this.el.themeToggle.addEventListener("click", () => this.toggleTheme());
+        if (this.el.zFilterAll) {
+            this.el.zFilterAll.addEventListener("click", () => {
+                this.zLatestOnly = false;
+                this.updateZFilterButtons();
+                this.refreshLivePlots();
+            });
+        }
+        if (this.el.zFilterLatest) {
+            this.el.zFilterLatest.addEventListener("click", () => {
+                this.zLatestOnly = true;
+                this.updateZFilterButtons();
+                this.refreshLivePlots();
+            });
+        }
+        if (this.el.zConnectDots) {
+            this.el.zConnectDots.addEventListener("click", () => {
+                this.zConnectDots = !this.zConnectDots;
+                this.el.zConnectDots.textContent = `Connect Dots: ${this.zConnectDots ? "On" : "Off"}`;
+                this.refreshLivePlots();
+            });
+        }
         if (this.el.summaryDownload) {
             this.el.summaryDownload.addEventListener("click", () => this.downloadSelectedCSV());
         }
@@ -207,7 +231,8 @@ class ViscometryDashboard {
 
         this.renderMap();
         this.setUiState("idle");
-        this.updateCompletionBar();
+        this.updateCompletionChip();
+        this.updateZFilterButtons();
     }
 
     buildCells() {
@@ -298,23 +323,42 @@ class ViscometryDashboard {
     }
 
     initPlot() {
-        const layout = {
+        const zLayout = {
             paper_bgcolor: "transparent",
             plot_bgcolor: "rgba(255,255,255,0.03)",
             font: { family: "DM Mono", color: "#C9D1D9", size: 12 },
             xaxis: {
-                title: "Height (mm)",
+                title: "Z-Height (mm)",
                 gridcolor: "#21262D",
-                zeroline: false
+                zeroline: false,
+                autorange: "reversed"
             },
             yaxis: {
-                title: "Rotational Drag (%)",
+                title: "Rotational Drag (torque / RPM)",
                 gridcolor: "#21262D",
                 zeroline: false
             },
             margin: { t: 16, r: 16, b: 45, l: 58 },
-            legend: { bgcolor: "transparent", bordercolor: "#30363D" },
-            shapes: []
+            legend: { bgcolor: "transparent", bordercolor: "#30363D" }
+        };
+
+        const torqueLayout = {
+            paper_bgcolor: "transparent",
+            plot_bgcolor: "rgba(255,255,255,0.03)",
+            font: { family: "DM Mono", color: "#C9D1D9", size: 12 },
+            xaxis: {
+                title: "Z-Height (mm)",
+                gridcolor: "#21262D",
+                zeroline: false,
+                autorange: "reversed"
+            },
+            yaxis: {
+                title: "Torque (%)",
+                gridcolor: "#21262D",
+                zeroline: false
+            },
+            margin: { t: 16, r: 16, b: 45, l: 58 },
+            legend: { bgcolor: "transparent", bordercolor: "#30363D" }
         };
 
         const config = {
@@ -330,10 +374,19 @@ class ViscometryDashboard {
             modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d"]
         };
 
-        Plotly.newPlot(this.el.plot, [], layout, config).then(() => {
-            this.plotInitialized = true;
-            this.updatePlotEmptyState();
-        });
+        if (this.el.zSparklinePlot) {
+            Plotly.newPlot(this.el.zSparklinePlot, [], zLayout, config).then(() => {
+                this.zPlotInitialized = true;
+                this.refreshLivePlots();
+            });
+        }
+
+        if (this.el.torqueZPlot) {
+            Plotly.newPlot(this.el.torqueZPlot, [], torqueLayout, config).then(() => {
+                this.torquePlotInitialized = true;
+                this.refreshLivePlots();
+            });
+        }
     }
 
     initGauge() {
@@ -359,7 +412,7 @@ class ViscometryDashboard {
                 this.applyStatusSnapshot(status);
                 if (Array.isArray(measurementData)) {
                     measurementData.forEach((m) => this.ingestMeasurement(m, true));
-                    this.rebuildPlot();
+                    this.refreshLivePlots();
                 }
                 this.el.body.classList.remove("loading");
                 this.pushStatusMessage(status.status_message || "Connected and ready");
@@ -400,6 +453,7 @@ class ViscometryDashboard {
         this.el.torqueBreakThreshold.value = settings.torque_break_threshold ?? 100;
         this.el.feedbackEnabled.checked = Boolean(settings.feedback_control_enabled);
         this.setControlStatus("Settings loaded");
+        this.updateCompletionChip();
     }
 
     readControlSettings() {
@@ -665,7 +719,7 @@ class ViscometryDashboard {
 
         if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0) {
             status.measurement_data.forEach((m) => this.ingestMeasurement(m, true));
-            this.rebuildPlot();
+            this.refreshLivePlots();
         }
 
         if (status.status_message) {
@@ -725,7 +779,8 @@ class ViscometryDashboard {
         this.updateCellDisplay();
         this.updateCellVisuals();
         this.updateTable();
-        this.updateSparkline();
+        this.updateGraphCellTabs();
+        this.refreshLivePlots();
     }
 
     updateCellDisplay() {
@@ -823,7 +878,7 @@ class ViscometryDashboard {
                 const maybeHeight = Number(match[match.length - 1]);
                 if (!Number.isNaN(maybeHeight)) {
                     this.hitPoints.set(this.currentCell, maybeHeight);
-                    this.updatePlotShapes();
+                    this.refreshLivePlots();
                 }
             }
         }
@@ -877,136 +932,144 @@ class ViscometryDashboard {
             this.updateTorqueBar(measurement.torque_percent);
             this.updateLiveTorqueDisplay(measurement.torque_percent);
             this.updateLiveRotationalDragDisplay(measurement.rotational_drag);
-            this.sparklineData.push({
-                x: measurement.height,
-                y: measurement.rotational_drag
-            });
-            if (this.sparklineData.length > 60) {
-                this.sparklineData = this.sparklineData.slice(-60);
-            }
-            this.updateSparkline();
         }
 
-        if (!bootstrap && this.plotInitialized) {
-            this.appendPointToPlot(measurement);
-        }
-
-        this.updatePlotEmptyState();
+        this.updateGraphCellTabs();
+        this.refreshLivePlots();
         this.updateTable();
         this.updateCellVisuals();
     }
 
-    setPlotMode(mode) {
-        this.plotMode = mode;
-        this.el.toggleAll.classList.toggle("active", mode === "all");
-        this.el.toggleCurrent.classList.toggle("active", mode === "current");
-        this.rebuildPlot();
+    getTargetCellCount() {
+        const settings = this.readControlSettings();
+        if (settings.testing_mode === "row") {
+            return Math.max(1, settings.selected_rows.length) * 6;
+        }
+        if (settings.testing_mode === "custom") {
+            return Math.max(1, settings.selected_cells.length);
+        }
+        return 18;
     }
 
-    buildTracesForMode() {
-        const traces = [];
-        const selectedCell = this.plotMode === "current" ? this.currentCell : null;
+    updateCompletionChip() {
+        if (!this.el.completionChip) {
+            return;
+        }
+        const target = this.getTargetCellCount();
+        const done = Math.min(this.completedCells.size, target);
+        this.el.completionChip.textContent = `${done} / ${target} cells completed`;
+    }
 
-        this.measurementsByCell.forEach((arr, cellId) => {
-            if (selectedCell && cellId !== selectedCell) {
-                return;
+    updateZFilterButtons() {
+        if (this.el.zFilterAll) {
+            this.el.zFilterAll.classList.toggle("active", !this.zLatestOnly);
+        }
+        if (this.el.zFilterLatest) {
+            this.el.zFilterLatest.classList.toggle("active", this.zLatestOnly);
+        }
+        if (this.el.zConnectDots) {
+            this.el.zConnectDots.textContent = `Connect Dots: ${this.zConnectDots ? "On" : "Off"}`;
+        }
+    }
+
+    getGraphCellIds() {
+        const ids = new Set([...this.measurementsByCell.keys()]);
+        if (this.currentCell) {
+            ids.add(this.currentCell);
+        }
+        return [...ids].sort((a, b) => a - b);
+    }
+
+    getActiveGraphCellId() {
+        if (this.selectedGraphCell !== null) {
+            return this.selectedGraphCell;
+        }
+        if (this.currentCell) {
+            return this.currentCell;
+        }
+        const ids = this.getGraphCellIds();
+        return ids.length ? ids[ids.length - 1] : null;
+    }
+
+    updateGraphCellTabs() {
+        if (!this.el.graphCellTabs) {
+            return;
+        }
+        const ids = this.getGraphCellIds();
+        this.el.graphCellTabs.innerHTML = "";
+
+        const currentBtn = document.createElement("button");
+        currentBtn.className = `cell-tab${this.selectedGraphCell === null ? " active" : ""}`;
+        currentBtn.textContent = "Current Cell";
+        currentBtn.addEventListener("click", () => {
+            this.selectedGraphCell = null;
+            this.updateGraphCellTabs();
+            this.refreshLivePlots();
+        });
+        this.el.graphCellTabs.appendChild(currentBtn);
+
+        ids.forEach((cellId) => {
+            const btn = document.createElement("button");
+            btn.className = `cell-tab${this.selectedGraphCell === cellId ? " active" : ""}`;
+            btn.textContent = `Cell ${cellId}`;
+            btn.addEventListener("click", () => {
+                this.selectedGraphCell = cellId;
+                this.updateGraphCellTabs();
+                this.refreshLivePlots();
+            });
+            this.el.graphCellTabs.appendChild(btn);
+        });
+    }
+
+    refreshLivePlots() {
+        const activeCell = this.getActiveGraphCellId();
+        const source = activeCell ? (this.measurementsByCell.get(activeCell) || []) : [];
+
+        let zData = source;
+        if (this.zLatestOnly && source.length > 0) {
+            const latestByHeight = new Map();
+            source.forEach((m) => {
+                latestByHeight.set(Number(m.height).toFixed(3), m);
+            });
+            zData = [...latestByHeight.values()];
+        }
+        zData = [...zData].sort((a, b) => a.height - b.height);
+
+        if (this.zPlotInitialized && this.el.zSparklinePlot) {
+            const zTrace = zData.length ? [{
+                x: zData.map((m) => m.height),
+                y: zData.map((m) => m.rotational_drag),
+                mode: this.zConnectDots ? "lines+markers" : "markers",
+                type: "scatter",
+                name: activeCell ? `Cell ${activeCell}` : "No Cell",
+                marker: { size: 8, color: "#39C5BB", line: { color: "#8ff5ee", width: 1 } },
+                line: { color: "#39C5BB", width: 2 },
+                hovertemplate: "Z %{x:.3f} mm<br>Drag %{y:.4f}<extra></extra>"
+            }] : [];
+
+            Plotly.react(this.el.zSparklinePlot, zTrace, undefined, { responsive: true, displayModeBar: false });
+            if (this.el.zSparklineEmpty) {
+                this.el.zSparklineEmpty.classList.toggle("hidden", zTrace.length > 0);
             }
+        }
 
-            traces.push({
-                x: arr.map((m) => m.height),
-                y: arr.map((m) => m.rotational_drag),
+        const torqueData = [...source].sort((a, b) => a.height - b.height);
+        if (this.torquePlotInitialized && this.el.torqueZPlot) {
+            const torqueTrace = torqueData.length ? [{
+                x: torqueData.map((m) => m.height),
+                y: torqueData.map((m) => m.torque_percent),
                 mode: "markers",
                 type: "scatter",
-                name: `Cell ${cellId}`,
-                marker: {
-                    color: this.palette[(cellId - 1) % this.palette.length],
-                    size: arr.map(() => 8),
-                    opacity: 0.88
-                },
-                hovertemplate: "Cell %{text}<br>Height %{x:.3f} mm<br>Drag %{y:.2f}%<extra></extra>",
-                text: arr.map(() => String(cellId))
-            });
-        });
+                name: activeCell ? `Cell ${activeCell}` : "No Cell",
+                marker: { size: 8, color: "#F5A623", line: { color: "#ffd37a", width: 1 } },
+                hovertemplate: "Z %{x:.3f} mm<br>Torque %{y:.3f}%<extra></extra>"
+            }] : [];
 
-        return traces;
-    }
-
-    rebuildPlot() {
-        if (!this.plotInitialized) {
-            return;
-        }
-
-        const traces = this.buildTracesForMode();
-        Plotly.react(this.el.plot, traces, undefined, { responsive: true });
-        this.updatePlotShapes();
-        this.updatePlotEmptyState();
-    }
-
-    appendPointToPlot(measurement) {
-        if (this.plotMode === "current" && this.currentCell && measurement.cell_id !== this.currentCell) {
-            return;
-        }
-
-        const existingTraces = this.el.plot.data || [];
-        let traceIndex = existingTraces.findIndex((trace) => trace.name === `Cell ${measurement.cell_id}`);
-
-        if (traceIndex === -1) {
-            this.rebuildPlot();
-            return;
-        }
-
-        const trace = existingTraces[traceIndex];
-        const markerSizes = Array.isArray(trace.marker.size)
-            ? [...trace.marker.size, 0]
-            : [0];
-
-        Plotly.extendTraces(this.el.plot, {
-            x: [[measurement.height]],
-            y: [[measurement.rotational_drag]],
-            text: [[String(measurement.cell_id)]],
-            "marker.size": [[0]]
-        }, [traceIndex]);
-
-        requestAnimationFrame(() => {
-            markerSizes[markerSizes.length - 1] = 8;
-            Plotly.restyle(this.el.plot, { "marker.size": [markerSizes] }, [traceIndex]);
-        });
-    }
-
-    updatePlotShapes() {
-        if (!this.plotInitialized) {
-            return;
-        }
-
-        const shapes = [];
-        const selectedCell = this.plotMode === "current" ? this.currentCell : null;
-
-        this.hitPoints.forEach((height, cellId) => {
-            if (selectedCell && selectedCell !== cellId) {
-                return;
+            Plotly.react(this.el.torqueZPlot, torqueTrace, undefined, { responsive: true, displayModeBar: false });
+            if (this.el.torqueZEmpty) {
+                this.el.torqueZEmpty.classList.toggle("hidden", torqueTrace.length > 0);
             }
-
-            shapes.push({
-                type: "line",
-                x0: height,
-                x1: height,
-                y0: 0,
-                y1: 1,
-                yref: "paper",
-                line: {
-                    color: this.palette[(cellId - 1) % this.palette.length],
-                    width: 2,
-                    dash: "dash"
-                }
-            });
-        });
-
-        Plotly.relayout(this.el.plot, { shapes });
-    }
-
-    updatePlotEmptyState() {
-        const hasData = this.measurements.length > 0;
-        this.el.plotEmpty.classList.toggle("hidden", hasData);
+        }
     }
 
     updateGauge(targetRPM) {
@@ -1138,7 +1201,7 @@ class ViscometryDashboard {
         node.classList.toggle("disconnected", !connected);
         const stateEl = node.querySelector(".instrument-state");
         if (stateEl) {
-            stateEl.textContent = connected ? "connected" : "disconnected";
+            stateEl.textContent = connected ? "initialized" : "not yet initialized";
         }
     }
 
@@ -1150,36 +1213,6 @@ class ViscometryDashboard {
             rpm,
             timestamp
         }, false);
-    }
-
-    updateSparkline() {
-        if (this.currentCell && this.measurementsByCell.has(this.currentCell)) {
-            const src = this.measurementsByCell.get(this.currentCell);
-            this.sparklineData = src.slice(-40).map((p) => ({ x: p.height, y: p.rotational_drag }));
-        }
-
-        if (this.sparklineData.length < 2) {
-            this.el.sparklineLine.setAttribute("points", "");
-            return;
-        }
-
-        const xs = this.sparklineData.map((d) => d.x);
-        const ys = this.sparklineData.map((d) => d.y);
-        const minX = Math.min(...xs);
-        const maxX = Math.max(...xs);
-        const minY = Math.min(...ys);
-        const maxY = Math.max(...ys);
-
-        const spreadX = maxX - minX || 1;
-        const spreadY = maxY - minY || 1;
-
-        const points = this.sparklineData.map((d, idx) => {
-            const x = (idx / (this.sparklineData.length - 1)) * 216 + 2;
-            const y = 56 - ((d.y - minY) / spreadY) * 52;
-            return `${x.toFixed(2)},${y.toFixed(2)}`;
-        });
-
-        this.el.sparklineLine.setAttribute("points", points.join(" "));
     }
 
     setRunningState(isRunning) {
@@ -1416,9 +1449,7 @@ class ViscometryDashboard {
     }
 
     updateCompletionBar() {
-        const ratio = this.completedCells.size / 18;
-        this.el.completionBar.style.width = `${(ratio * 100).toFixed(1)}%`;
-        this.el.completionText.textContent = `${this.completedCells.size} / 18 cells complete`;
+        this.updateCompletionChip();
     }
 
     updateTable() {

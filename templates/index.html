@@ -27,6 +27,7 @@
         <div class="header-right">
             <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark light theme">Light</button>
             <div id="run-pill" class="run-pill idle">IDLE</div>
+            <div id="completion-chip" class="completion-chip">0 / 18 cells completed</div>
             <div class="connection-wrap">
                 <span class="connection-label">LINK</span>
                 <span id="connection-dot" class="connection-dot disconnected"></span>
@@ -39,24 +40,18 @@
         <div id="cnc-status" class="instrument-pill disconnected">
             <span class="instrument-dot"></span>
             <span class="instrument-name">CNC</span>
-            <span class="instrument-state">disconnected</span>
+            <span class="instrument-state">not yet initialized</span>
         </div>
         <div id="viscometer-status" class="instrument-pill disconnected">
             <span class="instrument-dot"></span>
             <span class="instrument-name">Viscometer</span>
-            <span class="instrument-state">disconnected</span>
+            <span class="instrument-state">not yet initialized</span>
         </div>
         <div id="pump-status" class="instrument-pill disconnected">
             <span class="instrument-dot"></span>
             <span class="instrument-name">Pump</span>
-            <span class="instrument-state">disconnected</span>
+            <span class="instrument-state">not yet initialized</span>
         </div>
-    </div>
-
-    <div class="completion-track">
-        <div id="completion-bar" class="completion-bar"></div>
-        <div id="completion-ticks" class="completion-ticks"></div>
-        <div id="completion-text" class="completion-text">0 / 18 cells complete</div>
     </div>
 
     <main class="dashboard">
@@ -259,30 +254,37 @@
                                 <div id="elapsed" class="mono">00:00:00</div>
                                 <div id="elapsed-cell" class="status-subtext">Cell 00:00:00</div>
                             </div>
-
-                            <div class="status-block">
-                                <div class="status-label">Z-Descent Sparkline</div>
-                                <svg id="sparkline" viewBox="0 0 220 60" class="sparkline">
-                                    <polyline id="sparkline-line" points="" fill="none"></polyline>
-                                </svg>
-                            </div>
                         </div>
                     </section>
                 </div>
 
                 <section class="card plot-card skeleton-host">
                     <div class="card-title-row">
-                        <h2>Live Scatter Plot</h2>
+                        <h2>Z-Sparkline</h2>
                         <div class="plot-tools">
-                            <div class="segmented" role="group" aria-label="Plot mode">
-                                <button id="toggle-all" class="seg active">All Cells</button>
-                                <button id="toggle-current" class="seg">Current Cell Only</button>
+                            <div class="segmented" role="group" aria-label="Z data filter">
+                                <button id="z-filter-all" class="seg active">All Samples</button>
+                                <button id="z-filter-latest" class="seg">Latest Per Z</button>
                             </div>
+                            <button id="z-connect-dots" class="btn subtle">Connect Dots: Off</button>
                             <button id="plot-export" class="btn subtle">Export CSV</button>
                         </div>
                     </div>
-                    <div id="scatter-plot" class="plot-shell"></div>
-                    <div id="plot-empty" class="plot-empty">No data yet</div>
+                    <div id="graph-cell-tabs" class="graph-cell-tabs"></div>
+                    <div id="z-sparkline-plot" class="plot-shell"></div>
+                    <div id="z-sparkline-empty" class="plot-empty">No data yet</div>
+                    <div class="skeleton-lines">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line"></div>
+                    </div>
+                </section>
+
+                <section class="card plot-card skeleton-host">
+                    <div class="card-title-row">
+                        <h2>Torque vs Z-Height</h2>
+                    </div>
+                    <div id="torque-z-plot" class="plot-shell"></div>
+                    <div id="torque-z-empty" class="plot-empty">No data yet</div>
                     <div class="skeleton-lines">
                         <div class="skeleton-line"></div>
                         <div class="skeleton-line"></div>

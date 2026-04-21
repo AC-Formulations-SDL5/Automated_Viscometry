@@ -237,6 +237,18 @@ body::before {
     box-shadow: 0 0 12px rgba(248, 81, 73, 0.56);
 }
 
+.completion-chip {
+    border: 1px solid rgba(57, 197, 187, 0.5);
+    color: #b8fff5;
+    background: rgba(57, 197, 187, 0.14);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
 .header-sweep {
     grid-column: 1 / -1;
     height: 2px;
@@ -285,41 +297,6 @@ body.running .header-sweep {
     height: 7px;
     border-radius: 50%;
     background: currentColor;
-}
-
-.completion-track {
-    position: relative;
-    height: 28px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: rgba(255, 255, 255, 0.02);
-    overflow: hidden;
-    z-index: 1;
-}
-
-.completion-bar {
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 0;
-    background: linear-gradient(90deg, rgba(46, 160, 67, 0.54), rgba(57, 197, 187, 0.48));
-    transition: width 0.45s ease;
-}
-
-.completion-ticks {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / 18 - 1px), rgba(255, 255, 255, 0.16) calc(100% / 18 - 1px), rgba(255, 255, 255, 0.16) calc(100% / 18));
-}
-
-.completion-text {
-    position: relative;
-    z-index: 2;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.76rem;
-    color: var(--text-secondary);
 }
 
 .dashboard {
@@ -515,7 +492,7 @@ h2 {
 
 .platform-map {
     position: relative;
-    height: 420px;
+    height: 500px;
     border-radius: 22px;
     border: 1px solid rgba(244, 200, 66, 0.28);
     background: linear-gradient(180deg, rgba(12, 26, 44, 0.95), rgba(16, 32, 55, 0.96));
@@ -526,6 +503,9 @@ h2 {
 .platform-grid-wrap {
     position: relative;
     width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
 .pg-header-row {
@@ -552,9 +532,10 @@ h2 {
 .pg-body {
     display: grid;
     grid-template-columns: repeat(8, 1fr);
-    grid-template-rows: repeat(7, 1fr);
+    grid-template-rows: repeat(7, minmax(0, 1fr));
     gap: 4px;
-    aspect-ratio: 8/7;
+    flex: 1;
+    min-height: 0;
     position: relative;
 }
 
@@ -864,9 +845,33 @@ h2 {
 }
 
 .plot-shell {
-    height: 350px;
+    height: 380px;
     border-radius: 12px;
     border: 1px solid var(--border-subtle);
+}
+
+.graph-cell-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.cell-tab {
+    border: 1px solid rgba(94, 161, 255, 0.4);
+    border-radius: 999px;
+    background: rgba(94, 161, 255, 0.08);
+    color: #cfe4ff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
+.cell-tab.active {
+    border-color: rgba(57, 197, 187, 0.7);
+    background: rgba(57, 197, 187, 0.22);
+    color: #d4fff9;
 }
 
 .plot-empty {
@@ -1260,19 +1265,6 @@ body.spinning .gauge-value {
     padding: 12px 0;
 }
 
-.sparkline {
-    width: 100%;
-    height: 60px;
-    border: 1px solid rgba(139, 148, 158, 0.24);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.01);
-}
-
-#sparkline-line {
-    stroke: var(--accent-amber);
-    stroke-width: 2;
-}
-
 .status-log {
     margin: 0;
     padding: 0;
@@ -1510,9 +1502,12 @@ body.loading .skeleton-lines {
         grid-template-columns: 1fr;
     }
 
-    .platform-map,
+    .platform-map {
+        height: 360px;
+    }
+
     .plot-shell {
-        height: 290px;
+        height: 300px;
     }
 
     .timeline {
