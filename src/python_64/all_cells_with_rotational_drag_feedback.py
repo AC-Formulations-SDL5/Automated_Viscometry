@@ -1012,9 +1012,9 @@ def main():
                     print(f"Saving partial results and terminating...")
                     traceback.print_exc()
                     # Save partial data before exiting
-                if all_data:
-                    save_partial_data(all_data, timestamp, mode, completed_cells)
-                raise  # Re-raise to trigger cleanup
+                    if all_data:
+                        save_partial_data(all_data, timestamp, mode, completed_cells)
+                    raise  # Re-raise to trigger cleanup
         
             # All testing completed successfully
             print(f"\nAll dynamic analysis completed successfully!")
