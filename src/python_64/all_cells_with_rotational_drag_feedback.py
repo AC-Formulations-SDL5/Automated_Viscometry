@@ -63,6 +63,9 @@ ROWS = [
 
 # Array of RPMs to test at each Z-position (similar to analysis_methods.py)
 TEST_RPMS = [0.8] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
+# Per-cell RPM overrides for custom mode: {cell_id: [rpm, ...]}
+# Falls back to TEST_RPMS when a cell has no entry here.
+CELL_RPM_MAP: Dict[int, List[float]] = {}
 DWELL_SECONDS = 2.0
 INTER_RPM_PAUSE = 2.0
 MEASUREMENT_DURATION = 40.0
@@ -87,7 +90,7 @@ SELECTED_CELLS = [1]  # Only used when TESTING_MODE = "custom"
 
 def apply_runtime_settings_from_web():
     """Synchronize module-level run settings from the web interface."""
-    global TESTING_MODE, SELECTED_ROWS, SELECTED_CELLS, TEST_RPMS
+    global TESTING_MODE, SELECTED_ROWS, SELECTED_CELLS, TEST_RPMS, CELL_RPM_MAP
     global Z_STEP_SIZE, DWELL_SECONDS, INTER_RPM_PAUSE, MEASUREMENT_DURATION, SAMPLE_INTERVAL
     global FEEDBACK_CONTROL_ENABLED, MIN_DATA_POINTS_FOR_TREND, SECOND_DERIVATIVE_THRESHOLD
     global CV_JUMP_THRESHOLD, TREND_R_SQUARED_MIN, HIT_POINT_CONFIDENCE_THRESHOLD, TORQUE_BREAK_THRESHOLD
@@ -98,6 +101,8 @@ def apply_runtime_settings_from_web():
     SELECTED_ROWS = settings.get('selected_rows', SELECTED_ROWS)
     SELECTED_CELLS = settings.get('selected_cells', SELECTED_CELLS)
     TEST_RPMS = settings.get('test_rpms', TEST_RPMS)
+    raw_map = settings.get('cell_rpm_map', {})
+    CELL_RPM_MAP = {int(k): v for k, v in raw_map.items() if v}
     Z_STEP_SIZE = float(settings.get('z_step_size', Z_STEP_SIZE))
     DWELL_SECONDS = float(settings.get('dwell_seconds', DWELL_SECONDS))
     INTER_RPM_PAUSE = float(settings.get('inter_rpm_pause', INTER_RPM_PAUSE))
@@ -110,6 +115,18 @@ def apply_runtime_settings_from_web():
     TREND_R_SQUARED_MIN = float(settings.get('trend_r_squared_min', TREND_R_SQUARED_MIN))
     HIT_POINT_CONFIDENCE_THRESHOLD = float(settings.get('hit_point_confidence_threshold', HIT_POINT_CONFIDENCE_THRESHOLD))
     TORQUE_BREAK_THRESHOLD = float(settings.get('torque_break_threshold', TORQUE_BREAK_THRESHOLD))
+
+
+def get_rpms_for_cell(global_cell: int) -> List[float]:
+    """Return the RPM list for a specific cell.
+
+    In custom mode, uses CELL_RPM_MAP if an entry exists for this cell,
+    otherwise falls back to the global TEST_RPMS list.
+    In full/row mode, always returns TEST_RPMS.
+    """
+    if TESTING_MODE == "custom" and global_cell in CELL_RPM_MAP:
+        return CELL_RPM_MAP[global_cell]
+    return TEST_RPMS
 
 
 def sleep_with_stop(seconds: float, check_interval: float = 0.25):
@@ -419,13 +436,17 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
             pass
         return None
 
-def test_dynamic_analysis_at_z(client: ViscometerClient, z_height: float) -> Tuple[Dict[float, Optional[List[Dict]]], bool]:
+def test_dynamic_analysis_at_z(
+    client: ViscometerClient,
+    z_height: float,
+    cell_rpms: List[float]
+) -> Tuple[Dict[float, Optional[List[Dict]]], bool]:
     """Test all RPMs at a specific Z-height and return torque data and first_rpm_exceeded flag"""
-    print(f"    Testing {len(TEST_RPMS)} RPMs at Z={z_height:.3f}")
+    print(f"    Testing {len(cell_rpms)} RPMs at Z={z_height:.3f}")
     rpm_torque_data = {}
     first_rpm_exceeded_threshold = False
     
-    for i, rpm in enumerate(TEST_RPMS):
+    for i, rpm in enumerate(cell_rpms):
         measurements = measure_torque_at_rpm(client, rpm, z_height)
         rpm_torque_data[rpm] = measurements
         
@@ -435,13 +456,13 @@ def test_dynamic_analysis_at_z(client: ViscometerClient, z_height: float) -> Tup
                 print(f"      CRITICAL: First RPM {rpm} returned invalid torque (high resistance) - will break entire cell")
                 first_rpm_exceeded_threshold = True
                 # Fill remaining RPMs with None
-                for remaining_rpm in TEST_RPMS[TEST_RPMS.index(rpm) + 1:]:
+                for remaining_rpm in cell_rpms[cell_rpms.index(rpm) + 1:]:
                     rpm_torque_data[remaining_rpm] = None
                 break
             else:  # Later RPM failed - high resistance at this Z-level
                 print(f"      RESISTANCE: RPM {rpm} returned invalid torque (high resistance) - stopping RPM sweep at this Z-level")
                 # Fill remaining RPMs with None
-                for remaining_rpm in TEST_RPMS[TEST_RPMS.index(rpm) + 1:]:
+                for remaining_rpm in cell_rpms[cell_rpms.index(rpm) + 1:]:
                     rpm_torque_data[remaining_rpm] = None
                 break
         else:
@@ -452,24 +473,31 @@ def test_dynamic_analysis_at_z(client: ViscometerClient, z_height: float) -> Tup
                     print(f"      CRITICAL: First RPM {rpm} exceeded threshold with max {max_torque:.2f}% - will break entire cell")
                     first_rpm_exceeded_threshold = True
                     # Fill remaining RPMs with None
-                    for remaining_rpm in TEST_RPMS[TEST_RPMS.index(rpm) + 1:]:
+                    for remaining_rpm in cell_rpms[cell_rpms.index(rpm) + 1:]:
                         rpm_torque_data[remaining_rpm] = None
                     break
                 else:  # Later RPM exceeded threshold
                     print(f"      SAFETY: RPM {rpm} exceeded threshold with max {max_torque:.2f}% - stopping RPM sweep at this Z-level")
                     # Fill remaining RPMs with None
-                    for remaining_rpm in TEST_RPMS[TEST_RPMS.index(rpm) + 1:]:
+                    for remaining_rpm in cell_rpms[cell_rpms.index(rpm) + 1:]:
                         rpm_torque_data[remaining_rpm] = None
                     break
     
     return rpm_torque_data, first_rpm_exceeded_threshold
 
-def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, global_cell: int, safe_z: float, max_z_travel: float) -> Dict[float, Dict[float, Optional[List[Dict]]]]:
+def test_cell_dynamic_z_series(
+    cnc: CNC_Machine,
+    client: ViscometerClient,
+    global_cell: int,
+    safe_z: float,
+    max_z_travel: float,
+    cell_rpms: List[float]
+) -> Dict[float, Dict[float, Optional[List[Dict]]]]:
     """Test dynamic analysis (multiple RPMs) across Z-gap range for one cell using global cell numbering with rotational drag feedback control"""
     row_number, local_cell = global_cell_to_row_and_local(global_cell)
     print(f"\n{'='*60}")
     print(f"DYNAMIC ANALYSIS - CELL {global_cell} (Row {row_number}, Local Cell {local_cell})")
-    print(f"Testing RPMs {TEST_RPMS} across Z-gap range")
+    print(f"Testing RPMs {cell_rpms} across Z-gap range")
     print(f"Safe Z: {safe_z:.3f}, Max Z Travel: {max_z_travel:.3f}")
     print(f"Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}")
     print(f"{'='*60}")
@@ -521,7 +549,7 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
                 sleep_with_stop(SETTLE_TIME)
             
             # Test all RPMs at this Z-height
-            rpm_data, first_rpm_exceeded = test_dynamic_analysis_at_z(client, z_rounded)
+            rpm_data, first_rpm_exceeded = test_dynamic_analysis_at_z(client, z_rounded, cell_rpms)
             cell_z_rpm_data[z_rounded] = rpm_data
             
             # Check if first RPM exceeded threshold - if so, break entire cell
@@ -539,7 +567,7 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
                 feedback_controller.add_measurements_at_z(z_rounded, rpm_data)
                 
                 # Extract and store metrics for each RPM at this Z-level
-                for rpm in TEST_RPMS:
+                for rpm in cell_rpms:
                     if rpm in rpm_data and rpm_data[rpm] is not None:
                         trend_analysis = feedback_controller.analyze_trend_for_rpm(rpm)
                         if trend_analysis['valid']:
@@ -567,7 +595,7 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
                         }
                         
                 # Evaluate hit point detection after this Z-level
-                hit_point_detected = feedback_controller.evaluate_hit_point_detection(TEST_RPMS)
+                hit_point_detected = feedback_controller.evaluate_hit_point_detection(cell_rpms)
                 
                 if hit_point_detected:
                     print(f"  *** FEEDBACK CONTROLLER: HIT POINT DETECTED ***")
@@ -580,7 +608,7 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
                     break
             else:
                 # Feedback control disabled or no data - store default metrics
-                for rpm in TEST_RPMS:
+                for rpm in cell_rpms:
                     metrics_data[rpm] = {
                         'CV': 0.0,
                         'R2': 0.0,
@@ -591,15 +619,15 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
             # Always store metrics alongside RPM data for consistent CSV structure
             cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
                 
-            print(f"  Completed Z={z_rounded:.3f}: {len([t for t in rpm_data.values() if t is not None])}/{len(TEST_RPMS)} successful RPM tests")
+            print(f"  Completed Z={z_rounded:.3f}: {len([t for t in rpm_data.values() if t is not None])}/{len(cell_rpms)} successful RPM tests")
             
         except Exception as e:
             print(f"  Error testing Cell {global_cell} at Z={z_rounded:.3f}: {e}")
             # Fill with None values for all RPMs at this Z-height and add default metrics
-            cell_z_rpm_data[z_rounded] = {rpm: None for rpm in TEST_RPMS}
+            cell_z_rpm_data[z_rounded] = {rpm: None for rpm in cell_rpms}
             # Add default metrics for consistent CSV structure
             error_metrics_data = {}
-            for rpm in TEST_RPMS:
+            for rpm in cell_rpms:
                 error_metrics_data[rpm] = {
                     'CV': 0.0,
                     'R2': 0.0,
@@ -643,7 +671,7 @@ def test_cell_dynamic_z_series(cnc: CNC_Machine, client: ViscometerClient, globa
             print(f"    Hit Z-level: {summary['hit_point_z']:.3f}")
             print(f"    Detection confidence: {summary['hit_point_confidence']:.2f}")
         print(f"    Total Z-levels analyzed: {summary['total_z_levels']}")
-        print(f"    RPMs tested: {len(TEST_RPMS)}")
+        print(f"    RPMs tested: {len(cell_rpms)}")
     
     print(f"Cell {global_cell} dynamic analysis completed: {len(cell_z_rpm_data)} Z-positions tested")
     return cell_z_rpm_data
@@ -666,7 +694,9 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
         
         # Write metadata header
         csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()} (PARTIAL RESULTS)"])
-        csv_writer.writerow([f"# Test RPMs: {TEST_RPMS}"])
+        csv_writer.writerow([f"# Test RPMs (global fallback): {TEST_RPMS}"])
+        if TESTING_MODE == "custom" and CELL_RPM_MAP:
+            csv_writer.writerow([f"# Per-cell RPM overrides: {CELL_RPM_MAP}"])
         csv_writer.writerow([f"# Timestamp: {timestamp}"])
         csv_writer.writerow([f"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"])
         csv_writer.writerow([f"# Completed cells: {completed_cells}"])
@@ -692,7 +722,7 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                 if z_height in cell_data:
                     rpm_data = cell_data[z_height]
                     metrics_data = cell_data[z_height].get('_metrics', {})
-                    for rpm in TEST_RPMS:
+                    for rpm in sorted(k for k in rpm_data.keys() if k != '_metrics'):
                         measurements = rpm_data.get(rpm)
                         if measurements is not None:
                             # Get metrics for this RPM at this Z-height
@@ -738,7 +768,9 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         
         # Write metadata header
         csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()}"])
-        csv_writer.writerow([f"# Test RPMs: {TEST_RPMS}"])
+        csv_writer.writerow([f"# Test RPMs (global fallback): {TEST_RPMS}"])
+        if TESTING_MODE == "custom" and CELL_RPM_MAP:
+            csv_writer.writerow([f"# Per-cell RPM overrides: {CELL_RPM_MAP}"])
         csv_writer.writerow([f"# Timestamp: {timestamp}"])
         csv_writer.writerow([f"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"])
         csv_writer.writerow([f"# Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}"])
@@ -762,7 +794,7 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                 if z_height in cell_data:
                     rpm_data = cell_data[z_height]
                     metrics_data = cell_data[z_height].get('_metrics', {})
-                    for rpm in TEST_RPMS:
+                    for rpm in sorted(k for k in rpm_data.keys() if k != '_metrics'):
                         measurements = rpm_data.get(rpm)
                         if measurements is not None:
                             # Get metrics for this RPM at this Z-height
@@ -994,7 +1026,18 @@ def main():
                 client.stop()
                 
                 try:
-                    cell_data = test_cell_dynamic_z_series(cnc, client, global_cell, row_config['safe_z'], row_config['max_z_travel'])
+                    # Resolve per-cell RPMs before the cell test
+                    cell_rpms = get_rpms_for_cell(global_cell)
+                    print(f"  RPMs for Cell {global_cell}: {cell_rpms}")
+                    web_interface.update_status(f"Testing Cell {global_cell} at RPMs {cell_rpms}")
+                    cell_data = test_cell_dynamic_z_series(
+                        cnc,
+                        client,
+                        global_cell,
+                        row_config['safe_z'],
+                        row_config['max_z_travel'],
+                        cell_rpms,
+                    )
                     all_data[global_cell] = cell_data
                     completed_cells.append(global_cell)
                     print(f"Cell {global_cell} testing completed")

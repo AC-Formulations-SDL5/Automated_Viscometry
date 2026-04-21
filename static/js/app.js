@@ -43,6 +43,7 @@ class ViscometryDashboard {
         this.runMeasurementStartIndex = 0;
         this.summaryPlotInitialized = false;
         this.timingStorageKey = "viscometryTimingState";
+        this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -61,6 +62,7 @@ class ViscometryDashboard {
         this.startTimerLoop();
         this.fetchInitialData();
         this.loadControlSettings();
+        this.rebuildCellRpmTable();
         this.loadExperimentHistory();
 
         // Restore active tab from localStorage
@@ -90,6 +92,8 @@ class ViscometryDashboard {
             testRpms: document.getElementById("test-rpms"),
             selectedRows: document.getElementById("selected-rows"),
             selectedCells: document.getElementById("selected-cells"),
+            cellRpmPanel: document.getElementById("cell-rpm-panel"),
+            cellRpmTable: document.getElementById("cell-rpm-table"),
             zStepSize: document.getElementById("z-step-size"),
             measurementDuration: document.getElementById("measurement-duration"),
             sampleInterval: document.getElementById("sample-interval"),
@@ -185,6 +189,14 @@ class ViscometryDashboard {
                     this.setUiState("idle");
                 }
             });
+        }
+
+        // Rebuild cell-RPM table when mode or cell list changes
+        if (this.el.testingMode) {
+            this.el.testingMode.addEventListener("change", () => this.rebuildCellRpmTable());
+        }
+        if (this.el.selectedCells) {
+            this.el.selectedCells.addEventListener("input", () => this.rebuildCellRpmTable());
         }
 
         // Tab switching functionality
@@ -454,8 +466,95 @@ class ViscometryDashboard {
         this.el.interRpmPause.value = settings.inter_rpm_pause ?? 2;
         this.el.torqueBreakThreshold.value = settings.torque_break_threshold ?? 100;
         this.el.feedbackEnabled.checked = Boolean(settings.feedback_control_enabled);
+
+        // Restore per-cell RPM map
+        if (settings.cell_rpm_map && typeof settings.cell_rpm_map === "object") {
+            this.cellRpmMap = {};
+            Object.entries(settings.cell_rpm_map).forEach(([k, v]) => {
+                const cellId = parseInt(k, 10);
+                if (!Number.isNaN(cellId) && Array.isArray(v)) {
+                    this.cellRpmMap[cellId] = v.map(Number).filter((n) => !Number.isNaN(n));
+                }
+            });
+        }
+        this.rebuildCellRpmTable();
+
         this.setControlStatus("Settings loaded");
         this.updateCompletionChip();
+    }
+
+    rebuildCellRpmTable() {
+        const panel = this.el.cellRpmPanel;
+        const table = this.el.cellRpmTable;
+        if (!panel || !table) return;
+
+        const mode = this.el.testingMode ? this.el.testingMode.value : "custom";
+        if (mode !== "custom") {
+            panel.classList.add("hidden");
+            return;
+        }
+
+        // Parse currently selected cells from the input
+        const raw = this.el.selectedCells ? this.el.selectedCells.value : "";
+        const cells = raw.split(",")
+            .map((s) => parseInt(s.trim(), 10))
+            .filter((n) => !Number.isNaN(n) && n >= 1 && n <= 18);
+
+        if (cells.length === 0) {
+            panel.classList.add("hidden");
+            return;
+        }
+
+        panel.classList.remove("hidden");
+        table.innerHTML = "";
+
+        cells.forEach((cellId) => {
+            const row = document.createElement("div");
+            row.className = "cell-rpm-row";
+
+            const label = document.createElement("span");
+            label.className = "cell-rpm-label";
+            label.textContent = `Cell ${cellId}`;
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.className = "cell-rpm-input";
+            input.placeholder = "e.g. 0.8, 1.0";
+            input.dataset.cellId = String(cellId);
+
+            // Restore any previously entered value
+            const existing = this.cellRpmMap[cellId];
+            if (existing && existing.length > 0) {
+                input.value = existing.join(", ");
+            }
+
+            // Update cellRpmMap on every change
+            input.addEventListener("input", () => {
+                const vals = input.value.split(",")
+                    .map((s) => parseFloat(s.trim()))
+                    .filter((n) => !Number.isNaN(n) && n > 0);
+                if (vals.length > 0) {
+                    this.cellRpmMap[cellId] = vals;
+                } else {
+                    delete this.cellRpmMap[cellId];
+                }
+            });
+
+            row.appendChild(label);
+            row.appendChild(input);
+            table.appendChild(row);
+        });
+    }
+
+    buildCellRpmMapPayload() {
+        // Returns { "1": [0.8, 1.0], "7": [5.0] } with string keys for JSON safety
+        const payload = {};
+        Object.entries(this.cellRpmMap).forEach(([cellId, rpms]) => {
+            if (Array.isArray(rpms) && rpms.length > 0) {
+                payload[String(cellId)] = rpms;
+            }
+        });
+        return payload;
     }
 
     readControlSettings() {
@@ -472,7 +571,8 @@ class ViscometryDashboard {
             dwell_seconds: Number(this.el.dwellSeconds.value),
             inter_rpm_pause: Number(this.el.interRpmPause.value),
             torque_break_threshold: Number(this.el.torqueBreakThreshold.value),
-            feedback_control_enabled: this.el.feedbackEnabled.checked
+            feedback_control_enabled: this.el.feedbackEnabled.checked,
+            cell_rpm_map: this.buildCellRpmMapPayload(),
         };
     }
 

@@ -41,6 +41,7 @@ class ViscometryWebInterface:
             'selected_rows': [2],
             'selected_cells': [1],
             'test_rpms': [0.8],
+            'cell_rpm_map': {},
             'z_step_size': -0.02,
             'measurement_duration': 40.0,
             'sample_interval': 10.0,
@@ -240,6 +241,25 @@ class ViscometryWebInterface:
                 rpms = parse_float_list(settings['test_rpms'])
                 if rpms:
                     normalized['test_rpms'] = rpms
+            if 'cell_rpm_map' in settings:
+                raw_map = settings['cell_rpm_map']
+                if isinstance(raw_map, dict):
+                    parsed_map = {}
+                    for cell_key, rpm_val in raw_map.items():
+                        # Normalise key to string
+                        str_key = str(cell_key)
+                        # rpm_val may be a list, a comma-string, or a single number
+                        if isinstance(rpm_val, list):
+                            rpms = [float(r) for r in rpm_val if str(r).strip()]
+                        elif isinstance(rpm_val, str):
+                            rpms = [float(r.strip()) for r in rpm_val.split(',') if r.strip()]
+                        else:
+                            rpms = [float(rpm_val)]
+                        if rpms:
+                            parsed_map[str_key] = rpms
+                    normalized['cell_rpm_map'] = parsed_map
+                else:
+                    normalized['cell_rpm_map'] = {}
             float_keys = {'z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds', 'inter_rpm_pause', 'second_derivative_threshold', 'cv_jump_threshold', 'trend_r_squared_min', 'hit_point_confidence_threshold', 'torque_break_threshold'}
             int_keys = {'min_data_points_for_trend'}
             for key in ['z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds', 'inter_rpm_pause', 'min_data_points_for_trend', 'second_derivative_threshold', 'cv_jump_threshold', 'trend_r_squared_min', 'hit_point_confidence_threshold', 'torque_break_threshold']:

@@ -154,6 +154,16 @@
                                     <input id="selected-cells" name="selected_cells" type="text" value="1" placeholder="1,4,7">
                                 </label>
                             </div>
+                            <!-- Per-cell RPM assignment — shown only in custom mode -->
+                            <div id="cell-rpm-panel" class="cell-rpm-panel hidden">
+                                <div class="cell-rpm-header">
+                                    <span class="form-label">Per-Cell RPM Assignment</span>
+                                    <span class="form-hint">Leave blank to use the global RPMs above</span>
+                                </div>
+                                <div id="cell-rpm-table" class="cell-rpm-table">
+                                    <!-- Rows injected by JS whenever selected cells change -->
+                                </div>
+                            </div>
                             <div class="dual-fields">
                                 <label>
                                     <span>Z Step</span>
