@@ -42,6 +42,7 @@ class ViscometryDashboard {
         this.selectedExperimentId = null;
         this.runMeasurementStartIndex = 0;
         this.summaryPlotInitialized = false;
+        this.timingStorageKey = "viscometryTimingState";
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -56,6 +57,7 @@ class ViscometryDashboard {
         this.initPlot();
         this.initGauge();
         this.initSummaryPlot();
+        this.restoreTimingState();
         this.startTimerLoop();
         this.fetchInitialData();
         this.loadControlSettings();
@@ -541,7 +543,7 @@ class ViscometryDashboard {
     }
 
     connectSocket() {
-        this.socket = io({ transports: ["websocket"], reconnectionAttempts: 5 });
+        this.socket = io({ reconnectionAttempts: 5 });
 
         this.socket.on("connect", () => {
             this.isConnected = true;
@@ -770,6 +772,9 @@ class ViscometryDashboard {
         if (this.currentCell) {
             this.cellStates.set(this.currentCell, "active");
             this.cellStart = Date.now();
+            if (this.isRunning) {
+                this.saveTimingState();
+            }
         }
 
         if (this.currentCell === null && !this.isRunning && this.completedCells.size > 0) {
@@ -824,7 +829,7 @@ class ViscometryDashboard {
             }
 
             if (this.currentCell === cell.id) {
-                if (statusLower.includes("descending") || statusLower.includes("measuring")) {
+                if (this.currentRPM > 0 || statusLower.includes("descending") || statusLower.includes("measuring")) {
                     state = "measuring";
                 } else if (statusLower.includes("error") || statusLower.includes("fail")) {
                     state = "error";
@@ -1029,7 +1034,11 @@ class ViscometryDashboard {
         if (this.zLatestOnly && source.length > 0) {
             const latestByHeight = new Map();
             source.forEach((m) => {
-                latestByHeight.set(Number(m.height).toFixed(3), m);
+                const key = Number(m.height).toFixed(3);
+                const prev = latestByHeight.get(key);
+                if (!prev || (Number(m.timestamp) || 0) >= (Number(prev.timestamp) || 0)) {
+                    latestByHeight.set(key, m);
+                }
             });
             zData = [...latestByHeight.values()];
         }
@@ -1227,13 +1236,48 @@ class ViscometryDashboard {
         if (isRunning && !this.experimentStart) {
             this.experimentStart = Date.now();
             this.cellStart = Date.now();
+            this.saveTimingState();
             this.setControlStatus("Run active");
         }
 
-        if (!isRunning && previous) {
-            this.playChime(720, 0.14);
-            this.setControlStatus("Run stopped");
+        if (!isRunning) {
+            if (previous) {
+                this.playChime(720, 0.14);
+                this.setControlStatus("Run stopped");
+            }
+            this.experimentStart = null;
+            this.cellStart = null;
+            this.clearTimingState();
         }
+    }
+
+    saveTimingState() {
+        const payload = {
+            experimentStart: this.experimentStart,
+            cellStart: this.cellStart,
+            currentCell: this.currentCell,
+            isRunning: this.isRunning
+        };
+        localStorage.setItem(this.timingStorageKey, JSON.stringify(payload));
+    }
+
+    restoreTimingState() {
+        try {
+            const raw = localStorage.getItem(this.timingStorageKey);
+            if (!raw) {
+                return;
+            }
+            const parsed = JSON.parse(raw);
+            this.experimentStart = Number(parsed.experimentStart) || null;
+            this.cellStart = Number(parsed.cellStart) || null;
+        } catch (_error) {
+            this.experimentStart = null;
+            this.cellStart = null;
+        }
+    }
+
+    clearTimingState() {
+        localStorage.removeItem(this.timingStorageKey);
     }
 
     initSummaryPlot() {
