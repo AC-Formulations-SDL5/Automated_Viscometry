@@ -28,6 +28,9 @@
             <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark light theme">Light</button>
             <div id="run-pill" class="run-pill idle">IDLE</div>
             <div id="completion-chip" class="completion-chip">0 / 18 cells completed</div>
+            <div id="experiment-complete-banner" class="experiment-complete-banner hidden">
+                ✓ Experiment complete
+            </div>
             <div class="connection-wrap">
                 <span class="connection-label">LINK</span>
                 <span id="connection-dot" class="connection-dot disconnected"></span>
@@ -198,6 +201,70 @@
                                 <input id="feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
                                 <span>Feedback control enabled</span>
                             </label>
+                            <!-- Feedback detection parameters — collapsed by default -->
+                            <details id="feedback-params-details" class="feedback-params-section">
+                                <summary class="feedback-params-toggle">
+                                    Feedback Detection Parameters
+                                    <span class="feedback-params-hint">(expand to tune)</span>
+                                </summary>
+
+                                <div class="feedback-params-grid">
+                                    <p class="feedback-section-label">Thresholds</p>
+
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>2nd Derivative Threshold</span>
+                                            <input id="second-derivative-threshold" name="second_derivative_threshold"
+                                                   type="number" step="0.1" value="-2.0">
+                                        </label>
+                                        <label>
+                                            <span>CV Jump Threshold</span>
+                                            <input id="cv-jump-threshold" name="cv_jump_threshold"
+                                                   type="number" step="0.01" value="0.4">
+                                        </label>
+                                    </div>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Min R² (trend)</span>
+                                            <input id="trend-r-squared-min" name="trend_r_squared_min"
+                                                   type="number" step="0.05" value="0.5">
+                                        </label>
+                                        <label>
+                                            <span>Hit Confidence Threshold</span>
+                                            <input id="hit-point-confidence-threshold" name="hit_point_confidence_threshold"
+                                                   type="number" step="0.05" value="0.8">
+                                        </label>
+                                    </div>
+
+                                    <p class="feedback-section-label" style="margin-top:8px;">Confidence Weights</p>
+                                    <p class="feedback-hint-text">Each criterion adds its weight to the confidence score when triggered. Higher weight = stronger influence on hit detection.</p>
+
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>w: 2nd Derivative</span>
+                                            <input id="weight-second-derivative" name="weight_second_derivative"
+                                                   type="number" step="0.05" value="0.5" min="0" max="1">
+                                        </label>
+                                        <label>
+                                            <span>w: Plateau / CV</span>
+                                            <input id="weight-plateau-cv" name="weight_plateau_cv"
+                                                   type="number" step="0.05" value="0.4" min="0" max="1">
+                                        </label>
+                                    </div>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>w: Trend Breakdown (R²)</span>
+                                            <input id="weight-trend-breakdown" name="weight_trend_breakdown"
+                                                   type="number" step="0.05" value="0.3" min="0" max="1">
+                                        </label>
+                                        <label>
+                                            <span>w: Wrong Direction</span>
+                                            <input id="weight-wrong-direction" name="weight_wrong_direction"
+                                                   type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                    </div>
+                                </div>
+                            </details>
                             <div class="control-actions">
                                 <button type="button" id="apply-settings" class="btn control-btn control-btn-neutral">Apply Settings</button>
                                 <button type="button" id="start-run" class="btn btn-start control-btn control-btn-start">Start Run</button>
@@ -270,7 +337,10 @@
 
                 <section class="card plot-card skeleton-host">
                     <div class="card-title-row">
-                        <h2>Z-Sparkline</h2>
+                        <div>
+                            <h2>Live Rotational Drag</h2>
+                            <span id="drag-z-cell-label" class="chart-subtitle">All Cells</span>
+                        </div>
                         <div class="plot-tools">
                             <div class="segmented" role="group" aria-label="Z data filter">
                                 <button id="z-filter-all" class="seg active">All Samples</button>
@@ -281,7 +351,35 @@
                         </div>
                     </div>
                     <div id="graph-cell-tabs" class="graph-cell-tabs"></div>
-                    <div id="z-sparkline-plot" class="plot-shell"></div>
+                    <div class="drag-z-with-sidebar">
+                        <div id="z-sparkline-plot" class="plot-shell drag-z-plot-area"></div>
+                        <aside class="drag-z-sidebar" id="drag-z-sidebar">
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">Active RPM</div>
+                                <div class="sidebar-value mono" id="sidebar-rpm">-</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">2nd Derivative</div>
+                                <div class="sidebar-value mono" id="sidebar-2nd-deriv">-</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">Plateau Score (CV)</div>
+                                <div class="sidebar-value mono" id="sidebar-cv">-</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">Trend R²</div>
+                                <div class="sidebar-value mono" id="sidebar-r2">-</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">Hit Confidence</div>
+                                <div class="sidebar-value mono" id="sidebar-confidence">-</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">Hit Detected?</div>
+                                <div class="sidebar-value mono" id="sidebar-hit">-</div>
+                            </div>
+                        </aside>
+                    </div>
                     <div id="z-sparkline-empty" class="plot-empty">No data yet</div>
                     <div class="skeleton-lines">
                         <div class="skeleton-line"></div>

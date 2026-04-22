@@ -67,9 +67,19 @@ class RotationalDragFeedbackController:
     when the viscometer hits the sample surface (hit-point detection).
     """
     
-    def __init__(self, feedback_enabled=True, min_data_points=3, 
-                 second_derivative_threshold=-0.5, cv_jump_threshold=0.2,
-                 trend_r_squared_min=0.8, hit_point_confidence_threshold=0.6):
+    def __init__(
+        self,
+        feedback_enabled=True,
+        min_data_points=3,
+        second_derivative_threshold=-0.5,
+        cv_jump_threshold=0.2,
+        trend_r_squared_min=0.8,
+        hit_point_confidence_threshold=0.6,
+        weight_second_derivative=0.5,
+        weight_plateau_cv=0.4,
+        weight_trend_breakdown=0.3,
+        weight_wrong_direction=0.2,
+    ):
         self.z_rpm_drag_data = {}  # Structure: {z_height: {rpm: {measurements: [], avg_drag: float}}}
         self.hit_point_detected = False
         self.hit_point_z = None
@@ -82,6 +92,10 @@ class RotationalDragFeedbackController:
         self.cv_jump_threshold = cv_jump_threshold
         self.trend_r_squared_min = trend_r_squared_min
         self.hit_point_confidence_threshold = hit_point_confidence_threshold
+        self.weight_second_derivative = weight_second_derivative
+        self.weight_plateau_cv = weight_plateau_cv
+        self.weight_trend_breakdown = weight_trend_breakdown
+        self.weight_wrong_direction = weight_wrong_direction
         
     def calculate_rotational_drag(self, torque_percent: float, rpm: float) -> float:
         """
@@ -177,23 +191,23 @@ class RotationalDragFeedbackController:
         # Check for negative second derivative (trend break)
         if second_derivative is not None and second_derivative < self.second_derivative_threshold:
             hit_detected = True
-            hit_confidence += 0.5
+            hit_confidence += self.weight_second_derivative
             hit_reasons.append(f"negative_second_derivative ({second_derivative:.4f})")
         
         # Check for plateau detection
         if plateau_score > self.cv_jump_threshold:
             hit_detected = True
-            hit_confidence += 0.4
+            hit_confidence += self.weight_plateau_cv
             hit_reasons.append(f"plateau_detected ({plateau_score:.3f})")
         
         # Check trend validity (breakdown of linear relationship)
         if trend_r_squared < self.trend_r_squared_min:
-            hit_confidence += 0.3
+            hit_confidence += self.weight_trend_breakdown
             hit_reasons.append(f"trend_breakdown (R²={trend_r_squared:.3f})")
         
         # Check if trend slope is wrong direction (should be negative for normal behavior)
         if trend_slope > 0:  # Positive slope is unusual - drag should increase as Z decreases
-            hit_confidence += 0.2
+            hit_confidence += self.weight_wrong_direction
             hit_reasons.append(f"wrong_trend_direction (slope={trend_slope:.4f})")
             
         # Ensure hit_confidence doesn't exceed 1.0
