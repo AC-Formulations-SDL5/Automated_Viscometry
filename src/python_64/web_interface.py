@@ -38,11 +38,13 @@ class ViscometryWebInterface:
         self.start_requested_event = threading.Event()
         self.stop_requested_event = threading.Event()
         self.runtime_settings = {
+            'experiment_name': '',
             'testing_mode': 'custom',
             'selected_rows': [2],
             'selected_cells': [1],
             'test_rpms': [0.8],
             'cell_rpm_map': {},
+            'cell_content_map': {},
             'z_step_size': -0.02,
             'measurement_duration': 40.0,
             'sample_interval': 10.0,
@@ -304,6 +306,8 @@ class ViscometryWebInterface:
             return []
 
         with self.control_lock:
+            if 'experiment_name' in settings:
+                normalized['experiment_name'] = str(settings.get('experiment_name') or '').strip()
             if 'testing_mode' in settings and settings['testing_mode']:
                 normalized['testing_mode'] = str(settings['testing_mode'])
             if 'selected_rows' in settings:
@@ -335,6 +339,18 @@ class ViscometryWebInterface:
                     normalized['cell_rpm_map'] = parsed_map
                 else:
                     normalized['cell_rpm_map'] = {}
+            if 'cell_content_map' in settings:
+                raw_content_map = settings['cell_content_map']
+                if isinstance(raw_content_map, dict):
+                    parsed_content_map = {}
+                    for cell_key, content_value in raw_content_map.items():
+                        str_key = str(cell_key)
+                        label = str(content_value or '').strip()
+                        if label:
+                            parsed_content_map[str_key] = label
+                    normalized['cell_content_map'] = parsed_content_map
+                else:
+                    normalized['cell_content_map'] = {}
             float_keys = {
                 'z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds',
                 'inter_rpm_pause', 'second_derivative_threshold', 'cv_jump_threshold',

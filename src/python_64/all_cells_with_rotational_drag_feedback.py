@@ -70,6 +70,8 @@ TEST_RPMS = [0.8] #, 0.5, 1.0, 5.0, 10.0, 20.0, 50.0]
 # Per-cell RPM overrides for custom mode: {cell_id: [rpm, ...]}
 # Falls back to TEST_RPMS when a cell has no entry here.
 CELL_RPM_MAP: Dict[int, List[float]] = {}
+CELL_CONTENT_MAP: Dict[int, str] = {}
+EXPERIMENT_NAME = ""
 DWELL_SECONDS = 2.0
 INTER_RPM_PAUSE = 2.0
 MEASUREMENT_DURATION = 40.0
@@ -92,9 +94,17 @@ SELECTED_ROWS = [2]
 SELECTED_CELLS = [1]  # Only used when TESTING_MODE = "custom"
 
 
+def _sanitize_experiment_slug(name: str) -> str:
+    """Create a filename-safe slug for experiment output files."""
+    cleaned = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in (name or '').strip())
+    cleaned = '_'.join(part for part in cleaned.split('_') if part)
+    return cleaned[:80] if cleaned else "experiment"
+
+
 def apply_runtime_settings_from_web():
     """Synchronize module-level run settings from the web interface."""
-    global TESTING_MODE, SELECTED_ROWS, SELECTED_CELLS, TEST_RPMS, CELL_RPM_MAP
+    global TESTING_MODE, SELECTED_ROWS, SELECTED_CELLS, TEST_RPMS, CELL_RPM_MAP, CELL_CONTENT_MAP
+    global EXPERIMENT_NAME
     global Z_STEP_SIZE, DWELL_SECONDS, INTER_RPM_PAUSE, MEASUREMENT_DURATION, SAMPLE_INTERVAL
     global FEEDBACK_CONTROL_ENABLED, MIN_DATA_POINTS_FOR_TREND, SECOND_DERIVATIVE_THRESHOLD
     global CV_JUMP_THRESHOLD, TREND_R_SQUARED_MIN, HIT_POINT_CONFIDENCE_THRESHOLD, TORQUE_BREAK_THRESHOLD
@@ -102,12 +112,19 @@ def apply_runtime_settings_from_web():
 
     settings = web_interface.get_runtime_settings()
 
+    EXPERIMENT_NAME = str(settings.get('experiment_name', EXPERIMENT_NAME) or '').strip()
     TESTING_MODE = settings.get('testing_mode', TESTING_MODE)
     SELECTED_ROWS = settings.get('selected_rows', SELECTED_ROWS)
     SELECTED_CELLS = settings.get('selected_cells', SELECTED_CELLS)
     TEST_RPMS = settings.get('test_rpms', TEST_RPMS)
     raw_map = settings.get('cell_rpm_map', {})
     CELL_RPM_MAP = {int(k): v for k, v in raw_map.items() if v}
+    raw_content_map = settings.get('cell_content_map', {})
+    CELL_CONTENT_MAP = {
+        int(k): str(v).strip()
+        for k, v in raw_content_map.items()
+        if str(v).strip()
+    }
     Z_STEP_SIZE = float(settings.get('z_step_size', Z_STEP_SIZE))
     DWELL_SECONDS = float(settings.get('dwell_seconds', DWELL_SECONDS))
     INTER_RPM_PAUSE = float(settings.get('inter_rpm_pause', INTER_RPM_PAUSE))
@@ -600,24 +617,49 @@ def test_cell_dynamic_z_series(
                             metrics_data[rpm] = {
                                 'CV': trend_analysis.get('plateau_score', 0.0),
                                 'R2': trend_analysis.get('trend_r_squared', 0.0),
+                                'Trend_Slope': trend_analysis.get('trend_slope', 0.0),
                                 'Second_derivative': trend_analysis.get('second_derivative', 0.0) if trend_analysis.get('second_derivative') is not None else 0.0,
-                                'Hit_Point_Confidence': trend_analysis.get('hit_confidence', 0.0)
+                                'Hit_Point_Confidence': trend_analysis.get('hit_confidence', 0.0),
+                                'Hit_Detected': bool(trend_analysis.get('hit_detected', False)),
+                                'Hit_Reasons': '; '.join(trend_analysis.get('hit_reasons', []))
                             }
                         else:
+                            web_interface.emit_feedback_metrics(
+                                rpm=rpm,
+                                second_derivative=None,
+                                plateau_score=None,
+                                trend_r_squared=None,
+                                hit_confidence=0.0,
+                                hit_detected=False,
+                            )
                             # Default values for invalid trend analysis
                             metrics_data[rpm] = {
                                 'CV': 0.0,
                                 'R2': 0.0,
                                 'Second_derivative': 0.0,
-                                'Hit_Point_Confidence': 0.0
+                                'Trend_Slope': 0.0,
+                                'Hit_Point_Confidence': 0.0,
+                                'Hit_Detected': False,
+                                'Hit_Reasons': trend_analysis.get('reason', 'invalid_trend')
                             }
                     else:
                         # Default values when no measurements available
+                        web_interface.emit_feedback_metrics(
+                            rpm=rpm,
+                            second_derivative=None,
+                            plateau_score=None,
+                            trend_r_squared=None,
+                            hit_confidence=0.0,
+                            hit_detected=False,
+                        )
                         metrics_data[rpm] = {
                             'CV': 0.0,
                             'R2': 0.0,
                             'Second_derivative': 0.0,
-                            'Hit_Point_Confidence': 0.0
+                            'Trend_Slope': 0.0,
+                            'Hit_Point_Confidence': 0.0,
+                            'Hit_Detected': False,
+                            'Hit_Reasons': 'no_measurements'
                         }
                         
                 # Evaluate hit point detection after this Z-level
@@ -664,7 +706,10 @@ def test_cell_dynamic_z_series(
                         'CV': 0.0,
                         'R2': 0.0,
                         'Second_derivative': 0.0,
-                        'Hit_Point_Confidence': 0.0
+                        'Trend_Slope': 0.0,
+                        'Hit_Point_Confidence': 0.0,
+                        'Hit_Detected': False,
+                        'Hit_Reasons': 'feedback_disabled'
                     }
             
             # Always store metrics alongside RPM data for consistent CSV structure
@@ -683,7 +728,10 @@ def test_cell_dynamic_z_series(
                     'CV': 0.0,
                     'R2': 0.0,
                     'Second_derivative': 0.0,
-                    'Hit_Point_Confidence': 0.0
+                    'Trend_Slope': 0.0,
+                    'Hit_Point_Confidence': 0.0,
+                    'Hit_Detected': False,
+                    'Hit_Reasons': 'error'
                 }
             cell_z_rpm_data[z_rounded]['_metrics'] = error_metrics_data
         
@@ -727,8 +775,8 @@ def test_cell_dynamic_z_series(
     print(f"Cell {global_cell} dynamic analysis completed: {len(cell_z_rpm_data)} Z-positions tested")
     return cell_z_rpm_data
 
-def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]], 
-                     timestamp: str, mode: str, completed_cells: List[int]) -> str:
+def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
+                     timestamp: str, mode: str, completed_cells: List[int], experiment_name: str) -> str:
     """Save partial results when experiment is terminated early"""
     if not all_data:
         print("No data collected to save.")
@@ -738,16 +786,19 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
     print(f"Completed cells: {completed_cells}")
     
     # Create partial CSV filename with timestamp
-    csv_filename = f"dynamic_analysis_{mode}_PARTIAL_{timestamp}.csv"
+    csv_filename = f"dynamic_analysis_{_sanitize_experiment_slug(experiment_name)}_{mode}_PARTIAL_{timestamp}.csv"
     
     with open(csv_filename, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
         
         # Write metadata header
         csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()} (PARTIAL RESULTS)"])
+        csv_writer.writerow([f"# Experiment Name: {experiment_name}"])
         csv_writer.writerow([f"# Test RPMs (global fallback): {TEST_RPMS}"])
         if TESTING_MODE == "custom" and CELL_RPM_MAP:
             csv_writer.writerow([f"# Per-cell RPM overrides: {CELL_RPM_MAP}"])
+        if CELL_CONTENT_MAP:
+            csv_writer.writerow([f"# Per-cell sample labels: {CELL_CONTENT_MAP}"])
         csv_writer.writerow([f"# Timestamp: {timestamp}"])
         csv_writer.writerow([f"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"])
         csv_writer.writerow([f"# Completed cells: {completed_cells}"])
@@ -759,7 +810,10 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
         csv_writer.writerow([])
         
         # Write column headers with Rotational_Drag and metrics columns
-        headers = ["row", "cell", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag", "CV", "R2", "Second_derivative", "Hit_Point_Confidence"]
+        headers = [
+            "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
+            "CV", "R2", "Trend_Slope", "Second_derivative", "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
+        ]
         csv_writer.writerow(headers)
         
         # Write all individual measurements for completed cells with calculated rotational drag
@@ -781,8 +835,11 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                             rpm_metrics = metrics_data.get(rpm, {
                                 'CV': 0.0,
                                 'R2': 0.0,
+                                'Trend_Slope': 0.0,
                                 'Second_derivative': 0.0,
-                                'Hit_Point_Confidence': 0.0
+                                'Hit_Point_Confidence': 0.0,
+                                'Hit_Detected': False,
+                                'Hit_Reasons': ''
                             })
                             
                             for measurement in measurements:
@@ -793,6 +850,7 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                                 data_row = [
                                     str(row_number),                              # row
                                     str(global_cell),                            # cell (global numbering)
+                                    CELL_CONTENT_MAP.get(global_cell, ''),       # Cell_Label
                                     f"{z_height:.3f}",                          # Z_Height_mm
                                     f"{rpm:.1f}",                               # RPM
                                     f"{measurement['elapsed_time']:.2f}",        # Elapsed_Time_s
@@ -800,29 +858,35 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                                     f"{rotational_drag:.6f}",                   # Rotational_Drag
                                     f"{rpm_metrics['CV']:.6f}",                 # CV
                                     f"{rpm_metrics['R2']:.6f}",                 # R2
+                                    f"{rpm_metrics['Trend_Slope']:.6f}",        # Trend_Slope
                                     f"{rpm_metrics['Second_derivative']:.6f}",   # Second_derivative
-                                    f"{rpm_metrics['Hit_Point_Confidence']:.6f}" # Hit_Point_Confidence
+                                    f"{rpm_metrics['Hit_Point_Confidence']:.6f}", # Hit_Point_Confidence
+                                    str(bool(rpm_metrics['Hit_Detected'])),       # Hit_Detected
+                                    str(rpm_metrics['Hit_Reasons'])               # Hit_Reasons
                                 ]
                                 csv_writer.writerow(data_row)
     
     print(f"Partial results saved to: {csv_filename}")
     return csv_filename
 
-def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]], 
-                              timestamp: str, mode: str) -> str:
+def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
+                              timestamp: str, mode: str, experiment_name: str) -> str:
     """Save dynamic analysis data - single CSV file for entire run with columns including metrics"""
     
     # Create single CSV filename
-    csv_filename = f"dynamic_analysis_{mode}_{timestamp}.csv"
+    csv_filename = f"dynamic_analysis_{_sanitize_experiment_slug(experiment_name)}_{mode}_{timestamp}.csv"
     
     with open(csv_filename, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
         
         # Write metadata header
         csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()}"])
+        csv_writer.writerow([f"# Experiment Name: {experiment_name}"])
         csv_writer.writerow([f"# Test RPMs (global fallback): {TEST_RPMS}"])
         if TESTING_MODE == "custom" and CELL_RPM_MAP:
             csv_writer.writerow([f"# Per-cell RPM overrides: {CELL_RPM_MAP}"])
+        if CELL_CONTENT_MAP:
+            csv_writer.writerow([f"# Per-cell sample labels: {CELL_CONTENT_MAP}"])
         csv_writer.writerow([f"# Timestamp: {timestamp}"])
         csv_writer.writerow([f"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"])
         csv_writer.writerow([f"# Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}"])
@@ -832,7 +896,10 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         csv_writer.writerow([])
         
         # Write column headers with Rotational_Drag and metrics columns
-        headers = ["row", "cell", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag", "CV", "R2", "Second_derivative", "Hit_Point_Confidence"]
+        headers = [
+            "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
+            "CV", "R2", "Trend_Slope", "Second_derivative", "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
+        ]
         csv_writer.writerow(headers)
         
         # Write all individual measurements with calculated rotational drag and metrics (LATEST ONLY)
@@ -854,8 +921,11 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                             rpm_metrics = metrics_data.get(rpm, {
                                 'CV': 0.0,
                                 'R2': 0.0,
+                                'Trend_Slope': 0.0,
                                 'Second_derivative': 0.0,
-                                'Hit_Point_Confidence': 0.0
+                                'Hit_Point_Confidence': 0.0,
+                                'Hit_Detected': False,
+                                'Hit_Reasons': ''
                             })
                             
                             # Use LATEST measurement only (as requested by user)
@@ -874,6 +944,7 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                             data_row = [
                                 str(row_number),                              # row
                                 str(global_cell),                            # cell (global numbering)
+                                CELL_CONTENT_MAP.get(global_cell, ''),       # Cell_Label
                                 f"{z_height:.3f}",                          # Z_Height_mm
                                 f"{rpm:.1f}",                               # RPM
                                 f"{latest_measurement['elapsed_time']:.2f}", # Elapsed_Time_s
@@ -881,8 +952,11 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 f"{rotational_drag:.6f}",                   # Rotational_Drag
                                 f"{rpm_metrics['CV']:.6f}",                 # CV
                                 f"{rpm_metrics['R2']:.6f}",                 # R2
+                                f"{rpm_metrics['Trend_Slope']:.6f}",        # Trend_Slope
                                 f"{rpm_metrics['Second_derivative']:.6f}",   # Second_derivative
-                                f"{rpm_metrics['Hit_Point_Confidence']:.6f}" # Hit_Point_Confidence
+                                f"{rpm_metrics['Hit_Point_Confidence']:.6f}", # Hit_Point_Confidence
+                                str(bool(rpm_metrics['Hit_Detected'])),       # Hit_Detected
+                                str(rpm_metrics['Hit_Reasons'])               # Hit_Reasons
                             ]
                             csv_writer.writerow(data_row)
     
@@ -958,6 +1032,7 @@ def main():
             continue
         
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_experiment_name = EXPERIMENT_NAME if EXPERIMENT_NAME else f"{mode}_{timestamp}"
         
         # Initialize hardware with proper error handling
         cnc = None
@@ -1043,6 +1118,7 @@ def main():
         
         try:
             print(f"\nStarting dynamic analysis...")
+            print(f"Experiment name: {run_experiment_name}")
             print(f"Testing {len(selected_cells)} cells with {len(TEST_RPMS)} RPMs per Z-position")
         
             # Go through each selected cell
@@ -1109,7 +1185,7 @@ def main():
                     traceback.print_exc()
                     # Save partial data before exiting
                     if all_data:
-                        save_partial_data(all_data, timestamp, mode, completed_cells)
+                        save_partial_data(all_data, timestamp, mode, completed_cells, run_experiment_name)
                     raise  # Re-raise to trigger cleanup
         
             # All testing completed successfully
@@ -1119,7 +1195,7 @@ def main():
             
             web_interface.update_status("Saving final results...")
             
-            csv_filename = save_dynamic_analysis_data(all_data, timestamp, mode)
+            csv_filename = save_dynamic_analysis_data(all_data, timestamp, mode, run_experiment_name)
             print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
             print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
@@ -1130,14 +1206,14 @@ def main():
             web_interface.update_status("Experiment interrupted by user")
             if all_data:
                 print("Saving partial results...")
-                save_partial_data(all_data, timestamp, mode, completed_cells)
+                save_partial_data(all_data, timestamp, mode, completed_cells, run_experiment_name)
         except Exception as e:
             print(f"Critical error during experiment: {e}")
             traceback.print_exc()
             web_interface.update_status(f"Error: {str(e)}")
             if all_data:
                 print("Saving partial results...")
-                save_partial_data(all_data, timestamp, mode, completed_cells)
+                save_partial_data(all_data, timestamp, mode, completed_cells, run_experiment_name)
         finally:
             # Cleanup hardware
             print("Cleaning up hardware...")

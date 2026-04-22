@@ -136,6 +136,10 @@
                         </div>
                         <form id="run-settings-form" class="run-settings-form">
                             <label>
+                                <span>Experiment Name</span>
+                                <input id="experiment-name" name="experiment_name" type="text" value="" placeholder="e.g. Honey batch A - Apr 17">
+                            </label>
+                            <label>
                                 <span>Mode</span>
                                 <select id="testing-mode" name="testing_mode">
                                     <option value="full">Full</option>
@@ -164,6 +168,15 @@
                                     <span class="form-hint">Leave blank to use the global RPMs above</span>
                                 </div>
                                 <div id="cell-rpm-table" class="cell-rpm-table">
+                                    <!-- Rows injected by JS whenever selected cells change -->
+                                </div>
+                            </div>
+                            <div id="cell-content-panel" class="cell-rpm-panel hidden">
+                                <div class="cell-rpm-header">
+                                    <span class="form-label">Per-Cell Sample Labels</span>
+                                    <span class="form-hint">Optional labels for what each selected cell contains</span>
+                                </div>
+                                <div id="cell-content-table" class="cell-rpm-table">
                                     <!-- Rows injected by JS whenever selected cells change -->
                                 </div>
                             </div>

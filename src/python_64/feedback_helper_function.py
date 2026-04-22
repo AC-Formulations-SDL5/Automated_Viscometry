@@ -173,9 +173,11 @@ class RotationalDragFeedbackController:
         
         if len(z_heights) < self.min_data_points:
             return {'valid': False, 'reason': 'insufficient_data'}
-        
-        # Perform linear regression analysis
-        trend_slope, _, trend_r_squared = _linear_regression(z_heights, drag_values)
+
+        # Perform local-window linear regression using the latest 5 points (or fewer).
+        recent_z = z_heights[-5:] if len(z_heights) >= 5 else z_heights
+        recent_drag = drag_values[-5:] if len(drag_values) >= 5 else drag_values
+        trend_slope, _, trend_r_squared = _linear_regression(recent_z, recent_drag)
 
         # Calculate second derivative approximation if we have enough points
         second_derivative = _approximate_second_derivative(z_heights, drag_values)
@@ -205,10 +207,12 @@ class RotationalDragFeedbackController:
             hit_confidence += self.weight_trend_breakdown
             hit_reasons.append(f"trend_breakdown (R²={trend_r_squared:.3f})")
         
-        # Check if trend slope is wrong direction (should be negative for normal behavior)
-        if trend_slope > 0:  # Positive slope is unusual - drag should increase as Z decreases
+        # Check if latest drag moved in the wrong direction versus previous Z-step.
+        if len(drag_values) >= 2 and drag_values[-1] > drag_values[-2]:
             hit_confidence += self.weight_wrong_direction
-            hit_reasons.append(f"wrong_trend_direction (slope={trend_slope:.4f})")
+            hit_reasons.append(
+                f"wrong_trend_direction (latest_delta={drag_values[-1] - drag_values[-2]:.4f})"
+            )
             
         # Ensure hit_confidence doesn't exceed 1.0
         hit_confidence = min(hit_confidence, 1.0)

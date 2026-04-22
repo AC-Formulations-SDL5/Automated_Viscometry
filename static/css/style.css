@@ -1038,6 +1038,13 @@ h2 {
     gap: 8px;
 }
 
+.cell-content-row {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    align-items: center;
+    gap: 8px;
+}
+
 .cell-rpm-label {
     font-size: 0.78rem;
     font-weight: 600;
@@ -1045,7 +1052,20 @@ h2 {
     text-align: right;
 }
 
+.cell-content-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #c9d1d9;
+    text-align: right;
+}
+
 .cell-rpm-input {
+    /* Inherits existing input styles from the form */
+    font-size: 0.8rem;
+    padding: 4px 8px;
+}
+
+.cell-content-input {
     /* Inherits existing input styles from the form */
     font-size: 0.8rem;
     padding: 4px 8px;
