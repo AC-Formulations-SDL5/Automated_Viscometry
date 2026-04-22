@@ -21,7 +21,7 @@ TORQUE_BREAK_THRESHOLD = 100.0     #100.0
 # Rotational drag feedback controller parameters
 FEEDBACK_CONTROL_ENABLED = True             # Enable/disable feedback controller
 MIN_DATA_POINTS_FOR_TREND = 8              # Minimum z-levels needed for trend analysis
-SECOND_DERIVATIVE_THRESHOLD = -2.0          # Threshold for detecting trend break (negative second derivative) - LESS STRICT
+SECOND_DERIVATIVE_THRESHOLD = 2.0           # Threshold for detecting trend break (absolute value of second derivative) - LESS STRICT
 CV_JUMP_THRESHOLD = 0.4                     # Coefficient of variation jump threshold for oscillation detection - LESS STRICT
 PLATEAU_DETECTION_ENABLED = True            # Enable plateau detection using CV
 TREND_R_SQUARED_MIN = 0.5                  # Minimum R² for valid trend line - LESS STRICT

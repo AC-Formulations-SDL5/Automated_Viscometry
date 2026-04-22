@@ -56,7 +56,7 @@ class ViscometryWebInterface:
             'inter_rpm_pause': 2.0,
             'feedback_control_enabled': True,
             'min_data_points_for_trend': 8,
-            'second_derivative_threshold': -2.0,
+            'second_derivative_threshold': 2.0,
             'cv_jump_threshold': 0.4,
             'trend_r_squared_min': 0.5,
             'hit_point_confidence_threshold': 0.8,

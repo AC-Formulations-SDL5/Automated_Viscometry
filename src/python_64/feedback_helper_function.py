@@ -71,7 +71,7 @@ class RotationalDragFeedbackController:
         self,
         feedback_enabled=True,
         min_data_points=3,
-        second_derivative_threshold=-0.5,
+        second_derivative_threshold=0.5,
         cv_jump_threshold=0.2,
         trend_r_squared_min=0.8,
         hit_point_confidence_threshold=0.6,
@@ -192,7 +192,7 @@ class RotationalDragFeedbackController:
         hit_reasons = []
         
         # Check for negative second derivative (trend break)
-        if second_derivative is not None and second_derivative < self.second_derivative_threshold:
+        if second_derivative is not None and abs(second_derivative) > self.second_derivative_threshold:
             hit_confidence += self.weight_second_derivative
             hit_reasons.append(f"negative_second_derivative ({second_derivative:.4f})")
         

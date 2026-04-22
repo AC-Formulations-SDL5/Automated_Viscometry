@@ -501,7 +501,7 @@ class ViscometryDashboard {
         this.el.interRpmPause.value = settings.inter_rpm_pause ?? 2;
         this.el.torqueBreakThreshold.value = settings.torque_break_threshold ?? 100;
         this.el.feedbackEnabled.checked = Boolean(settings.feedback_control_enabled);
-        if (this.el.secondDerivativeThreshold) this.el.secondDerivativeThreshold.value = settings.second_derivative_threshold ?? -2.0;
+        if (this.el.secondDerivativeThreshold) this.el.secondDerivativeThreshold.value = settings.second_derivative_threshold ?? 2.0;
         if (this.el.cvJumpThreshold) this.el.cvJumpThreshold.value = settings.cv_jump_threshold ?? 0.4;
         if (this.el.trendRSquaredMin) this.el.trendRSquaredMin.value = settings.trend_r_squared_min ?? 0.5;
         if (this.el.hitPointConfidenceThreshold) this.el.hitPointConfidenceThreshold.value = settings.hit_point_confidence_threshold ?? 0.8;
@@ -697,7 +697,7 @@ class ViscometryDashboard {
             dwell_seconds: Number(this.el.dwellSeconds.value),
             inter_rpm_pause: Number(this.el.interRpmPause.value),
             torque_break_threshold: Number(this.el.torqueBreakThreshold.value),
-            second_derivative_threshold: Number(this.el.secondDerivativeThreshold?.value ?? -2.0),
+            second_derivative_threshold: Number(this.el.secondDerivativeThreshold?.value ?? 2.0),
             cv_jump_threshold: Number(this.el.cvJumpThreshold?.value ?? 0.4),
             trend_r_squared_min: Number(this.el.trendRSquaredMin?.value ?? 0.5),
             hit_point_confidence_threshold: Number(this.el.hitPointConfidenceThreshold?.value ?? 0.8),
