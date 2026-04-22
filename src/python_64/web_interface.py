@@ -16,6 +16,7 @@ class ViscometryWebInterface:
     def __init__(self, port=5001):
         # Set template and static folder paths relative to project root
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        self.project_root = project_root
         template_folder = os.path.join(project_root, 'templates')
         static_folder = os.path.join(project_root, 'static')
         
@@ -37,6 +38,9 @@ class ViscometryWebInterface:
         self.control_lock = threading.Lock()
         self.start_requested_event = threading.Event()
         self.stop_requested_event = threading.Event()
+        self.experiment_history_path = os.path.join(self.project_root, 'results', 'web_experiment_history.json')
+        self.experiment_history = []
+        self._load_experiment_history()
         self.runtime_settings = {
             'experiment_name': '',
             'testing_mode': 'custom',
@@ -168,6 +172,28 @@ class ViscometryWebInterface:
                 return jsonify({'ok': True, 'status_message': self.status_message})
             except Exception as e:
                 print(f"Error in api_run_stop: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/experiment_history', methods=['GET', 'POST'])
+        def experiment_history():
+            try:
+                if request.method == 'GET':
+                    return jsonify(self.get_experiment_history())
+
+                payload = request.get_json(silent=True) or {}
+                self.add_experiment_history_entry(payload)
+                return jsonify({'ok': True})
+            except Exception as e:
+                print(f"Error in experiment_history: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/experiment_history/<experiment_id>', methods=['DELETE'])
+        def experiment_history_delete(experiment_id):
+            try:
+                removed = self.delete_experiment_history_entry(experiment_id)
+                return jsonify({'ok': removed})
+            except Exception as e:
+                print(f"Error in experiment_history_delete: {e}")
                 return jsonify({'error': str(e)}), 500
             
         @self.socketio.on('connect')
@@ -481,6 +507,61 @@ class ViscometryWebInterface:
             self.current_torque_percent = 0.0
             self.current_z_measuring = None
         self.socketio.emit('clear_dashboard')
+
+    def _load_experiment_history(self):
+        """Load shared experiment history from disk if available."""
+        try:
+            os.makedirs(os.path.dirname(self.experiment_history_path), exist_ok=True)
+            if os.path.exists(self.experiment_history_path):
+                with open(self.experiment_history_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.experiment_history = data if isinstance(data, list) else []
+            else:
+                self.experiment_history = []
+        except Exception as e:
+            print(f"Warning: Failed to load experiment history: {e}")
+            self.experiment_history = []
+
+    def _persist_experiment_history(self):
+        """Persist shared experiment history to disk."""
+        try:
+            os.makedirs(os.path.dirname(self.experiment_history_path), exist_ok=True)
+            with open(self.experiment_history_path, 'w', encoding='utf-8') as f:
+                json.dump(self.experiment_history, f, ensure_ascii=True, indent=2)
+        except Exception as e:
+            print(f"Warning: Failed to persist experiment history: {e}")
+
+    def get_experiment_history(self):
+        """Return a shallow copy of shared experiment history."""
+        with self.control_lock:
+            return list(self.experiment_history)
+
+    def add_experiment_history_entry(self, entry: Dict):
+        """Add or update an experiment history entry and persist it."""
+        if not isinstance(entry, dict):
+            return
+        exp_id = str(entry.get('id') or '').strip()
+        if not exp_id:
+            return
+
+        with self.control_lock:
+            self.experiment_history = [e for e in self.experiment_history if str(e.get('id')) != exp_id]
+            self.experiment_history.insert(0, entry)
+            self.experiment_history = self.experiment_history[:200]
+            self._persist_experiment_history()
+
+    def delete_experiment_history_entry(self, experiment_id: str) -> bool:
+        """Delete an experiment history entry by id and persist changes."""
+        with self.control_lock:
+            before = len(self.experiment_history)
+            self.experiment_history = [
+                e for e in self.experiment_history
+                if str(e.get('id')) != str(experiment_id)
+            ]
+            removed = len(self.experiment_history) != before
+            if removed:
+                self._persist_experiment_history()
+            return removed
         
     def add_measurement_point(self, height: float, rotational_drag: float, rpm: float, cell_id: int):
         """Add a new measurement point"""

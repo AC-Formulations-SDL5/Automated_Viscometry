@@ -48,6 +48,7 @@ class ViscometryDashboard {
         this.timingStorageKey = "viscometryTimingState";
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
+        this.latestControlSettings = {};
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -532,6 +533,7 @@ class ViscometryDashboard {
         this.rebuildCellRpmTable();
         this.rebuildCellContentTable();
         this._syncPlannedCells(settings);
+        this.latestControlSettings = JSON.parse(JSON.stringify(settings));
 
         this.setControlStatus("Settings loaded");
         this.updateCompletionBar();
@@ -1712,17 +1714,24 @@ class ViscometryDashboard {
     }
 
     loadExperimentHistory() {
-        try {
-            const raw = localStorage.getItem("viscometryExperimentHistory");
-            this.experimentHistory = raw ? JSON.parse(raw) : [];
-        } catch (_error) {
-            this.experimentHistory = [];
-        }
-        this.renderExperimentCards();
+        fetch("/api/experiment_history")
+            .then((response) => response.json())
+            .then((history) => {
+                this.experimentHistory = Array.isArray(history) ? history : [];
+                this.renderExperimentCards();
+            })
+            .catch(() => {
+                this.experimentHistory = [];
+                this.renderExperimentCards();
+            });
     }
 
-    saveExperimentHistory() {
-        localStorage.setItem("viscometryExperimentHistory", JSON.stringify(this.experimentHistory));
+    saveExperimentHistoryEntry(entry) {
+        return fetch("/api/experiment_history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(entry)
+        });
     }
 
     saveCompletedExperiment() {
@@ -1752,14 +1761,18 @@ class ViscometryDashboard {
             measurement_count: runData.length,
             cells,
             rpms,
-            settings: this.readControlSettings ? this.readControlSettings() : {},
+            settings: this.latestControlSettings && Object.keys(this.latestControlSettings).length > 0
+                ? this.latestControlSettings
+                : (this.readControlSettings ? this.readControlSettings() : {}),
             latestPerZ: [...latestByKey.values()],
             csv: csvHeader + csvBody
         };
 
         this.experimentHistory.unshift(exp);
         this.experimentHistory = this.experimentHistory.slice(0, 40);
-        this.saveExperimentHistory();
+        this.saveExperimentHistoryEntry(exp).catch(() => {
+            this.pushStatusMessage("Warning: failed to sync experiment history to server");
+        });
         this.renderExperimentCards();
     }
 
@@ -1888,7 +1901,11 @@ class ViscometryDashboard {
                 this.el.summaryDetail.classList.add("hidden");
             }
         }
-        this.saveExperimentHistory();
+        fetch(`/api/experiment_history/${encodeURIComponent(id)}`, {
+            method: "DELETE"
+        }).catch(() => {
+            this.pushStatusMessage("Warning: failed to delete experiment history on server");
+        });
         this.renderExperimentCards();
     }
 

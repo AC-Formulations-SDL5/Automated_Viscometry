@@ -185,20 +185,19 @@ class RotationalDragFeedbackController:
         # Detect plateau/oscillation behavior using CV of recent drag trend values
         plateau_score = self._detect_plateau_behavior(recent_drag)
         
-        # Determine if hit-point is detected
+        # Build hit confidence and reasons from all criteria.
+        # Final hit_detected is decided only by confidence threshold.
         hit_detected = False
         hit_confidence = 0.0
         hit_reasons = []
         
         # Check for negative second derivative (trend break)
         if second_derivative is not None and second_derivative < self.second_derivative_threshold:
-            hit_detected = True
             hit_confidence += self.weight_second_derivative
             hit_reasons.append(f"negative_second_derivative ({second_derivative:.4f})")
         
         # Check for plateau detection
         if plateau_score > self.cv_jump_threshold:
-            hit_detected = True
             hit_confidence += self.weight_plateau_cv
             hit_reasons.append(f"plateau_detected ({plateau_score:.3f})")
         
@@ -216,6 +215,7 @@ class RotationalDragFeedbackController:
             
         # Ensure hit_confidence doesn't exceed 1.0
         hit_confidence = min(hit_confidence, 1.0)
+        hit_detected = hit_confidence >= self.hit_point_confidence_threshold
         
         return {
             'valid': True,
