@@ -20,6 +20,9 @@ class ViscometryDashboard {
         this.measurementsByCell = new Map();
         this.latestTorqueByCell = new Map();
         this.completedCells = new Set();
+        this.washingCell = null;
+        this._pendingCompletedCell = null;
+        this.plannedCells = [];
         this.cellStates = new Map();
         this.hitPoints = new Map();
         this.selectedGraphCell = null;
@@ -78,6 +81,9 @@ class ViscometryDashboard {
             runPill: document.getElementById("run-pill"),
             connectionDot: document.getElementById("connection-dot"),
             completionChip: document.getElementById("completion-chip"),
+            completionBar: document.getElementById("completion-bar"),
+            completionText: document.getElementById("completion-text"),
+            experimentCompleteBanner: document.getElementById("experiment-complete-banner"),
             map: document.getElementById("platform-map"),
             armDot: document.getElementById("arm-dot"),
             timeline: document.getElementById("timeline"),
@@ -101,6 +107,14 @@ class ViscometryDashboard {
             interRpmPause: document.getElementById("inter-rpm-pause"),
             torqueBreakThreshold: document.getElementById("torque-break-threshold"),
             feedbackEnabled: document.getElementById("feedback-control-enabled"),
+            secondDerivativeThreshold: document.getElementById("second-derivative-threshold"),
+            cvJumpThreshold: document.getElementById("cv-jump-threshold"),
+            trendRSquaredMin: document.getElementById("trend-r-squared-min"),
+            hitPointConfidenceThreshold: document.getElementById("hit-point-confidence-threshold"),
+            weightSecondDerivative: document.getElementById("weight-second-derivative"),
+            weightPlateauCv: document.getElementById("weight-plateau-cv"),
+            weightTrendBreakdown: document.getElementById("weight-trend-breakdown"),
+            weightWrongDirection: document.getElementById("weight-wrong-direction"),
             applySettings: document.getElementById("apply-settings"),
             startRun: document.getElementById("start-run"),
             stopRun: document.getElementById("stop-run"),
@@ -119,6 +133,12 @@ class ViscometryDashboard {
             rotationalDragDisplay: document.getElementById("rotational-drag-display"),
             dragLiveBox: document.getElementById("drag-live-box"),
             zMeasuringDisplay: document.getElementById("z-measuring-display"),
+            sidebarRpm: document.getElementById("sidebar-rpm"),
+            sidebarSecondDeriv: document.getElementById("sidebar-2nd-deriv"),
+            sidebarCv: document.getElementById("sidebar-cv"),
+            sidebarR2: document.getElementById("sidebar-r2"),
+            sidebarConfidence: document.getElementById("sidebar-confidence"),
+            sidebarHit: document.getElementById("sidebar-hit"),
             elapsed: document.getElementById("elapsed"),
             elapsedCell: document.getElementById("elapsed-cell"),
             tableBody: document.getElementById("measurement-table"),
@@ -342,10 +362,10 @@ class ViscometryDashboard {
             plot_bgcolor: "rgba(255,255,255,0.03)",
             font: { family: "DM Mono", color: "#C9D1D9", size: 12 },
             xaxis: {
-                title: "Z-Height (mm)",
+                title: "Z-Height (mm) - descent ->",
                 gridcolor: "#21262D",
                 zeroline: false,
-                autorange: "reversed"
+                autorange: true
             },
             yaxis: {
                 title: "Rotational Drag (torque / RPM)",
@@ -466,6 +486,14 @@ class ViscometryDashboard {
         this.el.interRpmPause.value = settings.inter_rpm_pause ?? 2;
         this.el.torqueBreakThreshold.value = settings.torque_break_threshold ?? 100;
         this.el.feedbackEnabled.checked = Boolean(settings.feedback_control_enabled);
+        if (this.el.secondDerivativeThreshold) this.el.secondDerivativeThreshold.value = settings.second_derivative_threshold ?? -2.0;
+        if (this.el.cvJumpThreshold) this.el.cvJumpThreshold.value = settings.cv_jump_threshold ?? 0.4;
+        if (this.el.trendRSquaredMin) this.el.trendRSquaredMin.value = settings.trend_r_squared_min ?? 0.5;
+        if (this.el.hitPointConfidenceThreshold) this.el.hitPointConfidenceThreshold.value = settings.hit_point_confidence_threshold ?? 0.8;
+        if (this.el.weightSecondDerivative) this.el.weightSecondDerivative.value = settings.weight_second_derivative ?? 0.5;
+        if (this.el.weightPlateauCv) this.el.weightPlateauCv.value = settings.weight_plateau_cv ?? 0.4;
+        if (this.el.weightTrendBreakdown) this.el.weightTrendBreakdown.value = settings.weight_trend_breakdown ?? 0.3;
+        if (this.el.weightWrongDirection) this.el.weightWrongDirection.value = settings.weight_wrong_direction ?? 0.2;
 
         // Restore per-cell RPM map
         if (settings.cell_rpm_map && typeof settings.cell_rpm_map === "object") {
@@ -478,9 +506,10 @@ class ViscometryDashboard {
             });
         }
         this.rebuildCellRpmTable();
+        this._syncPlannedCells(settings);
 
         this.setControlStatus("Settings loaded");
-        this.updateCompletionChip();
+        this.updateCompletionBar();
     }
 
     rebuildCellRpmTable() {
@@ -571,6 +600,14 @@ class ViscometryDashboard {
             dwell_seconds: Number(this.el.dwellSeconds.value),
             inter_rpm_pause: Number(this.el.interRpmPause.value),
             torque_break_threshold: Number(this.el.torqueBreakThreshold.value),
+            second_derivative_threshold: Number(this.el.secondDerivativeThreshold?.value ?? -2.0),
+            cv_jump_threshold: Number(this.el.cvJumpThreshold?.value ?? 0.4),
+            trend_r_squared_min: Number(this.el.trendRSquaredMin?.value ?? 0.5),
+            hit_point_confidence_threshold: Number(this.el.hitPointConfidenceThreshold?.value ?? 0.8),
+            weight_second_derivative: Number(this.el.weightSecondDerivative?.value ?? 0.5),
+            weight_plateau_cv: Number(this.el.weightPlateauCv?.value ?? 0.4),
+            weight_trend_breakdown: Number(this.el.weightTrendBreakdown?.value ?? 0.3),
+            weight_wrong_direction: Number(this.el.weightWrongDirection?.value ?? 0.2),
             feedback_control_enabled: this.el.feedbackEnabled.checked,
             cell_rpm_map: this.buildCellRpmMapPayload(),
         };
@@ -611,11 +648,14 @@ class ViscometryDashboard {
         }
         this.setUiState("running");
         this.applyControlSettings(true)
-            .then((settings) => fetch("/api/run/start", {
+            .then((settings) => {
+                this._syncPlannedCells(this.readControlSettings());
+                return fetch("/api/run/start", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(settings)
-            }))
+                });
+            })
             .then((response) => response.json())
             .then((result) => {
                 this.setControlStatus(result.status_message || "Run started");
@@ -747,6 +787,12 @@ class ViscometryDashboard {
             this.setInstrumentStatus("pump", Boolean(status.pump));
         });
 
+        this.socket.on("feedback_metrics_update", (data) => {
+            if (data) {
+                this.updateDragZSidebar(data);
+            }
+        });
+
     }
 
     applyStatusSnapshot(status) {
@@ -863,10 +909,18 @@ class ViscometryDashboard {
         this.currentCell = cellId === null ? null : Number(cellId);
 
         if (previousCell && this.currentCell !== previousCell) {
-            this.completedCells.add(previousCell);
-            this.cellStates.set(previousCell, "completed");
+            // Don't mark completed immediately — washing may still be in progress.
+            // The cell will be marked completed when washing finalizes or on safe fallback.
+            this._pendingCompletedCell = previousCell;
+            this.cellStates.set(previousCell, "washing");
             this.playChime(660, 0.08);
             this.updateCompletionBar();
+        }
+
+        // Reset timeline to phase 1 when a new cell starts
+        if (this.currentCell && this.currentCell !== previousCell) {
+            this.currentPhase = 1;
+            this.updateTimeline();
         }
 
         if (this.currentCell) {
@@ -913,43 +967,49 @@ class ViscometryDashboard {
 
     updateCellVisuals() {
         const statusLower = (this.statusLog[0] || "").toLowerCase();
-        let stationId = null;
-
-        if (statusLower.includes("wash station 1")) {
-            stationId = "WASH";
-        } else if (statusLower.includes("wash station 2")) {
-            stationId = "DRY";
+        let activeStation = null;
+        if (statusLower.includes("wash station 1") || statusLower.includes("motor 1") || statusLower.includes("pump 1")) {
+            activeStation = "WASH";
+        } else if (statusLower.includes("wash station 2") || statusLower.includes("motor 2") || statusLower.includes("pump 2")) {
+            activeStation = "DRY";
         }
 
         this.platform.cells.forEach((cell) => {
-            let state = this.cellStates.get(cell.id) || "pending";
+            let state;
 
-            if (this.completedCells.has(cell.id)) {
+            if (this.washingCell === cell.id) {
+                // Cell is actively being washed — show washing regardless of completed state.
+                state = "washing";
+            } else if (this.completedCells.has(cell.id)) {
                 state = "completed";
-            }
-
-            if (this.currentCell === cell.id) {
-                if (this.currentRPM > 0 || statusLower.includes("descending") || statusLower.includes("measuring")) {
+            } else if (this.currentCell === cell.id) {
+                if (
+                    this.currentRPM > 0 ||
+                    statusLower.includes("descending") ||
+                    statusLower.includes("measuring") ||
+                    statusLower.includes("z-step")
+                ) {
                     state = "measuring";
                 } else if (statusLower.includes("error") || statusLower.includes("fail")) {
                     state = "error";
-                } else if (statusLower.includes("wash station")) {
-                    state = "washing";
                 } else {
                     state = "active";
                 }
+            } else {
+                state = this.cellStates.get(cell.id) || "pending";
             }
 
             this.cellStates.set(cell.id, state);
-            this.updateCellNode(cell.id);
         });
+
+        this.renderMap();
 
         ["WASH", "DRY"].forEach((id) => {
             const node = document.getElementById(`station-${id}`);
             if (!node) {
                 return;
             }
-            node.classList.toggle("active", stationId === id);
+            node.classList.toggle("active", activeStation === id);
         });
     }
 
@@ -957,18 +1017,70 @@ class ViscometryDashboard {
         const normalized = (message || "").toLowerCase();
         let phase = 0;
 
-        if (normalized.includes("moving to cell")) {
+        // Phase 1 — moving to cell
+        if (
+            normalized.includes("moving to cell") ||
+            normalized.includes("auto-zeroing") ||
+            normalized.includes("initializing")
+        ) {
             phase = 1;
-        } else if (normalized.includes("zeroing") || normalized.includes("auto-zero")) {
+        }
+        // Phase 2 — auto-zero
+        else if (
+            normalized.includes("zeroing") ||
+            normalized.includes("auto-zero")
+        ) {
             phase = 2;
-        } else if (normalized.includes("descending") || normalized.includes("measuring")) {
+        }
+        // Phase 3 — Z-descent and measurement
+        else if (
+            normalized.includes("descending") ||
+            normalized.includes("measuring") ||
+            normalized.includes("z-step") ||
+            normalized.includes("testing cell") ||
+            normalized.includes("at rpm") ||
+            normalized.includes("rotational drag")
+        ) {
             phase = 3;
-        } else if (normalized.includes("returning")) {
+        }
+        // Phase 4 — raising Z / returning / saving
+        else if (
+            normalized.includes("returning") ||
+            normalized.includes("raising") ||
+            normalized.includes("safe z") ||
+            normalized.includes("saving")
+        ) {
             phase = 4;
-        } else if (normalized.includes("wash station 1")) {
+        }
+        // Phase 5 — wash station 1
+        else if (
+            normalized.includes("wash station 1") ||
+            normalized.includes("washing after") ||
+            normalized.includes("pump 1") ||
+            normalized.includes("motor 1")
+        ) {
             phase = 5;
-        } else if (normalized.includes("wash station 2")) {
+            // Capture which cell is being washed from messages like "Washing after Cell 3"
+            const washMatch = message.match(/washing after cell\s+(\d+)/i);
+            if (washMatch) {
+                this.washingCell = Number(washMatch[1]);
+            }
+        }
+        // Phase 6 — wash station 2
+        else if (
+            normalized.includes("wash station 2") ||
+            normalized.includes("pump 2") ||
+            normalized.includes("motor 2") ||
+            normalized.includes("wash sequence completed")
+        ) {
             phase = 6;
+            if (
+                normalized.includes("completed") ||
+                normalized.includes("stopping motor 2") ||
+                normalized.includes("wash sequence completed")
+            ) {
+                this._finalizePendingCompletedCell();
+            }
         }
 
         if (phase !== 0) {
@@ -1043,26 +1155,6 @@ class ViscometryDashboard {
         this.refreshLivePlots();
         this.updateTable();
         this.updateCellVisuals();
-    }
-
-    getTargetCellCount() {
-        const settings = this.readControlSettings();
-        if (settings.testing_mode === "row") {
-            return Math.max(1, settings.selected_rows.length) * 6;
-        }
-        if (settings.testing_mode === "custom") {
-            return Math.max(1, settings.selected_cells.length);
-        }
-        return 18;
-    }
-
-    updateCompletionChip() {
-        if (!this.el.completionChip) {
-            return;
-        }
-        const target = this.getTargetCellCount();
-        const done = Math.min(this.completedCells.size, target);
-        this.el.completionChip.textContent = `${done} / ${target} cells completed`;
     }
 
     updateZFilterButtons() {
@@ -1254,6 +1346,23 @@ class ViscometryDashboard {
         }
     }
 
+    updateDragZSidebar(data) {
+        if (this.el.sidebarRpm) {
+            this.el.sidebarRpm.textContent = data.rpm != null ? `${Number(data.rpm).toFixed(2)} RPM` : "-";
+        }
+        const fmt = (v) => v != null && !Number.isNaN(Number(v)) ? Number(v).toFixed(4) : "-";
+        if (this.el.sidebarSecondDeriv) this.el.sidebarSecondDeriv.textContent = fmt(data.second_derivative);
+        if (this.el.sidebarCv) this.el.sidebarCv.textContent = fmt(data.plateau_score);
+        if (this.el.sidebarR2) this.el.sidebarR2.textContent = fmt(data.trend_r_squared);
+        if (this.el.sidebarConfidence) this.el.sidebarConfidence.textContent = fmt(data.hit_confidence);
+
+        if (this.el.sidebarHit) {
+            const isHit = Boolean(data.hit_detected);
+            this.el.sidebarHit.textContent = isHit ? "YES ⚠" : "No";
+            this.el.sidebarHit.className = `sidebar-value mono ${isHit ? "hit-yes" : "hit-no"}`;
+        }
+    }
+
     setUiState(state) {
         this.uiState = state;
 
@@ -1336,18 +1445,38 @@ class ViscometryDashboard {
         if (isRunning && !this.experimentStart) {
             this.experimentStart = Date.now();
             this.cellStart = Date.now();
+            this.completedCells.clear();
+            this.washingCell = null;
+            this._pendingCompletedCell = null;
+            this.currentPhase = 0;
+            this.updateTimeline();
+            this.updateCompletionBar();
+            this._hideExperimentCompleteMessage();
             this.saveTimingState();
             this.setControlStatus("Run active");
         }
 
         if (!isRunning) {
+            this.washingCell = null;
             if (previous) {
                 this.playChime(720, 0.14);
                 this.setControlStatus("Run stopped");
+                // Mark timeline as fully complete when run stops
+                this.currentPhase = 6;
+                this.updateTimeline();
+                // Then immediately reset for next run after a brief visual pause
+                setTimeout(() => {
+                    this.currentPhase = 0;
+                    this.washingCell = null;
+                    this._finalizePendingCompletedCell();
+                    this.updateTimeline();
+                    this.updateCellVisuals();
+                }, 3000);
             }
             this.experimentStart = null;
             this.cellStart = null;
             this.clearTimingState();
+            this.updateCompletionBar();
         }
     }
 
@@ -1385,7 +1514,11 @@ class ViscometryDashboard {
             return;
         }
         this.summaryPlotLayout = {
-            xaxis: { title: "Z-Height (mm)", autorange: "reversed", tickformat: ".3f" },
+            xaxis: {
+                title: "Z-Height (mm) - descent ->",
+                autorange: true,
+                tickformat: ".3f",
+            },
             yaxis: { title: "Rotational Drag (torque / RPM)", rangemode: "tozero" },
             margin: { t: 20, r: 16, b: 56, l: 64 },
             paper_bgcolor: "rgba(0,0,0,0)",
@@ -1506,6 +1639,18 @@ class ViscometryDashboard {
         }
 
         const s = exp.settings || {};
+        const feedbackRows = s.feedback_control_enabled ? [
+            `<strong>Feedback enabled:</strong> Yes`,
+            `<strong>2nd Derivative threshold:</strong> ${s.second_derivative_threshold ?? "-"}`,
+            `<strong>CV Jump threshold:</strong> ${s.cv_jump_threshold ?? "-"}`,
+            `<strong>Min R²:</strong> ${s.trend_r_squared_min ?? "-"}`,
+            `<strong>Hit Confidence threshold:</strong> ${s.hit_point_confidence_threshold ?? "-"}`,
+            `<strong>w (2nd Derivative):</strong> ${s.weight_second_derivative ?? "-"}`,
+            `<strong>w (Plateau/CV):</strong> ${s.weight_plateau_cv ?? "-"}`,
+            `<strong>w (Trend Breakdown):</strong> ${s.weight_trend_breakdown ?? "-"}`,
+            `<strong>w (Wrong Direction):</strong> ${s.weight_wrong_direction ?? "-"}`,
+        ] : ["<strong>Feedback enabled:</strong> No"];
+
         this.el.summaryMeta.innerHTML = [
             `<strong>Date:</strong> ${new Date(exp.created_at).toLocaleString()}`,
             `<strong>Cells tested:</strong> ${exp.cells.join(", ") || "-"}`,
@@ -1513,8 +1658,10 @@ class ViscometryDashboard {
             `<strong>Z step:</strong> ${s.z_step_size ?? "-"} mm`,
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
             `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
-            `<strong>Points collected:</strong> ${exp.measurement_count}`
-        ].map((line) => `<div>${line}</div>`).join("");
+            `<strong>Points collected:</strong> ${exp.measurement_count}`,
+            `<hr class="meta-divider">`,
+            ...feedbackRows,
+        ].map((line) => line.startsWith("<hr") ? line : `<div>${line}</div>`).join("");
 
         const byRpm = {};
         (exp.latestPerZ || []).forEach((p) => {
@@ -1593,7 +1740,64 @@ class ViscometryDashboard {
     }
 
     updateCompletionBar() {
-        this.updateCompletionChip();
+        const total = this.plannedCells.length || 18;
+        const done = this.completedCells.size;
+        const ratio = total > 0 ? done / total : 0;
+
+        if (this.el.completionBar) {
+            this.el.completionBar.style.width = `${(ratio * 100).toFixed(1)}%`;
+        }
+        if (this.el.completionText) {
+            this.el.completionText.textContent = `${done} / ${total} cells complete`;
+        }
+        if (this.el.completionChip) {
+            this.el.completionChip.textContent = `${done} / ${total} cells completed`;
+        }
+
+        if (done >= total && total > 0 && !this.isRunning) {
+            this._showExperimentCompleteMessage();
+        }
+    }
+
+    updateCompletionChip() {
+        this.updateCompletionBar();
+    }
+
+    _showExperimentCompleteMessage() {
+        if (this.el.experimentCompleteBanner) {
+            this.el.experimentCompleteBanner.classList.remove("hidden");
+        }
+    }
+
+    _hideExperimentCompleteMessage() {
+        if (this.el.experimentCompleteBanner) {
+            this.el.experimentCompleteBanner.classList.add("hidden");
+        }
+    }
+
+    _syncPlannedCells(settings) {
+        const mode = settings.testing_mode || "custom";
+        if (mode === "full") {
+            this.plannedCells = Array.from({ length: 18 }, (_, i) => i + 1);
+        } else if (mode === "row") {
+            const rows = Array.isArray(settings.selected_rows) ? settings.selected_rows : [];
+            this.plannedCells = rows.flatMap((r) =>
+                Array.from({ length: 6 }, (_, i) => (r - 1) * 6 + i + 1)
+            );
+        } else {
+            this.plannedCells = Array.isArray(settings.selected_cells) ? settings.selected_cells : [];
+        }
+    }
+
+    _finalizePendingCompletedCell() {
+        if (this._pendingCompletedCell !== null && this._pendingCompletedCell !== undefined) {
+            this.completedCells.add(this._pendingCompletedCell);
+            this.cellStates.set(this._pendingCompletedCell, "completed");
+            this.washingCell = null;
+            this._pendingCompletedCell = null;
+            this.updateCompletionBar();
+            this.renderMap();
+        }
     }
 
     updateTable() {

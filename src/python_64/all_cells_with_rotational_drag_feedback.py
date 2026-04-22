@@ -26,6 +26,10 @@ CV_JUMP_THRESHOLD = 0.4                     # Coefficient of variation jump thre
 PLATEAU_DETECTION_ENABLED = True            # Enable plateau detection using CV
 TREND_R_SQUARED_MIN = 0.5                  # Minimum R² for valid trend line - LESS STRICT
 HIT_POINT_CONFIDENCE_THRESHOLD = 0.8       # Confidence threshold for hit-point detection - MORE STRICT
+WEIGHT_SECOND_DERIVATIVE = 0.5
+WEIGHT_PLATEAU_CV = 0.4
+WEIGHT_TREND_BREAKDOWN = 0.3
+WEIGHT_WRONG_DIRECTION = 0.2
 
 # ===============================================
 SETTLE_TIME = 1.0                   # Time to wait after moving before taking measurements
@@ -94,6 +98,7 @@ def apply_runtime_settings_from_web():
     global Z_STEP_SIZE, DWELL_SECONDS, INTER_RPM_PAUSE, MEASUREMENT_DURATION, SAMPLE_INTERVAL
     global FEEDBACK_CONTROL_ENABLED, MIN_DATA_POINTS_FOR_TREND, SECOND_DERIVATIVE_THRESHOLD
     global CV_JUMP_THRESHOLD, TREND_R_SQUARED_MIN, HIT_POINT_CONFIDENCE_THRESHOLD, TORQUE_BREAK_THRESHOLD
+    global WEIGHT_SECOND_DERIVATIVE, WEIGHT_PLATEAU_CV, WEIGHT_TREND_BREAKDOWN, WEIGHT_WRONG_DIRECTION
 
     settings = web_interface.get_runtime_settings()
 
@@ -115,6 +120,10 @@ def apply_runtime_settings_from_web():
     TREND_R_SQUARED_MIN = float(settings.get('trend_r_squared_min', TREND_R_SQUARED_MIN))
     HIT_POINT_CONFIDENCE_THRESHOLD = float(settings.get('hit_point_confidence_threshold', HIT_POINT_CONFIDENCE_THRESHOLD))
     TORQUE_BREAK_THRESHOLD = float(settings.get('torque_break_threshold', TORQUE_BREAK_THRESHOLD))
+    WEIGHT_SECOND_DERIVATIVE = float(settings.get('weight_second_derivative', WEIGHT_SECOND_DERIVATIVE))
+    WEIGHT_PLATEAU_CV = float(settings.get('weight_plateau_cv', WEIGHT_PLATEAU_CV))
+    WEIGHT_TREND_BREAKDOWN = float(settings.get('weight_trend_breakdown', WEIGHT_TREND_BREAKDOWN))
+    WEIGHT_WRONG_DIRECTION = float(settings.get('weight_wrong_direction', WEIGHT_WRONG_DIRECTION))
 
 
 def get_rpms_for_cell(global_cell: int) -> List[float]:
@@ -509,7 +518,11 @@ def test_cell_dynamic_z_series(
         second_derivative_threshold=SECOND_DERIVATIVE_THRESHOLD,
         cv_jump_threshold=CV_JUMP_THRESHOLD,
         trend_r_squared_min=TREND_R_SQUARED_MIN,
-        hit_point_confidence_threshold=HIT_POINT_CONFIDENCE_THRESHOLD
+        hit_point_confidence_threshold=HIT_POINT_CONFIDENCE_THRESHOLD,
+        weight_second_derivative=WEIGHT_SECOND_DERIVATIVE,
+        weight_plateau_cv=WEIGHT_PLATEAU_CV,
+        weight_trend_breakdown=WEIGHT_TREND_BREAKDOWN,
+        weight_wrong_direction=WEIGHT_WRONG_DIRECTION,
     )
     
     cell_z_rpm_data = {}
@@ -571,6 +584,14 @@ def test_cell_dynamic_z_series(
                     if rpm in rpm_data and rpm_data[rpm] is not None:
                         trend_analysis = feedback_controller.analyze_trend_for_rpm(rpm)
                         if trend_analysis['valid']:
+                            web_interface.emit_feedback_metrics(
+                                rpm=rpm,
+                                second_derivative=trend_analysis.get('second_derivative'),
+                                plateau_score=trend_analysis.get('plateau_score'),
+                                trend_r_squared=trend_analysis.get('trend_r_squared'),
+                                hit_confidence=trend_analysis.get('hit_confidence'),
+                                hit_detected=trend_analysis.get('hit_detected', False),
+                            )
                             metrics_data[rpm] = {
                                 'CV': trend_analysis.get('plateau_score', 0.0),
                                 'R2': trend_analysis.get('trend_r_squared', 0.0),
@@ -702,7 +723,8 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
         csv_writer.writerow([f"# Completed cells: {completed_cells}"])
         csv_writer.writerow([f"# Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}"])
         if FEEDBACK_CONTROL_ENABLED:
-            csv_writer.writerow([f"# Feedback Thresholds: Second Derivative = {SECOND_DERIVATIVE_THRESHOLD}, CV Jump = {CV_JUMP_THRESHOLD}"]) 
+            csv_writer.writerow([f"# Feedback Thresholds: Second Derivative = {SECOND_DERIVATIVE_THRESHOLD}, CV Jump = {CV_JUMP_THRESHOLD}, R² Min = {TREND_R_SQUARED_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
+            csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv = {WEIGHT_SECOND_DERIVATIVE}, Plateau-CV = {WEIGHT_PLATEAU_CV}, Trend-Breakdown = {WEIGHT_TREND_BREAKDOWN}, Wrong-Dir = {WEIGHT_WRONG_DIRECTION}"])
         csv_writer.writerow([f"# WARNING: Experiment was terminated early - these are partial results"])
         csv_writer.writerow([])
         
@@ -775,7 +797,8 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         csv_writer.writerow([f"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"])
         csv_writer.writerow([f"# Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}"])
         if FEEDBACK_CONTROL_ENABLED:
-            csv_writer.writerow([f"# Feedback Thresholds: Second Derivative = {SECOND_DERIVATIVE_THRESHOLD}, CV Jump = {CV_JUMP_THRESHOLD}"])
+            csv_writer.writerow([f"# Feedback Thresholds: Second Derivative = {SECOND_DERIVATIVE_THRESHOLD}, CV Jump = {CV_JUMP_THRESHOLD}, R² Min = {TREND_R_SQUARED_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
+            csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv = {WEIGHT_SECOND_DERIVATIVE}, Plateau-CV = {WEIGHT_PLATEAU_CV}, Trend-Breakdown = {WEIGHT_TREND_BREAKDOWN}, Wrong-Dir = {WEIGHT_WRONG_DIRECTION}"])
         csv_writer.writerow([])
         
         # Write column headers with Rotational_Drag and metrics columns

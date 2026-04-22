@@ -8,6 +8,7 @@ from flask_socketio import SocketIO, emit
 import threading
 import time
 import os
+import math
 from typing import Dict, List, Tuple, Optional
 import json
 
@@ -53,6 +54,11 @@ class ViscometryWebInterface:
             'cv_jump_threshold': 0.4,
             'trend_r_squared_min': 0.5,
             'hit_point_confidence_threshold': 0.8,
+            # Confidence accumulation weights (must sum to a meaningful total — not enforced)
+            'weight_second_derivative': 0.5,
+            'weight_plateau_cv': 0.4,
+            'weight_trend_breakdown': 0.3,
+            'weight_wrong_direction': 0.2,
             'torque_break_threshold': 100.0,
         }
         
@@ -120,53 +126,97 @@ class ViscometryWebInterface:
             
         @self.app.route('/api/measurement_data')
         def get_measurement_data():
-            return jsonify(self.measurement_data)
+            try:
+                return jsonify(self.measurement_data)
+            except Exception as e:
+                print(f"Error in get_measurement_data: {e}")
+                return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/control_settings', methods=['GET', 'POST'])
         def control_settings():
-            if request.method == 'GET':
-                return jsonify(self.get_runtime_settings())
+            try:
+                if request.method == 'GET':
+                    return jsonify(self.get_runtime_settings())
 
-            payload = request.get_json(silent=True) or {}
-            settings = self.update_runtime_settings(payload)
-            return jsonify(settings)
+                payload = request.get_json(silent=True) or {}
+                settings = self.update_runtime_settings(payload)
+                return jsonify(settings)
+            except Exception as e:
+                print(f"Error in control_settings: {e}")
+                return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/run/start', methods=['POST'])
         def api_run_start():
-            payload = request.get_json(silent=True) or {}
-            if payload:
-                self.update_runtime_settings(payload)
-            self.request_start()
-            self.update_status('Start command received from web interface')
-            return jsonify({'ok': True, 'status_message': self.status_message})
+            try:
+                payload = request.get_json(silent=True) or {}
+                if payload:
+                    self.update_runtime_settings(payload)
+                self.request_start()
+                self.update_status('Start command received from web interface')
+                return jsonify({'ok': True, 'status_message': self.status_message})
+            except Exception as e:
+                print(f"Error in api_run_start: {e}")
+                return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/run/stop', methods=['POST'])
         def api_run_stop():
-            self.request_stop()
-            self.update_status('Stop command received from web interface')
-            return jsonify({'ok': True, 'status_message': self.status_message})
+            try:
+                self.request_stop()
+                self.update_status('Stop command received from web interface')
+                return jsonify({'ok': True, 'status_message': self.status_message})
+            except Exception as e:
+                print(f"Error in api_run_stop: {e}")
+                return jsonify({'error': str(e)}), 500
             
         @self.socketio.on('connect')
         def handle_connect():
-            emit('status_update', self.get_status_dict())
-            emit('control_settings_update', self.get_runtime_settings())
+            try:
+                emit('status_update', self.get_status_dict())
+                emit('control_settings_update', self.get_runtime_settings())
+            except Exception as e:
+                print(f"Error in handle_connect: {e}")
+                try:
+                    emit('error', {'message': str(e)})
+                except:
+                    pass
 
         @self.socketio.on('update_control_settings')
         def handle_update_control_settings(payload):
-            settings = self.update_runtime_settings(payload or {})
-            emit('control_settings_update', settings, broadcast=True)
+            try:
+                settings = self.update_runtime_settings(payload or {})
+                emit('control_settings_update', settings, broadcast=True)
+            except Exception as e:
+                print(f"Error in handle_update_control_settings: {e}")
+                try:
+                    emit('error', {'message': str(e)})
+                except:
+                    pass
 
         @self.socketio.on('start_run')
         def handle_start_run(payload=None):
-            if isinstance(payload, dict) and payload:
-                self.update_runtime_settings(payload)
-            self.request_start()
-            emit('status_update', {'status_message': 'Start command received from web interface'}, broadcast=True)
+            try:
+                if isinstance(payload, dict) and payload:
+                    self.update_runtime_settings(payload)
+                self.request_start()
+                emit('status_update', {'status_message': 'Start command received from web interface'}, broadcast=True)
+            except Exception as e:
+                print(f"Error in handle_start_run: {e}")
+                try:
+                    emit('error', {'message': str(e)})
+                except:
+                    pass
 
         @self.socketio.on('stop_run')
         def handle_stop_run():
-            self.request_stop()
-            emit('status_update', {'status_message': 'Stop command received from web interface'}, broadcast=True)
+            try:
+                self.request_stop()
+                emit('status_update', {'status_message': 'Stop command received from web interface'}, broadcast=True)
+            except Exception as e:
+                print(f"Error in handle_stop_run: {e}")
+                try:
+                    emit('error', {'message': str(e)})
+                except:
+                    pass
             
     def get_cell_positions(self) -> List[Dict]:
         """Calculate positions for all 18 cells"""
@@ -187,25 +237,50 @@ class ViscometryWebInterface:
         
     def get_status_dict(self) -> Dict:
         """Get current status as dictionary"""
-        return {
-            'position': self.current_position,
-            'current_cell': self.current_cell,
-            'current_rpm': self.current_rpm,
-            'current_torque_percent': self.current_torque_percent,
-            'current_z_measuring': self.current_z_measuring,
-            'instrument_status': self.instrument_status,
-            'is_running': self.is_running,
-            'status_message': self.status_message,
-            'measurement_data': self.measurement_data[-100:],  # Last 100 points
-            'control_settings': self.get_runtime_settings()
-        }
+        try:
+            return {
+                'position': self.current_position,
+                'current_cell': self.current_cell,
+                'current_rpm': self.current_rpm,
+                'current_torque_percent': self.current_torque_percent,
+                'current_z_measuring': self.current_z_measuring,
+                'instrument_status': self.instrument_status,
+                'is_running': self.is_running,
+                'status_message': self.status_message,
+                'measurement_data': self.measurement_data[-100:],  # Last 100 points
+                'control_settings': self.get_runtime_settings()
+            }
+        except Exception as e:
+            print(f"Error in get_status_dict: {e}")
+            # Return minimal safe status on error
+            return {
+                'position': self.current_position,
+                'current_cell': self.current_cell,
+                'current_rpm': self.current_rpm,
+                'current_torque_percent': self.current_torque_percent,
+                'current_z_measuring': self.current_z_measuring,
+                'instrument_status': self.instrument_status,
+                'is_running': self.is_running,
+                'status_message': f"Error building status: {str(e)[:100]}",
+                'measurement_data': [],
+                'control_settings': {}
+            }
 
     def get_runtime_settings(self) -> Dict:
         """Get a copy of the current runtime settings."""
         with self.control_lock:
             settings = {}
             for key, value in self.runtime_settings.items():
-                settings[key] = value[:] if isinstance(value, list) else value
+                try:
+                    if isinstance(value, list):
+                        settings[key] = value[:]  # Shallow copy of list
+                    elif isinstance(value, dict):
+                        settings[key] = dict(value)  # Shallow copy of dict
+                    else:
+                        settings[key] = value  # Direct assignment for primitives
+                except Exception as e:
+                    print(f"Warning: Failed to copy runtime setting '{key}': {e}")
+                    settings[key] = value  # Fallback to direct assignment
             return settings
 
     def update_runtime_settings(self, settings: Dict) -> Dict:
@@ -260,9 +335,22 @@ class ViscometryWebInterface:
                     normalized['cell_rpm_map'] = parsed_map
                 else:
                     normalized['cell_rpm_map'] = {}
-            float_keys = {'z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds', 'inter_rpm_pause', 'second_derivative_threshold', 'cv_jump_threshold', 'trend_r_squared_min', 'hit_point_confidence_threshold', 'torque_break_threshold'}
+            float_keys = {
+                'z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds',
+                'inter_rpm_pause', 'second_derivative_threshold', 'cv_jump_threshold',
+                'trend_r_squared_min', 'hit_point_confidence_threshold', 'torque_break_threshold',
+                'weight_second_derivative', 'weight_plateau_cv',
+                'weight_trend_breakdown', 'weight_wrong_direction',
+            }
             int_keys = {'min_data_points_for_trend'}
-            for key in ['z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds', 'inter_rpm_pause', 'min_data_points_for_trend', 'second_derivative_threshold', 'cv_jump_threshold', 'trend_r_squared_min', 'hit_point_confidence_threshold', 'torque_break_threshold']:
+            for key in [
+                'z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds',
+                'inter_rpm_pause', 'min_data_points_for_trend', 'second_derivative_threshold',
+                'cv_jump_threshold', 'trend_r_squared_min', 'hit_point_confidence_threshold',
+                'torque_break_threshold',
+                'weight_second_derivative', 'weight_plateau_cv',
+                'weight_trend_breakdown', 'weight_wrong_direction',
+            ]:
                 if key in settings and settings[key] not in (None, ''):
                     if key in float_keys:
                         normalized[key] = float(settings[key])
@@ -355,25 +443,49 @@ class ViscometryWebInterface:
         """Broadcast the Z-height currently under active measurement."""
         self.current_z_measuring = z
         self.socketio.emit('z_update', {'current_z': z})
+
+    def emit_feedback_metrics(self, rpm: float, second_derivative, plateau_score,
+                              trend_r_squared, hit_confidence, hit_detected: bool):
+        """Emit latest feedback controller metrics for a single RPM to the sidebar."""
+        self.socketio.emit('feedback_metrics_update', {
+            'rpm': rpm,
+            'second_derivative': second_derivative,
+            'plateau_score': plateau_score,
+            'trend_r_squared': trend_r_squared,
+            'hit_confidence': hit_confidence,
+            'hit_detected': hit_detected,
+        }, broadcast=True)
         
     def add_measurement_point(self, height: float, rotational_drag: float, rpm: float, cell_id: int):
         """Add a new measurement point"""
-        measurement = {
-            'timestamp': time.time(),
-            'height': height,
-            'rotational_drag': rotational_drag,
-            'torque_percent': rotational_drag * rpm,
-            'rpm': rpm,
-            'cell_id': cell_id
-        }
-        self.measurement_data.append(measurement)
-        
-        # Keep only last 1000 measurements
-        if len(self.measurement_data) > 1000:
-            self.measurement_data = self.measurement_data[-1000:]
+        try:
+            # Sanitize rotational_drag: replace inf with None for JSON serialization
+            safe_drag = None if (isinstance(rotational_drag, float) and math.isinf(rotational_drag)) else rotational_drag
             
-        # Emit to connected clients
-        self.socketio.emit('new_measurement', measurement)
+            # Sanitize torque calculation to handle potential inf
+            torque_calc = safe_drag * rpm if safe_drag is not None else None
+            
+            measurement = {
+                'timestamp': time.time(),
+                'height': height,
+                'rotational_drag': safe_drag,
+                'torque_percent': torque_calc,
+                'rpm': rpm,
+                'cell_id': cell_id
+            }
+            self.measurement_data.append(measurement)
+            
+            # Keep only last 1000 measurements
+            if len(self.measurement_data) > 1000:
+                self.measurement_data = self.measurement_data[-1000:]
+                
+            # Emit to connected clients
+            try:
+                self.socketio.emit('new_measurement', measurement)
+            except Exception as emit_error:
+                print(f"Warning: Failed to emit measurement: {emit_error}")
+        except Exception as e:
+            print(f"Error in add_measurement_point: {e}")
         
     def set_running_state(self, is_running: bool):
         """Set running state"""
