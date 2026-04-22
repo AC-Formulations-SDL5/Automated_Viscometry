@@ -182,8 +182,8 @@ class RotationalDragFeedbackController:
         # Calculate second derivative approximation if we have enough points
         second_derivative = _approximate_second_derivative(z_heights, drag_values)
         
-        # Detect plateau/oscillation behavior using CV analysis
-        plateau_score = self._detect_plateau_behavior(rpm, z_heights[-3:] if len(z_heights) >= 3 else z_heights)
+        # Detect plateau/oscillation behavior using CV of recent drag trend values
+        plateau_score = self._detect_plateau_behavior(recent_drag)
         
         # Determine if hit-point is detected
         hit_detected = False
@@ -208,7 +208,7 @@ class RotationalDragFeedbackController:
             hit_reasons.append(f"trend_breakdown (R²={trend_r_squared:.3f})")
         
         # Check if latest drag moved in the wrong direction versus previous Z-step.
-        if len(drag_values) >= 2 and drag_values[-1] > drag_values[-2]:
+        if len(drag_values) >= 2 and drag_values[-1] < drag_values[-2]:
             hit_confidence += self.weight_wrong_direction
             hit_reasons.append(
                 f"wrong_trend_direction (latest_delta={drag_values[-1] - drag_values[-2]:.4f})"
@@ -239,63 +239,32 @@ class RotationalDragFeedbackController:
         ss_tot = sum((y - y_mean) ** 2 for y in y_data)
         return 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
     
-    def _detect_plateau_behavior(self, rpm: float, recent_z_heights: List[float]) -> float:
-        """
-        Detect plateau behavior by analyzing coefficient of variation in recent measurements.
-        
+    def _detect_plateau_behavior(self, recent_drag_values: List[float]) -> float:
+        """Compute plateau score directly from recent drag trendline CV.
+
         Args:
-            rpm: RPM to analyze
-            recent_z_heights: List of recent Z-heights to analyze
-            
+            recent_drag_values: Most recent drag values (typically last 5 points)
+
         Returns:
-            Plateau score (higher = more likely to be plateau)
+            Plateau score in [0, 1]. Returns 1.0 when CV exceeds threshold,
+            otherwise returns a scaled score relative to the threshold.
         """
-        if len(recent_z_heights) < 2:
+        if len(recent_drag_values) < 2:
             return 0.0
-        
-        # Get all CV values for this RPM across Z-heights
-        all_cv_values = []
-        recent_cv_values = []
-        
-        for z_height in sorted(self.z_rpm_drag_data.keys(), reverse=True):
-            if z_height in self.z_rpm_drag_data and rpm in self.z_rpm_drag_data[z_height]:
-                cv = self.z_rpm_drag_data[z_height][rpm]['cv']
-                all_cv_values.append(cv)
-                
-                if z_height in recent_z_heights:
-                    recent_cv_values.append(cv)
-        
-        if len(recent_cv_values) < 2 or len(all_cv_values) < 4:
+
+        recent_mean = _mean(recent_drag_values)
+        if recent_mean <= 0:
             return 0.0
-        
-        # Calculate baseline CV (average of first 2/3 of measurements)
-        baseline_count = max(2, len(all_cv_values) * 2 // 3)
-        baseline_cv = _mean(all_cv_values[:baseline_count])
-        
-        # Calculate recent CV (average of most recent measurements)
-        recent_cv = _mean(recent_cv_values)
-        
-        # Detect jump: recent CV significantly higher than baseline
-        if baseline_cv > 0:
-            cv_ratio = recent_cv / baseline_cv
-            cv_jump = recent_cv - baseline_cv
-            
-            # Plateau detected if:
-            # 1. Recent CV is significantly higher than baseline (ratio > 3)
-            # 2. Absolute jump in CV is above threshold
-            # 3. Recent CV exceeds absolute threshold (0.15)
-            
-            plateau_score = 0.0
-            if cv_ratio > 3.0 and recent_cv > 0.15:  # 3x increase + high absolute CV
-                plateau_score += 0.5
-            if cv_jump > self.cv_jump_threshold:  # Absolute jump
-                plateau_score += 0.3
-            if recent_cv > 0.25:  # Very high recent CV
-                plateau_score += 0.2
-                
-            return min(plateau_score, 1.0)  # Cap at 1.0
-        
-        return 0.0
+
+        trend_cv = _std(recent_drag_values, recent_mean) / recent_mean
+
+        if trend_cv >= self.cv_jump_threshold:
+            return 1.0
+
+        if self.cv_jump_threshold <= 0:
+            return 0.0
+
+        return max(0.0, min(trend_cv / self.cv_jump_threshold, 1.0))
     
     def evaluate_hit_point_detection(self, test_rpms: List[float]) -> bool:
         """
