@@ -528,6 +528,11 @@ def test_cell_dynamic_z_series(
     cell_z_rpm_data = {}
     current_z = safe_z
     print(f"Starting from Z-safe: {current_z:.3f}")
+
+    # Require persistent confidence trigger before terminating the Z-series.
+    hit_confidence_threshold = 0.80
+    required_consecutive_hit_steps = 3
+    consecutive_high_confidence_steps = 0
     
     step_count = 0
     while current_z >= max_z_travel:
@@ -617,18 +622,43 @@ def test_cell_dynamic_z_series(
                         
                 # Evaluate hit point detection after this Z-level
                 hit_point_detected = feedback_controller.evaluate_hit_point_detection(cell_rpms)
-                
-                if hit_point_detected:
-                    print(f"  *** FEEDBACK CONTROLLER: HIT POINT DETECTED ***")
+
+                # Persistent trigger: require confidence >= 0.80 for 3 consecutive Z-steps.
+                z_level_max_confidence = max(
+                    (rpm_metrics.get('Hit_Point_Confidence', 0.0) for rpm_metrics in metrics_data.values()),
+                    default=0.0,
+                )
+
+                if z_level_max_confidence >= hit_confidence_threshold:
+                    consecutive_high_confidence_steps += 1
+                    print(
+                        f"  High-confidence streak: {consecutive_high_confidence_steps}/{required_consecutive_hit_steps} "
+                        f"(max confidence={z_level_max_confidence:.2f})"
+                    )
+                else:
+                    if consecutive_high_confidence_steps > 0:
+                        print(
+                            f"  High-confidence streak reset at Z={z_rounded:.3f} "
+                            f"(max confidence={z_level_max_confidence:.2f})"
+                        )
+                    consecutive_high_confidence_steps = 0
+
+                if consecutive_high_confidence_steps >= required_consecutive_hit_steps:
+                    print(f"  *** FEEDBACK CONTROLLER: PERSISTENT HIT TRIGGER DETECTED ***")
                     summary = feedback_controller.get_summary()
-                    print(f"  Estimated hit Z: {summary['hit_point_z']:.3f}")
-                    print(f"  Detection confidence: {summary['hit_point_confidence']:.2f}")
-                    print(f"  Terminating Cell {global_cell} due to hit-point detection")
+                    if summary.get('hit_point_z') is not None:
+                        print(f"  Estimated hit Z: {summary['hit_point_z']:.3f}")
+                    print(f"  Detection confidence: {summary.get('hit_point_confidence', z_level_max_confidence):.2f}")
+                    print(
+                        f"  Terminating Cell {global_cell} after "
+                        f"{required_consecutive_hit_steps} consecutive high-confidence Z-steps"
+                    )
                     # Store metrics before breaking
                     cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
                     break
             else:
                 # Feedback control disabled or no data - store default metrics
+                consecutive_high_confidence_steps = 0
                 for rpm in cell_rpms:
                     metrics_data[rpm] = {
                         'CV': 0.0,
