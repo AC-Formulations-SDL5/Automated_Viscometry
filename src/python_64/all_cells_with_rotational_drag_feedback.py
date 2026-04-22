@@ -996,6 +996,7 @@ def main():
             print("Start cancelled before run")
             continue  # Continue waiting for next start command
         
+        web_interface.clear_run_data()
         apply_runtime_settings_from_web()
         web_interface.consume_start_command()
         web_interface.update_status("Initializing hardware...")
@@ -1223,6 +1224,7 @@ def main():
             try:
                 if client:
                     client.stop()
+                    client.close()
             except:
                 pass
             try:

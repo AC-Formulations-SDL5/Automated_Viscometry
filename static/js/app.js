@@ -884,6 +884,85 @@ class ViscometryDashboard {
             }
         });
 
+        this.socket.on("clear_dashboard", () => {
+            this.clearDashboard();
+        });
+
+    }
+
+    clearDashboard() {
+        this.measurements = [];
+        this.measurementsByCell.clear();
+        this.latestTorqueByCell.clear();
+        this.hitPoints.clear();
+        this.completedCells.clear();
+        this.cellStates.forEach((_, cellId) => this.cellStates.set(cellId, "pending"));
+        this.washingCell = null;
+        this._pendingCompletedCell = null;
+        this.selectedGraphCell = null;
+        this.sparklineData = [];
+        this.position = { x: 0, y: 0, z: 0 };
+        this.currentCell = null;
+        this.currentRPM = 0;
+        this.currentTorquePercent = 0;
+        this.currentMeasuringZ = null;
+        this.experimentStart = null;
+        this.cellStart = null;
+        this.runMeasurementStartIndex = 0;
+        this.currentPhase = 0;
+
+        if (this.el.statusLog) {
+            this.el.statusLog.innerHTML = "";
+        }
+        if (this.el.cellFlip) {
+            this.el.cellFlip.dataset.cell = "-";
+            this.el.cellFlip.textContent = "-";
+        }
+        if (this.el.cellMeta) {
+            this.el.cellMeta.textContent = "Row -, local -";
+        }
+        if (this.el.elapsed) {
+            this.el.elapsed.textContent = "00:00:00";
+        }
+        if (this.el.elapsedCell) {
+            this.el.elapsedCell.textContent = "Cell 00:00:00";
+        }
+        if (this.el.zMeasuringDisplay) {
+            this.el.zMeasuringDisplay.textContent = "-";
+        }
+        if (this.el.rotationalDragDisplay) {
+            this.el.rotationalDragDisplay.textContent = "0.000";
+        }
+        if (this.el.torqueDisplay) {
+            this.el.torqueDisplay.textContent = "0.00 %";
+        }
+        if (this.el.torqueValue) {
+            this.el.torqueValue.textContent = "0.00";
+        }
+        if (this.el.sidebarRpm) this.el.sidebarRpm.textContent = "-";
+        if (this.el.sidebarSecondDeriv) this.el.sidebarSecondDeriv.textContent = "-";
+        if (this.el.sidebarCv) this.el.sidebarCv.textContent = "-";
+        if (this.el.sidebarR2) this.el.sidebarR2.textContent = "-";
+        if (this.el.sidebarConfidence) this.el.sidebarConfidence.textContent = "-";
+        if (this.el.sidebarHit) {
+            this.el.sidebarHit.textContent = "No";
+            this.el.sidebarHit.className = "sidebar-value mono hit-no";
+        }
+
+        this.platform.cells.forEach((cell) => this.cellStates.set(cell.id, "pending"));
+        this.renderMap();
+        this.updateCellDisplay();
+        this.updateCellVisuals();
+        this.updateCompletionBar();
+        this.updateGauge(0);
+        this.updateTorqueBar(0);
+        this.updateLiveTorqueDisplay(0);
+        this.updateLiveRotationalDragDisplay(0);
+        if (this.el.zMeasuringDisplay) {
+            this.el.zMeasuringDisplay.textContent = "-";
+        }
+        this.refreshLivePlots();
+        this.updateTable();
     }
 
     applyStatusSnapshot(status) {

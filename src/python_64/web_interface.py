@@ -470,7 +470,17 @@ class ViscometryWebInterface:
             'trend_r_squared': trend_r_squared,
             'hit_confidence': hit_confidence,
             'hit_detected': hit_detected,
-        }, broadcast=True)
+        })
+
+    def clear_run_data(self):
+        """Clear the current run's dashboard data and notify connected clients."""
+        with self.control_lock:
+            self.measurement_data = []
+            self.current_cell = None
+            self.current_rpm = 0
+            self.current_torque_percent = 0.0
+            self.current_z_measuring = None
+        self.socketio.emit('clear_dashboard')
         
     def add_measurement_point(self, height: float, rotational_drag: float, rpm: float, cell_id: int):
         """Add a new measurement point"""
