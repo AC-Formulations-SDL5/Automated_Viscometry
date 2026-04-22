@@ -695,6 +695,9 @@ def test_cell_dynamic_z_series(
                         f"  Terminating Cell {global_cell} after "
                         f"{required_consecutive_hit_steps} consecutive high-confidence Z-steps"
                     )
+                    # Send status update to web interface
+                    hit_z_msg = f" at Z={summary['hit_point_z']:.3f}" if summary.get('hit_point_z') is not None else ""
+                    web_interface.update_status(f"Cell {global_cell} terminated early - hit-point detected{hit_z_msg}")
                     # Store metrics before breaking
                     cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
                     break
