@@ -56,15 +56,18 @@ class ViscometryWebInterface:
             'inter_rpm_pause': 2.0,
             'feedback_control_enabled': True,
             'min_data_points_for_trend': 8,
-            'second_derivative_threshold': 2.0,
-            'cv_jump_threshold': 0.4,
-            'trend_r_squared_min': 0.5,
+            'r2_drag_min': 0.975,
+            'r2_cv_min': 0.975,
+            'r2_slope_min': 0.975,
             'hit_point_confidence_threshold': 0.8,
-            # Confidence accumulation weights (must sum to a meaningful total — not enforced)
-            'weight_second_derivative': 0.5,
-            'weight_plateau_cv': 0.4,
-            'weight_trend_breakdown': 0.3,
-            'weight_wrong_direction': 0.2,
+            'weight_2nd_deriv_drag': 0.2,
+            'weight_2nd_deriv_cv': 0.2,
+            'weight_2nd_deriv_slope': 0.2,
+            'weight_r2_drag': 0.2,
+            'weight_r2_cv': 0.2,
+            'weight_r2_slope': 0.2,
+            'baseline_n_calibration': 10,
+            'baseline_z_threshold': 10.0,
             'torque_break_threshold': 100.0,
         }
         
@@ -379,19 +382,21 @@ class ViscometryWebInterface:
                     normalized['cell_content_map'] = {}
             float_keys = {
                 'z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds',
-                'inter_rpm_pause', 'second_derivative_threshold', 'cv_jump_threshold',
-                'trend_r_squared_min', 'hit_point_confidence_threshold', 'torque_break_threshold',
-                'weight_second_derivative', 'weight_plateau_cv',
-                'weight_trend_breakdown', 'weight_wrong_direction',
+                'inter_rpm_pause', 'hit_point_confidence_threshold', 'torque_break_threshold',
+                'r2_drag_min', 'r2_cv_min', 'r2_slope_min',
+                'weight_2nd_deriv_drag', 'weight_2nd_deriv_cv', 'weight_2nd_deriv_slope',
+                'weight_r2_drag', 'weight_r2_cv', 'weight_r2_slope',
+                'baseline_z_threshold',
             }
-            int_keys = {'min_data_points_for_trend'}
+            int_keys = {'min_data_points_for_trend', 'baseline_n_calibration'}
             for key in [
                 'z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds',
-                'inter_rpm_pause', 'min_data_points_for_trend', 'second_derivative_threshold',
-                'cv_jump_threshold', 'trend_r_squared_min', 'hit_point_confidence_threshold',
+                'inter_rpm_pause', 'min_data_points_for_trend',
+                'r2_drag_min', 'r2_cv_min', 'r2_slope_min', 'hit_point_confidence_threshold',
                 'torque_break_threshold',
-                'weight_second_derivative', 'weight_plateau_cv',
-                'weight_trend_breakdown', 'weight_wrong_direction',
+                'weight_2nd_deriv_drag', 'weight_2nd_deriv_cv', 'weight_2nd_deriv_slope',
+                'weight_r2_drag', 'weight_r2_cv', 'weight_r2_slope',
+                'baseline_n_calibration', 'baseline_z_threshold',
             ]:
                 if key in settings and settings[key] not in (None, ''):
                     if key in float_keys:
@@ -486,16 +491,28 @@ class ViscometryWebInterface:
         self.current_z_measuring = z
         self.socketio.emit('z_update', {'current_z': z})
 
-    def emit_feedback_metrics(self, rpm: float, second_derivative, plateau_score,
-                              trend_r_squared, hit_confidence, hit_detected: bool):
+    def emit_feedback_metrics(
+        self, rpm: float,
+        second_derivative_drag, second_derivative_cv, second_derivative_slope,
+        trend_r_squared: float,
+        moving_r2_cv, moving_r2_slope,
+        hit_confidence: float, hit_detected: bool,
+        drag_sd2_calibrated: bool, cv_sd2_calibrated: bool, slope_sd2_calibrated: bool
+    ):
         """Emit latest feedback controller metrics for a single RPM to the sidebar."""
         self.socketio.emit('feedback_metrics_update', {
             'rpm': rpm,
-            'second_derivative': second_derivative,
-            'plateau_score': plateau_score,
+            'second_derivative_drag': second_derivative_drag,
+            'second_derivative_cv': second_derivative_cv,
+            'second_derivative_slope': second_derivative_slope,
             'trend_r_squared': trend_r_squared,
+            'moving_r2_cv': moving_r2_cv,
+            'moving_r2_slope': moving_r2_slope,
             'hit_confidence': hit_confidence,
             'hit_detected': hit_detected,
+            'drag_sd2_calibrated': drag_sd2_calibrated,
+            'cv_sd2_calibrated': cv_sd2_calibrated,
+            'slope_sd2_calibrated': slope_sd2_calibrated,
         })
 
     def clear_run_data(self):

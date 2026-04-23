@@ -10,6 +10,7 @@ Module: feedback_helper_function
 
 import math
 import statistics
+from collections import deque
 from typing import Dict, List, Optional, Tuple
 
 # Module verification function
@@ -59,6 +60,34 @@ def _approximate_second_derivative(z_heights: List[float], drag_values: List[flo
     return 2 * (((y2 - y1) / (x2 - x1)) - ((y1 - y0) / (x1 - x0))) / (x2 - x0)
 
 
+class BaselineZScoreDetector:
+    def __init__(self, n_calibration_points: int = 10, z_score_threshold: float = 10.0):
+        self.n_calibration = n_calibration_points
+        self.z_threshold = z_score_threshold
+        self._buffer: List[float] = []
+        self._baseline_mean: Optional[float] = None
+        self._baseline_std: Optional[float] = None
+        self.calibrated: bool = False
+
+    def feed(self, value: float) -> bool:
+        """Feed a new value. Returns True if this value is detected as a transition."""
+        if not self.calibrated:
+            self._buffer.append(value)
+            if len(self._buffer) >= self.n_calibration:
+                self._baseline_mean = _mean(self._buffer)
+                self._baseline_std = _std(self._buffer, self._baseline_mean) or 1e-9
+                self.calibrated = True
+            return False
+        z = abs(value - self._baseline_mean) / self._baseline_std
+        return z > self.z_threshold
+
+    def reset(self):
+        self._buffer = []
+        self._baseline_mean = None
+        self._baseline_std = None
+        self.calibrated = False
+
+
 class RotationalDragFeedbackController:
     """
     Feedback controller for detecting hit points based on rotational drag trend analysis.
@@ -71,14 +100,20 @@ class RotationalDragFeedbackController:
         self,
         feedback_enabled=True,
         min_data_points=3,
-        second_derivative_threshold=0.5,
-        cv_jump_threshold=0.2,
-        trend_r_squared_min=0.8,
-        hit_point_confidence_threshold=0.6,
-        weight_second_derivative=0.5,
-        weight_plateau_cv=0.4,
-        weight_trend_breakdown=0.3,
-        weight_wrong_direction=0.2,
+        r2_drag_min=0.975,
+        r2_cv_min=0.975,
+        r2_slope_min=0.975,
+        hit_point_confidence_threshold=0.8,
+        weight_2nd_deriv_drag=0.2,
+        weight_2nd_deriv_cv=0.2,
+        weight_2nd_deriv_slope=0.2,
+        weight_r2_drag=0.2,
+        weight_r2_cv=0.2,
+        weight_r2_slope=0.2,
+        baseline_n_calibration=10,
+        baseline_z_threshold=10.0,
+        cv_window=5,
+        slope_window=5,
     ):
         self.z_rpm_drag_data = {}  # Structure: {z_height: {rpm: {measurements: [], avg_drag: float}}}
         self.hit_point_detected = False
@@ -88,14 +123,77 @@ class RotationalDragFeedbackController:
         # Configuration parameters
         self.feedback_enabled = feedback_enabled
         self.min_data_points = min_data_points
-        self.second_derivative_threshold = second_derivative_threshold
-        self.cv_jump_threshold = cv_jump_threshold
-        self.trend_r_squared_min = trend_r_squared_min
+        self.r2_drag_min = r2_drag_min
+        self.r2_cv_min = r2_cv_min
+        self.r2_slope_min = r2_slope_min
         self.hit_point_confidence_threshold = hit_point_confidence_threshold
-        self.weight_second_derivative = weight_second_derivative
-        self.weight_plateau_cv = weight_plateau_cv
-        self.weight_trend_breakdown = weight_trend_breakdown
-        self.weight_wrong_direction = weight_wrong_direction
+        self.weight_2nd_deriv_drag = weight_2nd_deriv_drag
+        self.weight_2nd_deriv_cv = weight_2nd_deriv_cv
+        self.weight_2nd_deriv_slope = weight_2nd_deriv_slope
+        self.weight_r2_drag = weight_r2_drag
+        self.weight_r2_cv = weight_r2_cv
+        self.weight_r2_slope = weight_r2_slope
+        self.baseline_n_calibration = baseline_n_calibration
+        self.baseline_z_threshold = baseline_z_threshold
+        self.cv_window = cv_window
+        self.slope_window = slope_window
+        self.delta_z = 0.02
+
+        self._drag_buffer: Dict[float, deque] = {}
+        self.rpm_cv_history: Dict[float, List[float]] = {}
+        self.rpm_cv_r2_history: Dict[float, List[float]] = {}
+        self.rpm_cv_second_deriv_history: Dict[float, List[float]] = {}
+        self.rpm_slope_history: Dict[float, List[float]] = {}
+        self.rpm_slope_r2_history: Dict[float, List[float]] = {}
+        self.rpm_slope_second_deriv_history: Dict[float, List[float]] = {}
+
+        self._drag_sd2_detectors: Dict[float, BaselineZScoreDetector] = {}
+        self._cv_sd2_detectors: Dict[float, BaselineZScoreDetector] = {}
+        self._slope_sd2_detectors: Dict[float, BaselineZScoreDetector] = {}
+
+        total_weight = (
+            self.weight_2nd_deriv_drag + self.weight_2nd_deriv_cv + self.weight_2nd_deriv_slope +
+            self.weight_r2_drag + self.weight_r2_cv + self.weight_r2_slope
+        )
+        self._weight_normalizer = total_weight if total_weight > 0 else 1.0
+
+    def _get_detector(self, store: dict, rpm: float) -> BaselineZScoreDetector:
+        if rpm not in store:
+            store[rpm] = BaselineZScoreDetector(
+                n_calibration_points=self.baseline_n_calibration,
+                z_score_threshold=self.baseline_z_threshold
+            )
+        return store[rpm]
+
+    def _update_moving_cv(self, rpm: float, latest_drag: float):
+        if rpm not in self._drag_buffer:
+            self._drag_buffer[rpm] = deque()
+        if rpm not in self.rpm_cv_history:
+            self.rpm_cv_history[rpm] = []
+        if rpm not in self.rpm_cv_r2_history:
+            self.rpm_cv_r2_history[rpm] = []
+        if rpm not in self.rpm_cv_second_deriv_history:
+            self.rpm_cv_second_deriv_history[rpm] = []
+
+        self._drag_buffer[rpm].append(latest_drag)
+        if len(self._drag_buffer[rpm]) >= self.cv_window:
+            recent_drag = list(self._drag_buffer[rpm])[-self.cv_window:]
+            recent_mean = _mean(recent_drag)
+            cv = _std(recent_drag, recent_mean) / recent_mean if recent_mean > 0 else 0.0
+            self.rpm_cv_history[rpm].append(cv)
+
+            if len(self.rpm_cv_history[rpm]) >= 5:
+                recent_cv = self.rpm_cv_history[rpm][-5:]
+                x_idx = list(range(5))
+                _, _, cv_r2 = _linear_regression(x_idx, recent_cv)
+                self.rpm_cv_r2_history[rpm].append(cv_r2)
+
+            if len(self.rpm_cv_history[rpm]) >= 3:
+                cv_i = self.rpm_cv_history[rpm][-1]
+                cv_i1 = self.rpm_cv_history[rpm][-2]
+                cv_i2 = self.rpm_cv_history[rpm][-3]
+                second_deriv_cv = (cv_i - 2 * cv_i1 + cv_i2) / (self.delta_z ** 2)
+                self.rpm_cv_second_deriv_history[rpm].append(second_deriv_cv)
         
     def calculate_rotational_drag(self, torque_percent: float, rpm: float) -> float:
         """
@@ -148,7 +246,7 @@ class RotationalDragFeedbackController:
                     'cv': cv,
                     'num_samples': len(drag_values)
                 }
-                
+                self._update_moving_cv(rpm, latest_drag)
                 print(f"      RPM {rpm}: Latest Rotational_Drag = {latest_drag:.4f}, Avg = {avg_drag:.4f}, CV = {cv:.3f}")
     
     def analyze_trend_for_rpm(self, rpm: float) -> Dict:
@@ -175,45 +273,84 @@ class RotationalDragFeedbackController:
             return {'valid': False, 'reason': 'insufficient_data'}
 
         # Perform local-window linear regression using the latest 5 points (or fewer).
-        recent_z = z_heights[-5:] if len(z_heights) >= 5 else z_heights
-        recent_drag = drag_values[-5:] if len(drag_values) >= 5 else drag_values
+        recent_z = z_heights[-self.slope_window:] if len(z_heights) >= self.slope_window else z_heights
+        recent_drag = drag_values[-self.slope_window:] if len(drag_values) >= self.slope_window else drag_values
         trend_slope, _, trend_r_squared = _linear_regression(recent_z, recent_drag)
 
         # Calculate second derivative approximation if we have enough points
-        second_derivative = _approximate_second_derivative(z_heights, drag_values)
-        
-        # Detect plateau/oscillation behavior using CV of recent drag trend values
-        plateau_score = self._detect_plateau_behavior(recent_drag)
-        
-        # Build hit confidence and reasons from all criteria.
-        # Final hit_detected is decided only by confidence threshold.
-        hit_detected = False
+        second_deriv_drag = _approximate_second_derivative(z_heights, drag_values)
+
+        if rpm not in self.rpm_slope_history:
+            self.rpm_slope_history[rpm] = []
+        if rpm not in self.rpm_slope_r2_history:
+            self.rpm_slope_r2_history[rpm] = []
+        if rpm not in self.rpm_slope_second_deriv_history:
+            self.rpm_slope_second_deriv_history[rpm] = []
+        self.rpm_slope_history[rpm].append(trend_slope)
+
+        latest_slope_r2 = None
+        if len(self.rpm_slope_history[rpm]) >= 5:
+            recent_slope = self.rpm_slope_history[rpm][-5:]
+            x_idx = list(range(5))
+            _, _, latest_slope_r2 = _linear_regression(x_idx, recent_slope)
+            self.rpm_slope_r2_history[rpm].append(latest_slope_r2)
+
+        latest_slope_second_deriv = None
+        if len(self.rpm_slope_history[rpm]) >= 3:
+            slope_i = self.rpm_slope_history[rpm][-1]
+            slope_i1 = self.rpm_slope_history[rpm][-2]
+            slope_i2 = self.rpm_slope_history[rpm][-3]
+            latest_slope_second_deriv = (slope_i - 2 * slope_i1 + slope_i2) / (self.delta_z ** 2)
+            self.rpm_slope_second_deriv_history[rpm].append(latest_slope_second_deriv)
+
+        latest_cv_r2 = None
+        if rpm in self.rpm_cv_r2_history and self.rpm_cv_r2_history[rpm]:
+            latest_cv_r2 = self.rpm_cv_r2_history[rpm][-1]
+        latest_cv_second_deriv = None
+        if rpm in self.rpm_cv_second_deriv_history and self.rpm_cv_second_deriv_history[rpm]:
+            latest_cv_second_deriv = self.rpm_cv_second_deriv_history[rpm][-1]
+
         hit_confidence = 0.0
         hit_reasons = []
-        
-        # Check for negative second derivative (trend break)
-        if second_derivative is not None and abs(second_derivative) > self.second_derivative_threshold:
-            hit_confidence += self.weight_second_derivative
-            hit_reasons.append(f"negative_second_derivative ({second_derivative:.4f})")
-        
-        # Check for plateau detection
-        if plateau_score > self.cv_jump_threshold:
-            hit_confidence += self.weight_plateau_cv
-            hit_reasons.append(f"plateau_detected ({plateau_score:.3f})")
-        
-        # Check trend validity (breakdown of linear relationship)
-        if trend_r_squared < self.trend_r_squared_min:
-            hit_confidence += self.weight_trend_breakdown
-            hit_reasons.append(f"trend_breakdown (R²={trend_r_squared:.3f})")
-        
-        # Check if latest drag moved in the wrong direction versus previous Z-step.
-        if len(drag_values) >= 2 and drag_values[-1] < drag_values[-2]:
-            hit_confidence += self.weight_wrong_direction
-            hit_reasons.append(
-                f"wrong_trend_direction (latest_delta={drag_values[-1] - drag_values[-2]:.4f})"
-            )
-            
-        # Ensure hit_confidence doesn't exceed 1.0
+
+        drag_detector = self._get_detector(self._drag_sd2_detectors, rpm)
+        hit_2nd_deriv_drag = False
+        if second_deriv_drag is not None:
+            hit_2nd_deriv_drag = drag_detector.feed(second_deriv_drag)
+
+        cv_detector = self._get_detector(self._cv_sd2_detectors, rpm)
+        hit_2nd_deriv_cv = False
+        if latest_cv_second_deriv is not None:
+            hit_2nd_deriv_cv = cv_detector.feed(latest_cv_second_deriv)
+
+        slope_detector = self._get_detector(self._slope_sd2_detectors, rpm)
+        hit_2nd_deriv_slope = False
+        if latest_slope_second_deriv is not None:
+            hit_2nd_deriv_slope = slope_detector.feed(latest_slope_second_deriv)
+
+        hit_r2_drag = trend_r_squared < self.r2_drag_min
+        hit_r2_cv = latest_cv_r2 is not None and latest_cv_r2 < self.r2_cv_min
+        hit_r2_slope = latest_slope_r2 is not None and latest_slope_r2 < self.r2_slope_min
+
+        if hit_2nd_deriv_drag:
+            hit_confidence += self.weight_2nd_deriv_drag / self._weight_normalizer
+            hit_reasons.append(f"hit_2nd_deriv_drag ({second_deriv_drag:.4f})")
+        if hit_2nd_deriv_cv:
+            hit_confidence += self.weight_2nd_deriv_cv / self._weight_normalizer
+            hit_reasons.append(f"hit_2nd_deriv_cv ({latest_cv_second_deriv:.4f})")
+        if hit_2nd_deriv_slope:
+            hit_confidence += self.weight_2nd_deriv_slope / self._weight_normalizer
+            hit_reasons.append(f"hit_2nd_deriv_slope ({latest_slope_second_deriv:.4f})")
+        if hit_r2_drag:
+            hit_confidence += self.weight_r2_drag / self._weight_normalizer
+            hit_reasons.append(f"hit_r2_drag (R²={trend_r_squared:.4f})")
+        if hit_r2_cv:
+            hit_confidence += self.weight_r2_cv / self._weight_normalizer
+            hit_reasons.append(f"hit_r2_cv (R²={latest_cv_r2:.4f})")
+        if hit_r2_slope:
+            hit_confidence += self.weight_r2_slope / self._weight_normalizer
+            hit_reasons.append(f"hit_r2_slope (R²={latest_slope_r2:.4f})")
+
         hit_confidence = min(hit_confidence, 1.0)
         hit_detected = hit_confidence >= self.hit_point_confidence_threshold
         
@@ -224,11 +361,17 @@ class RotationalDragFeedbackController:
             'drag_values': drag_values,
             'trend_slope': trend_slope,
             'trend_r_squared': trend_r_squared,
-            'second_derivative': second_derivative,
-            'plateau_score': plateau_score,
+            'second_derivative_drag': second_deriv_drag,
+            'second_derivative_cv': latest_cv_second_deriv,
+            'second_derivative_slope': latest_slope_second_deriv,
+            'moving_r2_cv': latest_cv_r2,
+            'moving_r2_slope': latest_slope_r2,
             'hit_detected': hit_detected,
             'hit_confidence': hit_confidence,
-            'hit_reasons': hit_reasons
+            'hit_reasons': hit_reasons,
+            'drag_sd2_calibrated': drag_detector.calibrated,
+            'cv_sd2_calibrated': cv_detector.calibrated if rpm in self._cv_sd2_detectors else False,
+            'slope_sd2_calibrated': slope_detector.calibrated if rpm in self._slope_sd2_detectors else False,
         }
     
     def _calculate_r_squared(self, x_data: List[float], y_data: List[float], coeffs: List[float]) -> float:
@@ -238,33 +381,6 @@ class RotationalDragFeedbackController:
         y_mean = _mean(y_data)
         ss_tot = sum((y - y_mean) ** 2 for y in y_data)
         return 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
-    
-    def _detect_plateau_behavior(self, recent_drag_values: List[float]) -> float:
-        """Compute plateau score directly from recent drag trendline CV.
-
-        Args:
-            recent_drag_values: Most recent drag values (typically last 5 points)
-
-        Returns:
-            Plateau score in [0, 1]. Returns 1.0 when CV exceeds threshold,
-            otherwise returns a scaled score relative to the threshold.
-        """
-        if len(recent_drag_values) < 2:
-            return 0.0
-
-        recent_mean = _mean(recent_drag_values)
-        if recent_mean <= 0:
-            return 0.0
-
-        trend_cv = _std(recent_drag_values, recent_mean) / recent_mean
-
-        if trend_cv >= self.cv_jump_threshold:
-            return 1.0
-
-        if self.cv_jump_threshold <= 0:
-            return 0.0
-
-        return max(0.0, min(trend_cv / self.cv_jump_threshold, 1.0))
     
     def evaluate_hit_point_detection(self, test_rpms: List[float]) -> bool:
         """
@@ -292,9 +408,21 @@ class RotationalDragFeedbackController:
             trend_analysis = self.analyze_trend_for_rpm(rpm)
             
             if trend_analysis['valid']:
-                # Print ALL 3 METRICS clearly as requested by user
-                second_deriv_str = f"{trend_analysis['second_derivative']:.4f}" if trend_analysis['second_derivative'] is not None else "N/A"
-                print(f"    RPM {rpm} METRICS: 2nd-Derivative = {second_deriv_str}, R² = {trend_analysis['trend_r_squared']:.4f}, CV = {trend_analysis['plateau_score']:.3f}")
+                second_drag_str = f"{trend_analysis['second_derivative_drag']:.4f}" if trend_analysis['second_derivative_drag'] is not None else "N/A"
+                second_cv_str = f"{trend_analysis['second_derivative_cv']:.4f}" if trend_analysis['second_derivative_cv'] is not None else "N/A"
+                second_slope_str = f"{trend_analysis['second_derivative_slope']:.4f}" if trend_analysis['second_derivative_slope'] is not None else "N/A"
+                r2_drag_str = f"{trend_analysis['trend_r_squared']:.4f}" if trend_analysis['trend_r_squared'] is not None else "N/A"
+                r2_cv_str = f"{trend_analysis['moving_r2_cv']:.4f}" if trend_analysis['moving_r2_cv'] is not None else "N/A"
+                r2_slope_str = f"{trend_analysis['moving_r2_slope']:.4f}" if trend_analysis['moving_r2_slope'] is not None else "N/A"
+                print(
+                    f"    RPM {rpm} METRICS: "
+                    f"2nd-Deriv Drag [AUTO-Z] = {second_drag_str}, "
+                    f"2nd-Deriv CV [AUTO-Z] = {second_cv_str}, "
+                    f"2nd-Deriv Slope [AUTO-Z] = {second_slope_str}, "
+                    f"R² Drag [R²≥{self.r2_drag_min}] = {r2_drag_str}, "
+                    f"R² CV [R²≥{self.r2_cv_min}] = {r2_cv_str}, "
+                    f"R² Slope [R²≥{self.r2_slope_min}] = {r2_slope_str}"
+                )
                 
                 if trend_analysis['hit_detected']:
                     hit_detections.append(rpm)

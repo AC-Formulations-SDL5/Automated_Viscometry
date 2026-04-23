@@ -914,6 +914,21 @@ h2 {
     color: #c9d1d9;
 }
 
+.sidebar-method {
+    font-size: 0.66rem;
+    color: var(--text-muted, #8b949e);
+}
+
+.sidebar-method.calibrating {
+    color: #f4c842;
+    animation: calibratingPulse 1.2s ease-in-out infinite;
+}
+
+.sidebar-method.calibrated {
+    color: #56d364;
+    animation: none;
+}
+
 .sidebar-value.hit-yes {
     color: #f85149;
     font-weight: 700;
@@ -1674,6 +1689,11 @@ body.loading .skeleton-lines {
 @keyframes fade-in {
     from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes calibratingPulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
 }
 
 @media (max-width: 1200px) {
