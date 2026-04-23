@@ -19,6 +19,7 @@ class ViscometryDashboard {
         this.measurements = [];
         this.measurementsByCell = new Map();
         this.latestTorqueByCell = new Map();
+        this.measuredCells = new Set();
         this.completedCells = new Set();
         this.washingCell = null;
         this._pendingCompletedCell = null;
@@ -45,7 +46,6 @@ class ViscometryDashboard {
         this.selectedExperimentId = null;
         this.runMeasurementStartIndex = 0;
         this.summaryPlotInitialized = false;
-        this.timingStorageKey = "viscometryTimingState";
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
         this.latestControlSettings = {};
@@ -63,7 +63,6 @@ class ViscometryDashboard {
         this.initPlot();
         this.initGauge();
         this.initSummaryPlot();
-        this.restoreTimingState();
         this.startTimerLoop();
         this.fetchInitialData();
         this.loadControlSettings();
@@ -164,7 +163,6 @@ class ViscometryDashboard {
             zFilterAll: document.getElementById("z-filter-all"),
             zFilterLatest: document.getElementById("z-filter-latest"),
             zConnectDots: document.getElementById("z-connect-dots"),
-            exportPlot: document.getElementById("plot-export"),
             exportTable: document.getElementById("table-export"),
             themeToggle: document.getElementById("theme-toggle"),
             cncStatus: document.getElementById("cnc-status"),
@@ -173,7 +171,8 @@ class ViscometryDashboard {
             summaryCards: document.getElementById("experiment-cards"),
             summaryEmpty: document.getElementById("summary-empty"),
             summaryDetail: document.getElementById("summary-detail"),
-            summaryMeta: document.getElementById("summary-meta"),
+            summaryMetaLeft: document.getElementById("summary-meta-left"),
+            summaryMetaRight: document.getElementById("summary-meta-right"),
             summaryDownload: document.getElementById("summary-download"),
             summaryPlot: document.getElementById("summary-plot"),
             tabButtons: document.querySelectorAll(".tab-button"),
@@ -182,7 +181,6 @@ class ViscometryDashboard {
     }
 
     bindUI() {
-        this.el.exportPlot.addEventListener("click", () => this.exportCSV());
         this.el.exportTable.addEventListener("click", () => this.exportCSV());
         this.el.applySettings.addEventListener("click", () => this.applyControlSettings());
         this.el.startRun.addEventListener("click", () => this.startRunFromUI());
@@ -206,6 +204,7 @@ class ViscometryDashboard {
             this.el.zConnectDots.addEventListener("click", () => {
                 this.zConnectDots = !this.zConnectDots;
                 this.el.zConnectDots.textContent = `Connect Dots: ${this.zConnectDots ? "On" : "Off"}`;
+                this.el.zConnectDots.classList.toggle("dots-on", this.zConnectDots);
                 this.refreshLivePlots();
             });
         }
@@ -247,6 +246,13 @@ class ViscometryDashboard {
         // Tab switching functionality
         this.el.tabButtons.forEach(button => {
             button.addEventListener("click", () => this.switchTab(button.dataset.tab));
+        });
+
+        document.querySelectorAll(".btn, .seg").forEach((btn) => {
+            btn.addEventListener("pointerdown", () => {
+                btn.classList.add("btn-pressed");
+                setTimeout(() => btn.classList.remove("btn-pressed"), 200);
+            });
         });
     }
 
@@ -892,6 +898,21 @@ class ViscometryDashboard {
             this.setRunningState(Boolean(data.is_running));
         });
 
+        this.socket.on("experiment_start", (data) => {
+            const startTs = Number(data?.start_ts);
+            this.experimentStart = Number.isFinite(startTs) ? startTs * 1000 : Date.now();
+            this.cellStart = Date.now();
+            this._hideExperimentCompleteMessage();
+            if (this.el.elapsed) {
+                this.el.elapsed.textContent = "00:00:00";
+            }
+        });
+
+        this.socket.on("experiment_stop", () => {
+            this.experimentStart = null;
+            this.cellStart = null;
+        });
+
         this.socket.on("instrument_status_update", (status) => {
             if (!status) {
                 return;
@@ -918,6 +939,7 @@ class ViscometryDashboard {
         this.measurementsByCell.clear();
         this.latestTorqueByCell.clear();
         this.hitPoints.clear();
+        this.measuredCells.clear();
         this.completedCells.clear();
         this.cellStates.forEach((_, cellId) => this.cellStates.set(cellId, "pending"));
         this.washingCell = null;
@@ -1063,6 +1085,12 @@ class ViscometryDashboard {
                 this.setUiState("idle");
             }
         }
+        if (status.experiment_start_ts && this.isRunning) {
+            const startTs = Number(status.experiment_start_ts);
+            if (Number.isFinite(startTs)) {
+                this.experimentStart = startTs * 1000;
+            }
+        }
 
         if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0) {
             status.measurement_data.forEach((m) => this.ingestMeasurement(m, true));
@@ -1108,8 +1136,7 @@ class ViscometryDashboard {
         this.currentCell = cellId === null ? null : Number(cellId);
 
         if (previousCell && this.currentCell !== previousCell) {
-            // Don't mark completed immediately — washing may still be in progress.
-            // The cell will be marked completed when washing finalizes or on safe fallback.
+            this.measuredCells.add(previousCell);
             this._pendingCompletedCell = previousCell;
             this.cellStates.set(previousCell, "washing");
             this.playChime(660, 0.08);
@@ -1125,9 +1152,6 @@ class ViscometryDashboard {
         if (this.currentCell) {
             this.cellStates.set(this.currentCell, "active");
             this.cellStart = Date.now();
-            if (this.isRunning) {
-                this.saveTimingState();
-            }
         }
 
         if (this.currentCell === null && !this.isRunning && this.completedCells.size > 0) {
@@ -1166,6 +1190,7 @@ class ViscometryDashboard {
 
     updateCellVisuals() {
         const statusLower = (this.statusLog[0] || "").toLowerCase();
+        const hasErrorStatus = statusLower.includes("error") || statusLower.includes("fail") || statusLower.includes("critical");
         let activeStation = null;
         if (statusLower.includes("wash station 1") || statusLower.includes("motor 1") || statusLower.includes("pump 1")) {
             activeStation = "WASH";
@@ -1174,28 +1199,19 @@ class ViscometryDashboard {
         }
 
         this.platform.cells.forEach((cell) => {
-            let state;
+            const overrideState = this.cellStates.get(cell.id);
+            let state = overrideState || "pending";
 
-            if (this.washingCell === cell.id) {
-                // Cell is actively being washed — show washing regardless of completed state.
+            if (this.currentCell === cell.id && hasErrorStatus) {
+                state = "error";
+            } else if (this.currentCell === cell.id && this.currentRPM > 0) {
+                state = "measuring";
+            } else if (this.currentCell === cell.id && this.currentRPM === 0) {
+                state = "active";
+            } else if (this.washingCell === cell.id) {
                 state = "washing";
             } else if (this.completedCells.has(cell.id)) {
                 state = "completed";
-            } else if (this.currentCell === cell.id) {
-                if (
-                    this.currentRPM > 0 ||
-                    statusLower.includes("descending") ||
-                    statusLower.includes("measuring") ||
-                    statusLower.includes("z-step")
-                ) {
-                    state = "measuring";
-                } else if (statusLower.includes("error") || statusLower.includes("fail")) {
-                    state = "error";
-                } else {
-                    state = "active";
-                }
-            } else {
-                state = this.cellStates.get(cell.id) || "pending";
             }
 
             this.cellStates.set(cell.id, state);
@@ -1208,7 +1224,7 @@ class ViscometryDashboard {
             if (!node) {
                 return;
             }
-            node.classList.toggle("active", activeStation === id);
+            node.classList.toggle("station-active", activeStation === id);
         });
     }
 
@@ -1365,6 +1381,7 @@ class ViscometryDashboard {
         }
         if (this.el.zConnectDots) {
             this.el.zConnectDots.textContent = `Connect Dots: ${this.zConnectDots ? "On" : "Off"}`;
+            this.el.zConnectDots.classList.toggle("dots-on", this.zConnectDots);
         }
     }
 
@@ -1660,9 +1677,9 @@ class ViscometryDashboard {
         this.el.runPill.classList.toggle("idle", !isRunning);
         this.el.body.classList.toggle("running", isRunning);
 
-        if (isRunning && !this.experimentStart) {
-            this.experimentStart = Date.now();
+        if (isRunning && !previous) {
             this.cellStart = Date.now();
+            this.measuredCells.clear();
             this.completedCells.clear();
             this.washingCell = null;
             this._pendingCompletedCell = null;
@@ -1670,7 +1687,9 @@ class ViscometryDashboard {
             this.updateTimeline();
             this.updateCompletionBar();
             this._hideExperimentCompleteMessage();
-            this.saveTimingState();
+            if (this.el.elapsed) {
+                this.el.elapsed.textContent = "00:00:00";
+            }
             this.setControlStatus("Run active");
         }
 
@@ -1695,43 +1714,11 @@ class ViscometryDashboard {
                     this.updateCellVisuals();
                 }, 3000);
             }
-            this.experimentStart = null;
-            this.cellStart = null;
-            this.clearTimingState();
             this.updateCompletionBar();
             if (this.uiState === "running") {
                 this.setUiState("idle");
             }
         }
-    }
-
-    saveTimingState() {
-        const payload = {
-            experimentStart: this.experimentStart,
-            cellStart: this.cellStart,
-            currentCell: this.currentCell,
-            isRunning: this.isRunning
-        };
-        localStorage.setItem(this.timingStorageKey, JSON.stringify(payload));
-    }
-
-    restoreTimingState() {
-        try {
-            const raw = localStorage.getItem(this.timingStorageKey);
-            if (!raw) {
-                return;
-            }
-            const parsed = JSON.parse(raw);
-            this.experimentStart = Number(parsed.experimentStart) || null;
-            this.cellStart = Number(parsed.cellStart) || null;
-        } catch (_error) {
-            this.experimentStart = null;
-            this.cellStart = null;
-        }
-    }
-
-    clearTimingState() {
-        localStorage.removeItem(this.timingStorageKey);
     }
 
     initSummaryPlot() {
@@ -1791,6 +1778,15 @@ class ViscometryDashboard {
 
         const cells = [...new Set(runData.map((m) => m.cell_id))].sort((a, b) => a - b);
         const rpms = [...new Set(runData.map((m) => Number(m.rpm.toFixed(3))))].sort((a, b) => a - b);
+        const cellDurations = {};
+        cells.forEach((cellId) => {
+            const pts = runData.filter((m) => m.cell_id === cellId);
+            if (pts.length >= 2) {
+                const timestamps = pts.map((p) => Number(p.timestamp) || 0);
+                const durMs = (Math.max(...timestamps) - Math.min(...timestamps)) * 1000;
+                cellDurations[cellId] = durMs;
+            }
+        });
 
         const csvHeader = "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n";
         const csvBody = runData.map((m) => {
@@ -1808,6 +1804,7 @@ class ViscometryDashboard {
                 ? this.latestControlSettings
                 : (this.readControlSettings ? this.readControlSettings() : {}),
             latestPerZ: [...latestByKey.values()],
+            cellDurations,
             csv: csvHeader + csvBody
         };
 
@@ -1892,7 +1889,18 @@ class ViscometryDashboard {
             `<strong>w (R² Drag/CV/Slope):</strong> ${s.weight_r2_drag ?? "-"}/${s.weight_r2_cv ?? "-"}/${s.weight_r2_slope ?? "-"}`,
         ] : ["<strong>Feedback enabled:</strong> No"];
 
-        this.el.summaryMeta.innerHTML = [
+        const durationRows = exp.cells.map((cellId) => {
+            const dur = exp.cellDurations?.[cellId];
+            const label = s.cell_content_map?.[cellId] ? ` (${s.cell_content_map[cellId]})` : "";
+            const timeStr = dur != null ? this.formatDuration(dur) : "—";
+            return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td></tr>`;
+        }).join("");
+        const durationTable = `
+<table class="duration-table">
+  <thead><tr><th>Cell</th><th>Duration</th></tr></thead>
+  <tbody>${durationRows}</tbody>
+</table>`;
+        const leftLines = [
             `<strong>Date:</strong> ${new Date(exp.created_at).toLocaleString()}`,
             `<strong>Experiment name:</strong> ${s.experiment_name || "(unnamed)"}`,
             `<strong>Cells tested:</strong> ${exp.cells.join(", ") || "-"}`,
@@ -1902,28 +1910,37 @@ class ViscometryDashboard {
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
             `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
             `<strong>Points collected:</strong> ${exp.measurement_count}`,
-            `<hr class="meta-divider">`,
-            ...feedbackRows,
-        ].map((line) => line.startsWith("<hr") ? line : `<div>${line}</div>`).join("");
+            durationTable,
+        ];
+        const rightLines = feedbackRows;
+        const leftEl = this.el.summaryMetaLeft;
+        const rightEl = this.el.summaryMetaRight;
+        if (leftEl) {
+            leftEl.innerHTML = leftLines.map((line) => line.startsWith("<table") ? line : `<div>${line}</div>`).join("");
+        }
+        if (rightEl) {
+            rightEl.innerHTML = rightLines.map((line) => `<div>${line}</div>`).join("");
+        }
 
-        const byRpm = {};
+        const byCell = {};
         (exp.latestPerZ || []).forEach((p) => {
-            const k = String(Number(p.rpm).toFixed(3));
-            if (!byRpm[k]) {
-                byRpm[k] = [];
-            }
-            byRpm[k].push(p);
+            const k = String(p.cell_id);
+            if (!byCell[k]) byCell[k] = [];
+            byCell[k].push(p);
         });
 
-        const traces = Object.entries(byRpm).map(([rpm, pts]) => {
+        const traces = Object.entries(byCell).sort((a, b) => Number(a[0]) - Number(b[0])).map(([cellId, pts]) => {
             pts.sort((a, b) => a.height - b.height);
+            const label = s.cell_content_map?.[cellId]
+                ? `Cell ${cellId} — ${s.cell_content_map[cellId]}`
+                : `Cell ${cellId}`;
             return {
                 x: pts.map((p) => p.height),
                 y: pts.map((p) => p.rotational_drag),
                 mode: "lines+markers",
                 type: "scatter",
-                name: `${rpm} RPM`,
-                marker: { size: 7 },
+                name: label,
+                marker: { size: 6 },
                 line: { width: 2 }
             };
         });
@@ -1969,11 +1986,11 @@ class ViscometryDashboard {
     updateTimers() {
         const now = Date.now();
 
-        if (this.experimentStart && this.isRunning) {
+        if (this.experimentStart !== null && this.isRunning) {
             this.el.elapsed.textContent = this.formatDuration(now - this.experimentStart);
         }
 
-        if (this.cellStart && this.isRunning) {
+        if (this.cellStart !== null && this.isRunning) {
             this.el.elapsedCell.textContent = `Cell ${this.formatDuration(now - this.cellStart)}`;
         }
     }
@@ -1988,20 +2005,24 @@ class ViscometryDashboard {
 
     updateCompletionBar() {
         const total = this.plannedCells.length || 18;
-        const done = this.completedCells.size;
+        const done = this.measuredCells.size;
         const ratio = total > 0 ? done / total : 0;
 
         if (this.el.completionBar) {
             this.el.completionBar.style.width = `${(ratio * 100).toFixed(1)}%`;
         }
+        const isAllDone = done >= total && total > 0;
+        const chipText = isAllDone
+            ? `${done} / ${total} cells — EXPERIMENT COMPLETE!`
+            : `${done} / ${total} cells completed`;
         if (this.el.completionText) {
-            this.el.completionText.textContent = `${done} / ${total} cells complete`;
+            this.el.completionText.textContent = chipText;
         }
         if (this.el.completionChip) {
-            this.el.completionChip.textContent = `${done} / ${total} cells completed`;
+            this.el.completionChip.textContent = chipText;
         }
 
-        if (done >= total && total > 0 && !this.isRunning) {
+        if (isAllDone && !this.isRunning) {
             this._showExperimentCompleteMessage();
         }
     }

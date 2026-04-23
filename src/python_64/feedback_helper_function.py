@@ -151,12 +151,6 @@ class RotationalDragFeedbackController:
         self._cv_sd2_detectors: Dict[float, BaselineZScoreDetector] = {}
         self._slope_sd2_detectors: Dict[float, BaselineZScoreDetector] = {}
 
-        total_weight = (
-            self.weight_2nd_deriv_drag + self.weight_2nd_deriv_cv + self.weight_2nd_deriv_slope +
-            self.weight_r2_drag + self.weight_r2_cv + self.weight_r2_slope
-        )
-        self._weight_normalizer = total_weight if total_weight > 0 else 1.0
-
     def _get_detector(self, store: dict, rpm: float) -> BaselineZScoreDetector:
         if rpm not in store:
             store[rpm] = BaselineZScoreDetector(
@@ -333,22 +327,22 @@ class RotationalDragFeedbackController:
         hit_r2_slope = latest_slope_r2 is not None and latest_slope_r2 < self.r2_slope_min
 
         if hit_2nd_deriv_drag:
-            hit_confidence += self.weight_2nd_deriv_drag / self._weight_normalizer
+            hit_confidence += self.weight_2nd_deriv_drag
             hit_reasons.append(f"hit_2nd_deriv_drag ({second_deriv_drag:.4f})")
         if hit_2nd_deriv_cv:
-            hit_confidence += self.weight_2nd_deriv_cv / self._weight_normalizer
+            hit_confidence += self.weight_2nd_deriv_cv
             hit_reasons.append(f"hit_2nd_deriv_cv ({latest_cv_second_deriv:.4f})")
         if hit_2nd_deriv_slope:
-            hit_confidence += self.weight_2nd_deriv_slope / self._weight_normalizer
+            hit_confidence += self.weight_2nd_deriv_slope
             hit_reasons.append(f"hit_2nd_deriv_slope ({latest_slope_second_deriv:.4f})")
         if hit_r2_drag:
-            hit_confidence += self.weight_r2_drag / self._weight_normalizer
+            hit_confidence += self.weight_r2_drag
             hit_reasons.append(f"hit_r2_drag (R²={trend_r_squared:.4f})")
         if hit_r2_cv:
-            hit_confidence += self.weight_r2_cv / self._weight_normalizer
+            hit_confidence += self.weight_r2_cv
             hit_reasons.append(f"hit_r2_cv (R²={latest_cv_r2:.4f})")
         if hit_r2_slope:
-            hit_confidence += self.weight_r2_slope / self._weight_normalizer
+            hit_confidence += self.weight_r2_slope
             hit_reasons.append(f"hit_r2_slope (R²={latest_slope_r2:.4f})")
 
         hit_confidence = min(hit_confidence, 1.0)
