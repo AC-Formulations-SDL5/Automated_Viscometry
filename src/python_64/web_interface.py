@@ -34,6 +34,7 @@ class ViscometryWebInterface:
         self.current_z_measuring = None
         self.instrument_status = {'cnc': False, 'viscometer': False, 'pump': False}
         self.is_running = False
+        self.experiment_start_ts: Optional[float] = None
         self.status_message = "Ready"
         self.control_lock = threading.Lock()
         self.start_requested_event = threading.Event()
@@ -121,6 +122,7 @@ class ViscometryWebInterface:
                 'current_z_measuring': self.current_z_measuring,
                 'instrument_status': self.instrument_status,
                 'is_running': self.is_running,
+                'experiment_start_ts': self.experiment_start_ts,
                 'status_message': self.status_message,
                 'cell_positions': self.get_cell_positions(),
                 'wash_stations': [
@@ -277,6 +279,7 @@ class ViscometryWebInterface:
                 'current_z_measuring': self.current_z_measuring,
                 'instrument_status': self.instrument_status,
                 'is_running': self.is_running,
+                'experiment_start_ts': self.experiment_start_ts,
                 'status_message': self.status_message,
                 'measurement_data': self.measurement_data[-100:],  # Last 100 points
                 'control_settings': self.get_runtime_settings()
@@ -292,6 +295,7 @@ class ViscometryWebInterface:
                 'current_z_measuring': self.current_z_measuring,
                 'instrument_status': self.instrument_status,
                 'is_running': self.is_running,
+                'experiment_start_ts': self.experiment_start_ts,
                 'status_message': f"Error building status: {str(e)[:100]}",
                 'measurement_data': [],
                 'control_settings': {}
@@ -413,12 +417,16 @@ class ViscometryWebInterface:
     def request_start(self):
         """Mark that the experiment should start."""
         self.stop_requested_event.clear()
+        self.experiment_start_ts = time.time()
         self.start_requested_event.set()
+        self.socketio.emit('experiment_start', {'start_ts': self.experiment_start_ts})
 
     def request_stop(self):
         """Mark that the experiment should stop."""
         self.stop_requested_event.set()
         self.is_running = False
+        self.experiment_start_ts = None
+        self.socketio.emit('experiment_stop', {})
         self.socketio.emit('running_state_update', {'is_running': False})
 
     def wait_for_start_command(self, poll_interval=0.2):
@@ -614,6 +622,9 @@ class ViscometryWebInterface:
     def set_running_state(self, is_running: bool):
         """Set running state"""
         self.is_running = is_running
+        if not is_running:
+            self.experiment_start_ts = None
+            self.socketio.emit('experiment_stop', {})
         self.socketio.emit('running_state_update', {'is_running': is_running})
         
     def start_server(self, debug=False):
