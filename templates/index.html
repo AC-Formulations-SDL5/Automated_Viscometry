@@ -223,57 +223,68 @@
 
                                 <div class="feedback-params-grid">
                                     <p class="feedback-section-label">Thresholds</p>
-
                                     <div class="dual-fields">
                                         <label>
-                                            <span>2nd Derivative Threshold</span>
-                                            <input id="second-derivative-threshold" name="second_derivative_threshold"
-                                                   type="number" step="0.1" value="2.0">
+                                            <span>R² Threshold: Rotational Drag</span>
+                                            <input id="r2-drag-min" name="r2_drag_min" type="number" min="0" max="1" step="0.005" value="0.975">
                                         </label>
                                         <label>
-                                            <span>CV Jump Threshold</span>
-                                            <input id="cv-jump-threshold" name="cv_jump_threshold"
-                                                   type="number" step="0.01" value="0.4">
+                                            <span>R² Threshold: CV</span>
+                                            <input id="r2-cv-min" name="r2_cv_min" type="number" min="0" max="1" step="0.005" value="0.975">
                                         </label>
                                     </div>
                                     <div class="dual-fields">
                                         <label>
-                                            <span>Min R² (trend)</span>
-                                            <input id="trend-r-squared-min" name="trend_r_squared_min"
-                                                   type="number" step="0.05" value="0.5">
+                                            <span>R² Threshold: Trend Slope</span>
+                                            <input id="r2-slope-min" name="r2_slope_min" type="number" min="0" max="1" step="0.005" value="0.975">
                                         </label>
                                         <label>
                                             <span>Hit Confidence Threshold</span>
-                                            <input id="hit-point-confidence-threshold" name="hit_point_confidence_threshold"
-                                                   type="number" step="0.05" value="0.8">
+                                            <input id="hit-point-confidence-threshold" name="hit_point_confidence_threshold" type="number" step="0.05" value="0.8">
                                         </label>
                                     </div>
 
                                     <p class="feedback-section-label" style="margin-top:8px;">Confidence Weights</p>
-                                    <p class="feedback-hint-text">Each criterion adds its weight to the confidence score when triggered. Higher weight = stronger influence on hit detection.</p>
-
                                     <div class="dual-fields">
                                         <label>
-                                            <span>w: 2nd Derivative</span>
-                                            <input id="weight-second-derivative" name="weight_second_derivative"
-                                                   type="number" step="0.05" value="0.5" min="0" max="1">
+                                            <span>Weight: 2nd Deriv Drag</span>
+                                            <input id="weight-2nd-deriv-drag" name="weight_2nd_deriv_drag" type="number" step="0.05" value="0.2" min="0" max="1">
                                         </label>
                                         <label>
-                                            <span>w: Plateau / CV</span>
-                                            <input id="weight-plateau-cv" name="weight_plateau_cv"
-                                                   type="number" step="0.05" value="0.4" min="0" max="1">
+                                            <span>Weight: 2nd Deriv CV</span>
+                                            <input id="weight-2nd-deriv-cv" name="weight_2nd_deriv_cv" type="number" step="0.05" value="0.2" min="0" max="1">
                                         </label>
                                     </div>
                                     <div class="dual-fields">
                                         <label>
-                                            <span>w: Trend Breakdown (R²)</span>
-                                            <input id="weight-trend-breakdown" name="weight_trend_breakdown"
-                                                   type="number" step="0.05" value="0.3" min="0" max="1">
+                                            <span>Weight: 2nd Deriv Slope</span>
+                                            <input id="weight-2nd-deriv-slope" name="weight_2nd_deriv_slope" type="number" step="0.05" value="0.2" min="0" max="1">
                                         </label>
                                         <label>
-                                            <span>w: Wrong Direction</span>
-                                            <input id="weight-wrong-direction" name="weight_wrong_direction"
-                                                   type="number" step="0.05" value="0.2" min="0" max="1">
+                                            <span>Weight: R² Drag</span>
+                                            <input id="weight-r2-drag" name="weight_r2_drag" type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                    </div>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Weight: R² CV</span>
+                                            <input id="weight-r2-cv" name="weight_r2_cv" type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                        <label>
+                                            <span>Weight: R² Slope</span>
+                                            <input id="weight-r2-slope" name="weight_r2_slope" type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                    </div>
+
+                                    <p class="feedback-section-label" style="margin-top:8px;">Auto-Detection Baseline</p>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Baseline Calibration Points (n)</span>
+                                            <input id="baseline-n-calibration" name="baseline_n_calibration" type="number" step="1" min="1" value="10">
+                                        </label>
+                                        <label>
+                                            <span>Auto-detect Z-Score Threshold</span>
+                                            <input id="baseline-z-threshold" name="baseline_z_threshold" type="number" step="0.1" min="0.1" value="10.0">
                                         </label>
                                     </div>
                                 </div>
@@ -372,16 +383,34 @@
                                 <div class="sidebar-value mono" id="sidebar-rpm">-</div>
                             </div>
                             <div class="sidebar-section">
-                                <div class="sidebar-label">2nd Derivative</div>
-                                <div class="sidebar-value mono" id="sidebar-2nd-deriv">-</div>
+                                <div class="sidebar-label">2nd Deriv Rotational Drag</div>
+                                <div class="sidebar-value mono" id="sidebar-2nd-deriv-drag">-</div>
+                                <div class="sidebar-method" id="sidebar-method-2nd-deriv-drag">AUTO Z-SCORE (calibrating...)</div>
                             </div>
                             <div class="sidebar-section">
-                                <div class="sidebar-label">Plateau Score (CV)</div>
-                                <div class="sidebar-value mono" id="sidebar-cv">-</div>
+                                <div class="sidebar-label">2nd Deriv CV</div>
+                                <div class="sidebar-value mono" id="sidebar-2nd-deriv-cv">-</div>
+                                <div class="sidebar-method" id="sidebar-method-2nd-deriv-cv">AUTO Z-SCORE (calibrating...)</div>
                             </div>
                             <div class="sidebar-section">
-                                <div class="sidebar-label">Trend R²</div>
-                                <div class="sidebar-value mono" id="sidebar-r2">-</div>
+                                <div class="sidebar-label">2nd Deriv Trend Slope</div>
+                                <div class="sidebar-value mono" id="sidebar-2nd-deriv-slope">-</div>
+                                <div class="sidebar-method" id="sidebar-method-2nd-deriv-slope">AUTO Z-SCORE (calibrating...)</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">R² Rotational Drag</div>
+                                <div class="sidebar-value mono" id="sidebar-r2-drag">-</div>
+                                <div class="sidebar-method" id="sidebar-method-r2-drag">Threshold ≥ 0.975</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">R² CV</div>
+                                <div class="sidebar-value mono" id="sidebar-r2-cv">-</div>
+                                <div class="sidebar-method" id="sidebar-method-r2-cv">Threshold ≥ 0.975</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">R² Trend Slope</div>
+                                <div class="sidebar-value mono" id="sidebar-r2-slope">-</div>
+                                <div class="sidebar-method" id="sidebar-method-r2-slope">Threshold ≥ 0.975</div>
                             </div>
                             <div class="sidebar-section">
                                 <div class="sidebar-label">Hit Confidence</div>

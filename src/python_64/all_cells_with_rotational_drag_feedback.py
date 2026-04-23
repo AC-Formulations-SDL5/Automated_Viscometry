@@ -21,15 +21,18 @@ TORQUE_BREAK_THRESHOLD = 100.0     #100.0
 # Rotational drag feedback controller parameters
 FEEDBACK_CONTROL_ENABLED = True             # Enable/disable feedback controller
 MIN_DATA_POINTS_FOR_TREND = 8              # Minimum z-levels needed for trend analysis
-SECOND_DERIVATIVE_THRESHOLD = 2.0           # Threshold for detecting trend break (absolute value of second derivative) - LESS STRICT
-CV_JUMP_THRESHOLD = 0.4                     # Coefficient of variation jump threshold for oscillation detection - LESS STRICT
-PLATEAU_DETECTION_ENABLED = True            # Enable plateau detection using CV
-TREND_R_SQUARED_MIN = 0.5                  # Minimum R² for valid trend line - LESS STRICT
-HIT_POINT_CONFIDENCE_THRESHOLD = 0.8       # Confidence threshold for hit-point detection - MORE STRICT
-WEIGHT_SECOND_DERIVATIVE = 0.5
-WEIGHT_PLATEAU_CV = 0.4
-WEIGHT_TREND_BREAKDOWN = 0.3
-WEIGHT_WRONG_DIRECTION = 0.2
+R2_DRAG_MIN = 0.975
+R2_CV_MIN = 0.975
+R2_SLOPE_MIN = 0.975
+HIT_POINT_CONFIDENCE_THRESHOLD = 0.8
+WEIGHT_2ND_DERIV_DRAG = 0.2
+WEIGHT_2ND_DERIV_CV = 0.2
+WEIGHT_2ND_DERIV_SLOPE = 0.2
+WEIGHT_R2_DRAG = 0.2
+WEIGHT_R2_CV = 0.2
+WEIGHT_R2_SLOPE = 0.2
+BASELINE_N_CALIBRATION = 10
+BASELINE_Z_THRESHOLD = 10.0
 
 # ===============================================
 SETTLE_TIME = 1.0                   # Time to wait after moving before taking measurements
@@ -106,9 +109,11 @@ def apply_runtime_settings_from_web():
     global TESTING_MODE, SELECTED_ROWS, SELECTED_CELLS, TEST_RPMS, CELL_RPM_MAP, CELL_CONTENT_MAP
     global EXPERIMENT_NAME
     global Z_STEP_SIZE, DWELL_SECONDS, INTER_RPM_PAUSE, MEASUREMENT_DURATION, SAMPLE_INTERVAL
-    global FEEDBACK_CONTROL_ENABLED, MIN_DATA_POINTS_FOR_TREND, SECOND_DERIVATIVE_THRESHOLD
-    global CV_JUMP_THRESHOLD, TREND_R_SQUARED_MIN, HIT_POINT_CONFIDENCE_THRESHOLD, TORQUE_BREAK_THRESHOLD
-    global WEIGHT_SECOND_DERIVATIVE, WEIGHT_PLATEAU_CV, WEIGHT_TREND_BREAKDOWN, WEIGHT_WRONG_DIRECTION
+    global FEEDBACK_CONTROL_ENABLED, MIN_DATA_POINTS_FOR_TREND, HIT_POINT_CONFIDENCE_THRESHOLD, TORQUE_BREAK_THRESHOLD
+    global R2_DRAG_MIN, R2_CV_MIN, R2_SLOPE_MIN
+    global WEIGHT_2ND_DERIV_DRAG, WEIGHT_2ND_DERIV_CV, WEIGHT_2ND_DERIV_SLOPE
+    global WEIGHT_R2_DRAG, WEIGHT_R2_CV, WEIGHT_R2_SLOPE
+    global BASELINE_N_CALIBRATION, BASELINE_Z_THRESHOLD
 
     settings = web_interface.get_runtime_settings()
 
@@ -132,15 +137,19 @@ def apply_runtime_settings_from_web():
     SAMPLE_INTERVAL = float(settings.get('sample_interval', SAMPLE_INTERVAL))
     FEEDBACK_CONTROL_ENABLED = bool(settings.get('feedback_control_enabled', FEEDBACK_CONTROL_ENABLED))
     MIN_DATA_POINTS_FOR_TREND = int(settings.get('min_data_points_for_trend', MIN_DATA_POINTS_FOR_TREND))
-    SECOND_DERIVATIVE_THRESHOLD = float(settings.get('second_derivative_threshold', SECOND_DERIVATIVE_THRESHOLD))
-    CV_JUMP_THRESHOLD = float(settings.get('cv_jump_threshold', CV_JUMP_THRESHOLD))
-    TREND_R_SQUARED_MIN = float(settings.get('trend_r_squared_min', TREND_R_SQUARED_MIN))
+    R2_DRAG_MIN = float(settings.get('r2_drag_min', R2_DRAG_MIN))
+    R2_CV_MIN = float(settings.get('r2_cv_min', R2_CV_MIN))
+    R2_SLOPE_MIN = float(settings.get('r2_slope_min', R2_SLOPE_MIN))
     HIT_POINT_CONFIDENCE_THRESHOLD = float(settings.get('hit_point_confidence_threshold', HIT_POINT_CONFIDENCE_THRESHOLD))
     TORQUE_BREAK_THRESHOLD = float(settings.get('torque_break_threshold', TORQUE_BREAK_THRESHOLD))
-    WEIGHT_SECOND_DERIVATIVE = float(settings.get('weight_second_derivative', WEIGHT_SECOND_DERIVATIVE))
-    WEIGHT_PLATEAU_CV = float(settings.get('weight_plateau_cv', WEIGHT_PLATEAU_CV))
-    WEIGHT_TREND_BREAKDOWN = float(settings.get('weight_trend_breakdown', WEIGHT_TREND_BREAKDOWN))
-    WEIGHT_WRONG_DIRECTION = float(settings.get('weight_wrong_direction', WEIGHT_WRONG_DIRECTION))
+    WEIGHT_2ND_DERIV_DRAG = float(settings.get('weight_2nd_deriv_drag', WEIGHT_2ND_DERIV_DRAG))
+    WEIGHT_2ND_DERIV_CV = float(settings.get('weight_2nd_deriv_cv', WEIGHT_2ND_DERIV_CV))
+    WEIGHT_2ND_DERIV_SLOPE = float(settings.get('weight_2nd_deriv_slope', WEIGHT_2ND_DERIV_SLOPE))
+    WEIGHT_R2_DRAG = float(settings.get('weight_r2_drag', WEIGHT_R2_DRAG))
+    WEIGHT_R2_CV = float(settings.get('weight_r2_cv', WEIGHT_R2_CV))
+    WEIGHT_R2_SLOPE = float(settings.get('weight_r2_slope', WEIGHT_R2_SLOPE))
+    BASELINE_N_CALIBRATION = int(settings.get('baseline_n_calibration', BASELINE_N_CALIBRATION))
+    BASELINE_Z_THRESHOLD = float(settings.get('baseline_z_threshold', BASELINE_Z_THRESHOLD))
 
 
 def get_rpms_for_cell(global_cell: int) -> List[float]:
@@ -532,14 +541,18 @@ def test_cell_dynamic_z_series(
     feedback_controller = RotationalDragFeedbackController(
         feedback_enabled=FEEDBACK_CONTROL_ENABLED,
         min_data_points=MIN_DATA_POINTS_FOR_TREND,
-        second_derivative_threshold=SECOND_DERIVATIVE_THRESHOLD,
-        cv_jump_threshold=CV_JUMP_THRESHOLD,
-        trend_r_squared_min=TREND_R_SQUARED_MIN,
+        r2_drag_min=R2_DRAG_MIN,
+        r2_cv_min=R2_CV_MIN,
+        r2_slope_min=R2_SLOPE_MIN,
         hit_point_confidence_threshold=HIT_POINT_CONFIDENCE_THRESHOLD,
-        weight_second_derivative=WEIGHT_SECOND_DERIVATIVE,
-        weight_plateau_cv=WEIGHT_PLATEAU_CV,
-        weight_trend_breakdown=WEIGHT_TREND_BREAKDOWN,
-        weight_wrong_direction=WEIGHT_WRONG_DIRECTION,
+        weight_2nd_deriv_drag=WEIGHT_2ND_DERIV_DRAG,
+        weight_2nd_deriv_cv=WEIGHT_2ND_DERIV_CV,
+        weight_2nd_deriv_slope=WEIGHT_2ND_DERIV_SLOPE,
+        weight_r2_drag=WEIGHT_R2_DRAG,
+        weight_r2_cv=WEIGHT_R2_CV,
+        weight_r2_slope=WEIGHT_R2_SLOPE,
+        baseline_n_calibration=BASELINE_N_CALIBRATION,
+        baseline_z_threshold=BASELINE_Z_THRESHOLD,
     )
     
     cell_z_rpm_data = {}
@@ -608,17 +621,23 @@ def test_cell_dynamic_z_series(
                         if trend_analysis['valid']:
                             web_interface.emit_feedback_metrics(
                                 rpm=rpm,
-                                second_derivative=trend_analysis.get('second_derivative'),
-                                plateau_score=trend_analysis.get('plateau_score'),
+                                second_derivative_drag=trend_analysis.get('second_derivative_drag'),
+                                second_derivative_cv=trend_analysis.get('second_derivative_cv'),
+                                second_derivative_slope=trend_analysis.get('second_derivative_slope'),
                                 trend_r_squared=trend_analysis.get('trend_r_squared'),
+                                moving_r2_cv=trend_analysis.get('moving_r2_cv'),
+                                moving_r2_slope=trend_analysis.get('moving_r2_slope'),
                                 hit_confidence=trend_analysis.get('hit_confidence'),
                                 hit_detected=trend_analysis.get('hit_detected', False),
+                                drag_sd2_calibrated=trend_analysis.get('drag_sd2_calibrated', False),
+                                cv_sd2_calibrated=trend_analysis.get('cv_sd2_calibrated', False),
+                                slope_sd2_calibrated=trend_analysis.get('slope_sd2_calibrated', False),
                             )
                             metrics_data[rpm] = {
-                                'CV': trend_analysis.get('plateau_score', 0.0),
+                                'CV': trend_analysis.get('moving_r2_cv', 0.0) if trend_analysis.get('moving_r2_cv') is not None else 0.0,
                                 'R2': trend_analysis.get('trend_r_squared', 0.0),
                                 'Trend_Slope': trend_analysis.get('trend_slope', 0.0),
-                                'Second_derivative': trend_analysis.get('second_derivative', 0.0) if trend_analysis.get('second_derivative') is not None else 0.0,
+                                'Second_derivative': trend_analysis.get('second_derivative_drag', 0.0) if trend_analysis.get('second_derivative_drag') is not None else 0.0,
                                 'Hit_Point_Confidence': trend_analysis.get('hit_confidence', 0.0),
                                 'Hit_Detected': bool(trend_analysis.get('hit_detected', False)),
                                 'Hit_Reasons': '; '.join(trend_analysis.get('hit_reasons', []))
@@ -626,11 +645,17 @@ def test_cell_dynamic_z_series(
                         else:
                             web_interface.emit_feedback_metrics(
                                 rpm=rpm,
-                                second_derivative=None,
-                                plateau_score=None,
+                                second_derivative_drag=None,
+                                second_derivative_cv=None,
+                                second_derivative_slope=None,
                                 trend_r_squared=None,
+                                moving_r2_cv=None,
+                                moving_r2_slope=None,
                                 hit_confidence=0.0,
                                 hit_detected=False,
+                                drag_sd2_calibrated=False,
+                                cv_sd2_calibrated=False,
+                                slope_sd2_calibrated=False,
                             )
                             # Default values for invalid trend analysis
                             metrics_data[rpm] = {
@@ -646,11 +671,17 @@ def test_cell_dynamic_z_series(
                         # Default values when no measurements available
                         web_interface.emit_feedback_metrics(
                             rpm=rpm,
-                            second_derivative=None,
-                            plateau_score=None,
+                            second_derivative_drag=None,
+                            second_derivative_cv=None,
+                            second_derivative_slope=None,
                             trend_r_squared=None,
+                            moving_r2_cv=None,
+                            moving_r2_slope=None,
                             hit_confidence=0.0,
                             hit_detected=False,
+                            drag_sd2_calibrated=False,
+                            cv_sd2_calibrated=False,
+                            slope_sd2_calibrated=False,
                         )
                         metrics_data[rpm] = {
                             'CV': 0.0,
@@ -807,8 +838,8 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
         csv_writer.writerow([f"# Completed cells: {completed_cells}"])
         csv_writer.writerow([f"# Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}"])
         if FEEDBACK_CONTROL_ENABLED:
-            csv_writer.writerow([f"# Feedback Thresholds: Second Derivative = {SECOND_DERIVATIVE_THRESHOLD}, CV Jump = {CV_JUMP_THRESHOLD}, R² Min = {TREND_R_SQUARED_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
-            csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv = {WEIGHT_SECOND_DERIVATIVE}, Plateau-CV = {WEIGHT_PLATEAU_CV}, Trend-Breakdown = {WEIGHT_TREND_BREAKDOWN}, Wrong-Dir = {WEIGHT_WRONG_DIRECTION}"])
+            csv_writer.writerow([f"# Feedback R2 Thresholds: Drag = {R2_DRAG_MIN}, CV = {R2_CV_MIN}, Slope = {R2_SLOPE_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
+            csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = {WEIGHT_2ND_DERIV_DRAG}/{WEIGHT_2ND_DERIV_CV}/{WEIGHT_2ND_DERIV_SLOPE}, R2(Drag/CV/Slope) = {WEIGHT_R2_DRAG}/{WEIGHT_R2_CV}/{WEIGHT_R2_SLOPE}"])
         csv_writer.writerow([f"# WARNING: Experiment was terminated early - these are partial results"])
         csv_writer.writerow([])
         
@@ -894,8 +925,8 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         csv_writer.writerow([f"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"])
         csv_writer.writerow([f"# Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}"])
         if FEEDBACK_CONTROL_ENABLED:
-            csv_writer.writerow([f"# Feedback Thresholds: Second Derivative = {SECOND_DERIVATIVE_THRESHOLD}, CV Jump = {CV_JUMP_THRESHOLD}, R² Min = {TREND_R_SQUARED_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
-            csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv = {WEIGHT_SECOND_DERIVATIVE}, Plateau-CV = {WEIGHT_PLATEAU_CV}, Trend-Breakdown = {WEIGHT_TREND_BREAKDOWN}, Wrong-Dir = {WEIGHT_WRONG_DIRECTION}"])
+            csv_writer.writerow([f"# Feedback R2 Thresholds: Drag = {R2_DRAG_MIN}, CV = {R2_CV_MIN}, Slope = {R2_SLOPE_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
+            csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = {WEIGHT_2ND_DERIV_DRAG}/{WEIGHT_2ND_DERIV_CV}/{WEIGHT_2ND_DERIV_SLOPE}, R2(Drag/CV/Slope) = {WEIGHT_R2_DRAG}/{WEIGHT_R2_CV}/{WEIGHT_R2_SLOPE}"])
         csv_writer.writerow([])
         
         # Write column headers with Rotational_Drag and metrics columns
@@ -1010,10 +1041,10 @@ def main():
         print(f"  Enabled: {'YES' if FEEDBACK_CONTROL_ENABLED else 'NO'}")
         if FEEDBACK_CONTROL_ENABLED:
             print(f"  Min data points for trend: {MIN_DATA_POINTS_FOR_TREND}")
-            print(f"  Second derivative threshold: {SECOND_DERIVATIVE_THRESHOLD}")
-            print(f"  CV jump threshold: {CV_JUMP_THRESHOLD}")
+            print(f"  R² drag min: {R2_DRAG_MIN}")
+            print(f"  R² CV min: {R2_CV_MIN}")
+            print(f"  R² slope min: {R2_SLOPE_MIN}")
             print(f"  Hit point confidence threshold: {HIT_POINT_CONFIDENCE_THRESHOLD}")
-            print(f"  Trend R² minimum: {TREND_R_SQUARED_MIN}")
         
         for row in ROWS:
             start_cell = row_and_local_to_global_cell(row['row_number'], 1)

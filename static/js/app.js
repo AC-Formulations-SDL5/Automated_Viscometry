@@ -113,14 +113,18 @@ class ViscometryDashboard {
             interRpmPause: document.getElementById("inter-rpm-pause"),
             torqueBreakThreshold: document.getElementById("torque-break-threshold"),
             feedbackEnabled: document.getElementById("feedback-control-enabled"),
-            secondDerivativeThreshold: document.getElementById("second-derivative-threshold"),
-            cvJumpThreshold: document.getElementById("cv-jump-threshold"),
-            trendRSquaredMin: document.getElementById("trend-r-squared-min"),
+            r2DragMin: document.getElementById("r2-drag-min"),
+            r2CvMin: document.getElementById("r2-cv-min"),
+            r2SlopeMin: document.getElementById("r2-slope-min"),
             hitPointConfidenceThreshold: document.getElementById("hit-point-confidence-threshold"),
-            weightSecondDerivative: document.getElementById("weight-second-derivative"),
-            weightPlateauCv: document.getElementById("weight-plateau-cv"),
-            weightTrendBreakdown: document.getElementById("weight-trend-breakdown"),
-            weightWrongDirection: document.getElementById("weight-wrong-direction"),
+            weight2ndDerivDrag: document.getElementById("weight-2nd-deriv-drag"),
+            weight2ndDerivCv: document.getElementById("weight-2nd-deriv-cv"),
+            weight2ndDerivSlope: document.getElementById("weight-2nd-deriv-slope"),
+            weightR2Drag: document.getElementById("weight-r2-drag"),
+            weightR2Cv: document.getElementById("weight-r2-cv"),
+            weightR2Slope: document.getElementById("weight-r2-slope"),
+            baselineNCalibration: document.getElementById("baseline-n-calibration"),
+            baselineZThreshold: document.getElementById("baseline-z-threshold"),
             applySettings: document.getElementById("apply-settings"),
             startRun: document.getElementById("start-run"),
             stopRun: document.getElementById("stop-run"),
@@ -140,9 +144,18 @@ class ViscometryDashboard {
             dragLiveBox: document.getElementById("drag-live-box"),
             zMeasuringDisplay: document.getElementById("z-measuring-display"),
             sidebarRpm: document.getElementById("sidebar-rpm"),
-            sidebarSecondDeriv: document.getElementById("sidebar-2nd-deriv"),
-            sidebarCv: document.getElementById("sidebar-cv"),
-            sidebarR2: document.getElementById("sidebar-r2"),
+            sidebarSecondDerivDrag: document.getElementById("sidebar-2nd-deriv-drag"),
+            sidebarSecondDerivCv: document.getElementById("sidebar-2nd-deriv-cv"),
+            sidebarSecondDerivSlope: document.getElementById("sidebar-2nd-deriv-slope"),
+            sidebarR2Drag: document.getElementById("sidebar-r2-drag"),
+            sidebarR2Cv: document.getElementById("sidebar-r2-cv"),
+            sidebarR2Slope: document.getElementById("sidebar-r2-slope"),
+            sidebarMethod2ndDerivDrag: document.getElementById("sidebar-method-2nd-deriv-drag"),
+            sidebarMethod2ndDerivCv: document.getElementById("sidebar-method-2nd-deriv-cv"),
+            sidebarMethod2ndDerivSlope: document.getElementById("sidebar-method-2nd-deriv-slope"),
+            sidebarMethodR2Drag: document.getElementById("sidebar-method-r2-drag"),
+            sidebarMethodR2Cv: document.getElementById("sidebar-method-r2-cv"),
+            sidebarMethodR2Slope: document.getElementById("sidebar-method-r2-slope"),
             sidebarConfidence: document.getElementById("sidebar-confidence"),
             sidebarHit: document.getElementById("sidebar-hit"),
             elapsed: document.getElementById("elapsed"),
@@ -501,14 +514,18 @@ class ViscometryDashboard {
         this.el.interRpmPause.value = settings.inter_rpm_pause ?? 2;
         this.el.torqueBreakThreshold.value = settings.torque_break_threshold ?? 100;
         this.el.feedbackEnabled.checked = Boolean(settings.feedback_control_enabled);
-        if (this.el.secondDerivativeThreshold) this.el.secondDerivativeThreshold.value = settings.second_derivative_threshold ?? 2.0;
-        if (this.el.cvJumpThreshold) this.el.cvJumpThreshold.value = settings.cv_jump_threshold ?? 0.4;
-        if (this.el.trendRSquaredMin) this.el.trendRSquaredMin.value = settings.trend_r_squared_min ?? 0.5;
+        if (this.el.r2DragMin) this.el.r2DragMin.value = settings.r2_drag_min ?? 0.975;
+        if (this.el.r2CvMin) this.el.r2CvMin.value = settings.r2_cv_min ?? 0.975;
+        if (this.el.r2SlopeMin) this.el.r2SlopeMin.value = settings.r2_slope_min ?? 0.975;
         if (this.el.hitPointConfidenceThreshold) this.el.hitPointConfidenceThreshold.value = settings.hit_point_confidence_threshold ?? 0.8;
-        if (this.el.weightSecondDerivative) this.el.weightSecondDerivative.value = settings.weight_second_derivative ?? 0.5;
-        if (this.el.weightPlateauCv) this.el.weightPlateauCv.value = settings.weight_plateau_cv ?? 0.4;
-        if (this.el.weightTrendBreakdown) this.el.weightTrendBreakdown.value = settings.weight_trend_breakdown ?? 0.3;
-        if (this.el.weightWrongDirection) this.el.weightWrongDirection.value = settings.weight_wrong_direction ?? 0.2;
+        if (this.el.weight2ndDerivDrag) this.el.weight2ndDerivDrag.value = settings.weight_2nd_deriv_drag ?? 0.2;
+        if (this.el.weight2ndDerivCv) this.el.weight2ndDerivCv.value = settings.weight_2nd_deriv_cv ?? 0.2;
+        if (this.el.weight2ndDerivSlope) this.el.weight2ndDerivSlope.value = settings.weight_2nd_deriv_slope ?? 0.2;
+        if (this.el.weightR2Drag) this.el.weightR2Drag.value = settings.weight_r2_drag ?? 0.2;
+        if (this.el.weightR2Cv) this.el.weightR2Cv.value = settings.weight_r2_cv ?? 0.2;
+        if (this.el.weightR2Slope) this.el.weightR2Slope.value = settings.weight_r2_slope ?? 0.2;
+        if (this.el.baselineNCalibration) this.el.baselineNCalibration.value = settings.baseline_n_calibration ?? 10;
+        if (this.el.baselineZThreshold) this.el.baselineZThreshold.value = settings.baseline_z_threshold ?? 10.0;
 
         // Restore per-cell RPM map
         if (settings.cell_rpm_map && typeof settings.cell_rpm_map === "object") {
@@ -697,14 +714,18 @@ class ViscometryDashboard {
             dwell_seconds: Number(this.el.dwellSeconds.value),
             inter_rpm_pause: Number(this.el.interRpmPause.value),
             torque_break_threshold: Number(this.el.torqueBreakThreshold.value),
-            second_derivative_threshold: Number(this.el.secondDerivativeThreshold?.value ?? 2.0),
-            cv_jump_threshold: Number(this.el.cvJumpThreshold?.value ?? 0.4),
-            trend_r_squared_min: Number(this.el.trendRSquaredMin?.value ?? 0.5),
+            r2_drag_min: Number(this.el.r2DragMin?.value ?? 0.975),
+            r2_cv_min: Number(this.el.r2CvMin?.value ?? 0.975),
+            r2_slope_min: Number(this.el.r2SlopeMin?.value ?? 0.975),
             hit_point_confidence_threshold: Number(this.el.hitPointConfidenceThreshold?.value ?? 0.8),
-            weight_second_derivative: Number(this.el.weightSecondDerivative?.value ?? 0.5),
-            weight_plateau_cv: Number(this.el.weightPlateauCv?.value ?? 0.4),
-            weight_trend_breakdown: Number(this.el.weightTrendBreakdown?.value ?? 0.3),
-            weight_wrong_direction: Number(this.el.weightWrongDirection?.value ?? 0.2),
+            weight_2nd_deriv_drag: Number(this.el.weight2ndDerivDrag?.value ?? 0.2),
+            weight_2nd_deriv_cv: Number(this.el.weight2ndDerivCv?.value ?? 0.2),
+            weight_2nd_deriv_slope: Number(this.el.weight2ndDerivSlope?.value ?? 0.2),
+            weight_r2_drag: Number(this.el.weightR2Drag?.value ?? 0.2),
+            weight_r2_cv: Number(this.el.weightR2Cv?.value ?? 0.2),
+            weight_r2_slope: Number(this.el.weightR2Slope?.value ?? 0.2),
+            baseline_n_calibration: Number(this.el.baselineNCalibration?.value ?? 10),
+            baseline_z_threshold: Number(this.el.baselineZThreshold?.value ?? 10.0),
             feedback_control_enabled: this.el.feedbackEnabled.checked,
             cell_rpm_map: this.buildCellRpmMapPayload(),
             cell_content_map: this.buildCellContentMapPayload(),
@@ -942,9 +963,12 @@ class ViscometryDashboard {
             this.el.torqueValue.textContent = "0.00";
         }
         if (this.el.sidebarRpm) this.el.sidebarRpm.textContent = "-";
-        if (this.el.sidebarSecondDeriv) this.el.sidebarSecondDeriv.textContent = "-";
-        if (this.el.sidebarCv) this.el.sidebarCv.textContent = "-";
-        if (this.el.sidebarR2) this.el.sidebarR2.textContent = "-";
+        if (this.el.sidebarSecondDerivDrag) this.el.sidebarSecondDerivDrag.textContent = "-";
+        if (this.el.sidebarSecondDerivCv) this.el.sidebarSecondDerivCv.textContent = "-";
+        if (this.el.sidebarSecondDerivSlope) this.el.sidebarSecondDerivSlope.textContent = "-";
+        if (this.el.sidebarR2Drag) this.el.sidebarR2Drag.textContent = "-";
+        if (this.el.sidebarR2Cv) this.el.sidebarR2Cv.textContent = "-";
+        if (this.el.sidebarR2Slope) this.el.sidebarR2Slope.textContent = "-";
         if (this.el.sidebarConfidence) this.el.sidebarConfidence.textContent = "-";
         if (this.el.sidebarHit) {
             this.el.sidebarHit.textContent = "No";
@@ -1526,9 +1550,21 @@ class ViscometryDashboard {
             this.el.sidebarRpm.textContent = data.rpm != null ? `${Number(data.rpm).toFixed(2)} RPM` : "-";
         }
         const fmt = (v) => v != null && !Number.isNaN(Number(v)) ? Number(v).toFixed(4) : "-";
-        if (this.el.sidebarSecondDeriv) this.el.sidebarSecondDeriv.textContent = fmt(data.second_derivative);
-        if (this.el.sidebarCv) this.el.sidebarCv.textContent = fmt(data.plateau_score);
-        if (this.el.sidebarR2) this.el.sidebarR2.textContent = fmt(data.trend_r_squared);
+        const r2DragThreshold = Number(this.el.r2DragMin?.value ?? 0.975);
+        const r2CvThreshold = Number(this.el.r2CvMin?.value ?? 0.975);
+        const r2SlopeThreshold = Number(this.el.r2SlopeMin?.value ?? 0.975);
+        if (this.el.sidebarSecondDerivDrag) this.el.sidebarSecondDerivDrag.textContent = fmt(data.second_derivative_drag);
+        if (this.el.sidebarSecondDerivCv) this.el.sidebarSecondDerivCv.textContent = fmt(data.second_derivative_cv);
+        if (this.el.sidebarSecondDerivSlope) this.el.sidebarSecondDerivSlope.textContent = fmt(data.second_derivative_slope);
+        if (this.el.sidebarR2Drag) this.el.sidebarR2Drag.textContent = fmt(data.trend_r_squared);
+        if (this.el.sidebarR2Cv) this.el.sidebarR2Cv.textContent = fmt(data.moving_r2_cv);
+        if (this.el.sidebarR2Slope) this.el.sidebarR2Slope.textContent = fmt(data.moving_r2_slope);
+        if (this.el.sidebarMethodR2Drag) this.el.sidebarMethodR2Drag.textContent = `Threshold ≥ ${r2DragThreshold.toFixed(3)}`;
+        if (this.el.sidebarMethodR2Cv) this.el.sidebarMethodR2Cv.textContent = `Threshold ≥ ${r2CvThreshold.toFixed(3)}`;
+        if (this.el.sidebarMethodR2Slope) this.el.sidebarMethodR2Slope.textContent = `Threshold ≥ ${r2SlopeThreshold.toFixed(3)}`;
+        if (this.el.sidebarMethod2ndDerivDrag) this.updateCalibrationBadge(this.el.sidebarMethod2ndDerivDrag, Boolean(data.drag_sd2_calibrated));
+        if (this.el.sidebarMethod2ndDerivCv) this.updateCalibrationBadge(this.el.sidebarMethod2ndDerivCv, Boolean(data.cv_sd2_calibrated));
+        if (this.el.sidebarMethod2ndDerivSlope) this.updateCalibrationBadge(this.el.sidebarMethod2ndDerivSlope, Boolean(data.slope_sd2_calibrated));
         if (this.el.sidebarConfidence) this.el.sidebarConfidence.textContent = fmt(data.hit_confidence);
 
         if (this.el.sidebarHit) {
@@ -1571,6 +1607,13 @@ class ViscometryDashboard {
             startBtn.disabled = true;
             stopBtn.disabled = false;
         }
+    }
+
+    updateCalibrationBadge(node, isCalibrated) {
+        if (!node) return;
+        node.textContent = isCalibrated ? "AUTO Z-SCORE (active)" : "AUTO Z-SCORE (calibrating...)";
+        node.classList.toggle("calibrated", isCalibrated);
+        node.classList.toggle("calibrating", !isCalibrated);
     }
 
     updateMeasuringZDisplay(value) {
@@ -1841,14 +1884,12 @@ class ViscometryDashboard {
             : "";
         const feedbackRows = s.feedback_control_enabled ? [
             `<strong>Feedback enabled:</strong> Yes`,
-            `<strong>2nd Derivative threshold:</strong> ${s.second_derivative_threshold ?? "-"}`,
-            `<strong>CV Jump threshold:</strong> ${s.cv_jump_threshold ?? "-"}`,
-            `<strong>Min R²:</strong> ${s.trend_r_squared_min ?? "-"}`,
+            `<strong>R² Drag threshold:</strong> ${s.r2_drag_min ?? "-"}`,
+            `<strong>R² CV threshold:</strong> ${s.r2_cv_min ?? "-"}`,
+            `<strong>R² Slope threshold:</strong> ${s.r2_slope_min ?? "-"}`,
             `<strong>Hit Confidence threshold:</strong> ${s.hit_point_confidence_threshold ?? "-"}`,
-            `<strong>w (2nd Derivative):</strong> ${s.weight_second_derivative ?? "-"}`,
-            `<strong>w (Plateau/CV):</strong> ${s.weight_plateau_cv ?? "-"}`,
-            `<strong>w (Trend Breakdown):</strong> ${s.weight_trend_breakdown ?? "-"}`,
-            `<strong>w (Wrong Direction):</strong> ${s.weight_wrong_direction ?? "-"}`,
+            `<strong>w (2nd Deriv Drag/CV/Slope):</strong> ${s.weight_2nd_deriv_drag ?? "-"}/${s.weight_2nd_deriv_cv ?? "-"}/${s.weight_2nd_deriv_slope ?? "-"}`,
+            `<strong>w (R² Drag/CV/Slope):</strong> ${s.weight_r2_drag ?? "-"}/${s.weight_r2_cv ?? "-"}/${s.weight_r2_slope ?? "-"}`,
         ] : ["<strong>Feedback enabled:</strong> No"];
 
         this.el.summaryMeta.innerHTML = [
