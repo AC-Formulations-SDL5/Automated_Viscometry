@@ -396,7 +396,7 @@ class ViscometryDashboard {
             plot_bgcolor: "rgba(255,255,255,0.03)",
             font: { family: "DM Mono", color: "#C9D1D9", size: 12 },
             xaxis: {
-                title: "Z-Height (mm) - descent ->",
+                title: "Z-Height (mm)",
                 gridcolor: "#21262D",
                 zeroline: false,
                 autorange: true
@@ -1537,7 +1537,7 @@ class ViscometryDashboard {
     }
 
     updateGauge(targetRPM) {
-        const clamped = Math.max(0, Math.min(200, targetRPM));
+        const clamped = Math.max(0, Math.min(100, targetRPM));
         if (this.gaugeAnimationFrame) {
             cancelAnimationFrame(this.gaugeAnimationFrame);
         }

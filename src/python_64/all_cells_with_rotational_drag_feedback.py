@@ -33,7 +33,7 @@ WEIGHT_R2_DRAG = 0.2
 WEIGHT_R2_CV = 0.2
 WEIGHT_R2_SLOPE = 0.2
 BASELINE_N_CALIBRATION = 10
-BASELINE_Z_THRESHOLD = 10.0
+BASELINE_Z_THRESHOLD = 5.0
 
 # ===============================================
 SETTLE_TIME = 1.0                   # Time to wait after moving before taking measurements
