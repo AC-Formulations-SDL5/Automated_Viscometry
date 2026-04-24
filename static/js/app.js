@@ -21,7 +21,6 @@ class ViscometryDashboard {
         this.latestTorqueByCell = new Map();
         this.measuredCells = new Set();
         this.completedCells = new Set();
-        this.backendCompletedCount = 0;
         this.washingCell = null;
         this._pendingCompletedCell = null;
         this.plannedCells = [];
@@ -49,6 +48,7 @@ class ViscometryDashboard {
         this.lastRunStartTsSec = null;
         this.completedSaveLock = false;
         this.summaryPlotInitialized = false;
+        this.isSavingFinalResults = false;
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
         this.latestControlSettings = {};
@@ -300,7 +300,6 @@ class ViscometryDashboard {
         this.renderMap();
         this.setUiState("idle");
         this.updateCompletionChip();
-        this.updateCompletionDebugBadge();
         this.updateZFilterButtons();
     }
 
@@ -930,11 +929,9 @@ class ViscometryDashboard {
                     .map((c) => Number(c))
                     .filter((c) => Number.isInteger(c) && c > 0)
             );
-            this.backendCompletedCount = this.completedCells.size;
             this.measuredCells = new Set(this.completedCells);
             this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
             this.updateCompletionBar();
-            this.updateCompletionDebugBadge();
             this.updateCellVisuals();
         });
 
@@ -966,7 +963,6 @@ class ViscometryDashboard {
         this.hitPoints.clear();
         this.measuredCells.clear();
         this.completedCells.clear();
-        this.backendCompletedCount = 0;
         this.cellStates.forEach((_, cellId) => this.cellStates.set(cellId, "pending"));
         this.washingCell = null;
         this._pendingCompletedCell = null;
@@ -979,6 +975,7 @@ class ViscometryDashboard {
         this.currentMeasuringZ = null;
         this.experimentStart = null;
         this.cellStart = null;
+        this.isSavingFinalResults = false;
         this.runMeasurementStartIndex = 0;
         this.currentPhase = 0;
 
@@ -1028,7 +1025,6 @@ class ViscometryDashboard {
         this.updateCellDisplay();
         this.updateCellVisuals();
         this.updateCompletionBar();
-        this.updateCompletionDebugBadge();
         this.updateGauge(0);
         this.updateTorqueBar(0);
         this.updateLiveTorqueDisplay(0);
@@ -1081,11 +1077,9 @@ class ViscometryDashboard {
                     .map((c) => Number(c))
                     .filter((c) => Number.isInteger(c) && c > 0)
             );
-            this.backendCompletedCount = this.completedCells.size;
             this.measuredCells = new Set(this.completedCells);
             this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
             this.updateCompletionBar();
-            this.updateCompletionDebugBadge();
             this.updateCellVisuals();
         }
 
@@ -1352,6 +1346,10 @@ class ViscometryDashboard {
             this.updateCellVisuals();
         }
 
+        if (normalized.includes("saving final results")) {
+            this.isSavingFinalResults = true;
+        }
+
         if (normalized.includes("hit point") || normalized.includes("surface detected")) {
             const match = message.match(/-?\d+(?:\.\d+)?/g);
             if (match && match.length > 0 && this.currentCell) {
@@ -1389,7 +1387,8 @@ class ViscometryDashboard {
                 ? Number(rawMeasurement.torque_percent)
                 : (Number(rawMeasurement.rotational_drag) || 0) * (Number(rawMeasurement.rpm) || 0),
             rpm: Number(rawMeasurement.rpm) || 0,
-            cell_id: Number(rawMeasurement.cell_id) || 0
+            cell_id: Number(rawMeasurement.cell_id) || 0,
+            is_final_save: Boolean(rawMeasurement.is_final_save) || this.isSavingFinalResults
         };
 
         if (!measurement.cell_id) {
@@ -1727,6 +1726,7 @@ class ViscometryDashboard {
 
         if (isRunning && !previous) {
             this.cellStart = Date.now();
+            this.isSavingFinalResults = false;
             this.measuredCells.clear();
             this.completedCells.clear();
             this.washingCell = null;
@@ -1841,6 +1841,7 @@ class ViscometryDashboard {
         const cellDurations = {};
         cells.forEach((cellId) => {
             const pts = runData
+                .filter((m) => !m.is_final_save)
                 .filter((m) => Number(m.cell_id) === Number(cellId))
                 .sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
             if (pts.length >= 2) {
@@ -2002,18 +2003,35 @@ class ViscometryDashboard {
             rightEl.innerHTML = rightLines.map((line) => `<div>${line}</div>`).join("");
         }
 
-        const byCell = {};
+        const byCellRpm = {};
         (exp.latestPerZ || []).forEach((p) => {
-            const k = String(p.cell_id);
-            if (!byCell[k]) byCell[k] = [];
-            byCell[k].push(p);
+            const cellId = Number(p.cell_id);
+            const rpm = Number(p.rpm);
+            if (!Number.isFinite(cellId) || !Number.isFinite(rpm)) {
+                return;
+            }
+            const k = `${cellId}|${rpm.toFixed(3)}`;
+            if (!byCellRpm[k]) byCellRpm[k] = [];
+            byCellRpm[k].push(p);
         });
 
-        const traces = Object.entries(byCell).sort((a, b) => Number(a[0]) - Number(b[0])).map(([cellId, pts]) => {
+        const traces = Object.entries(byCellRpm)
+            .sort((a, b) => {
+                const [cellA, rpmA] = a[0].split("|");
+                const [cellB, rpmB] = b[0].split("|");
+                const cellDiff = Number(cellA) - Number(cellB);
+                if (cellDiff !== 0) return cellDiff;
+                return Number(rpmA) - Number(rpmB);
+            })
+            .map(([key, pts]) => {
+            const [cellIdStr, rpmStr] = key.split("|");
+            const cellId = Number(cellIdStr);
+            const rpm = Number(rpmStr);
             pts.sort((a, b) => a.height - b.height);
-            const label = s.cell_content_map?.[cellId]
+            const cellLabel = s.cell_content_map?.[cellId]
                 ? `Cell ${cellId} — ${s.cell_content_map[cellId]}`
                 : `Cell ${cellId}`;
+            const label = `${cellLabel} @ ${rpm.toFixed(3)} RPM`;
             return {
                 x: pts.map((p) => p.height),
                 y: pts.map((p) => p.rotational_drag),
@@ -2101,7 +2119,6 @@ class ViscometryDashboard {
         if (this.el.completionChip) {
             this.el.completionChip.textContent = chipText;
         }
-        this.updateCompletionDebugBadge();
 
         if (isAllDone && !this.isRunning) {
             this._showExperimentCompleteMessage();
@@ -2110,27 +2127,6 @@ class ViscometryDashboard {
 
     updateCompletionChip() {
         this.updateCompletionBar();
-    }
-
-    updateCompletionDebugBadge() {
-        if (!this.el.completionChip) {
-            return;
-        }
-        const existingBadge = this.el.completionChip.querySelector("#backend-completed-badge");
-        if (existingBadge) {
-            existingBadge.remove();
-        }
-        const badge = document.createElement("span");
-        badge.id = "backend-completed-badge";
-        badge.style.marginLeft = "10px";
-        badge.style.padding = "2px 8px";
-        badge.style.border = "1px solid rgba(201, 209, 217, 0.45)";
-        badge.style.borderRadius = "999px";
-        badge.style.fontSize = "12px";
-        badge.style.fontFamily = "DM Mono, monospace";
-        badge.style.opacity = "0.92";
-        badge.textContent = `backend: ${Number(this.backendCompletedCount) || 0}`;
-        this.el.completionChip.appendChild(badge);
     }
 
     _showExperimentCompleteMessage() {
