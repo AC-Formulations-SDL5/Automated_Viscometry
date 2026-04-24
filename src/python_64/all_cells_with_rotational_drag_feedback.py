@@ -6,6 +6,7 @@ import glob
 import os
 import datetime
 import traceback
+import threading
 from typing import Dict, List, Optional, Tuple
 from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
@@ -179,6 +180,33 @@ def raise_if_stop_requested():
         raise KeyboardInterrupt("Stop requested from web interface")
 
 
+def _run_in_thread(fn, *args, **kwargs) -> threading.Thread:
+    """Launch fn(*args, **kwargs) in a daemon thread and return the thread object."""
+    t = threading.Thread(target=fn, args=args, kwargs=kwargs, daemon=True)
+    t.start()
+    return t
+
+
+def _reliable_pump_command(pump: PumpESP32, command: bytes, description: str) -> bool:
+    """Send pump command with acknowledgment and status verification (module-level)."""
+    print(f"  Executing: {description}")
+    if hasattr(pump, 'send_command_with_ack'):
+        success = pump.send_command_with_ack(command, timeout=3.0, max_retries=3)
+        if success:
+            print(f"  SUCCESS: {description}")
+            return True
+        else:
+            print(f"  FAILED with ACK: {description}, trying legacy mode...")
+    pump.send_tag(command)
+    sleep_with_stop(0.5)
+    if hasattr(pump, 'get_status'):
+        status = pump.get_status()
+        if status and len(status) > 0:
+            print(f"  Status after command: {status}")
+    print(f"  LEGACY: {description} sent (no verification)")
+    return True
+
+
 def get_selected_cells():
     """Get the list of cells to test based on configuration parameters"""
     if TESTING_MODE == "full":
@@ -229,143 +257,101 @@ def row_and_local_to_global_cell(row: int, local_cell: int) -> int:
     
     return (row - 1) * 6 + local_cell
 
-def perform_washing_sequence(cnc: CNC_Machine, pump: PumpESP32, global_cell: int):
-    """Perform the washing sequence after completing a cell test with improved reliability"""
-    print(f"\nStarting Step 2.5: Washing Station Sequence after Cell {global_cell}")
-    
-    # Update web interface
+def perform_washing_sequence(
+    cnc: CNC_Machine,
+    pump: PumpESP32,
+    global_cell: int,
+    fill_thread: Optional[threading.Thread] = None,
+):
+    """
+    Washing sequence with concurrent fill/drain overlap.
+
+    PRE-CONDITION: _pump_fill_station1() and _motor1_start() are already running
+    in background threads (started by test_cell_dynamic_z_series at end of last measurement).
+    By the time this function is called and the CNC safe-moves to Station 1,
+    the station should be filled and Motor M1 spinning.
+    """
+    print(f"\nStarting Washing Sequence for Cell {global_cell} (concurrent-overlap mode)")
     web_interface.update_status(f"Washing after Cell {global_cell}")
-    web_interface.update_position(WASH_STATION1_X, WASH_STATION1_Y, None)
-    
-    def reliable_pump_command(command: bytes, description: str) -> bool:
-        """Send pump command with acknowledgment and status verification"""
-        print(f"  Executing: {description}")
-        
-        # Try with acknowledgment first (new method)
-        if hasattr(pump, 'send_command_with_ack'):
-            success = pump.send_command_with_ack(command, timeout=3.0, max_retries=3)
-            if success:
-                print(f"  SUCCESS: {description}")
-                return True
-            else:
-                print(f"  FAILED with ACK: {description}, trying legacy mode...")
-        
-        # Fallback to legacy mode with verification
-        pump.send_tag(command)
-        sleep_with_stop(0.5)  # Give ESP32 time to process
-        
-        # Verify status if possible
-        if hasattr(pump, 'get_status'):
-            status = pump.get_status()
-            if status and len(status) > 0:
-                print(f"  Status after command: {status}")
-            
-        print(f"  LEGACY: {description} sent (no verification)")
-        return True
-    
+    drain_thread: Optional[threading.Thread] = None
+
     try:
         raise_if_stop_requested()
-        # Step 2.5.1: Move CNC arm to washing station 1 location first
-        print(f"Step 2.5.1: Moving CNC to wash station 1 (X={WASH_STATION1_X}, Y={WASH_STATION1_Y}, Z=0)")
+
+        print(f"Step W1: Moving CNC to above Wash Station 1 (X={WASH_STATION1_X}, Y={WASH_STATION1_Y}, Z=0)")
+        web_interface.update_status("Wash Station 1: travelling (station pre-filling)")
+        web_interface.update_position(WASH_STATION1_X, WASH_STATION1_Y, 0)
         cnc.move_to_point_safe(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=3000)
-        
-        # Step 2.5.2: Start pump and run for 15 seconds
-        print("Step 2.5.2: Starting pump system for 15 seconds...")
-        if not reliable_pump_command(b"P1", "Start Pump 1"):
-            raise Exception("Failed to start Pump 1")
-        
-        sleep_with_stop(15)  # Pump runs for 15 seconds
-        
-        if not reliable_pump_command(b"SP1", "Stop Pump 1"):
-            print("Warning: Failed to confirm Pump 1 stop")
-        
-        # Step 2.5.3: Start 12V DC motor 1 and perform oscillating wash movements
-        print("Step 2.5.3: Starting 12V DC motor 1 and performing oscillating wash movements...")
-        if not reliable_pump_command(b"M1", "Start 12V DC Motor 1"):
-            raise Exception("Failed to start Motor 1")
-            
-        # Lower viscometer into washing position
+        if fill_thread and fill_thread.is_alive():
+            print("Waiting for concurrent Station 1 fill to complete (up to 30 s)...")
+            fill_thread.join(timeout=30)
+            if fill_thread.is_alive():
+                print("WARNING: Fill thread still running after timeout — continuing with wash motion.")
+
+        print("Step W2: Lowering CNC into Wash Station 1 (station pre-filled)...")
+        web_interface.update_status("Wash Station 1: scrubbing")
         cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-        
-        # Perform 5 oscillating movements from x=383 to x=390 and back
-        print("  Performing 5 oscillating wash movements...")
+
+        print("Step W3: Performing 5 oscillating wash movements...")
         for i in range(5):
             raise_if_stop_requested()
             print(f"  Oscillation {i+1}/5: Moving to X=390")
             cnc.move_to_point(390, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-            sleep_with_stop(1)  # Brief pause at extended position
-            print(f"  Oscillation {i+1}/5: Moving back to X=383")
+            sleep_with_stop(1)
+            print(f"  Oscillation {i+1}/5: Moving back to X={WASH_STATION1_X}")
             cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-            sleep_with_stop(1)  # Brief pause at home position
-        
-        # Step 2.5.4: Raise CNC arm to safe position and start reverse rinse cycle
-        print("Step 2.5.4: Raising to safe position and starting reverse rinse cycle...")
+            sleep_with_stop(1)
+
+        print("Step W4: Raising CNC from Station 1 and starting concurrent drain...")
+        web_interface.update_status("Wash Station 1: draining (concurrent)")
         cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
-        
-        if not reliable_pump_command(b"R1", "Start Reverse Rinse 1"):
-            print("Warning: Failed to start reverse rinse")
-            
-        sleep_with_stop(20)  # Reverse rinse cycle
-        
-        if not reliable_pump_command(b"SR1", "Stop Reverse Rinse 1"):
-            print("Warning: Failed to confirm reverse rinse stop")
-        
-        # Step 2.5.5: Stop motor 1
-        print("Step 2.5.5: Stopping motor 1...")
-        if not reliable_pump_command(b"SM1", "Stop Motor 1"):
-            print("Warning: Failed to confirm Motor 1 stop")
-        
-        # Step 2.5.6: Move CNC to washing station 2 location
-        print(f"Step 2.5.6: Moving CNC to wash station 2 (X={WASH_STATION2_X}, Y={WASH_STATION2_Y}, Z=0)")
+        drain_thread = _run_in_thread(_drain_station1, pump)
+        _reliable_pump_command(pump, b"SM1", "Stop Motor 1 (post-scrub)")
+
+        print(f"Step W5: Moving CNC to Wash Station 2 (X={WASH_STATION2_X}, Y={WASH_STATION2_Y}, Z=0)")
+        web_interface.update_status("Wash Station 2: travelling | Drying Station: travelling")
         cnc.move_to_point_safe(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=3000)
-        
-        # Step 2.5.8: Start 12V DC motor 2 and perform oscillating wash movements
-        print("Step 2.5.8: Starting 12V DC motor 2 and performing oscillating wash movements...")
-        if not reliable_pump_command(b"M2", "Start 12V DC Motor 2"):
-            raise Exception("Failed to start Motor 2")
-            
-        # Lower viscometer into washing position
+
+        print("Step W6: Starting Motor M2 and lowering into Wash Station 2...")
+        _reliable_pump_command(pump, b"M2", "Start Motor 2")
+        web_interface.update_status("Wash Station 2: scrubbing | Drying Station: scrubbing")
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-        
-        # Perform 5 oscillating movements from x=383 to x=390 and back
-        print("  Performing 5 oscillating wash movements...")
+
+        print("Step W7: Performing 5 oscillating dry-scrub movements...")
         for i in range(5):
             raise_if_stop_requested()
             print(f"  Oscillation {i+1}/5: Moving to X=390")
             cnc.move_to_point(390, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-            sleep_with_stop(1)  # Brief pause at extended position
-            print(f"  Oscillation {i+1}/5: Moving back to X=383")
+            sleep_with_stop(1)
+            print(f"  Oscillation {i+1}/5: Moving back to X={WASH_STATION2_X}")
             cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-            sleep_with_stop(1)  # Brief pause at home position
-        
-        # Step 2.5.9: Raise CNC arm to safe position
-        print("Step 2.5.9: Raising CNC arm to safe position...")
+            sleep_with_stop(1)
+
+        print("Step W8: Raising CNC from Station 2 and stopping Motor M2...")
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=500)
-        
-        # Step 2.5.10: Stop motor 2
-        print("Step 2.5.10: Stopping motor 2...")
-        if not reliable_pump_command(b"SM2", "Stop Motor 2"):
-            print("Warning: Failed to confirm Motor 2 stop")
-        
-        print(f"Step 2.5: Washing Station Sequence completed for Cell {global_cell}")
-        
-        # Final status check
+        _reliable_pump_command(pump, b"SM2", "Stop Motor 2")
+
+        if drain_thread and drain_thread.is_alive():
+            print("Step W9: Waiting for Station 1 drain to complete (up to 30 s)...")
+            drain_thread.join(timeout=30)
+            if drain_thread.is_alive():
+                print("WARNING: Drain thread did not finish within timeout — continuing.")
+
+        print(f"Washing Sequence completed for Cell {global_cell}")
+
         if hasattr(pump, 'get_status'):
             final_status = pump.get_status()
             if final_status and any(final_status.values()):
-                print(f"WARNING: Some components still running after wash: {final_status}")
-                # Emergency stop if anything is still running
+                print(f"WARNING: Components still active after wash: {final_status}")
                 pump.send_tag(b"0")
                 sleep_with_stop(1)
-        
+
     except Exception as e:
         print(f"Error during washing sequence for Cell {global_cell}: {e}")
         try:
-            # Emergency stop pumps and motors in case of error
             print("Executing emergency stop...")
-            pump.send_tag(b"0")  # Emergency stop all
-            sleep_with_stop(2)  # Give time for stop command
-            # Try to move CNC to safe position
+            pump.send_tag(b"0")
+            sleep_with_stop(2)
             cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
         except Exception as cleanup_error:
             print(f"Error during cleanup: {cleanup_error}")
@@ -397,6 +383,31 @@ def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: 
     cnc.move_to_point_safe(x_pos, y_pos, z_height, speed=3000)
     sleep_with_stop(SETTLE_TIME)
     return x_pos, y_pos, z_height
+
+
+def _pump_fill_station1(pump: PumpESP32):
+    """Fill wash station 1 (runs concurrently with CNC travel). Duration: 15 s."""
+    print("[CONCURRENT] Starting Pump P1 to fill Station 1...")
+    _reliable_pump_command(pump, b"P1", "Start Pump 1 (concurrent fill)")
+    sleep_with_stop(15)
+    _reliable_pump_command(pump, b"SP1", "Stop Pump 1 (concurrent fill complete)")
+    print("[CONCURRENT] Station 1 fill complete.")
+
+
+def _motor1_start(pump: PumpESP32):
+    """Start Motor M1 (runs concurrently with CNC travel)."""
+    print("[CONCURRENT] Starting Motor M1...")
+    _reliable_pump_command(pump, b"M1", "Start Motor 1 (concurrent)")
+    print("[CONCURRENT] Motor M1 started.")
+
+
+def _drain_station1(pump: PumpESP32):
+    """Drain wash station 1 via reverse rinse R1 (runs concurrently with CNC travel to Station 2). Duration: 20 s."""
+    print("[CONCURRENT] Starting reverse rinse R1 to drain Station 1...")
+    _reliable_pump_command(pump, b"R1", "Start Reverse Rinse 1 (concurrent drain)")
+    sleep_with_stop(20)
+    _reliable_pump_command(pump, b"SR1", "Stop Reverse Rinse 1 (concurrent drain complete)")
+    print("[CONCURRENT] Station 1 drain complete.")
 
 def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps"""
@@ -526,8 +537,9 @@ def test_cell_dynamic_z_series(
     global_cell: int,
     safe_z: float,
     max_z_travel: float,
-    cell_rpms: List[float]
-) -> Dict[float, Dict[float, Optional[List[Dict]]]]:
+    cell_rpms: List[float],
+    pump: Optional[PumpESP32] = None,
+) -> Tuple[Dict[float, Dict[float, Optional[List[Dict]]]], Optional[threading.Thread]]:
     """Test dynamic analysis (multiple RPMs) across Z-gap range for one cell using global cell numbering with rotational drag feedback control"""
     row_number, local_cell = global_cell_to_row_and_local(global_cell)
     print(f"\n{'='*60}")
@@ -563,86 +575,114 @@ def test_cell_dynamic_z_series(
     hit_confidence_threshold = 0.80
     required_consecutive_hit_steps = 3
     consecutive_high_confidence_steps = 0
+    _fill_thread: Optional[threading.Thread] = None
     
     step_count = 0
-    while current_z >= max_z_travel:
-        raise_if_stop_requested()
-        step_count += 1
-        z_rounded = round(current_z, 3)
-        web_interface.set_current_z(z_rounded)
-        
-        print(f"\nCell {global_cell} - Z-Step {step_count}: Z={z_rounded:.3f}")
-        
-        try:
-            # Move to position
-            if step_count == 1:
-                move_to_cell_position(cnc, row_number, local_cell, current_z)
-            else:
-                # Direct Z movement to next increment (no Z=0 retraction)
-                base_x = None
-                for row in ROWS:
-                    if row['row_number'] == row_number:
-                        base_x = row['base_x']
-                        break
+    try:
+        while current_z >= max_z_travel:
+            raise_if_stop_requested()
+            step_count += 1
+            z_rounded = round(current_z, 3)
+            web_interface.set_current_z(z_rounded)
+            
+            print(f"\nCell {global_cell} - Z-Step {step_count}: Z={z_rounded:.3f}")
+            
+            try:
+                # Move to position
+                if step_count == 1:
+                    move_to_cell_position(cnc, row_number, local_cell, current_z)
+                else:
+                    # Direct Z movement to next increment (no Z=0 retraction)
+                    base_x = None
+                    for row in ROWS:
+                        if row['row_number'] == row_number:
+                            base_x = row['base_x']
+                            break
+                    
+                    x_pos = base_x
+                    y_pos = BASE_Y + (local_cell - 1) * Y_OFFSET
+                    print(f"  Moving directly to Z={current_z:.3f} (no retraction)")
+                    raise_if_stop_requested()
+                    cnc.move_to_point(x_pos, y_pos, current_z, speed=Z_FEED_RATE)
+                    web_interface.update_position(x_pos, y_pos, current_z)
+                    web_interface.update_status(
+                        f"Cell {global_cell} | Z-step {step_count} | Z={z_rounded:.3f} mm"
+                    )
+                    sleep_with_stop(SETTLE_TIME)
                 
-                x_pos = base_x
-                y_pos = BASE_Y + (local_cell - 1) * Y_OFFSET
-                print(f"  Moving directly to Z={current_z:.3f} (no retraction)")
-                raise_if_stop_requested()
-                cnc.move_to_point(x_pos, y_pos, current_z, speed=Z_FEED_RATE)
-                web_interface.update_position(x_pos, y_pos, current_z)
-                web_interface.update_status(
-                    f"Cell {global_cell} | Z-step {step_count} | Z={z_rounded:.3f} mm"
-                )
-                sleep_with_stop(SETTLE_TIME)
-            
-            # Test all RPMs at this Z-height
-            rpm_data, first_rpm_exceeded = test_dynamic_analysis_at_z(client, z_rounded, cell_rpms)
-            cell_z_rpm_data[z_rounded] = rpm_data
-            
-            # Check if first RPM exceeded threshold - if so, break entire cell
-            if first_rpm_exceeded:
-                print(f"  CELL TERMINATION: First RPM exceeded threshold at Z={z_rounded:.3f}")
-                print(f"  Stopping Cell {global_cell} Z-series testing")
-                break
-            
-            # Add measurements to feedback controller for rotational drag analysis
-            # Always calculate and store metrics for consistent CSV output
-            metrics_data = {}
-            
-            if FEEDBACK_CONTROL_ENABLED and rpm_data:
-                print(f"  Rotational Drag Analysis:")
-                feedback_controller.add_measurements_at_z(z_rounded, rpm_data)
+                # Test all RPMs at this Z-height
+                rpm_data, first_rpm_exceeded = test_dynamic_analysis_at_z(client, z_rounded, cell_rpms)
+                cell_z_rpm_data[z_rounded] = rpm_data
                 
-                # Extract and store metrics for each RPM at this Z-level
-                for rpm in cell_rpms:
-                    if rpm in rpm_data and rpm_data[rpm] is not None:
-                        trend_analysis = feedback_controller.analyze_trend_for_rpm(rpm)
-                        if trend_analysis['valid']:
-                            web_interface.emit_feedback_metrics(
-                                rpm=rpm,
-                                second_derivative_drag=trend_analysis.get('second_derivative_drag'),
-                                second_derivative_cv=trend_analysis.get('second_derivative_cv'),
-                                second_derivative_slope=trend_analysis.get('second_derivative_slope'),
-                                trend_r_squared=trend_analysis.get('trend_r_squared'),
-                                moving_r2_cv=trend_analysis.get('moving_r2_cv'),
-                                moving_r2_slope=trend_analysis.get('moving_r2_slope'),
-                                hit_confidence=trend_analysis.get('hit_confidence'),
-                                hit_detected=trend_analysis.get('hit_detected', False),
-                                drag_sd2_calibrated=trend_analysis.get('drag_sd2_calibrated', False),
-                                cv_sd2_calibrated=trend_analysis.get('cv_sd2_calibrated', False),
-                                slope_sd2_calibrated=trend_analysis.get('slope_sd2_calibrated', False),
-                            )
-                            metrics_data[rpm] = {
-                                'CV': trend_analysis.get('moving_r2_cv', 0.0) if trend_analysis.get('moving_r2_cv') is not None else 0.0,
-                                'R2': trend_analysis.get('trend_r_squared', 0.0),
-                                'Trend_Slope': trend_analysis.get('trend_slope', 0.0),
-                                'Second_derivative': trend_analysis.get('second_derivative_drag', 0.0) if trend_analysis.get('second_derivative_drag') is not None else 0.0,
-                                'Hit_Point_Confidence': trend_analysis.get('hit_confidence', 0.0),
-                                'Hit_Detected': bool(trend_analysis.get('hit_detected', False)),
-                                'Hit_Reasons': '; '.join(trend_analysis.get('hit_reasons', []))
-                            }
+                # Check if first RPM exceeded threshold - if so, break entire cell
+                if first_rpm_exceeded:
+                    print(f"  CELL TERMINATION: First RPM exceeded threshold at Z={z_rounded:.3f}")
+                    print(f"  Stopping Cell {global_cell} Z-series testing")
+                    break
+                
+                # Add measurements to feedback controller for rotational drag analysis
+                # Always calculate and store metrics for consistent CSV output
+                metrics_data = {}
+                
+                if FEEDBACK_CONTROL_ENABLED and rpm_data:
+                    print(f"  Rotational Drag Analysis:")
+                    feedback_controller.add_measurements_at_z(z_rounded, rpm_data)
+                    
+                    # Extract and store metrics for each RPM at this Z-level
+                    for rpm in cell_rpms:
+                        if rpm in rpm_data and rpm_data[rpm] is not None:
+                            trend_analysis = feedback_controller.analyze_trend_for_rpm(rpm)
+                            if trend_analysis['valid']:
+                                web_interface.emit_feedback_metrics(
+                                    rpm=rpm,
+                                    second_derivative_drag=trend_analysis.get('second_derivative_drag'),
+                                    second_derivative_cv=trend_analysis.get('second_derivative_cv'),
+                                    second_derivative_slope=trend_analysis.get('second_derivative_slope'),
+                                    trend_r_squared=trend_analysis.get('trend_r_squared'),
+                                    moving_r2_cv=trend_analysis.get('moving_r2_cv'),
+                                    moving_r2_slope=trend_analysis.get('moving_r2_slope'),
+                                    hit_confidence=trend_analysis.get('hit_confidence'),
+                                    hit_detected=trend_analysis.get('hit_detected', False),
+                                    drag_sd2_calibrated=trend_analysis.get('drag_sd2_calibrated', False),
+                                    cv_sd2_calibrated=trend_analysis.get('cv_sd2_calibrated', False),
+                                    slope_sd2_calibrated=trend_analysis.get('slope_sd2_calibrated', False),
+                                )
+                                metrics_data[rpm] = {
+                                    'CV': trend_analysis.get('moving_r2_cv', 0.0) if trend_analysis.get('moving_r2_cv') is not None else 0.0,
+                                    'R2': trend_analysis.get('trend_r_squared', 0.0),
+                                    'Trend_Slope': trend_analysis.get('trend_slope', 0.0),
+                                    'Second_derivative': trend_analysis.get('second_derivative_drag', 0.0) if trend_analysis.get('second_derivative_drag') is not None else 0.0,
+                                    'Hit_Point_Confidence': trend_analysis.get('hit_confidence', 0.0),
+                                    'Hit_Detected': bool(trend_analysis.get('hit_detected', False)),
+                                    'Hit_Reasons': '; '.join(trend_analysis.get('hit_reasons', []))
+                                }
+                            else:
+                                web_interface.emit_feedback_metrics(
+                                    rpm=rpm,
+                                    second_derivative_drag=None,
+                                    second_derivative_cv=None,
+                                    second_derivative_slope=None,
+                                    trend_r_squared=None,
+                                    moving_r2_cv=None,
+                                    moving_r2_slope=None,
+                                    hit_confidence=0.0,
+                                    hit_detected=False,
+                                    drag_sd2_calibrated=False,
+                                    cv_sd2_calibrated=False,
+                                    slope_sd2_calibrated=False,
+                                )
+                                # Default values for invalid trend analysis
+                                metrics_data[rpm] = {
+                                    'CV': 0.0,
+                                    'R2': 0.0,
+                                    'Second_derivative': 0.0,
+                                    'Trend_Slope': 0.0,
+                                    'Hit_Point_Confidence': 0.0,
+                                    'Hit_Detected': False,
+                                    'Hit_Reasons': trend_analysis.get('reason', 'invalid_trend')
+                                }
                         else:
+                            # Default values when no measurements available
                             web_interface.emit_feedback_metrics(
                                 rpm=rpm,
                                 second_derivative_drag=None,
@@ -657,7 +697,6 @@ def test_cell_dynamic_z_series(
                                 cv_sd2_calibrated=False,
                                 slope_sd2_calibrated=False,
                             )
-                            # Default values for invalid trend analysis
                             metrics_data[rpm] = {
                                 'CV': 0.0,
                                 'R2': 0.0,
@@ -665,24 +704,51 @@ def test_cell_dynamic_z_series(
                                 'Trend_Slope': 0.0,
                                 'Hit_Point_Confidence': 0.0,
                                 'Hit_Detected': False,
-                                'Hit_Reasons': trend_analysis.get('reason', 'invalid_trend')
+                                'Hit_Reasons': 'no_measurements'
                             }
-                    else:
-                        # Default values when no measurements available
-                        web_interface.emit_feedback_metrics(
-                            rpm=rpm,
-                            second_derivative_drag=None,
-                            second_derivative_cv=None,
-                            second_derivative_slope=None,
-                            trend_r_squared=None,
-                            moving_r2_cv=None,
-                            moving_r2_slope=None,
-                            hit_confidence=0.0,
-                            hit_detected=False,
-                            drag_sd2_calibrated=False,
-                            cv_sd2_calibrated=False,
-                            slope_sd2_calibrated=False,
+                            
+                    feedback_controller.evaluate_hit_point_detection(cell_rpms)
+
+                    # Persistent trigger: require confidence >= 0.80 for 3 consecutive Z-steps.
+                    z_level_max_confidence = max(
+                        (rpm_metrics.get('Hit_Point_Confidence', 0.0) for rpm_metrics in metrics_data.values()),
+                        default=0.0,
+                    )
+
+                    if z_level_max_confidence >= hit_confidence_threshold:
+                        consecutive_high_confidence_steps += 1
+                        print(
+                            f"  High-confidence streak: {consecutive_high_confidence_steps}/{required_consecutive_hit_steps} "
+                            f"(max confidence={z_level_max_confidence:.2f})"
                         )
+                    else:
+                        if consecutive_high_confidence_steps > 0:
+                            print(
+                                f"  High-confidence streak reset at Z={z_rounded:.3f} "
+                                f"(max confidence={z_level_max_confidence:.2f})"
+                            )
+                        consecutive_high_confidence_steps = 0
+
+                    if consecutive_high_confidence_steps >= required_consecutive_hit_steps:
+                        print(f"  *** FEEDBACK CONTROLLER: PERSISTENT HIT TRIGGER DETECTED ***")
+                        summary = feedback_controller.get_summary()
+                        if summary.get('hit_point_z') is not None:
+                            print(f"  Estimated hit Z: {summary['hit_point_z']:.3f}")
+                        print(f"  Detection confidence: {summary.get('hit_point_confidence', z_level_max_confidence):.2f}")
+                        print(
+                            f"  Terminating Cell {global_cell} after "
+                            f"{required_consecutive_hit_steps} consecutive high-confidence Z-steps"
+                        )
+                        # Send status update to web interface
+                        hit_z_msg = f" at Z={summary['hit_point_z']:.3f}" if summary.get('hit_point_z') is not None else ""
+                        web_interface.update_status(f"Cell {global_cell} terminated early - hit-point detected{hit_z_msg}")
+                        # Store metrics before breaking
+                        cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
+                        break
+                else:
+                    # Feedback control disabled or no data - store default metrics
+                    consecutive_high_confidence_steps = 0
+                    for rpm in cell_rpms:
                         metrics_data[rpm] = {
                             'CV': 0.0,
                             'R2': 0.0,
@@ -690,87 +756,40 @@ def test_cell_dynamic_z_series(
                             'Trend_Slope': 0.0,
                             'Hit_Point_Confidence': 0.0,
                             'Hit_Detected': False,
-                            'Hit_Reasons': 'no_measurements'
+                            'Hit_Reasons': 'feedback_disabled'
                         }
-                        
-                # Evaluate hit point detection after this Z-level
-                hit_point_detected = feedback_controller.evaluate_hit_point_detection(cell_rpms)
-
-                # Persistent trigger: require confidence >= 0.80 for 3 consecutive Z-steps.
-                z_level_max_confidence = max(
-                    (rpm_metrics.get('Hit_Point_Confidence', 0.0) for rpm_metrics in metrics_data.values()),
-                    default=0.0,
-                )
-
-                if z_level_max_confidence >= hit_confidence_threshold:
-                    consecutive_high_confidence_steps += 1
-                    print(
-                        f"  High-confidence streak: {consecutive_high_confidence_steps}/{required_consecutive_hit_steps} "
-                        f"(max confidence={z_level_max_confidence:.2f})"
-                    )
-                else:
-                    if consecutive_high_confidence_steps > 0:
-                        print(
-                            f"  High-confidence streak reset at Z={z_rounded:.3f} "
-                            f"(max confidence={z_level_max_confidence:.2f})"
-                        )
-                    consecutive_high_confidence_steps = 0
-
-                if consecutive_high_confidence_steps >= required_consecutive_hit_steps:
-                    print(f"  *** FEEDBACK CONTROLLER: PERSISTENT HIT TRIGGER DETECTED ***")
-                    summary = feedback_controller.get_summary()
-                    if summary.get('hit_point_z') is not None:
-                        print(f"  Estimated hit Z: {summary['hit_point_z']:.3f}")
-                    print(f"  Detection confidence: {summary.get('hit_point_confidence', z_level_max_confidence):.2f}")
-                    print(
-                        f"  Terminating Cell {global_cell} after "
-                        f"{required_consecutive_hit_steps} consecutive high-confidence Z-steps"
-                    )
-                    # Send status update to web interface
-                    hit_z_msg = f" at Z={summary['hit_point_z']:.3f}" if summary.get('hit_point_z') is not None else ""
-                    web_interface.update_status(f"Cell {global_cell} terminated early - hit-point detected{hit_z_msg}")
-                    # Store metrics before breaking
-                    cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
-                    break
-            else:
-                # Feedback control disabled or no data - store default metrics
-                consecutive_high_confidence_steps = 0
+                
+                # Always store metrics alongside RPM data for consistent CSV structure
+                cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
+                    
+                print(f"  Completed Z={z_rounded:.3f}: {len([t for t in rpm_data.values() if t is not None])}/{len(cell_rpms)} successful RPM tests")
+                
+            except Exception as e:
+                print(f"  Error testing Cell {global_cell} at Z={z_rounded:.3f}: {e}")
+                # Fill with None values for all RPMs at this Z-height and add default metrics
+                cell_z_rpm_data[z_rounded] = {rpm: None for rpm in cell_rpms}
+                # Add default metrics for consistent CSV structure
+                error_metrics_data = {}
                 for rpm in cell_rpms:
-                    metrics_data[rpm] = {
+                    error_metrics_data[rpm] = {
                         'CV': 0.0,
                         'R2': 0.0,
                         'Second_derivative': 0.0,
                         'Trend_Slope': 0.0,
                         'Hit_Point_Confidence': 0.0,
                         'Hit_Detected': False,
-                        'Hit_Reasons': 'feedback_disabled'
+                        'Hit_Reasons': 'error'
                     }
+                cell_z_rpm_data[z_rounded]['_metrics'] = error_metrics_data
             
-            # Always store metrics alongside RPM data for consistent CSV structure
-            cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
-                
-            print(f"  Completed Z={z_rounded:.3f}: {len([t for t in rpm_data.values() if t is not None])}/{len(cell_rpms)} successful RPM tests")
-            
-        except Exception as e:
-            print(f"  Error testing Cell {global_cell} at Z={z_rounded:.3f}: {e}")
-            # Fill with None values for all RPMs at this Z-height and add default metrics
-            cell_z_rpm_data[z_rounded] = {rpm: None for rpm in cell_rpms}
-            # Add default metrics for consistent CSV structure
-            error_metrics_data = {}
-            for rpm in cell_rpms:
-                error_metrics_data[rpm] = {
-                    'CV': 0.0,
-                    'R2': 0.0,
-                    'Second_derivative': 0.0,
-                    'Trend_Slope': 0.0,
-                    'Hit_Point_Confidence': 0.0,
-                    'Hit_Detected': False,
-                    'Hit_Reasons': 'error'
-                }
-            cell_z_rpm_data[z_rounded]['_metrics'] = error_metrics_data
-        
-        # Move to next Z position
-        current_z += Z_STEP_SIZE
+            # Move to next Z position
+            current_z += Z_STEP_SIZE
+    finally:
+        if pump is not None:
+            web_interface.update_status(f"Cell {global_cell}: last measurement done — pre-filling wash station")
+            print("[CONCURRENT] Firing pump fill + motor start as CNC begins rising...")
+            _fill_thread = _run_in_thread(_pump_fill_station1, pump)
+            _run_in_thread(_motor1_start, pump)
         
     # Move Z back to safe position
     try:
@@ -807,7 +826,7 @@ def test_cell_dynamic_z_series(
         print(f"    RPMs tested: {len(cell_rpms)}")
     
     print(f"Cell {global_cell} dynamic analysis completed: {len(cell_z_rpm_data)} Z-positions tested")
-    return cell_z_rpm_data
+    return cell_z_rpm_data, _fill_thread
 
 def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
                      timestamp: str, mode: str, completed_cells: List[int], experiment_name: str) -> str:
@@ -1150,6 +1169,7 @@ def main():
         # Data structure: all_data[global_cell] = cell_z_rpm_data
         all_data = {}
         completed_cells = []  # Track completed cells for partial saving
+        active_threads: List[threading.Thread] = []
         
         try:
             print(f"\nStarting dynamic analysis...")
@@ -1159,6 +1179,7 @@ def main():
             # Go through each selected cell
             for i, global_cell in enumerate(selected_cells):
                 raise_if_stop_requested()
+                _fill_thread: Optional[threading.Thread] = None
                 row_number, local_cell = global_cell_to_row_and_local(global_cell)
                 
                 # Find row configuration
@@ -1194,23 +1215,31 @@ def main():
                     cell_rpms = get_rpms_for_cell(global_cell)
                     print(f"  RPMs for Cell {global_cell}: {cell_rpms}")
                     web_interface.update_status(f"Testing Cell {global_cell} at RPMs {cell_rpms}")
-                    cell_data = test_cell_dynamic_z_series(
+                    result = test_cell_dynamic_z_series(
                         cnc,
                         client,
                         global_cell,
                         row_config['safe_z'],
                         row_config['max_z_travel'],
                         cell_rpms,
+                        pump=pump,
                     )
+                    try:
+                        cell_data, _fill_thread = result
+                    except ValueError:
+                        cell_data = result
+                        _fill_thread = None
+                    if _fill_thread is not None:
+                        active_threads.append(_fill_thread)
                     all_data[global_cell] = cell_data
                     completed_cells.append(global_cell)
                     print(f"Cell {global_cell} testing completed")
                     
                     # Perform washing sequence after each cell completion
                     if pump:
-                        perform_washing_sequence(cnc, pump, global_cell)
+                        perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)
                     else:
-                        print(f"Warning: Pump not available, skipping washing sequence for Cell {global_cell}")
+                        print(f"Warning: Pump not available, skipping washing for Cell {global_cell}")
                         
                     print(f"Cell {global_cell} fully completed (including wash)")
                     
@@ -1266,6 +1295,10 @@ def main():
                     # Emergency stop all pumps and motors
                     pump.send_tag(b"0")
                     sleep_with_stop(1)
+                    for _t in active_threads:
+                        if _t and _t.is_alive():
+                            print("Cleanup: waiting for fill/drain thread to finish...")
+                            _t.join(timeout=10)
                     pump.close()
             except:
                 pass
