@@ -1238,6 +1238,7 @@ def main():
                     # Perform washing sequence after each cell completion
                     if pump:
                         perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)
+                        web_interface.add_completed_cell(global_cell)
                     else:
                         print(f"Warning: Pump not available, skipping washing for Cell {global_cell}")
                         
