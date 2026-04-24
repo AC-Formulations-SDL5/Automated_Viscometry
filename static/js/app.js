@@ -2003,18 +2003,35 @@ class ViscometryDashboard {
             rightEl.innerHTML = rightLines.map((line) => `<div>${line}</div>`).join("");
         }
 
-        const byCell = {};
+        const byCellRpm = {};
         (exp.latestPerZ || []).forEach((p) => {
-            const k = String(p.cell_id);
-            if (!byCell[k]) byCell[k] = [];
-            byCell[k].push(p);
+            const cellId = Number(p.cell_id);
+            const rpm = Number(p.rpm);
+            if (!Number.isFinite(cellId) || !Number.isFinite(rpm)) {
+                return;
+            }
+            const k = `${cellId}|${rpm.toFixed(3)}`;
+            if (!byCellRpm[k]) byCellRpm[k] = [];
+            byCellRpm[k].push(p);
         });
 
-        const traces = Object.entries(byCell).sort((a, b) => Number(a[0]) - Number(b[0])).map(([cellId, pts]) => {
+        const traces = Object.entries(byCellRpm)
+            .sort((a, b) => {
+                const [cellA, rpmA] = a[0].split("|");
+                const [cellB, rpmB] = b[0].split("|");
+                const cellDiff = Number(cellA) - Number(cellB);
+                if (cellDiff !== 0) return cellDiff;
+                return Number(rpmA) - Number(rpmB);
+            })
+            .map(([key, pts]) => {
+            const [cellIdStr, rpmStr] = key.split("|");
+            const cellId = Number(cellIdStr);
+            const rpm = Number(rpmStr);
             pts.sort((a, b) => a.height - b.height);
-            const label = s.cell_content_map?.[cellId]
+            const cellLabel = s.cell_content_map?.[cellId]
                 ? `Cell ${cellId} — ${s.cell_content_map[cellId]}`
                 : `Cell ${cellId}`;
+            const label = `${cellLabel} @ ${rpm.toFixed(3)} RPM`;
             return {
                 x: pts.map((p) => p.height),
                 y: pts.map((p) => p.rotational_drag),
