@@ -35,6 +35,8 @@ class ViscometryWebInterface:
         self.instrument_status = {'cnc': False, 'viscometer': False, 'pump': False}
         self.is_running = False
         self.experiment_start_ts: Optional[float] = None
+        self.current_cell_start_ts: Optional[float] = None
+        self.completed_cells: List[int] = []
         self.status_message = "Ready"
         self.control_lock = threading.Lock()
         self.start_requested_event = threading.Event()
@@ -123,6 +125,8 @@ class ViscometryWebInterface:
                 'instrument_status': self.instrument_status,
                 'is_running': self.is_running,
                 'experiment_start_ts': self.experiment_start_ts,
+                'current_cell_start_ts': self.current_cell_start_ts,
+                'completed_cells': self.completed_cells,
                 'status_message': self.status_message,
                 'cell_positions': self.get_cell_positions(),
                 'wash_stations': [
@@ -280,6 +284,8 @@ class ViscometryWebInterface:
                 'instrument_status': self.instrument_status,
                 'is_running': self.is_running,
                 'experiment_start_ts': self.experiment_start_ts,
+                'current_cell_start_ts': self.current_cell_start_ts,
+                'completed_cells': self.completed_cells,
                 'status_message': self.status_message,
                 'measurement_data': self.measurement_data[-100:],  # Last 100 points
                 'control_settings': self.get_runtime_settings()
@@ -296,6 +302,8 @@ class ViscometryWebInterface:
                 'instrument_status': self.instrument_status,
                 'is_running': self.is_running,
                 'experiment_start_ts': self.experiment_start_ts,
+                'current_cell_start_ts': self.current_cell_start_ts,
+                'completed_cells': self.completed_cells,
                 'status_message': f"Error building status: {str(e)[:100]}",
                 'measurement_data': [],
                 'control_settings': {}
@@ -418,16 +426,15 @@ class ViscometryWebInterface:
         """Mark that the experiment should start."""
         self.stop_requested_event.clear()
         self.experiment_start_ts = time.time()
+        self.current_cell_start_ts = None
+        self.completed_cells = []
         self.start_requested_event.set()
         self.socketio.emit('experiment_start', {'start_ts': self.experiment_start_ts})
 
     def request_stop(self):
         """Mark that the experiment should stop."""
         self.stop_requested_event.set()
-        self.is_running = False
-        self.experiment_start_ts = None
-        self.socketio.emit('experiment_stop', {})
-        self.socketio.emit('running_state_update', {'is_running': False})
+        self.set_running_state(False)
 
     def wait_for_start_command(self, poll_interval=0.2):
         """Block until a start request is received from the web UI."""
@@ -469,7 +476,18 @@ class ViscometryWebInterface:
     def set_current_cell(self, cell_id: int):
         """Set the currently active cell"""
         self.current_cell = cell_id
+        self.current_cell_start_ts = time.time() if cell_id is not None else None
         self.socketio.emit('cell_update', {'current_cell': cell_id})
+
+    def add_completed_cell(self, cell_id: int):
+        """Track a cell as fully completed (including wash) for refresh-safe progress."""
+        try:
+            normalized = int(cell_id)
+        except (TypeError, ValueError):
+            return
+        if normalized not in self.completed_cells:
+            self.completed_cells.append(normalized)
+        self.socketio.emit('completed_cells_update', {'completed_cells': self.completed_cells})
         
     def set_current_rpm(self, rpm: float):
         """Set current RPM"""
@@ -531,6 +549,8 @@ class ViscometryWebInterface:
             self.current_rpm = 0
             self.current_torque_percent = 0.0
             self.current_z_measuring = None
+            self.current_cell_start_ts = None
+            self.completed_cells = []
         self.socketio.emit('clear_dashboard')
 
     def _load_experiment_history(self):
@@ -621,11 +641,15 @@ class ViscometryWebInterface:
         
     def set_running_state(self, is_running: bool):
         """Set running state"""
+        previous_state = self.is_running
         self.is_running = is_running
         if not is_running:
             self.experiment_start_ts = None
-            self.socketio.emit('experiment_stop', {})
-        self.socketio.emit('running_state_update', {'is_running': is_running})
+            self.current_cell_start_ts = None
+            if previous_state:
+                self.socketio.emit('experiment_stop', {})
+        if previous_state != is_running:
+            self.socketio.emit('running_state_update', {'is_running': is_running})
         
     def start_server(self, debug=False):
         """Start the web server"""

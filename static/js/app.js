@@ -21,6 +21,7 @@ class ViscometryDashboard {
         this.latestTorqueByCell = new Map();
         this.measuredCells = new Set();
         this.completedCells = new Set();
+        this.backendCompletedCount = 0;
         this.washingCell = null;
         this._pendingCompletedCell = null;
         this.plannedCells = [];
@@ -45,6 +46,8 @@ class ViscometryDashboard {
         this.experimentHistory = [];
         this.selectedExperimentId = null;
         this.runMeasurementStartIndex = 0;
+        this.lastRunStartTsSec = null;
+        this.completedSaveLock = false;
         this.summaryPlotInitialized = false;
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
@@ -297,6 +300,7 @@ class ViscometryDashboard {
         this.renderMap();
         this.setUiState("idle");
         this.updateCompletionChip();
+        this.updateCompletionDebugBadge();
         this.updateZFilterButtons();
     }
 
@@ -889,18 +893,22 @@ class ViscometryDashboard {
         });
 
         this.socket.on("running_state_update", (data) => {
+            const wasRunning = this.isRunning;
             if (data.is_running && !this.isRunning) {
                 this.runMeasurementStartIndex = this.measurements.length;
+                this.completedSaveLock = false;
             }
-            if (!data.is_running && this.isRunning) {
+            if (!data.is_running && wasRunning) {
+                this.isRunning = false;
                 this.saveCompletedExperiment();
             }
-            this.setRunningState(Boolean(data.is_running));
+            this.setRunningState(Boolean(data.is_running), wasRunning);
         });
 
         this.socket.on("experiment_start", (data) => {
             const startTs = Number(data?.start_ts);
             this.experimentStart = Number.isFinite(startTs) ? startTs * 1000 : Date.now();
+            this.lastRunStartTsSec = Number.isFinite(startTs) ? startTs : (this.experimentStart / 1000);
             this.cellStart = Date.now();
             this._hideExperimentCompleteMessage();
             if (this.el.elapsed) {
@@ -911,6 +919,23 @@ class ViscometryDashboard {
         this.socket.on("experiment_stop", () => {
             this.experimentStart = null;
             this.cellStart = null;
+        });
+
+        this.socket.on("completed_cells_update", (data) => {
+            if (!Array.isArray(data?.completed_cells)) {
+                return;
+            }
+            this.completedCells = new Set(
+                data.completed_cells
+                    .map((c) => Number(c))
+                    .filter((c) => Number.isInteger(c) && c > 0)
+            );
+            this.backendCompletedCount = this.completedCells.size;
+            this.measuredCells = new Set(this.completedCells);
+            this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
+            this.updateCompletionBar();
+            this.updateCompletionDebugBadge();
+            this.updateCellVisuals();
         });
 
         this.socket.on("instrument_status_update", (status) => {
@@ -941,6 +966,7 @@ class ViscometryDashboard {
         this.hitPoints.clear();
         this.measuredCells.clear();
         this.completedCells.clear();
+        this.backendCompletedCount = 0;
         this.cellStates.forEach((_, cellId) => this.cellStates.set(cellId, "pending"));
         this.washingCell = null;
         this._pendingCompletedCell = null;
@@ -1002,6 +1028,7 @@ class ViscometryDashboard {
         this.updateCellDisplay();
         this.updateCellVisuals();
         this.updateCompletionBar();
+        this.updateCompletionDebugBadge();
         this.updateGauge(0);
         this.updateTorqueBar(0);
         this.updateLiveTorqueDisplay(0);
@@ -1048,6 +1075,20 @@ class ViscometryDashboard {
             this.setActiveCell(status.current_cell);
         }
 
+        if (Array.isArray(status.completed_cells)) {
+            this.completedCells = new Set(
+                status.completed_cells
+                    .map((c) => Number(c))
+                    .filter((c) => Number.isInteger(c) && c > 0)
+            );
+            this.backendCompletedCount = this.completedCells.size;
+            this.measuredCells = new Set(this.completedCells);
+            this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
+            this.updateCompletionBar();
+            this.updateCompletionDebugBadge();
+            this.updateCellVisuals();
+        }
+
         if (status.current_rpm !== undefined) {
             this.currentRPM = Number(status.current_rpm) || 0;
             this.updateGauge(this.currentRPM);
@@ -1085,10 +1126,17 @@ class ViscometryDashboard {
                 this.setUiState("idle");
             }
         }
-        if (status.experiment_start_ts && this.isRunning) {
+        if (status.experiment_start_ts) {
             const startTs = Number(status.experiment_start_ts);
             if (Number.isFinite(startTs)) {
                 this.experimentStart = startTs * 1000;
+                this.lastRunStartTsSec = startTs;
+            }
+        }
+        if (status.current_cell_start_ts) {
+            const cellStartTs = Number(status.current_cell_start_ts);
+            if (Number.isFinite(cellStartTs)) {
+                this.cellStart = cellStartTs * 1000;
             }
         }
 
@@ -1668,8 +1716,8 @@ class ViscometryDashboard {
         }, false);
     }
 
-    setRunningState(isRunning) {
-        const previous = this.isRunning;
+    setRunningState(isRunning, previousOverride = null) {
+        const previous = typeof previousOverride === "boolean" ? previousOverride : this.isRunning;
         this.isRunning = isRunning;
 
         this.el.runPill.textContent = isRunning ? "RUNNING" : "IDLE";
@@ -1765,8 +1813,20 @@ class ViscometryDashboard {
     }
 
     saveCompletedExperiment() {
-        const runData = this.measurements.slice(this.runMeasurementStartIndex);
+        if (this.completedSaveLock) {
+            return;
+        }
+        this.completedSaveLock = true;
+
+        const runStartTsSec = Number.isFinite(this.lastRunStartTsSec)
+            ? this.lastRunStartTsSec
+            : (Number.isFinite(this.experimentStart) ? this.experimentStart / 1000 : null);
+        let runData = this.measurements.slice(this.runMeasurementStartIndex);
+        if (Number.isFinite(runStartTsSec)) {
+            runData = runData.filter((m) => Number(m.timestamp) >= runStartTsSec);
+        }
         if (runData.length === 0) {
+            this.completedSaveLock = false;
             return;
         }
 
@@ -1780,10 +1840,13 @@ class ViscometryDashboard {
         const rpms = [...new Set(runData.map((m) => Number(m.rpm.toFixed(3))))].sort((a, b) => a - b);
         const cellDurations = {};
         cells.forEach((cellId) => {
-            const pts = runData.filter((m) => m.cell_id === cellId);
+            const pts = runData
+                .filter((m) => Number(m.cell_id) === Number(cellId))
+                .sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
             if (pts.length >= 2) {
-                const timestamps = pts.map((p) => Number(p.timestamp) || 0);
-                const durMs = (Math.max(...timestamps) - Math.min(...timestamps)) * 1000;
+                const startTs = Number(pts[0].timestamp);
+                const endTs = Number(pts[pts.length - 1].timestamp);
+                const durMs = Math.max(0, (endTs - startTs) * 1000);
                 cellDurations[cellId] = durMs;
             }
         });
@@ -1805,6 +1868,8 @@ class ViscometryDashboard {
                 : (this.readControlSettings ? this.readControlSettings() : {}),
             latestPerZ: [...latestByKey.values()],
             cellDurations,
+            runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
+            runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
             csv: csvHeader + csvBody
         };
 
@@ -1895,11 +1960,26 @@ class ViscometryDashboard {
             const timeStr = dur != null ? this.formatDuration(dur) : "—";
             return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td></tr>`;
         }).join("");
+        const allTimestamps = (exp.latestPerZ || [])
+            .map((p) => Number(p.timestamp))
+            .filter((ts) => Number.isFinite(ts));
+        const explicitStart = Number(exp.runStartTsSec);
+        const explicitEnd = Number(exp.runEndTsSec);
+        const earliestTsSec = Number.isFinite(explicitStart)
+            ? explicitStart
+            : (allTimestamps.length ? Math.min(...allTimestamps) : null);
+        const latestTsSec = Number.isFinite(explicitEnd)
+            ? explicitEnd
+            : (allTimestamps.length ? Math.max(...allTimestamps) : null);
+        const totalDurationMs = (Number.isFinite(earliestTsSec) && Number.isFinite(latestTsSec))
+            ? Math.max(0, (latestTsSec - earliestTsSec) * 1000)
+            : null;
         const durationTable = `
 <table class="duration-table">
   <thead><tr><th>Cell</th><th>Duration</th></tr></thead>
   <tbody>${durationRows}</tbody>
-</table>`;
+</table>
+<div><strong>Total Time:</strong> ${totalDurationMs != null ? this.formatDuration(totalDurationMs) : "—"}</div>`;
         const leftLines = [
             `<strong>Date:</strong> ${new Date(exp.created_at).toLocaleString()}`,
             `<strong>Experiment name:</strong> ${s.experiment_name || "(unnamed)"}`,
@@ -2021,6 +2101,7 @@ class ViscometryDashboard {
         if (this.el.completionChip) {
             this.el.completionChip.textContent = chipText;
         }
+        this.updateCompletionDebugBadge();
 
         if (isAllDone && !this.isRunning) {
             this._showExperimentCompleteMessage();
@@ -2029,6 +2110,27 @@ class ViscometryDashboard {
 
     updateCompletionChip() {
         this.updateCompletionBar();
+    }
+
+    updateCompletionDebugBadge() {
+        if (!this.el.completionChip) {
+            return;
+        }
+        const existingBadge = this.el.completionChip.querySelector("#backend-completed-badge");
+        if (existingBadge) {
+            existingBadge.remove();
+        }
+        const badge = document.createElement("span");
+        badge.id = "backend-completed-badge";
+        badge.style.marginLeft = "10px";
+        badge.style.padding = "2px 8px";
+        badge.style.border = "1px solid rgba(201, 209, 217, 0.45)";
+        badge.style.borderRadius = "999px";
+        badge.style.fontSize = "12px";
+        badge.style.fontFamily = "DM Mono, monospace";
+        badge.style.opacity = "0.92";
+        badge.textContent = `backend: ${Number(this.backendCompletedCount) || 0}`;
+        this.el.completionChip.appendChild(badge);
     }
 
     _showExperimentCompleteMessage() {
