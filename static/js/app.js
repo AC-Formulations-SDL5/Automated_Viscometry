@@ -1999,6 +1999,13 @@ class ViscometryDashboard {
             `<strong>Z step:</strong> ${s.z_step_size ?? "-"} mm`,
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
             `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
+            `<strong>Smart early exit:</strong> ${
+                s.smart_early_exit_enabled === true
+                    ? "Yes"
+                    : (s.smart_early_exit_enabled === false ? "No" : "-")
+            }`,
+            `<strong>Smart CV threshold:</strong> ${s.smart_cv_threshold ?? "-"}`,
+            `<strong>Smart window size:</strong> ${s.smart_window_size ?? "-"}`,
             `<strong>Points collected:</strong> ${exp.measurement_count}`,
             durationTable,
         ];
