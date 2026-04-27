@@ -7,6 +7,7 @@ import os
 import datetime
 import traceback
 import threading
+import statistics
 from typing import Dict, List, Optional, Tuple
 from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
@@ -80,6 +81,9 @@ DWELL_SECONDS = 2.0
 INTER_RPM_PAUSE = 2.0
 MEASUREMENT_DURATION = 40.0
 SAMPLE_INTERVAL = 10.0
+SMART_EARLY_EXIT_ENABLED = False
+SMART_CV_THRESHOLD = 0.005
+SMART_WINDOW_SIZE = 3
 
 # ========== TESTING MODE CONFIGURATION ==========
 # Set the testing mode and parameters here (no runtime input required)
@@ -110,6 +114,7 @@ def apply_runtime_settings_from_web():
     global TESTING_MODE, SELECTED_ROWS, SELECTED_CELLS, TEST_RPMS, CELL_RPM_MAP, CELL_CONTENT_MAP
     global EXPERIMENT_NAME
     global Z_STEP_SIZE, DWELL_SECONDS, INTER_RPM_PAUSE, MEASUREMENT_DURATION, SAMPLE_INTERVAL
+    global SMART_EARLY_EXIT_ENABLED, SMART_CV_THRESHOLD, SMART_WINDOW_SIZE
     global FEEDBACK_CONTROL_ENABLED, MIN_DATA_POINTS_FOR_TREND, HIT_POINT_CONFIDENCE_THRESHOLD, TORQUE_BREAK_THRESHOLD
     global R2_DRAG_MIN, R2_CV_MIN, R2_SLOPE_MIN
     global WEIGHT_2ND_DERIV_DRAG, WEIGHT_2ND_DERIV_CV, WEIGHT_2ND_DERIV_SLOPE
@@ -136,6 +141,9 @@ def apply_runtime_settings_from_web():
     INTER_RPM_PAUSE = float(settings.get('inter_rpm_pause', INTER_RPM_PAUSE))
     MEASUREMENT_DURATION = float(settings.get('measurement_duration', MEASUREMENT_DURATION))
     SAMPLE_INTERVAL = float(settings.get('sample_interval', SAMPLE_INTERVAL))
+    SMART_EARLY_EXIT_ENABLED = bool(settings.get('smart_early_exit_enabled', SMART_EARLY_EXIT_ENABLED))
+    SMART_CV_THRESHOLD = float(settings.get('smart_cv_threshold', SMART_CV_THRESHOLD))
+    SMART_WINDOW_SIZE = max(2, int(settings.get('smart_window_size', SMART_WINDOW_SIZE)))
     FEEDBACK_CONTROL_ENABLED = bool(settings.get('feedback_control_enabled', FEEDBACK_CONTROL_ENABLED))
     MIN_DATA_POINTS_FOR_TREND = int(settings.get('min_data_points_for_trend', MIN_DATA_POINTS_FOR_TREND))
     R2_DRAG_MIN = float(settings.get('r2_drag_min', R2_DRAG_MIN))
@@ -439,6 +447,7 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
         
         # Collect torque measurements over duration
         measurements = []
+        recent_torques = []
         start_time = time.time()
         measurement_start_time = time.time()
         next_sample_time = start_time + SAMPLE_INTERVAL
@@ -458,6 +467,8 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
                             "rpm": rpm
                         }
                         measurements.append(measurement)
+                        recent_torques.append(data["torque_percent"])
+                        recent_torques = recent_torques[-SMART_WINDOW_SIZE:]
                         web_interface.update_live_torque(
                             torque_percent=data["torque_percent"],
                             rpm=rpm,
@@ -469,6 +480,13 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
                             rpm=rpm,
                             cell_id=web_interface.current_cell,
                         )
+                        if SMART_EARLY_EXIT_ENABLED and len(recent_torques) == SMART_WINDOW_SIZE:
+                            recent_mean = statistics.mean(recent_torques)
+                            if recent_mean > 0:
+                                cv = statistics.pstdev(recent_torques) / recent_mean
+                                if cv < SMART_CV_THRESHOLD:
+                                    print(f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD}")
+                                    break
                     next_sample_time += SAMPLE_INTERVAL
                 except Exception as e:
                     print(f"      Measurement error at RPM {rpm}: {e}")

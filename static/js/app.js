@@ -115,6 +115,9 @@ class ViscometryDashboard {
             interRpmPause: document.getElementById("inter-rpm-pause"),
             torqueBreakThreshold: document.getElementById("torque-break-threshold"),
             feedbackEnabled: document.getElementById("feedback-control-enabled"),
+            smartEarlyExitEnabled: document.getElementById("smart-early-exit-enabled"),
+            smartCvThreshold: document.getElementById("smart-cv-threshold"),
+            smartWindowSize: document.getElementById("smart-window-size"),
             r2DragMin: document.getElementById("r2-drag-min"),
             r2CvMin: document.getElementById("r2-cv-min"),
             r2SlopeMin: document.getElementById("r2-slope-min"),
@@ -523,6 +526,9 @@ class ViscometryDashboard {
         this.el.interRpmPause.value = settings.inter_rpm_pause ?? 2;
         this.el.torqueBreakThreshold.value = settings.torque_break_threshold ?? 100;
         this.el.feedbackEnabled.checked = Boolean(settings.feedback_control_enabled);
+        if (this.el.smartEarlyExitEnabled) this.el.smartEarlyExitEnabled.checked = Boolean(settings.smart_early_exit_enabled);
+        if (this.el.smartCvThreshold) this.el.smartCvThreshold.value = settings.smart_cv_threshold ?? 0.005;
+        if (this.el.smartWindowSize) this.el.smartWindowSize.value = settings.smart_window_size ?? 3;
         if (this.el.r2DragMin) this.el.r2DragMin.value = settings.r2_drag_min ?? 0.975;
         if (this.el.r2CvMin) this.el.r2CvMin.value = settings.r2_cv_min ?? 0.975;
         if (this.el.r2SlopeMin) this.el.r2SlopeMin.value = settings.r2_slope_min ?? 0.975;
@@ -723,6 +729,9 @@ class ViscometryDashboard {
             dwell_seconds: Number(this.el.dwellSeconds.value),
             inter_rpm_pause: Number(this.el.interRpmPause.value),
             torque_break_threshold: Number(this.el.torqueBreakThreshold.value),
+            smart_early_exit_enabled: Boolean(this.el.smartEarlyExitEnabled?.checked),
+            smart_cv_threshold: Number(this.el.smartCvThreshold?.value ?? 0.005),
+            smart_window_size: Number(this.el.smartWindowSize?.value ?? 3),
             r2_drag_min: Number(this.el.r2DragMin?.value ?? 0.975),
             r2_cv_min: Number(this.el.r2CvMin?.value ?? 0.975),
             r2_slope_min: Number(this.el.r2SlopeMin?.value ?? 0.975),

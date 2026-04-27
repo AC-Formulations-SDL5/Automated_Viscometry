@@ -214,6 +214,28 @@
                                 <input id="feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
                                 <span>Feedback control enabled</span>
                             </label>
+                            <label class="checkbox-row">
+                                <input id="smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox">
+                                <span>Smart Early Exit (CV-based)</span>
+                            </label>
+                            <details id="smart-exit-params-details" class="feedback-params-section">
+                                <summary class="feedback-params-toggle">
+                                    Smart Early Exit Parameters
+                                    <span class="feedback-params-hint">(expand to tune)</span>
+                                </summary>
+                                <div class="feedback-params-grid">
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Smart CV Threshold</span>
+                                            <input id="smart-cv-threshold" name="smart_cv_threshold" type="number" min="0" step="0.001" value="0.005">
+                                        </label>
+                                        <label>
+                                            <span>Smart Window Size</span>
+                                            <input id="smart-window-size" name="smart_window_size" type="number" min="2" step="1" value="3">
+                                        </label>
+                                    </div>
+                                </div>
+                            </details>
                             <!-- Feedback detection parameters — collapsed by default -->
                             <details id="feedback-params-details" class="feedback-params-section">
                                 <summary class="feedback-params-toggle">

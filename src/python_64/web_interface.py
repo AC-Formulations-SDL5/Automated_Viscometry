@@ -58,6 +58,9 @@ class ViscometryWebInterface:
             'dwell_seconds': 2.0,
             'inter_rpm_pause': 2.0,
             'feedback_control_enabled': True,
+            'smart_early_exit_enabled': False,
+            'smart_cv_threshold': 0.005,
+            'smart_window_size': 3,
             'min_data_points_for_trend': 8,
             'r2_drag_min': 0.975,
             'r2_cv_min': 0.975,
@@ -395,15 +398,17 @@ class ViscometryWebInterface:
             float_keys = {
                 'z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds',
                 'inter_rpm_pause', 'hit_point_confidence_threshold', 'torque_break_threshold',
+                'smart_cv_threshold',
                 'r2_drag_min', 'r2_cv_min', 'r2_slope_min',
                 'weight_2nd_deriv_drag', 'weight_2nd_deriv_cv', 'weight_2nd_deriv_slope',
                 'weight_r2_drag', 'weight_r2_cv', 'weight_r2_slope',
                 'baseline_z_threshold',
             }
-            int_keys = {'min_data_points_for_trend', 'baseline_n_calibration'}
+            int_keys = {'min_data_points_for_trend', 'baseline_n_calibration', 'smart_window_size'}
             for key in [
                 'z_step_size', 'measurement_duration', 'sample_interval', 'dwell_seconds',
                 'inter_rpm_pause', 'min_data_points_for_trend',
+                'smart_cv_threshold', 'smart_window_size',
                 'r2_drag_min', 'r2_cv_min', 'r2_slope_min', 'hit_point_confidence_threshold',
                 'torque_break_threshold',
                 'weight_2nd_deriv_drag', 'weight_2nd_deriv_cv', 'weight_2nd_deriv_slope',
@@ -417,6 +422,8 @@ class ViscometryWebInterface:
                         normalized[key] = int(settings[key])
             if 'feedback_control_enabled' in settings:
                 normalized['feedback_control_enabled'] = bool(settings['feedback_control_enabled'])
+            if 'smart_early_exit_enabled' in settings:
+                normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
 
             self.runtime_settings = normalized
 
