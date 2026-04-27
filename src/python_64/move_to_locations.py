@@ -1,4 +1,5 @@
 import time, serial
+from typing import Callable, Optional
 from serial import SerialException
 from cnc_controller import CNC_Machine
 
@@ -45,7 +46,13 @@ class PumpESP32:
         else:
             print(f"[PUMP ERROR] Serial port not open, cannot send {tag!r}")
 
-    def send_command_with_ack(self, command: bytes, timeout: float = 2.0, max_retries: int = 3) -> bool:
+    def send_command_with_ack(
+        self,
+        command: bytes,
+        timeout: float = 2.0,
+        max_retries: int = 3,
+        should_abort: Optional[Callable[[], bool]] = None,
+    ) -> bool:
         """
         Send command and wait for acknowledgment with retry mechanism.
         Returns True if successful, False if failed after retries.
@@ -62,6 +69,9 @@ class PumpESP32:
         expected_ack = f"ACK:{command_str}"
         
         for attempt in range(max_retries):
+            if should_abort and should_abort():
+                print(f"[PUMP] ABORTED: Command {command_str} cancelled before attempt {attempt + 1}")
+                return False
             try:
                 # Clear input buffer before sending command
                 self.ser.reset_input_buffer()
@@ -73,6 +83,9 @@ class PumpESP32:
                 # Wait for acknowledgment
                 start_time = time.time()
                 while time.time() - start_time < timeout:
+                    if should_abort and should_abort():
+                        print(f"[PUMP] ABORTED: Command {command_str} cancelled while waiting for ACK")
+                        return False
                     if self.ser.in_waiting > 0:
                         try:
                             response = self.ser.readline().decode('ascii').strip()
@@ -89,6 +102,9 @@ class PumpESP32:
                     time.sleep(0.05)  # Small delay to prevent excessive polling
                 
                 print(f"[PUMP] TIMEOUT: No acknowledgment for {command_str} (attempt {attempt + 1})")
+                if should_abort and should_abort():
+                    print(f"[PUMP] ABORTED: Command {command_str} will not be retried after timeout")
+                    return False
                 time.sleep(0.1)  # Brief delay before retry
                 
             except Exception as e:
