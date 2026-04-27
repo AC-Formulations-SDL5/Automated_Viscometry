@@ -189,14 +189,21 @@ def _run_in_thread(fn, *args, **kwargs) -> threading.Thread:
 
 def _reliable_pump_command(pump: PumpESP32, command: bytes, description: str) -> bool:
     """Send pump command with acknowledgment and status verification (module-level)."""
+    raise_if_stop_requested()
     print(f"  Executing: {description}")
     if hasattr(pump, 'send_command_with_ack'):
-        success = pump.send_command_with_ack(command, timeout=3.0, max_retries=3)
+        success = pump.send_command_with_ack(
+            command,
+            timeout=3.0,
+            max_retries=3,
+            should_abort=web_interface.should_stop,
+        )
         if success:
             print(f"  SUCCESS: {description}")
             return True
         else:
             print(f"  FAILED with ACK: {description}, trying legacy mode...")
+            raise_if_stop_requested()
     pump.send_tag(command)
     sleep_with_stop(0.5)
     if hasattr(pump, 'get_status'):
@@ -387,27 +394,39 @@ def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: 
 
 def _pump_fill_station1(pump: PumpESP32):
     """Fill wash station 1 (runs concurrently with CNC travel). Duration: 15 s."""
-    print("[CONCURRENT] Starting Pump P1 to fill Station 1...")
-    _reliable_pump_command(pump, b"P1", "Start Pump 1 (concurrent fill)")
-    sleep_with_stop(15)
-    _reliable_pump_command(pump, b"SP1", "Stop Pump 1 (concurrent fill complete)")
-    print("[CONCURRENT] Station 1 fill complete.")
+    try:
+        raise_if_stop_requested()
+        print("[CONCURRENT] Starting Pump P1 to fill Station 1...")
+        _reliable_pump_command(pump, b"P1", "Start Pump 1 (concurrent fill)")
+        sleep_with_stop(15)
+        _reliable_pump_command(pump, b"SP1", "Stop Pump 1 (concurrent fill complete)")
+        print("[CONCURRENT] Station 1 fill complete.")
+    except KeyboardInterrupt:
+        print("[CONCURRENT] Station 1 fill cancelled due to stop request.")
 
 
 def _motor1_start(pump: PumpESP32):
     """Start Motor M1 (runs concurrently with CNC travel)."""
-    print("[CONCURRENT] Starting Motor M1...")
-    _reliable_pump_command(pump, b"M1", "Start Motor 1 (concurrent)")
-    print("[CONCURRENT] Motor M1 started.")
+    try:
+        raise_if_stop_requested()
+        print("[CONCURRENT] Starting Motor M1...")
+        _reliable_pump_command(pump, b"M1", "Start Motor 1 (concurrent)")
+        print("[CONCURRENT] Motor M1 started.")
+    except KeyboardInterrupt:
+        print("[CONCURRENT] Motor M1 start cancelled due to stop request.")
 
 
 def _drain_station1(pump: PumpESP32):
     """Drain wash station 1 via reverse rinse R1 (runs concurrently with CNC travel to Station 2). Duration: 20 s."""
-    print("[CONCURRENT] Starting reverse rinse R1 to drain Station 1...")
-    _reliable_pump_command(pump, b"R1", "Start Reverse Rinse 1 (concurrent drain)")
-    sleep_with_stop(20)
-    _reliable_pump_command(pump, b"SR1", "Stop Reverse Rinse 1 (concurrent drain complete)")
-    print("[CONCURRENT] Station 1 drain complete.")
+    try:
+        raise_if_stop_requested()
+        print("[CONCURRENT] Starting reverse rinse R1 to drain Station 1...")
+        _reliable_pump_command(pump, b"R1", "Start Reverse Rinse 1 (concurrent drain)")
+        sleep_with_stop(20)
+        _reliable_pump_command(pump, b"SR1", "Stop Reverse Rinse 1 (concurrent drain complete)")
+        print("[CONCURRENT] Station 1 drain complete.")
+    except KeyboardInterrupt:
+        print("[CONCURRENT] Station 1 drain cancelled due to stop request.")
 
 def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps"""
