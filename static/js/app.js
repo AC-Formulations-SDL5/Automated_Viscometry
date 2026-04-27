@@ -180,6 +180,8 @@ class ViscometryDashboard {
             summaryMetaLeft: document.getElementById("summary-meta-left"),
             summaryMetaRight: document.getElementById("summary-meta-right"),
             summaryDownload: document.getElementById("summary-download"),
+            summaryShowHitLine: document.getElementById("summary-show-hit-line"),
+            summaryAlignHitpoint: document.getElementById("summary-align-hitpoint"),
             summaryPlot: document.getElementById("summary-plot"),
             tabButtons: document.querySelectorAll(".tab-button"),
             tabPanels: document.querySelectorAll(".tab-panel")
@@ -216,6 +218,16 @@ class ViscometryDashboard {
         }
         if (this.el.summaryDownload) {
             this.el.summaryDownload.addEventListener("click", () => this.downloadSelectedCSV());
+        }
+        if (this.el.summaryShowHitLine) {
+            this.el.summaryShowHitLine.addEventListener("change", () => {
+                if (this.selectedExperimentId) this.selectExperiment(this.selectedExperimentId);
+            });
+        }
+        if (this.el.summaryAlignHitpoint) {
+            this.el.summaryAlignHitpoint.addEventListener("change", () => {
+                if (this.selectedExperimentId) this.selectExperiment(this.selectedExperimentId);
+            });
         }
 
         document.addEventListener("keydown", (event) => {
@@ -872,7 +884,14 @@ class ViscometryDashboard {
         });
 
         this.socket.on("new_measurement", (data) => {
-            this.addPointToChart(data.cell_id, data.height, data.rotational_drag, data.rpm, data.timestamp);
+            this.addPointToChart(
+                data.cell_id,
+                data.height,
+                data.rotational_drag,
+                data.rpm,
+                data.timestamp,
+                data.hit_detected
+            );
             const torquePercent = Number.isFinite(Number(data.torque_percent))
                 ? Number(data.torque_percent)
                 : (Number(data.rotational_drag) || 0) * (Number(data.rpm) || 0);
@@ -1397,7 +1416,10 @@ class ViscometryDashboard {
                 : (Number(rawMeasurement.rotational_drag) || 0) * (Number(rawMeasurement.rpm) || 0),
             rpm: Number(rawMeasurement.rpm) || 0,
             cell_id: Number(rawMeasurement.cell_id) || 0,
-            is_final_save: Boolean(rawMeasurement.is_final_save) || this.isSavingFinalResults
+            is_final_save: Boolean(rawMeasurement.is_final_save) || this.isSavingFinalResults,
+            hit_detected: rawMeasurement.hit_detected === true
+                ? true
+                : (rawMeasurement.hit_detected === false ? false : null),
         };
 
         if (!measurement.cell_id) {
@@ -1714,14 +1736,33 @@ class ViscometryDashboard {
         }
     }
 
-    addPointToChart(cellId, height, rotationalDrag, rpm, timestamp) {
+    addPointToChart(cellId, height, rotationalDrag, rpm, timestamp, hitDetected = null) {
         this.ingestMeasurement({
             cell_id: cellId,
             height,
             rotational_drag: rotationalDrag,
             rpm,
-            timestamp
+            timestamp,
+            hit_detected: hitDetected,
         }, false);
+    }
+
+    computeSummaryHitPointHeight(points) {
+        if (!Array.isArray(points) || points.length < 4) {
+            return null;
+        }
+        const ordered = [...points].sort((a, b) => Number(b.height) - Number(a.height));
+        let hitHeight = null;
+        for (let i = 0; i <= ordered.length - 4; i += 1) {
+            const isNo = ordered[i]?.hit_detected === false;
+            const nextThreeYes = ordered[i + 1]?.hit_detected === true
+                && ordered[i + 2]?.hit_detected === true
+                && ordered[i + 3]?.hit_detected === true;
+            if (isNo && nextThreeYes) {
+                hitHeight = Number(ordered[i].height);
+            }
+        }
+        return Number.isFinite(hitHeight) ? hitHeight : null;
     }
 
     setRunningState(isRunning, previousOverride = null) {
@@ -1840,10 +1881,21 @@ class ViscometryDashboard {
         }
 
         const latestByKey = new Map();
+        const sampleCountByCellZ = new Map();
         runData.forEach((m) => {
             const k = `${m.cell_id}|${Number(m.height).toFixed(3)}|${m.rpm}`;
             latestByKey.set(k, m);
+            const zKey = `${m.cell_id}|${Number(m.height).toFixed(3)}`;
+            sampleCountByCellZ.set(zKey, (sampleCountByCellZ.get(zKey) || 0) + 1);
         });
+        const samplesPerZ = [...sampleCountByCellZ.values()].sort((a, b) => a - b);
+        let medianSamplesPerZ = null;
+        if (samplesPerZ.length > 0) {
+            const mid = Math.floor(samplesPerZ.length / 2);
+            medianSamplesPerZ = samplesPerZ.length % 2 === 0
+                ? (samplesPerZ[mid - 1] + samplesPerZ[mid]) / 2
+                : samplesPerZ[mid];
+        }
 
         const cells = [...new Set(runData.map((m) => m.cell_id))].sort((a, b) => a - b);
         const rpms = [...new Set(runData.map((m) => Number(m.rpm.toFixed(3))))].sort((a, b) => a - b);
@@ -1877,6 +1929,7 @@ class ViscometryDashboard {
                 ? this.latestControlSettings
                 : (this.readControlSettings ? this.readControlSettings() : {}),
             latestPerZ: [...latestByKey.values()],
+            median_samples_per_z: medianSamplesPerZ,
             cellDurations,
             runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
             runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
@@ -2006,6 +2059,9 @@ class ViscometryDashboard {
             }`,
             `<strong>Smart CV threshold:</strong> ${s.smart_cv_threshold ?? "-"}`,
             `<strong>Smart window size:</strong> ${s.smart_window_size ?? "-"}`,
+            `<strong>Median samples per Z height:</strong> ${
+                Number.isFinite(exp.median_samples_per_z) ? exp.median_samples_per_z : "-"
+            }`,
             `<strong>Points collected:</strong> ${exp.measurement_count}`,
             durationTable,
         ];
@@ -2030,6 +2086,8 @@ class ViscometryDashboard {
             if (!byCellRpm[k]) byCellRpm[k] = [];
             byCellRpm[k].push(p);
         });
+        const showHitLine = Boolean(this.el.summaryShowHitLine?.checked);
+        const alignToHit = Boolean(this.el.summaryAlignHitpoint?.checked);
 
         const traces = Object.entries(byCellRpm)
             .sort((a, b) => {
@@ -2044,23 +2102,62 @@ class ViscometryDashboard {
             const cellId = Number(cellIdStr);
             const rpm = Number(rpmStr);
             pts.sort((a, b) => a.height - b.height);
+            const hitHeight = this.computeSummaryHitPointHeight(pts);
+            const rawX = pts.map((p) => Number(p.height));
+            const xSeries = (alignToHit && Number.isFinite(hitHeight))
+                ? rawX.map((x) => x - hitHeight)
+                : rawX;
             const cellLabel = s.cell_content_map?.[cellId]
                 ? `Cell ${cellId} — ${s.cell_content_map[cellId]}`
                 : `Cell ${cellId}`;
             const label = `${cellLabel} @ ${rpm.toFixed(3)} RPM`;
+            const hitText = Number.isFinite(hitHeight) ? hitHeight.toFixed(3) : "N/A";
             return {
-                x: pts.map((p) => p.height),
+                x: xSeries,
                 y: pts.map((p) => p.rotational_drag),
                 mode: "lines+markers",
                 type: "scatter",
                 name: label,
                 marker: { size: 6 },
-                line: { width: 2 }
+                line: { width: 2 },
+                hovertemplate: alignToHit
+                    ? `Rel. height %{x:.3f} mm<br>Drag %{y:.4f}<br>Hit Z ${hitText} mm<extra>${label}</extra>`
+                    : `Z %{x:.3f} mm<br>Drag %{y:.4f}<br>Hit Z ${hitText} mm<extra>${label}</extra>`
             };
         });
 
         if (this.summaryPlotInitialized && this.el.summaryPlot) {
-            Plotly.react(this.el.summaryPlot, traces, this.summaryPlotLayout,
+            const hitXs = [];
+            Object.values(byCellRpm).forEach((pts) => {
+                const hitHeight = this.computeSummaryHitPointHeight(pts);
+                if (Number.isFinite(hitHeight)) {
+                    hitXs.push(alignToHit ? 0 : hitHeight);
+                }
+            });
+            const uniqueHitXs = [...new Set(hitXs.map((v) => Number(v.toFixed(6))))];
+            const shapes = showHitLine
+                ? uniqueHitXs.map((xVal) => ({
+                    type: "line",
+                    x0: xVal,
+                    x1: xVal,
+                    y0: 0,
+                    y1: 1,
+                    yref: "paper",
+                    line: { color: "#ff4d4f", width: 2, dash: "dash" },
+                }))
+                : [];
+            const layout = {
+                ...this.summaryPlotLayout,
+                xaxis: {
+                    ...this.summaryPlotLayout.xaxis,
+                    title: alignToHit
+                        ? "Height Relative to Hit Point (mm, hit = 0)"
+                        : "Z-Height (mm) - descent ->",
+                    tickformat: ".3f",
+                },
+                shapes,
+            };
+            Plotly.react(this.el.summaryPlot, traces, layout,
                 { responsive: true, displayModeBar: false });
         }
     }
