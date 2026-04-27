@@ -615,7 +615,14 @@ class ViscometryWebInterface:
                 self._persist_experiment_history()
             return removed
         
-    def add_measurement_point(self, height: float, rotational_drag: float, rpm: float, cell_id: int):
+    def add_measurement_point(
+        self,
+        height: float,
+        rotational_drag: float,
+        rpm: float,
+        cell_id: int,
+        hit_detected: Optional[bool] = None,
+    ):
         """Add a new measurement point"""
         try:
             # Sanitize rotational_drag: replace inf with None for JSON serialization
@@ -630,7 +637,8 @@ class ViscometryWebInterface:
                 'rotational_drag': safe_drag,
                 'torque_percent': torque_calc,
                 'rpm': rpm,
-                'cell_id': cell_id
+                'cell_id': cell_id,
+                'hit_detected': bool(hit_detected) if hit_detected is not None else None,
             }
             self.measurement_data.append(measurement)
             
