@@ -195,24 +195,34 @@ def _run_in_thread(fn, *args, **kwargs) -> threading.Thread:
     return t
 
 
+_PUMP_IO_LOCK = threading.Lock()
+
+
+def _safe_pump_send_tag(pump: PumpESP32, command: bytes):
+    """Serialize raw pump serial writes to avoid concurrent access collisions."""
+    with _PUMP_IO_LOCK:
+        pump.send_tag(command)
+
+
 def _reliable_pump_command(pump: PumpESP32, command: bytes, description: str) -> bool:
     """Send pump command with acknowledgment and status verification (module-level)."""
     raise_if_stop_requested()
     print(f"  Executing: {description}")
-    if hasattr(pump, 'send_command_with_ack'):
-        success = pump.send_command_with_ack(
-            command,
-            timeout=3.0,
-            max_retries=3,
-            should_abort=web_interface.should_stop,
-        )
-        if success:
-            print(f"  SUCCESS: {description}")
-            return True
-        else:
-            print(f"  FAILED with ACK: {description}, trying legacy mode...")
-            raise_if_stop_requested()
-    pump.send_tag(command)
+    with _PUMP_IO_LOCK:
+        if hasattr(pump, 'send_command_with_ack'):
+            success = pump.send_command_with_ack(
+                command,
+                timeout=3.0,
+                max_retries=3,
+                should_abort=web_interface.should_stop,
+            )
+            if success:
+                print(f"  SUCCESS: {description}")
+                return True
+            else:
+                print(f"  FAILED with ACK: {description}, trying legacy mode...")
+                raise_if_stop_requested()
+        pump.send_tag(command)
     sleep_with_stop(0.5)
     if hasattr(pump, 'get_status'):
         status = pump.get_status()
@@ -358,14 +368,14 @@ def perform_washing_sequence(
             final_status = pump.get_status()
             if final_status and any(final_status.values()):
                 print(f"WARNING: Components still active after wash: {final_status}")
-                pump.send_tag(b"0")
+                _safe_pump_send_tag(pump, b"0")
                 sleep_with_stop(1)
 
     except Exception as e:
         print(f"Error during washing sequence for Cell {global_cell}: {e}")
         try:
             print("Executing emergency stop...")
-            pump.send_tag(b"0")
+            _safe_pump_send_tag(pump, b"0")
             sleep_with_stop(2)
             cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=500)
         except Exception as cleanup_error:
@@ -1159,12 +1169,12 @@ def main():
                 else:
                     print("⚠ ESP32 acknowledgment test failed, falling back to legacy mode")
                     # Test basic communication
-                    pump.send_tag(b"ST")
+                    _safe_pump_send_tag(pump, b"ST")
                     sleep_with_stop(1)
                     print("ESP32 communication initialized (legacy mode)")
             else:
                 # Legacy test
-                pump.send_tag(b"ST")
+                _safe_pump_send_tag(pump, b"ST")
                 sleep_with_stop(1)
                 print("ESP32 communication initialized (legacy mode)")
                 
@@ -1333,7 +1343,7 @@ def main():
             try:
                 if pump:
                     # Emergency stop all pumps and motors
-                    pump.send_tag(b"0")
+                    _safe_pump_send_tag(pump, b"0")
                     sleep_with_stop(1)
                     for _t in active_threads:
                         if _t and _t.is_alive():

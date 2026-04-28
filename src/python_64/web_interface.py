@@ -290,7 +290,7 @@ class ViscometryWebInterface:
                 'current_cell_start_ts': self.current_cell_start_ts,
                 'completed_cells': self.completed_cells,
                 'status_message': self.status_message,
-                'measurement_data': self.measurement_data[-100:],  # Last 100 points
+                'measurement_data': self.measurement_data,
                 'control_settings': self.get_runtime_settings()
             }
         except Exception as e:
@@ -642,10 +642,6 @@ class ViscometryWebInterface:
             }
             self.measurement_data.append(measurement)
             
-            # Keep only last 1000 measurements
-            if len(self.measurement_data) > 1000:
-                self.measurement_data = self.measurement_data[-1000:]
-                
             # Emit to connected clients
             try:
                 self.socketio.emit('new_measurement', measurement)

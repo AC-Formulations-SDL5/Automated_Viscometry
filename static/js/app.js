@@ -1427,9 +1427,6 @@ class ViscometryDashboard {
         }
 
         this.measurements.push(measurement);
-        if (this.measurements.length > 4000) {
-            this.measurements = this.measurements.slice(-4000);
-        }
 
         if (!this.measurementsByCell.has(measurement.cell_id)) {
             this.measurementsByCell.set(measurement.cell_id, []);
