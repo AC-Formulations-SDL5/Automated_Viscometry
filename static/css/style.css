@@ -1434,16 +1434,26 @@ body.spinning .gauge-value {
 
 .summary-list-card {
     min-height: 400px;
+    max-height: calc(100vh - 210px);
+    display: flex;
+    flex-direction: column;
 }
 
 .summary-detail-card {
     min-height: 400px;
+    position: sticky;
+    top: 132px;
+    max-height: calc(100vh - 150px);
+    overflow: auto;
 }
 
 .experiment-cards {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 4px;
 }
 
 .experiment-card {
@@ -1781,6 +1791,14 @@ body.loading .skeleton-lines {
 
     .summary-layout {
         grid-template-columns: 1fr;
+    }
+
+    .summary-list-card,
+    .summary-detail-card {
+        position: static;
+        top: auto;
+        max-height: none;
+        overflow: visible;
     }
 }
 
