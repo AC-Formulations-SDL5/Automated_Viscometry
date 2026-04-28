@@ -1893,6 +1893,22 @@ class ViscometryDashboard {
                 ? (samplesPerZ[mid - 1] + samplesPerZ[mid]) / 2
                 : samplesPerZ[mid];
         }
+        const sampleCountsByCell = new Map();
+        sampleCountByCellZ.forEach((count, key) => {
+            const cellId = Number(String(key).split("|")[0]);
+            if (!Number.isFinite(cellId)) return;
+            if (!sampleCountsByCell.has(cellId)) sampleCountsByCell.set(cellId, []);
+            sampleCountsByCell.get(cellId).push(count);
+        });
+        const cellMedianSamplesPerZ = {};
+        sampleCountsByCell.forEach((counts, cellId) => {
+            const ordered = [...counts].sort((a, b) => a - b);
+            const mid = Math.floor(ordered.length / 2);
+            const median = ordered.length % 2 === 0
+                ? (ordered[mid - 1] + ordered[mid]) / 2
+                : ordered[mid];
+            cellMedianSamplesPerZ[cellId] = median;
+        });
 
         const cells = [...new Set(runData.map((m) => m.cell_id))].sort((a, b) => a - b);
         const rpms = [...new Set(runData.map((m) => Number(m.rpm.toFixed(3))))].sort((a, b) => a - b);
@@ -1927,6 +1943,7 @@ class ViscometryDashboard {
                 : (this.readControlSettings ? this.readControlSettings() : {}),
             latestPerZ: [...latestByKey.values()],
             median_samples_per_z: medianSamplesPerZ,
+            cell_median_samples_per_z: cellMedianSamplesPerZ,
             cellDurations,
             runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
             runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
@@ -2016,9 +2033,11 @@ class ViscometryDashboard {
 
         const durationRows = exp.cells.map((cellId) => {
             const dur = exp.cellDurations?.[cellId];
+            const medianSamples = exp.cell_median_samples_per_z?.[cellId];
             const label = s.cell_content_map?.[cellId] ? ` (${s.cell_content_map[cellId]})` : "";
             const timeStr = dur != null ? this.formatDuration(dur) : "—";
-            return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td></tr>`;
+            const medianStr = Number.isFinite(medianSamples) ? String(medianSamples) : "—";
+            return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td><td>${medianStr}</td></tr>`;
         }).join("");
         const allTimestamps = (exp.latestPerZ || [])
             .map((p) => Number(p.timestamp))
@@ -2036,7 +2055,7 @@ class ViscometryDashboard {
             : null;
         const durationTable = `
 <table class="duration-table">
-  <thead><tr><th>Cell</th><th>Duration</th></tr></thead>
+  <thead><tr><th>Cell</th><th>Duration</th><th>Median Samples / Z</th></tr></thead>
   <tbody>${durationRows}</tbody>
 </table>
 <div><strong>Total Time:</strong> ${totalDurationMs != null ? this.formatDuration(totalDurationMs) : "—"}</div>`;
@@ -2049,6 +2068,14 @@ class ViscometryDashboard {
             `<strong>Z step:</strong> ${s.z_step_size ?? "-"} mm`,
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
             `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
+            `<strong>Median samples per Z height:</strong> ${
+                Number.isFinite(exp.median_samples_per_z) ? exp.median_samples_per_z : "-"
+            }`,
+            `<strong>Points collected:</strong> ${exp.measurement_count}`,
+            durationTable,
+        ];
+        const rightLines = [
+            ...feedbackRows,
             `<strong>Smart early exit:</strong> ${
                 s.smart_early_exit_enabled === true
                     ? "Yes"
@@ -2056,13 +2083,7 @@ class ViscometryDashboard {
             }`,
             `<strong>Smart CV threshold:</strong> ${s.smart_cv_threshold ?? "-"}`,
             `<strong>Smart window size:</strong> ${s.smart_window_size ?? "-"}`,
-            `<strong>Median samples per Z height:</strong> ${
-                Number.isFinite(exp.median_samples_per_z) ? exp.median_samples_per_z : "-"
-            }`,
-            `<strong>Points collected:</strong> ${exp.measurement_count}`,
-            durationTable,
         ];
-        const rightLines = feedbackRows;
         const leftEl = this.el.summaryMetaLeft;
         const rightEl = this.el.summaryMetaRight;
         if (leftEl) {
@@ -2099,41 +2120,47 @@ class ViscometryDashboard {
             const cellId = Number(cellIdStr);
             const rpm = Number(rpmStr);
             pts.sort((a, b) => a.height - b.height);
-            const hitHeight = this.computeSummaryHitPointHeight(pts);
-            const rawX = pts.map((p) => Number(p.height));
-            const xSeries = (alignToHit && Number.isFinite(hitHeight))
-                ? rawX.map((x) => x - hitHeight)
+            const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+            const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
+            const plotPoints = trimmed.length > 0 ? trimmed : [...timeOrdered];
+            const alignReference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
+            const rawX = plotPoints.map((p) => Number(p.height));
+            const xSeries = (alignToHit && Number.isFinite(alignReference))
+                ? rawX.map((x) => x - alignReference)
                 : rawX;
             const cellLabel = s.cell_content_map?.[cellId]
                 ? `Cell ${cellId} — ${s.cell_content_map[cellId]}`
                 : `Cell ${cellId}`;
             const label = `${cellLabel} @ ${rpm.toFixed(3)} RPM`;
-            const hitText = Number.isFinite(hitHeight) ? hitHeight.toFixed(3) : "N/A";
+            const refText = Number.isFinite(alignReference) ? alignReference.toFixed(3) : "N/A";
             return {
                 x: xSeries,
-                y: pts.map((p) => p.rotational_drag),
+                y: plotPoints.map((p) => p.rotational_drag),
                 mode: "lines+markers",
                 type: "scatter",
                 name: label,
                 marker: { size: 6 },
                 line: { width: 2 },
                 hovertemplate: alignToHit
-                    ? `Rel. height %{x:.3f} mm<br>Drag %{y:.4f}<br>Hit Z ${hitText} mm<extra>${label}</extra>`
-                    : `Z %{x:.3f} mm<br>Drag %{y:.4f}<br>Hit Z ${hitText} mm<extra>${label}</extra>`
+                    ? `Rel. height %{x:.3f} mm<br>Drag %{y:.4f}<br>Alignment ref ${refText} mm<extra>${label}</extra>`
+                    : `Z %{x:.3f} mm<br>Drag %{y:.4f}<br>Alignment ref ${refText} mm<extra>${label}</extra>`
             };
         });
 
         if (this.summaryPlotInitialized && this.el.summaryPlot) {
-            const hitXs = [];
+            const referenceXs = [];
             Object.values(byCellRpm).forEach((pts) => {
-                const hitHeight = this.computeSummaryHitPointHeight(pts);
-                if (Number.isFinite(hitHeight)) {
-                    hitXs.push(alignToHit ? 0 : hitHeight);
+                const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+                const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
+                const plotPoints = trimmed.length > 0 ? trimmed : [...timeOrdered];
+                const reference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
+                if (Number.isFinite(reference)) {
+                    referenceXs.push(alignToHit ? 0 : reference);
                 }
             });
-            const uniqueHitXs = [...new Set(hitXs.map((v) => Number(v.toFixed(6))))];
+            const uniqueRefXs = [...new Set(referenceXs.map((v) => Number(v.toFixed(6))))];
             const shapes = showHitLine
-                ? uniqueHitXs.map((xVal) => ({
+                ? uniqueRefXs.map((xVal) => ({
                     type: "line",
                     x0: xVal,
                     x1: xVal,
@@ -2148,7 +2175,7 @@ class ViscometryDashboard {
                 xaxis: {
                     ...this.summaryPlotLayout.xaxis,
                     title: alignToHit
-                        ? "Height Relative to Hit Point (mm, hit = 0)"
+                        ? "Height Relative to Alignment Reference (mm, reference = 0)"
                         : "Z-Height (mm) - descent ->",
                     tickformat: ".3f",
                 },
