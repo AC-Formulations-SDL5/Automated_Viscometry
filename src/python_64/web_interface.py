@@ -54,7 +54,7 @@ class ViscometryWebInterface:
             'cell_content_map': {},
             'z_step_size': -0.02,
             'measurement_duration': 40.0,
-            'sample_interval': 10.0,
+            'sample_interval': 5.0,
             'dwell_seconds': 2.0,
             'inter_rpm_pause': 2.0,
             'feedback_control_enabled': True,

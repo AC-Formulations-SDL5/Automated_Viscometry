@@ -533,7 +533,7 @@ class ViscometryDashboard {
         this.el.selectedCells.value = Array.isArray(settings.selected_cells) ? settings.selected_cells.join(", ") : "";
         this.el.zStepSize.value = settings.z_step_size ?? -0.02;
         this.el.measurementDuration.value = settings.measurement_duration ?? 40;
-        this.el.sampleInterval.value = settings.sample_interval ?? 10;
+        this.el.sampleInterval.value = settings.sample_interval ?? 5;
         this.el.dwellSeconds.value = settings.dwell_seconds ?? 2;
         this.el.interRpmPause.value = settings.inter_rpm_pause ?? 2;
         this.el.torqueBreakThreshold.value = settings.torque_break_threshold ?? 100;
