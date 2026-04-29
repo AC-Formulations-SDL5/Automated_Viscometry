@@ -533,7 +533,7 @@ class ViscometryDashboard {
         this.el.selectedCells.value = Array.isArray(settings.selected_cells) ? settings.selected_cells.join(", ") : "";
         this.el.zStepSize.value = settings.z_step_size ?? -0.02;
         this.el.measurementDuration.value = settings.measurement_duration ?? 40;
-        this.el.sampleInterval.value = settings.sample_interval ?? 10;
+        this.el.sampleInterval.value = settings.sample_interval ?? 5;
         this.el.dwellSeconds.value = settings.dwell_seconds ?? 2;
         this.el.interRpmPause.value = settings.inter_rpm_pause ?? 2;
         this.el.torqueBreakThreshold.value = settings.torque_break_threshold ?? 100;
@@ -2122,7 +2122,9 @@ class ViscometryDashboard {
             pts.sort((a, b) => a.height - b.height);
             const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
             const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
-            const plotPoints = trimmed.length > 0 ? trimmed : [...timeOrdered];
+            const plotPoints = alignToHit
+                ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
+                : [...timeOrdered];
             const alignReference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
             const rawX = plotPoints.map((p) => Number(p.height));
             const xSeries = (alignToHit && Number.isFinite(alignReference))
@@ -2152,7 +2154,9 @@ class ViscometryDashboard {
             Object.values(byCellRpm).forEach((pts) => {
                 const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
                 const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
-                const plotPoints = trimmed.length > 0 ? trimmed : [...timeOrdered];
+                const plotPoints = alignToHit
+                    ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
+                    : [...timeOrdered];
                 const reference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
                 if (Number.isFinite(reference)) {
                     referenceXs.push(alignToHit ? 0 : reference);

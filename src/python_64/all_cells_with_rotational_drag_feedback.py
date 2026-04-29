@@ -34,7 +34,7 @@ WEIGHT_R2_DRAG = 0.2
 WEIGHT_R2_CV = 0.2
 WEIGHT_R2_SLOPE = 0.2
 BASELINE_N_CALIBRATION = 10
-BASELINE_Z_THRESHOLD = 5.0
+BASELINE_Z_THRESHOLD = 10.0
 
 # ===============================================
 SETTLE_TIME = 1.0                   # Time to wait after moving before taking measurements
@@ -694,14 +694,28 @@ def test_cell_dynamic_z_series(
                                     cv_sd2_calibrated=trend_analysis.get('cv_sd2_calibrated', False),
                                     slope_sd2_calibrated=trend_analysis.get('slope_sd2_calibrated', False),
                                 )
+                                hit_reasons = trend_analysis.get('hit_reasons', [])
+                                hit_reason_set = set(hit_reasons)
                                 metrics_data[rpm] = {
                                     'CV': trend_analysis.get('moving_r2_cv', 0.0) if trend_analysis.get('moving_r2_cv') is not None else 0.0,
                                     'R2': trend_analysis.get('trend_r_squared', 0.0),
                                     'Trend_Slope': trend_analysis.get('trend_slope', 0.0),
                                     'Second_derivative': trend_analysis.get('second_derivative_drag', 0.0) if trend_analysis.get('second_derivative_drag') is not None else 0.0,
+                                    'Second_derivative_drag': trend_analysis.get('second_derivative_drag', 0.0) if trend_analysis.get('second_derivative_drag') is not None else 0.0,
+                                    'Second_derivative_cv': trend_analysis.get('second_derivative_cv', 0.0) if trend_analysis.get('second_derivative_cv') is not None else 0.0,
+                                    'Second_derivative_slope': trend_analysis.get('second_derivative_slope', 0.0) if trend_analysis.get('second_derivative_slope') is not None else 0.0,
+                                    'R2_drag': trend_analysis.get('trend_r_squared', 0.0),
+                                    'R2_cv': trend_analysis.get('moving_r2_cv', 0.0) if trend_analysis.get('moving_r2_cv') is not None else 0.0,
+                                    'R2_slope': trend_analysis.get('moving_r2_slope', 0.0) if trend_analysis.get('moving_r2_slope') is not None else 0.0,
+                                    'Hit_2nd_Deriv_Drag': any(reason.startswith('hit_2nd_deriv_drag') for reason in hit_reason_set),
+                                    'Hit_2nd_Deriv_CV': any(reason.startswith('hit_2nd_deriv_cv') for reason in hit_reason_set),
+                                    'Hit_2nd_Deriv_Slope': any(reason.startswith('hit_2nd_deriv_slope') for reason in hit_reason_set),
+                                    'Hit_R2_Drag': any(reason.startswith('hit_r2_drag') for reason in hit_reason_set),
+                                    'Hit_R2_CV': any(reason.startswith('hit_r2_cv') for reason in hit_reason_set),
+                                    'Hit_R2_Slope': any(reason.startswith('hit_r2_slope') for reason in hit_reason_set),
                                     'Hit_Point_Confidence': trend_analysis.get('hit_confidence', 0.0),
                                     'Hit_Detected': bool(trend_analysis.get('hit_detected', False)),
-                                    'Hit_Reasons': '; '.join(trend_analysis.get('hit_reasons', []))
+                                    'Hit_Reasons': '; '.join(hit_reasons)
                                 }
                             else:
                                 web_interface.emit_feedback_metrics(
@@ -724,6 +738,18 @@ def test_cell_dynamic_z_series(
                                     'R2': 0.0,
                                     'Second_derivative': 0.0,
                                     'Trend_Slope': 0.0,
+                                    'Second_derivative_drag': 0.0,
+                                    'Second_derivative_cv': 0.0,
+                                    'Second_derivative_slope': 0.0,
+                                    'R2_drag': 0.0,
+                                    'R2_cv': 0.0,
+                                    'R2_slope': 0.0,
+                                    'Hit_2nd_Deriv_Drag': False,
+                                    'Hit_2nd_Deriv_CV': False,
+                                    'Hit_2nd_Deriv_Slope': False,
+                                    'Hit_R2_Drag': False,
+                                    'Hit_R2_CV': False,
+                                    'Hit_R2_Slope': False,
                                     'Hit_Point_Confidence': 0.0,
                                     'Hit_Detected': False,
                                     'Hit_Reasons': trend_analysis.get('reason', 'invalid_trend')
@@ -749,6 +775,18 @@ def test_cell_dynamic_z_series(
                                 'R2': 0.0,
                                 'Second_derivative': 0.0,
                                 'Trend_Slope': 0.0,
+                                'Second_derivative_drag': 0.0,
+                                'Second_derivative_cv': 0.0,
+                                'Second_derivative_slope': 0.0,
+                                'R2_drag': 0.0,
+                                'R2_cv': 0.0,
+                                'R2_slope': 0.0,
+                                'Hit_2nd_Deriv_Drag': False,
+                                'Hit_2nd_Deriv_CV': False,
+                                'Hit_2nd_Deriv_Slope': False,
+                                'Hit_R2_Drag': False,
+                                'Hit_R2_CV': False,
+                                'Hit_R2_Slope': False,
                                 'Hit_Point_Confidence': 0.0,
                                 'Hit_Detected': False,
                                 'Hit_Reasons': 'no_measurements'
@@ -801,6 +839,18 @@ def test_cell_dynamic_z_series(
                             'R2': 0.0,
                             'Second_derivative': 0.0,
                             'Trend_Slope': 0.0,
+                            'Second_derivative_drag': 0.0,
+                            'Second_derivative_cv': 0.0,
+                            'Second_derivative_slope': 0.0,
+                            'R2_drag': 0.0,
+                            'R2_cv': 0.0,
+                            'R2_slope': 0.0,
+                            'Hit_2nd_Deriv_Drag': False,
+                            'Hit_2nd_Deriv_CV': False,
+                            'Hit_2nd_Deriv_Slope': False,
+                            'Hit_R2_Drag': False,
+                            'Hit_R2_CV': False,
+                            'Hit_R2_Slope': False,
                             'Hit_Point_Confidence': 0.0,
                             'Hit_Detected': False,
                             'Hit_Reasons': 'feedback_disabled'
@@ -823,6 +873,18 @@ def test_cell_dynamic_z_series(
                         'R2': 0.0,
                         'Second_derivative': 0.0,
                         'Trend_Slope': 0.0,
+                        'Second_derivative_drag': 0.0,
+                        'Second_derivative_cv': 0.0,
+                        'Second_derivative_slope': 0.0,
+                        'R2_drag': 0.0,
+                        'R2_cv': 0.0,
+                        'R2_slope': 0.0,
+                        'Hit_2nd_Deriv_Drag': False,
+                        'Hit_2nd_Deriv_CV': False,
+                        'Hit_2nd_Deriv_Slope': False,
+                        'Hit_R2_Drag': False,
+                        'Hit_R2_CV': False,
+                        'Hit_R2_Slope': False,
                         'Hit_Point_Confidence': 0.0,
                         'Hit_Detected': False,
                         'Hit_Reasons': 'error'
@@ -912,7 +974,13 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
             "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
-            "CV", "R2", "Trend_Slope", "Second_derivative", "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
+            "CV", "R2", "Trend_Slope", "Second_derivative",
+            "Second_derivative_drag", "Second_derivative_cv", "Second_derivative_slope",
+            "R2_drag", "R2_cv", "R2_slope",
+            "Hit_2nd_Deriv_Drag", "Hit_2nd_Deriv_CV", "Hit_2nd_Deriv_Slope",
+            "Hit_R2_Drag", "Hit_R2_CV", "Hit_R2_Slope",
+            "Samples_Collected_At_Z",
+            "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
         ]
         csv_writer.writerow(headers)
         
@@ -937,6 +1005,18 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                                 'R2': 0.0,
                                 'Trend_Slope': 0.0,
                                 'Second_derivative': 0.0,
+                                'Second_derivative_drag': 0.0,
+                                'Second_derivative_cv': 0.0,
+                                'Second_derivative_slope': 0.0,
+                                'R2_drag': 0.0,
+                                'R2_cv': 0.0,
+                                'R2_slope': 0.0,
+                                'Hit_2nd_Deriv_Drag': False,
+                                'Hit_2nd_Deriv_CV': False,
+                                'Hit_2nd_Deriv_Slope': False,
+                                'Hit_R2_Drag': False,
+                                'Hit_R2_CV': False,
+                                'Hit_R2_Slope': False,
                                 'Hit_Point_Confidence': 0.0,
                                 'Hit_Detected': False,
                                 'Hit_Reasons': ''
@@ -960,6 +1040,19 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                                     f"{rpm_metrics['R2']:.6f}",                 # R2
                                     f"{rpm_metrics['Trend_Slope']:.6f}",        # Trend_Slope
                                     f"{rpm_metrics['Second_derivative']:.6f}",   # Second_derivative
+                                    f"{rpm_metrics.get('Second_derivative_drag', 0.0):.6f}",
+                                    f"{rpm_metrics.get('Second_derivative_cv', 0.0):.6f}",
+                                    f"{rpm_metrics.get('Second_derivative_slope', 0.0):.6f}",
+                                    f"{rpm_metrics.get('R2_drag', 0.0):.6f}",
+                                    f"{rpm_metrics.get('R2_cv', 0.0):.6f}",
+                                    f"{rpm_metrics.get('R2_slope', 0.0):.6f}",
+                                    str(bool(rpm_metrics.get('Hit_2nd_Deriv_Drag', False))),
+                                    str(bool(rpm_metrics.get('Hit_2nd_Deriv_CV', False))),
+                                    str(bool(rpm_metrics.get('Hit_2nd_Deriv_Slope', False))),
+                                    str(bool(rpm_metrics.get('Hit_R2_Drag', False))),
+                                    str(bool(rpm_metrics.get('Hit_R2_CV', False))),
+                                    str(bool(rpm_metrics.get('Hit_R2_Slope', False))),
+                                    str(len(measurements)),
                                     f"{rpm_metrics['Hit_Point_Confidence']:.6f}", # Hit_Point_Confidence
                                     str(bool(rpm_metrics['Hit_Detected'])),       # Hit_Detected
                                     str(rpm_metrics['Hit_Reasons'])               # Hit_Reasons
@@ -998,7 +1091,13 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
             "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
-            "CV", "R2", "Trend_Slope", "Second_derivative", "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
+            "CV", "R2", "Trend_Slope", "Second_derivative",
+            "Second_derivative_drag", "Second_derivative_cv", "Second_derivative_slope",
+            "R2_drag", "R2_cv", "R2_slope",
+            "Hit_2nd_Deriv_Drag", "Hit_2nd_Deriv_CV", "Hit_2nd_Deriv_Slope",
+            "Hit_R2_Drag", "Hit_R2_CV", "Hit_R2_Slope",
+            "Samples_Collected_At_Z",
+            "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
         ]
         csv_writer.writerow(headers)
         
@@ -1023,6 +1122,18 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 'R2': 0.0,
                                 'Trend_Slope': 0.0,
                                 'Second_derivative': 0.0,
+                                'Second_derivative_drag': 0.0,
+                                'Second_derivative_cv': 0.0,
+                                'Second_derivative_slope': 0.0,
+                                'R2_drag': 0.0,
+                                'R2_cv': 0.0,
+                                'R2_slope': 0.0,
+                                'Hit_2nd_Deriv_Drag': False,
+                                'Hit_2nd_Deriv_CV': False,
+                                'Hit_2nd_Deriv_Slope': False,
+                                'Hit_R2_Drag': False,
+                                'Hit_R2_CV': False,
+                                'Hit_R2_Slope': False,
                                 'Hit_Point_Confidence': 0.0,
                                 'Hit_Detected': False,
                                 'Hit_Reasons': ''
@@ -1056,6 +1167,19 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 f"{rpm_metrics['R2']:.6f}",                 # R2
                                 f"{rpm_metrics['Trend_Slope']:.6f}",        # Trend_Slope
                                 f"{rpm_metrics['Second_derivative']:.6f}",   # Second_derivative
+                                f"{rpm_metrics.get('Second_derivative_drag', 0.0):.6f}",
+                                f"{rpm_metrics.get('Second_derivative_cv', 0.0):.6f}",
+                                f"{rpm_metrics.get('Second_derivative_slope', 0.0):.6f}",
+                                f"{rpm_metrics.get('R2_drag', 0.0):.6f}",
+                                f"{rpm_metrics.get('R2_cv', 0.0):.6f}",
+                                f"{rpm_metrics.get('R2_slope', 0.0):.6f}",
+                                str(bool(rpm_metrics.get('Hit_2nd_Deriv_Drag', False))),
+                                str(bool(rpm_metrics.get('Hit_2nd_Deriv_CV', False))),
+                                str(bool(rpm_metrics.get('Hit_2nd_Deriv_Slope', False))),
+                                str(bool(rpm_metrics.get('Hit_R2_Drag', False))),
+                                str(bool(rpm_metrics.get('Hit_R2_CV', False))),
+                                str(bool(rpm_metrics.get('Hit_R2_Slope', False))),
+                                str(len(measurements)),
                                 f"{rpm_metrics['Hit_Point_Confidence']:.6f}", # Hit_Point_Confidence
                                 str(bool(rpm_metrics['Hit_Detected'])),       # Hit_Detected
                                 str(rpm_metrics['Hit_Reasons'])               # Hit_Reasons
