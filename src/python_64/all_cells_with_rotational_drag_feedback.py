@@ -4,6 +4,7 @@ import csv
 import json
 import glob
 import os
+import sys
 import datetime
 import traceback
 import threading
@@ -14,6 +15,12 @@ from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 from feedback_helper_function import RotationalDragFeedbackController
 from web_interface import web_interface
+
+# Ensure progress prints appear in real time even when launched in buffered contexts.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True, write_through=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True, write_through=True)
 
 Z_STEP_SIZE = -0.02       #-0.100
 Z_FEED_RATE = 500
