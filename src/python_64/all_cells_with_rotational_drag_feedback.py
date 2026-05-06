@@ -60,7 +60,9 @@ ESP32_PORT = "COM11"                # "COM8"
 ESP32_BAUD = 115200 #9600
 PUMP_VIRTUAL = False
 # Wash / pump timing (seconds)
-STATION1_FILL_DURATION = 25  # increased by 10s from previous 15s
+# Fill/drain durations (seconds)
+STATION1_FILL_DURATION = 22  # reduced by 3s from previous 25s
+STATION1_DRAIN_DURATION = 25  # increased by 5s from previous 20s
 
 # Wash station 1 coordinates
 WASH_STATION1_X = 383    #387
@@ -367,8 +369,9 @@ def perform_washing_sequence(
         _reliable_pump_command(pump, b"SM2", "Stop Motor 2")
 
         if drain_thread and drain_thread.is_alive():
-            print("Step W9: Waiting for Station 1 drain to complete (up to 30 s)...")
-            drain_thread.join(timeout=30)
+            wait_timeout = STATION1_DRAIN_DURATION + 10
+            print(f"Step W9: Waiting for Station 1 drain to complete (up to {wait_timeout} s)...")
+            drain_thread.join(timeout=wait_timeout)
             if drain_thread.is_alive():
                 print("WARNING: Drain thread did not finish within timeout — continuing.")
 
@@ -448,12 +451,15 @@ def _motor1_start(pump: PumpESP32):
 
 
 def _drain_station1(pump: PumpESP32):
-    """Drain wash station 1 via reverse rinse R1 (runs concurrently with CNC travel to Station 2). Duration: 20 s."""
+    """Drain wash station 1 via reverse rinse R1 (runs concurrently with CNC travel to Station 2).
+
+    Uses STATION1_DRAIN_DURATION for the drain time.
+    """
     try:
         raise_if_stop_requested()
         print("[CONCURRENT] Starting reverse rinse R1 to drain Station 1...")
         _reliable_pump_command(pump, b"R1", "Start Reverse Rinse 1 (concurrent drain)")
-        sleep_with_stop(20)
+        sleep_with_stop(STATION1_DRAIN_DURATION)
         _reliable_pump_command(pump, b"SR1", "Stop Reverse Rinse 1 (concurrent drain complete)")
         print("[CONCURRENT] Station 1 drain complete.")
     except KeyboardInterrupt:
