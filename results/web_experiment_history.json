@@ -1,5 +1,227 @@
 [
   {
+    "id": "exp-1778081139295",
+    "created_at": 1778081139295,
+    "measurement_count": 10,
+    "cells": [
+      1
+    ],
+    "rpms": [
+      0.8
+    ],
+    "settings": {
+      "baseline_n_calibration": 10,
+      "baseline_z_threshold": 10,
+      "cell_content_map": {},
+      "cell_rpm_map": {},
+      "dwell_seconds": 2,
+      "experiment_name": "Brush",
+      "feedback_control_enabled": false,
+      "hit_point_confidence_threshold": 0.8,
+      "inter_rpm_pause": 2,
+      "measurement_duration": 10,
+      "min_data_points_for_trend": 8,
+      "r2_cv_min": 0.975,
+      "r2_drag_min": 0.975,
+      "r2_slope_min": 0.975,
+      "sample_interval": 5,
+      "selected_cells": [
+        1
+      ],
+      "selected_rows": [
+        2
+      ],
+      "smart_cv_threshold": 0.005,
+      "smart_early_exit_enabled": false,
+      "smart_window_size": 3,
+      "test_rpms": [
+        0.8
+      ],
+      "testing_mode": "custom",
+      "torque_break_threshold": 100,
+      "weight_2nd_deriv_cv": 0.2,
+      "weight_2nd_deriv_drag": 0.2,
+      "weight_2nd_deriv_slope": 0.2,
+      "weight_r2_cv": 0.2,
+      "weight_r2_drag": 0.2,
+      "weight_r2_slope": 0.2,
+      "z_step_size": -0.2
+    },
+    "latestPerZ": [
+      {
+        "timestamp": 1778081139.141397,
+        "height": -65.5,
+        "rotational_drag": 28.8375,
+        "torque_percent": 23.07,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778081139.1415808,
+        "height": -65.7,
+        "rotational_drag": 34.949999999999996,
+        "torque_percent": 27.959999999999997,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778081139.1416838,
+        "height": -65.9,
+        "rotational_drag": 41.375,
+        "torque_percent": 33.1,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778081139.1417723,
+        "height": -66.1,
+        "rotational_drag": 48.4875,
+        "torque_percent": 38.79,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778081139.141857,
+        "height": -66.3,
+        "rotational_drag": 59.24999999999999,
+        "torque_percent": 47.4,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      }
+    ],
+    "median_samples_per_z": 2,
+    "cell_median_samples_per_z": {
+      "1": 2
+    },
+    "cellDurations": {
+      "1": 65502.85577774048
+    },
+    "runStartTsSec": 1778080908.6824584,
+    "runEndTsSec": 1778081139.141857,
+    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n2026-05-06T15:22:16.318Z,1,-65.5,23.07,28.8375,0.8\n2026-05-06T15:22:32.684Z,1,-65.7,27.959999999999997,34.949999999999996,0.8\n2026-05-06T15:22:49.062Z,1,-65.9,33.1,41.375,0.8\n2026-05-06T15:23:05.438Z,1,-66.1,38.79,48.4875,0.8\n2026-05-06T15:23:21.821Z,1,-66.3,47.4,59.24999999999999,0.8\n2026-05-06T15:25:39.141Z,1,-65.5,23.07,28.8375,0.8\n2026-05-06T15:25:39.141Z,1,-65.7,27.959999999999997,34.949999999999996,0.8\n2026-05-06T15:25:39.141Z,1,-65.9,33.1,41.375,0.8\n2026-05-06T15:25:39.141Z,1,-66.1,38.79,48.4875,0.8\n2026-05-06T15:25:39.141Z,1,-66.3,47.4,59.24999999999999,0.8"
+  },
+  {
+    "id": "exp-1778080388106",
+    "created_at": 1778080388106,
+    "measurement_count": 10,
+    "cells": [
+      1
+    ],
+    "rpms": [
+      0.8
+    ],
+    "settings": {
+      "baseline_n_calibration": 10,
+      "baseline_z_threshold": 10,
+      "cell_content_map": {},
+      "cell_rpm_map": {},
+      "dwell_seconds": 2,
+      "experiment_name": "Brush",
+      "feedback_control_enabled": false,
+      "hit_point_confidence_threshold": 0.8,
+      "inter_rpm_pause": 2,
+      "measurement_duration": 10,
+      "min_data_points_for_trend": 8,
+      "r2_cv_min": 0.975,
+      "r2_drag_min": 0.975,
+      "r2_slope_min": 0.975,
+      "sample_interval": 5,
+      "selected_cells": [
+        1
+      ],
+      "selected_rows": [
+        2
+      ],
+      "smart_cv_threshold": 0.005,
+      "smart_early_exit_enabled": false,
+      "smart_window_size": 3,
+      "test_rpms": [
+        0.8
+      ],
+      "testing_mode": "custom",
+      "torque_break_threshold": 100,
+      "weight_2nd_deriv_cv": 0.2,
+      "weight_2nd_deriv_drag": 0.2,
+      "weight_2nd_deriv_slope": 0.2,
+      "weight_r2_cv": 0.2,
+      "weight_r2_drag": 0.2,
+      "weight_r2_slope": 0.2,
+      "z_step_size": -0.2
+    },
+    "latestPerZ": [
+      {
+        "timestamp": 1778080387.949663,
+        "height": -65.5,
+        "rotational_drag": 27.9625,
+        "torque_percent": 22.37,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778080387.949885,
+        "height": -65.7,
+        "rotational_drag": 33.8625,
+        "torque_percent": 27.09,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778080387.950034,
+        "height": -65.9,
+        "rotational_drag": 40.0375,
+        "torque_percent": 32.03,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778080387.9501934,
+        "height": -66.1,
+        "rotational_drag": 46.974999999999994,
+        "torque_percent": 37.58,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778080387.95029,
+        "height": -66.3,
+        "rotational_drag": 57.0375,
+        "torque_percent": 45.63,
+        "rpm": 0.8,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      }
+    ],
+    "median_samples_per_z": 2,
+    "cell_median_samples_per_z": {
+      "1": 2
+    },
+    "cellDurations": {
+      "1": 65731.06503486633
+    },
+    "runStartTsSec": 1778080157.1875205,
+    "runEndTsSec": 1778080387.95029,
+    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n2026-05-06T15:09:45.009Z,1,-65.5,22.37,27.9625,0.8\n2026-05-06T15:10:01.491Z,1,-65.7,27.09,33.8625,0.8\n2026-05-06T15:10:17.859Z,1,-65.9,32.03,40.0375,0.8\n2026-05-06T15:10:34.344Z,1,-66.1,37.58,46.974999999999994,0.8\n2026-05-06T15:10:50.740Z,1,-66.3,45.63,57.0375,0.8\n2026-05-06T15:13:07.949Z,1,-65.5,22.37,27.9625,0.8\n2026-05-06T15:13:07.949Z,1,-65.7,27.09,33.8625,0.8\n2026-05-06T15:13:07.950Z,1,-65.9,32.03,40.0375,0.8\n2026-05-06T15:13:07.950Z,1,-66.1,37.58,46.974999999999994,0.8\n2026-05-06T15:13:07.950Z,1,-66.3,45.63,57.0375,0.8"
+  },
+  {
     "id": "exp-1777563815672",
     "created_at": 1777563815672,
     "measurement_count": 1444,
