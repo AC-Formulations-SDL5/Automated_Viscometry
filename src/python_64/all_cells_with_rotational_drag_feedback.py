@@ -59,6 +59,8 @@ SPINDLE_K = 992.47
 ESP32_PORT = "COM11"                # "COM8"
 ESP32_BAUD = 115200 #9600
 PUMP_VIRTUAL = False
+# Wash / pump timing (seconds)
+STATION1_FILL_DURATION = 25  # increased by 10s from previous 15s
 
 # Wash station 1 coordinates
 WASH_STATION1_X = 383    #387
@@ -315,8 +317,9 @@ def perform_washing_sequence(
         web_interface.update_position(WASH_STATION1_X, WASH_STATION1_Y, 0)
         cnc.move_to_point_safe(WASH_STATION1_X, WASH_STATION1_Y, 0, speed=3000)
         if fill_thread and fill_thread.is_alive():
-            print("Waiting for concurrent Station 1 fill to complete (up to 30 s)...")
-            fill_thread.join(timeout=30)
+            wait_timeout = STATION1_FILL_DURATION + 10
+            print(f"Waiting for concurrent Station 1 fill to complete (up to {wait_timeout} s)...")
+            fill_thread.join(timeout=wait_timeout)
             if fill_thread.is_alive():
                 print("WARNING: Fill thread still running after timeout — continuing with wash motion.")
 
@@ -418,12 +421,15 @@ def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: 
 
 
 def _pump_fill_station1(pump: PumpESP32):
-    """Fill wash station 1 (runs concurrently with CNC travel). Duration: 15 s."""
+    """Fill wash station 1 (runs concurrently with CNC travel).
+
+    Uses STATION1_FILL_DURATION for the fill time.
+    """
     try:
         raise_if_stop_requested()
         print("[CONCURRENT] Starting Pump P1 to fill Station 1...")
         _reliable_pump_command(pump, b"P1", "Start Pump 1 (concurrent fill)")
-        sleep_with_stop(15)
+        sleep_with_stop(STATION1_FILL_DURATION)
         _reliable_pump_command(pump, b"SP1", "Stop Pump 1 (concurrent fill complete)")
         print("[CONCURRENT] Station 1 fill complete.")
     except KeyboardInterrupt:
