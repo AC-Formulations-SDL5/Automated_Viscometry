@@ -1,5 +1,1723 @@
 [
   {
+    "id": "exp-1778087453719",
+    "created_at": 1778087453719,
+    "measurement_count": 798,
+    "cells": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "rpms": [
+      3.5
+    ],
+    "settings": {
+      "baseline_n_calibration": 10,
+      "baseline_z_threshold": 5,
+      "cell_content_map": {
+        "1": "Trial 1",
+        "2": "Trial 2",
+        "3": "Trial 3",
+        "4": "Trial 4",
+        "5": "Trial 5",
+        "6": "Trial 6"
+      },
+      "cell_rpm_map": {},
+      "dwell_seconds": 2,
+      "experiment_name": "12.5kcP Reproducibility Brush",
+      "feedback_control_enabled": true,
+      "hit_point_confidence_threshold": 0.8,
+      "inter_rpm_pause": 2,
+      "measurement_duration": 40,
+      "min_data_points_for_trend": 8,
+      "r2_cv_min": 0.975,
+      "r2_drag_min": 0.975,
+      "r2_slope_min": 0.975,
+      "sample_interval": 5,
+      "selected_cells": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "selected_rows": [
+        2
+      ],
+      "smart_cv_threshold": 0.005,
+      "smart_early_exit_enabled": true,
+      "smart_window_size": 3,
+      "test_rpms": [
+        3.5
+      ],
+      "testing_mode": "custom",
+      "torque_break_threshold": 100,
+      "weight_2nd_deriv_cv": 0.2,
+      "weight_2nd_deriv_drag": 0.2,
+      "weight_2nd_deriv_slope": 0.2,
+      "weight_r2_cv": 0.2,
+      "weight_r2_drag": 0.2,
+      "weight_r2_slope": 0.2,
+      "z_step_size": -0.02
+    },
+    "latestPerZ": [
+      {
+        "timestamp": 1778087447.2353525,
+        "height": -65.5,
+        "rotational_drag": 6.494285714285715,
+        "torque_percent": 22.73,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2356162,
+        "height": -65.52,
+        "rotational_drag": 6.677142857142857,
+        "torque_percent": 23.37,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2358027,
+        "height": -65.54,
+        "rotational_drag": 6.840000000000001,
+        "torque_percent": 23.94,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2359638,
+        "height": -65.56,
+        "rotational_drag": 7.014285714285714,
+        "torque_percent": 24.55,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2361114,
+        "height": -65.58,
+        "rotational_drag": 7.168571428571428,
+        "torque_percent": 25.09,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2362556,
+        "height": -65.6,
+        "rotational_drag": 7.340000000000001,
+        "torque_percent": 25.69,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2364001,
+        "height": -65.62,
+        "rotational_drag": 7.491428571428571,
+        "torque_percent": 26.22,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.236539,
+        "height": -65.64,
+        "rotational_drag": 7.668571428571428,
+        "torque_percent": 26.84,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2366812,
+        "height": -65.66,
+        "rotational_drag": 7.828571428571428,
+        "torque_percent": 27.4,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.236845,
+        "height": -65.68,
+        "rotational_drag": 8.01142857142857,
+        "torque_percent": 28.04,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2369893,
+        "height": -65.7,
+        "rotational_drag": 8.185714285714285,
+        "torque_percent": 28.65,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2371328,
+        "height": -65.72,
+        "rotational_drag": 8.391428571428571,
+        "torque_percent": 29.37,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.237273,
+        "height": -65.74,
+        "rotational_drag": 8.571428571428571,
+        "torque_percent": 30,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2374277,
+        "height": -65.76,
+        "rotational_drag": 8.791428571428572,
+        "torque_percent": 30.770000000000003,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2375948,
+        "height": -65.78,
+        "rotational_drag": 8.994285714285715,
+        "torque_percent": 31.48,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2377703,
+        "height": -65.8,
+        "rotational_drag": 9.228571428571428,
+        "torque_percent": 32.3,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2378728,
+        "height": -65.82,
+        "rotational_drag": 9.462857142857143,
+        "torque_percent": 33.12,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2379577,
+        "height": -65.84,
+        "rotational_drag": 9.722857142857142,
+        "torque_percent": 34.03,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2380416,
+        "height": -65.86,
+        "rotational_drag": 9.971428571428572,
+        "torque_percent": 34.9,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.238124,
+        "height": -65.88,
+        "rotational_drag": 10.262857142857143,
+        "torque_percent": 35.92,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.238206,
+        "height": -65.9,
+        "rotational_drag": 10.537142857142857,
+        "torque_percent": 36.88,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2382882,
+        "height": -65.92,
+        "rotational_drag": 10.874285714285715,
+        "torque_percent": 38.06,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.238371,
+        "height": -65.94,
+        "rotational_drag": 11.185714285714285,
+        "torque_percent": 39.15,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2384524,
+        "height": -65.96,
+        "rotational_drag": 11.557142857142859,
+        "torque_percent": 40.45,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.238533,
+        "height": -65.98,
+        "rotational_drag": 12.008571428571429,
+        "torque_percent": 42.03,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2386172,
+        "height": -66,
+        "rotational_drag": 12.348571428571429,
+        "torque_percent": 43.22,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2387233,
+        "height": -66.02,
+        "rotational_drag": 12.777142857142858,
+        "torque_percent": 44.72,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2388163,
+        "height": -66.04,
+        "rotational_drag": 13.282857142857143,
+        "torque_percent": 46.49,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2388985,
+        "height": -66.06,
+        "rotational_drag": 13.777142857142858,
+        "torque_percent": 48.22,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2389796,
+        "height": -66.08,
+        "rotational_drag": 14.37142857142857,
+        "torque_percent": 50.3,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2390633,
+        "height": -66.1,
+        "rotational_drag": 14.948571428571428,
+        "torque_percent": 52.32,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2395134,
+        "height": -66.12,
+        "rotational_drag": 15.682857142857143,
+        "torque_percent": 54.89,
+        "rpm": 3.5,
+        "cell_id": 1,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.239626,
+        "height": -65.5,
+        "rotational_drag": 8.357142857142858,
+        "torque_percent": 29.25,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.239709,
+        "height": -65.52,
+        "rotational_drag": 8.605714285714287,
+        "torque_percent": 30.120000000000005,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2397993,
+        "height": -65.54,
+        "rotational_drag": 8.828571428571427,
+        "torque_percent": 30.899999999999995,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2398899,
+        "height": -65.56,
+        "rotational_drag": 9.077142857142857,
+        "torque_percent": 31.769999999999996,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2399704,
+        "height": -65.58,
+        "rotational_drag": 9.311428571428573,
+        "torque_percent": 32.59,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2400494,
+        "height": -65.6,
+        "rotational_drag": 9.58,
+        "torque_percent": 33.53,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2401736,
+        "height": -65.62,
+        "rotational_drag": 9.822857142857144,
+        "torque_percent": 34.38,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2402778,
+        "height": -65.64,
+        "rotational_drag": 10.117142857142856,
+        "torque_percent": 35.41,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.240403,
+        "height": -65.66,
+        "rotational_drag": 10.382857142857144,
+        "torque_percent": 36.34,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2405372,
+        "height": -65.68,
+        "rotational_drag": 10.705714285714285,
+        "torque_percent": 37.47,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.240673,
+        "height": -65.7,
+        "rotational_drag": 10.997142857142858,
+        "torque_percent": 38.49,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2408102,
+        "height": -65.72,
+        "rotational_drag": 11.35142857142857,
+        "torque_percent": 39.73,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.240934,
+        "height": -65.74,
+        "rotational_drag": 11.677142857142856,
+        "torque_percent": 40.87,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2410438,
+        "height": -65.76,
+        "rotational_drag": 12.085714285714285,
+        "torque_percent": 42.3,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2411835,
+        "height": -65.78,
+        "rotational_drag": 12.459999999999999,
+        "torque_percent": 43.61,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.241314,
+        "height": -65.8,
+        "rotational_drag": 12.911428571428571,
+        "torque_percent": 45.19,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2414339,
+        "height": -65.82,
+        "rotational_drag": 13.302857142857144,
+        "torque_percent": 46.56,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2415853,
+        "height": -65.84,
+        "rotational_drag": 13.874285714285715,
+        "torque_percent": 48.56,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2417023,
+        "height": -65.86,
+        "rotational_drag": 14.382857142857144,
+        "torque_percent": 50.34,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.241837,
+        "height": -65.88,
+        "rotational_drag": 15.040000000000001,
+        "torque_percent": 52.64,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.241985,
+        "height": -65.9,
+        "rotational_drag": 15.642857142857142,
+        "torque_percent": 54.75,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2421079,
+        "height": -65.92,
+        "rotational_drag": 16.38,
+        "torque_percent": 57.33,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.242235,
+        "height": -65.94,
+        "rotational_drag": 17.174285714285713,
+        "torque_percent": 60.10999999999999,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.24233,
+        "height": -65.96,
+        "rotational_drag": 18.194285714285716,
+        "torque_percent": 63.68000000000001,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.242445,
+        "height": -65.98,
+        "rotational_drag": 19.52857142857143,
+        "torque_percent": 68.35,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2425368,
+        "height": -66,
+        "rotational_drag": 20.194285714285716,
+        "torque_percent": 70.68,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2426152,
+        "height": -66.02,
+        "rotational_drag": 20.474285714285713,
+        "torque_percent": 71.66,
+        "rpm": 3.5,
+        "cell_id": 2,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2427032,
+        "height": -65.5,
+        "rotational_drag": 7.662857142857143,
+        "torque_percent": 26.82,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2428036,
+        "height": -65.52,
+        "rotational_drag": 7.928571428571429,
+        "torque_percent": 27.75,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2428813,
+        "height": -65.54,
+        "rotational_drag": 8.137142857142857,
+        "torque_percent": 28.48,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2429545,
+        "height": -65.56,
+        "rotational_drag": 8.368571428571428,
+        "torque_percent": 29.29,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.24306,
+        "height": -65.58,
+        "rotational_drag": 8.56,
+        "torque_percent": 29.96,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2431355,
+        "height": -65.6,
+        "rotational_drag": 8.777142857142858,
+        "torque_percent": 30.720000000000002,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2432623,
+        "height": -65.62,
+        "rotational_drag": 8.92,
+        "torque_percent": 31.22,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.243678,
+        "height": -65.64,
+        "rotational_drag": 9.142857142857142,
+        "torque_percent": 32,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2438216,
+        "height": -65.66,
+        "rotational_drag": 9.348571428571429,
+        "torque_percent": 32.72,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2438974,
+        "height": -65.68,
+        "rotational_drag": 9.574285714285713,
+        "torque_percent": 33.51,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2439895,
+        "height": -65.7,
+        "rotational_drag": 9.825714285714286,
+        "torque_percent": 34.39,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2440658,
+        "height": -65.72,
+        "rotational_drag": 10.071428571428571,
+        "torque_percent": 35.25,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.244135,
+        "height": -65.74,
+        "rotational_drag": 10.331428571428571,
+        "torque_percent": 36.16,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2442033,
+        "height": -65.76,
+        "rotational_drag": 10.620000000000001,
+        "torque_percent": 37.17,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2442715,
+        "height": -65.78,
+        "rotational_drag": 10.937142857142858,
+        "torque_percent": 38.28,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2443392,
+        "height": -65.8,
+        "rotational_drag": 11.26,
+        "torque_percent": 39.41,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2444055,
+        "height": -65.82,
+        "rotational_drag": 11.64857142857143,
+        "torque_percent": 40.77,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.244474,
+        "height": -65.84,
+        "rotational_drag": 12.017142857142858,
+        "torque_percent": 42.06,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2445412,
+        "height": -65.86,
+        "rotational_drag": 12.442857142857141,
+        "torque_percent": 43.55,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2446098,
+        "height": -65.88,
+        "rotational_drag": 12.911428571428571,
+        "torque_percent": 45.19,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2446773,
+        "height": -65.9,
+        "rotational_drag": 13.394285714285715,
+        "torque_percent": 46.88,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2447448,
+        "height": -65.92,
+        "rotational_drag": 14.008571428571429,
+        "torque_percent": 49.03,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2448132,
+        "height": -65.94,
+        "rotational_drag": 14.64857142857143,
+        "torque_percent": 51.27,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2448852,
+        "height": -65.96,
+        "rotational_drag": 15.297142857142857,
+        "torque_percent": 53.54,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2449539,
+        "height": -65.98,
+        "rotational_drag": 16.64,
+        "torque_percent": 58.24,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2456005,
+        "height": -66,
+        "rotational_drag": 18.145714285714284,
+        "torque_percent": 63.50999999999999,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2456834,
+        "height": -66.02,
+        "rotational_drag": 17.12,
+        "torque_percent": 59.92,
+        "rpm": 3.5,
+        "cell_id": 3,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2457635,
+        "height": -65.5,
+        "rotational_drag": 8.282857142857143,
+        "torque_percent": 28.990000000000002,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2458346,
+        "height": -65.52,
+        "rotational_drag": 8.674285714285714,
+        "torque_percent": 30.36,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2459028,
+        "height": -65.54,
+        "rotational_drag": 8.968571428571428,
+        "torque_percent": 31.389999999999997,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.245971,
+        "height": -65.56,
+        "rotational_drag": 9.28,
+        "torque_percent": 32.48,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.246038,
+        "height": -65.58,
+        "rotational_drag": 9.54857142857143,
+        "torque_percent": 33.42,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2461047,
+        "height": -65.6,
+        "rotational_drag": 9.857142857142858,
+        "torque_percent": 34.5,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.246171,
+        "height": -65.62,
+        "rotational_drag": 10.137142857142857,
+        "torque_percent": 35.48,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.246238,
+        "height": -65.64,
+        "rotational_drag": 10.477142857142857,
+        "torque_percent": 36.67,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2463055,
+        "height": -65.66,
+        "rotational_drag": 10.777142857142858,
+        "torque_percent": 37.72,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2463741,
+        "height": -65.68,
+        "rotational_drag": 11.134285714285713,
+        "torque_percent": 38.97,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2464435,
+        "height": -65.7,
+        "rotational_drag": 11.471428571428572,
+        "torque_percent": 40.15,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2465124,
+        "height": -65.72,
+        "rotational_drag": 11.874285714285715,
+        "torque_percent": 41.56,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.246582,
+        "height": -65.74,
+        "rotational_drag": 12.262857142857143,
+        "torque_percent": 42.92,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2466726,
+        "height": -65.76,
+        "rotational_drag": 12.728571428571428,
+        "torque_percent": 44.55,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2467554,
+        "height": -65.78,
+        "rotational_drag": 13.165714285714285,
+        "torque_percent": 46.08,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2470517,
+        "height": -65.8,
+        "rotational_drag": 13.711428571428572,
+        "torque_percent": 47.99,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2471423,
+        "height": -65.82,
+        "rotational_drag": 14.234285714285715,
+        "torque_percent": 49.82,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2472134,
+        "height": -65.84,
+        "rotational_drag": 14.877142857142857,
+        "torque_percent": 52.07,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.247305,
+        "height": -65.86,
+        "rotational_drag": 15.5,
+        "torque_percent": 54.25,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2473855,
+        "height": -65.88,
+        "rotational_drag": 16.345714285714287,
+        "torque_percent": 57.21000000000001,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2474582,
+        "height": -65.9,
+        "rotational_drag": 17.825714285714287,
+        "torque_percent": 62.39000000000001,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2475314,
+        "height": -65.92,
+        "rotational_drag": 17.545714285714286,
+        "torque_percent": 61.410000000000004,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.247605,
+        "height": -65.94,
+        "rotational_drag": 18.639999999999997,
+        "torque_percent": 65.24,
+        "rpm": 3.5,
+        "cell_id": 4,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2476833,
+        "height": -65.5,
+        "rotational_drag": 3.4285714285714284,
+        "torque_percent": 12,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2477517,
+        "height": -65.52,
+        "rotational_drag": 5.111428571428571,
+        "torque_percent": 17.89,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2478187,
+        "height": -65.54,
+        "rotational_drag": 5.991428571428571,
+        "torque_percent": 20.97,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2478862,
+        "height": -65.56,
+        "rotational_drag": 6.914285714285714,
+        "torque_percent": 24.2,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.247957,
+        "height": -65.58,
+        "rotational_drag": 7.571428571428571,
+        "torque_percent": 26.5,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2480242,
+        "height": -65.6,
+        "rotational_drag": 8.097142857142858,
+        "torque_percent": 28.340000000000003,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.248092,
+        "height": -65.62,
+        "rotational_drag": 8.502857142857144,
+        "torque_percent": 29.76,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2481594,
+        "height": -65.64,
+        "rotational_drag": 8.954285714285714,
+        "torque_percent": 31.339999999999996,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2482285,
+        "height": -65.66,
+        "rotational_drag": 9.354285714285714,
+        "torque_percent": 32.74,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.248313,
+        "height": -65.68,
+        "rotational_drag": 9.782857142857143,
+        "torque_percent": 34.24,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2483845,
+        "height": -65.7,
+        "rotational_drag": 10.191428571428572,
+        "torque_percent": 35.67,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2484553,
+        "height": -65.72,
+        "rotational_drag": 10.608571428571429,
+        "torque_percent": 37.13,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2485254,
+        "height": -65.74,
+        "rotational_drag": 11.008571428571429,
+        "torque_percent": 38.53,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.248595,
+        "height": -65.76,
+        "rotational_drag": 11.48857142857143,
+        "torque_percent": 40.21,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2486649,
+        "height": -65.78,
+        "rotational_drag": 11.925714285714287,
+        "torque_percent": 41.74,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2487352,
+        "height": -65.8,
+        "rotational_drag": 12.42,
+        "torque_percent": 43.47,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2488036,
+        "height": -65.82,
+        "rotational_drag": 12.914285714285715,
+        "torque_percent": 45.2,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2488816,
+        "height": -65.84,
+        "rotational_drag": 13.522857142857143,
+        "torque_percent": 47.33,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.248952,
+        "height": -65.86,
+        "rotational_drag": 14.054285714285713,
+        "torque_percent": 49.19,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2490218,
+        "height": -65.88,
+        "rotational_drag": 14.777142857142858,
+        "torque_percent": 51.72,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2490928,
+        "height": -65.9,
+        "rotational_drag": 15.928571428571429,
+        "torque_percent": 55.75,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2491653,
+        "height": -65.92,
+        "rotational_drag": 17.81714285714286,
+        "torque_percent": 62.36000000000001,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.249238,
+        "height": -65.94,
+        "rotational_drag": 16.737142857142857,
+        "torque_percent": 58.58,
+        "rpm": 3.5,
+        "cell_id": 5,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2493157,
+        "height": -65.5,
+        "rotational_drag": 0.66,
+        "torque_percent": 2.31,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2493927,
+        "height": -65.52,
+        "rotational_drag": 1.122857142857143,
+        "torque_percent": 3.9300000000000006,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.249616,
+        "height": -65.54,
+        "rotational_drag": 1.4742857142857144,
+        "torque_percent": 5.16,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2496936,
+        "height": -65.56,
+        "rotational_drag": 1.8228571428571427,
+        "torque_percent": 6.38,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2497623,
+        "height": -65.58,
+        "rotational_drag": 2.1714285714285713,
+        "torque_percent": 7.6,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2498882,
+        "height": -65.6,
+        "rotational_drag": 2.5828571428571427,
+        "torque_percent": 9.04,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2500405,
+        "height": -65.62,
+        "rotational_drag": 2.922857142857143,
+        "torque_percent": 10.23,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2501745,
+        "height": -65.64,
+        "rotational_drag": 3.437142857142857,
+        "torque_percent": 12.03,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2502553,
+        "height": -65.66,
+        "rotational_drag": 3.9285714285714284,
+        "torque_percent": 13.75,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.250326,
+        "height": -65.68,
+        "rotational_drag": 4.594285714285713,
+        "torque_percent": 16.08,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2503977,
+        "height": -65.7,
+        "rotational_drag": 5.185714285714285,
+        "torque_percent": 18.15,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2505188,
+        "height": -65.72,
+        "rotational_drag": 6.0200000000000005,
+        "torque_percent": 21.07,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2506292,
+        "height": -65.74,
+        "rotational_drag": 6.82,
+        "torque_percent": 23.87,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.25076,
+        "height": -65.76,
+        "rotational_drag": 7.877142857142857,
+        "torque_percent": 27.57,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2508814,
+        "height": -65.78,
+        "rotational_drag": 8.631428571428572,
+        "torque_percent": 30.21,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2510114,
+        "height": -65.8,
+        "rotational_drag": 9.245714285714286,
+        "torque_percent": 32.36,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2511296,
+        "height": -65.82,
+        "rotational_drag": 9.748571428571427,
+        "torque_percent": 34.12,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2512515,
+        "height": -65.84,
+        "rotational_drag": 10.277142857142858,
+        "torque_percent": 35.97,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2513719,
+        "height": -65.86,
+        "rotational_drag": 10.748571428571427,
+        "torque_percent": 37.62,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2514904,
+        "height": -65.88,
+        "rotational_drag": 11.268571428571429,
+        "torque_percent": 39.44,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.251643,
+        "height": -65.9,
+        "rotational_drag": 11.754285714285714,
+        "torque_percent": 41.14,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.251762,
+        "height": -65.92,
+        "rotational_drag": 12.319999999999999,
+        "torque_percent": 43.12,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2518592,
+        "height": -65.94,
+        "rotational_drag": 12.848571428571429,
+        "torque_percent": 44.97,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2519295,
+        "height": -65.96,
+        "rotational_drag": 13.477142857142857,
+        "torque_percent": 47.17,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2519987,
+        "height": -65.98,
+        "rotational_drag": 14.1,
+        "torque_percent": 49.35,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2520669,
+        "height": -66,
+        "rotational_drag": 14.868571428571428,
+        "torque_percent": 52.04,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2521355,
+        "height": -66.02,
+        "rotational_drag": 16.228571428571428,
+        "torque_percent": 56.8,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2522063,
+        "height": -66.04,
+        "rotational_drag": 17.63142857142857,
+        "torque_percent": 61.71,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": false
+      },
+      {
+        "timestamp": 1778087447.2522755,
+        "height": -66.06,
+        "rotational_drag": 16.822857142857142,
+        "torque_percent": 58.879999999999995,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.252355,
+        "height": -66.08,
+        "rotational_drag": 17.954285714285714,
+        "torque_percent": 62.839999999999996,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": true
+      },
+      {
+        "timestamp": 1778087447.2524662,
+        "height": -66.1,
+        "rotational_drag": 16.86,
+        "torque_percent": 59.01,
+        "rpm": 3.5,
+        "cell_id": 6,
+        "is_final_save": true,
+        "hit_detected": true
+      }
+    ],
+    "median_samples_per_z": 4,
+    "cell_median_samples_per_z": {
+      "1": 4,
+      "2": 4,
+      "3": 4,
+      "4": 4,
+      "5": 4,
+      "6": 7
+    },
+    "cellDurations": {
+      "1": 677454.4932842255,
+      "2": 630797.253370285,
+      "3": 660788.7287139893,
+      "4": 560289.0927791595,
+      "5": 655126.2884140015,
+      "6": 1060875.4062652588
+    },
+    "runStartTsSec": 1778082199.8068726,
+    "runEndTsSec": 1778087447.2524662,
+    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n2026-05-06T15:43:47.344Z,1,-65.5,22.63,6.465714285714285,3.5\n2026-05-06T15:43:52.401Z,1,-65.5,22.78,6.508571428571429,3.5\n2026-05-06T15:43:57.356Z,1,-65.5,22.73,6.494285714285715,3.5\n2026-05-06T15:44:08.712Z,1,-65.52,23.43,6.694285714285714,3.5\n2026-05-06T15:44:13.767Z,1,-65.52,23.4,6.685714285714285,3.5\n2026-05-06T15:44:18.724Z,1,-65.52,23.37,6.677142857142857,3.5\n2026-05-06T15:44:30.071Z,1,-65.54,23.99,6.854285714285714,3.5\n2026-05-06T15:44:35.123Z,1,-65.54,23.98,6.851428571428571,3.5\n2026-05-06T15:44:40.077Z,1,-65.54,23.94,6.840000000000001,3.5\n2026-05-06T15:44:51.427Z,1,-65.56,24.63,7.0371428571428565,3.5\n2026-05-06T15:44:56.481Z,1,-65.56,24.63,7.0371428571428565,3.5\n2026-05-06T15:45:01.437Z,1,-65.56,24.55,7.014285714285714,3.5\n2026-05-06T15:45:12.789Z,1,-65.58,25.15,7.185714285714285,3.5\n2026-05-06T15:45:17.850Z,1,-65.58,25.15,7.185714285714285,3.5\n2026-05-06T15:45:22.805Z,1,-65.58,25.09,7.168571428571428,3.5\n2026-05-06T15:45:34.155Z,1,-65.6,25.78,7.365714285714286,3.5\n2026-05-06T15:45:39.215Z,1,-65.6,25.75,7.357142857142857,3.5\n2026-05-06T15:45:44.173Z,1,-65.6,25.69,7.340000000000001,3.5\n2026-05-06T15:45:55.523Z,1,-65.62,26.3,7.514285714285714,3.5\n2026-05-06T15:46:00.577Z,1,-65.62,26.28,7.508571428571429,3.5\n2026-05-06T15:46:05.532Z,1,-65.62,26.22,7.491428571428571,3.5\n2026-05-06T15:46:16.889Z,1,-65.64,26.92,7.691428571428572,3.5\n2026-05-06T15:46:21.943Z,1,-65.64,26.96,7.702857142857143,3.5\n2026-05-06T15:46:26.901Z,1,-65.64,26.84,7.668571428571428,3.5\n2026-05-06T15:46:38.250Z,1,-65.66,27.49,7.854285714285714,3.5\n2026-05-06T15:46:43.305Z,1,-65.66,27.49,7.854285714285714,3.5\n2026-05-06T15:46:48.260Z,1,-65.66,27.4,7.828571428571428,3.5\n2026-05-06T15:46:59.619Z,1,-65.68,28.130000000000003,8.037142857142857,3.5\n2026-05-06T15:47:04.676Z,1,-65.68,28.18,8.051428571428572,3.5\n2026-05-06T15:47:09.634Z,1,-65.68,28.04,8.01142857142857,3.5\n2026-05-06T15:47:20.987Z,1,-65.7,28.69,8.197142857142858,3.5\n2026-05-06T15:47:26.041Z,1,-65.7,28.740000000000002,8.211428571428572,3.5\n2026-05-06T15:47:30.997Z,1,-65.7,28.65,8.185714285714285,3.5\n2026-05-06T15:47:42.352Z,1,-65.72,29.439999999999998,8.411428571428571,3.5\n2026-05-06T15:47:47.413Z,1,-65.72,29.480000000000004,8.422857142857143,3.5\n2026-05-06T15:47:52.370Z,1,-65.72,29.37,8.391428571428571,3.5\n2026-05-06T15:48:03.717Z,1,-65.74,30.069999999999997,8.59142857142857,3.5\n2026-05-06T15:48:08.772Z,1,-65.74,30.090000000000003,8.597142857142858,3.5\n2026-05-06T15:48:13.727Z,1,-65.74,30,8.571428571428571,3.5\n2026-05-06T15:48:25.083Z,1,-65.76,30.85,8.814285714285715,3.5\n2026-05-06T15:48:30.137Z,1,-65.76,30.879999999999995,8.822857142857142,3.5\n2026-05-06T15:48:35.095Z,1,-65.76,30.770000000000003,8.791428571428572,3.5\n2026-05-06T15:48:46.442Z,1,-65.78,31.52,9.005714285714285,3.5\n2026-05-06T15:48:51.499Z,1,-65.78,31.57,9.02,3.5\n2026-05-06T15:48:56.454Z,1,-65.78,31.48,8.994285714285715,3.5\n2026-05-06T15:49:07.807Z,1,-65.8,32.36,9.245714285714286,3.5\n2026-05-06T15:49:12.864Z,1,-65.8,32.45,9.271428571428572,3.5\n2026-05-06T15:49:17.820Z,1,-65.8,32.3,9.228571428571428,3.5\n2026-05-06T15:49:29.179Z,1,-65.82,33.12,9.462857142857143,3.5\n2026-05-06T15:49:34.236Z,1,-65.82,33.18,9.48,3.5\n2026-05-06T15:49:39.191Z,1,-65.82,33.12,9.462857142857143,3.5\n2026-05-06T15:49:50.541Z,1,-65.84,34.07,9.734285714285715,3.5\n2026-05-06T15:49:55.595Z,1,-65.84,34.15,9.757142857142856,3.5\n2026-05-06T15:50:00.568Z,1,-65.84,34.03,9.722857142857142,3.5\n2026-05-06T15:50:11.924Z,1,-65.86,34.95,9.985714285714286,3.5\n2026-05-06T15:50:16.981Z,1,-65.86,34.95,9.985714285714286,3.5\n2026-05-06T15:50:21.939Z,1,-65.86,34.9,9.971428571428572,3.5\n2026-05-06T15:50:33.292Z,1,-65.88,35.94,10.268571428571429,3.5\n2026-05-06T15:50:38.350Z,1,-65.88,36.03,10.294285714285715,3.5\n2026-05-06T15:50:43.307Z,1,-65.88,35.92,10.262857142857143,3.5\n2026-05-06T15:50:54.657Z,1,-65.9,36.92,10.54857142857143,3.5\n2026-05-06T15:50:59.709Z,1,-65.9,36.98,10.565714285714284,3.5\n2026-05-06T15:51:04.666Z,1,-65.9,36.88,10.537142857142857,3.5\n2026-05-06T15:51:16.020Z,1,-65.92,38.04,10.868571428571428,3.5\n2026-05-06T15:51:21.075Z,1,-65.92,38.18,10.90857142857143,3.5\n2026-05-06T15:51:26.035Z,1,-65.92,38.06,10.874285714285715,3.5\n2026-05-06T15:51:37.391Z,1,-65.94,39.15,11.185714285714285,3.5\n2026-05-06T15:51:42.448Z,1,-65.94,39.23,11.208571428571428,3.5\n2026-05-06T15:51:47.410Z,1,-65.94,39.15,11.185714285714285,3.5\n2026-05-06T15:51:58.765Z,1,-65.96,40.43,11.551428571428572,3.5\n2026-05-06T15:52:03.822Z,1,-65.96,40.6,11.6,3.5\n2026-05-06T15:52:08.777Z,1,-65.96,40.45,11.557142857142859,3.5\n2026-05-06T15:52:20.130Z,1,-65.98,41.66,11.902857142857142,3.5\n2026-05-06T15:52:25.184Z,1,-65.98,42.1,12.028571428571428,3.5\n2026-05-06T15:52:30.139Z,1,-65.98,42.03,12.008571428571429,3.5\n2026-05-06T15:52:41.492Z,1,-66,43.14,12.325714285714286,3.5\n2026-05-06T15:52:46.549Z,1,-66,43.36,12.388571428571428,3.5\n2026-05-06T15:52:51.510Z,1,-66,43.22,12.348571428571429,3.5\n2026-05-06T15:53:02.884Z,1,-66.02,44.68,12.765714285714285,3.5\n2026-05-06T15:53:07.939Z,1,-66.02,44.79,12.797142857142857,3.5\n2026-05-06T15:53:12.891Z,1,-66.02,44.72,12.777142857142858,3.5\n2026-05-06T15:53:24.247Z,1,-66.04,46.35,13.242857142857144,3.5\n2026-05-06T15:53:29.301Z,1,-66.04,46.56,13.302857142857144,3.5\n2026-05-06T15:53:34.259Z,1,-66.04,46.49,13.282857142857143,3.5\n2026-05-06T15:53:45.615Z,1,-66.06,47.91,13.688571428571427,3.5\n2026-05-06T15:53:50.673Z,1,-66.06,48.27,13.791428571428572,3.5\n2026-05-06T15:53:55.630Z,1,-66.06,48.22,13.777142857142858,3.5\n2026-05-06T15:54:06.986Z,1,-66.08,49.91,14.26,3.5\n2026-05-06T15:54:12.043Z,1,-66.08,50.33,14.379999999999999,3.5\n2026-05-06T15:54:17.002Z,1,-66.08,50.3,14.37142857142857,3.5\n2026-05-06T15:54:28.362Z,1,-66.1,51.84,14.811428571428573,3.5\n2026-05-06T15:54:33.418Z,1,-66.1,52.36,14.959999999999999,3.5\n2026-05-06T15:54:38.376Z,1,-66.1,52.32,14.948571428571428,3.5\n2026-05-06T15:54:49.729Z,1,-66.12,54.21,15.48857142857143,3.5\n2026-05-06T15:54:54.786Z,1,-66.12,54.87,15.677142857142856,3.5\n2026-05-06T15:54:59.742Z,1,-66.12,54.83,15.665714285714285,3.5\n2026-05-06T15:55:04.798Z,1,-66.12,54.89,15.682857142857143,3.5\n2026-05-06T15:57:48.627Z,2,-65.5,29.159999999999997,8.331428571428571,3.5\n2026-05-06T15:57:53.683Z,2,-65.5,29.17,8.334285714285715,3.5\n2026-05-06T15:57:58.639Z,2,-65.5,29.25,8.357142857142858,3.5\n2026-05-06T15:58:09.988Z,2,-65.52,30.22,8.634285714285713,3.5\n2026-05-06T15:58:15.042Z,2,-65.52,30.069999999999997,8.59142857142857,3.5\n2026-05-06T15:58:19.997Z,2,-65.52,30.120000000000005,8.605714285714287,3.5\n2026-05-06T15:58:31.351Z,2,-65.54,30.92,8.834285714285715,3.5\n2026-05-06T15:58:36.408Z,2,-65.54,30.85,8.814285714285715,3.5\n2026-05-06T15:58:41.366Z,2,-65.54,30.899999999999995,8.828571428571427,3.5\n2026-05-06T15:58:52.713Z,2,-65.56,31.9,9.114285714285714,3.5\n2026-05-06T15:58:57.767Z,2,-65.56,31.769999999999996,9.077142857142857,3.5\n2026-05-06T15:59:02.725Z,2,-65.56,31.769999999999996,9.077142857142857,3.5\n2026-05-06T15:59:14.075Z,2,-65.58,32.69,9.34,3.5\n2026-05-06T15:59:19.136Z,2,-65.58,32.56,9.302857142857144,3.5\n2026-05-06T15:59:24.091Z,2,-65.58,32.59,9.311428571428573,3.5\n2026-05-06T15:59:35.446Z,2,-65.6,33.62,9.605714285714285,3.5\n2026-05-06T15:59:40.507Z,2,-65.6,33.51,9.574285714285713,3.5\n2026-05-06T15:59:45.464Z,2,-65.6,33.53,9.58,3.5\n2026-05-06T15:59:56.815Z,2,-65.62,34.39,9.825714285714286,3.5\n2026-05-06T16:00:01.871Z,2,-65.62,34.34,9.811428571428573,3.5\n2026-05-06T16:00:06.827Z,2,-65.62,34.38,9.822857142857144,3.5\n2026-05-06T16:00:18.201Z,2,-65.64,35.47,10.134285714285713,3.5\n2026-05-06T16:00:23.252Z,2,-65.64,35.35,10.1,3.5\n2026-05-06T16:00:28.207Z,2,-65.64,35.41,10.117142857142856,3.5\n2026-05-06T16:00:39.557Z,2,-65.66,36.36,10.388571428571428,3.5\n2026-05-06T16:00:44.617Z,2,-65.66,36.32,10.377142857142857,3.5\n2026-05-06T16:00:49.576Z,2,-65.66,36.34,10.382857142857144,3.5\n2026-05-06T16:01:00.931Z,2,-65.68,37.5,10.714285714285714,3.5\n2026-05-06T16:01:05.988Z,2,-65.68,37.39,10.682857142857143,3.5\n2026-05-06T16:01:10.947Z,2,-65.68,37.47,10.705714285714285,3.5\n2026-05-06T16:01:22.306Z,2,-65.7,38.47,10.991428571428571,3.5\n2026-05-06T16:01:27.363Z,2,-65.7,38.39,10.968571428571428,3.5\n2026-05-06T16:01:32.320Z,2,-65.7,38.49,10.997142857142858,3.5\n2026-05-06T16:01:43.677Z,2,-65.72,39.65,11.328571428571427,3.5\n2026-05-06T16:01:48.734Z,2,-65.72,39.67,11.334285714285715,3.5\n2026-05-06T16:01:53.689Z,2,-65.72,39.73,11.35142857142857,3.5\n2026-05-06T16:02:05.048Z,2,-65.74,40.79,11.654285714285715,3.5\n2026-05-06T16:02:10.108Z,2,-65.74,40.82,11.662857142857144,3.5\n2026-05-06T16:02:15.060Z,2,-65.74,40.87,11.677142857142856,3.5\n2026-05-06T16:02:26.410Z,2,-65.76,42.2,12.057142857142859,3.5\n2026-05-06T16:02:31.464Z,2,-65.76,42.18,12.051428571428572,3.5\n2026-05-06T16:02:36.422Z,2,-65.76,42.3,12.085714285714285,3.5\n2026-05-06T16:02:47.776Z,2,-65.78,43.43,12.40857142857143,3.5\n2026-05-06T16:02:52.835Z,2,-65.78,43.48,12.422857142857142,3.5\n2026-05-06T16:02:57.791Z,2,-65.78,43.61,12.459999999999999,3.5\n2026-05-06T16:03:09.165Z,2,-65.8,44.97,12.848571428571429,3.5\n2026-05-06T16:03:14.219Z,2,-65.8,45.13,12.894285714285715,3.5\n2026-05-06T16:03:19.177Z,2,-65.8,45.19,12.911428571428571,3.5\n2026-05-06T16:03:30.530Z,2,-65.82,46.53,13.294285714285715,3.5\n2026-05-06T16:03:35.587Z,2,-65.82,46.63,13.322857142857144,3.5\n2026-05-06T16:03:40.545Z,2,-65.82,46.56,13.302857142857144,3.5\n2026-05-06T16:03:51.898Z,2,-65.84,48.28,13.794285714285715,3.5\n2026-05-06T16:03:56.955Z,2,-65.84,48.44,13.84,3.5\n2026-05-06T16:04:01.919Z,2,-65.84,48.56,13.874285714285715,3.5\n2026-05-06T16:04:13.272Z,2,-65.86,49.95,14.271428571428572,3.5\n2026-05-06T16:04:18.333Z,2,-65.86,50.19,14.34,3.5\n2026-05-06T16:04:23.290Z,2,-65.86,50.34,14.382857142857144,3.5\n2026-05-06T16:04:34.640Z,2,-65.88,52.04,14.868571428571428,3.5\n2026-05-06T16:04:39.697Z,2,-65.88,52.4,14.971428571428572,3.5\n2026-05-06T16:04:44.650Z,2,-65.88,52.64,15.040000000000001,3.5\n2026-05-06T16:04:56.003Z,2,-65.9,54.02,15.434285714285716,3.5\n2026-05-06T16:05:01.060Z,2,-65.9,54.56,15.588571428571429,3.5\n2026-05-06T16:05:06.015Z,2,-65.9,54.78,15.651428571428571,3.5\n2026-05-06T16:05:11.067Z,2,-65.9,54.75,15.642857142857142,3.5\n2026-05-06T16:05:22.425Z,2,-65.92,56.32000000000001,16.091428571428573,3.5\n2026-05-06T16:05:27.485Z,2,-65.92,57.39,16.397142857142857,3.5\n2026-05-06T16:05:32.443Z,2,-65.92,57.510000000000005,16.431428571428572,3.5\n2026-05-06T16:05:37.497Z,2,-65.92,57.33,16.38,3.5\n2026-05-06T16:05:48.859Z,2,-65.94,58.99000000000001,16.854285714285716,3.5\n2026-05-06T16:05:53.916Z,2,-65.94,60.129999999999995,17.18,3.5\n2026-05-06T16:05:58.877Z,2,-65.94,60.129999999999995,17.18,3.5\n2026-05-06T16:06:03.852Z,2,-65.94,60.10999999999999,17.174285714285713,3.5\n2026-05-06T16:06:15.213Z,2,-65.96,62.18,17.765714285714285,3.5\n2026-05-06T16:06:20.280Z,2,-65.96,63.42,18.12,3.5\n2026-05-06T16:06:25.250Z,2,-65.96,63.56999999999999,18.162857142857142,3.5\n2026-05-06T16:06:30.226Z,2,-65.96,63.68000000000001,18.194285714285716,3.5\n2026-05-06T16:06:41.598Z,2,-65.98,68.5,19.571428571428573,3.5\n2026-05-06T16:06:46.573Z,2,-65.98,69.1,19.74285714285714,3.5\n2026-05-06T16:06:51.645Z,2,-65.98,68.35,19.52857142857143,3.5\n2026-05-06T16:07:03.021Z,2,-66,70.63,20.18,3.5\n2026-05-06T16:07:07.995Z,2,-66,71,20.285714285714285,3.5\n2026-05-06T16:07:13.071Z,2,-66,69.4,19.82857142857143,3.5\n2026-05-06T16:07:18.043Z,2,-66,71.43,20.40857142857143,3.5\n2026-05-06T16:07:23.017Z,2,-66,71.5,20.428571428571427,3.5\n2026-05-06T16:07:28.076Z,2,-66,69.17,19.762857142857143,3.5\n2026-05-06T16:07:33.031Z,2,-66,70.68,20.194285714285716,3.5\n2026-05-06T16:07:49.390Z,2,-66.02,67.15,19.185714285714287,3.5\n2026-05-06T16:07:54.448Z,2,-66.02,70.53,20.15142857142857,3.5\n2026-05-06T16:07:59.402Z,2,-66.02,72.71,20.774285714285714,3.5\n2026-05-06T16:08:04.462Z,2,-66.02,70.44,20.125714285714285,3.5\n2026-05-06T16:08:09.412Z,2,-66.02,69.35,19.814285714285713,3.5\n2026-05-06T16:08:14.466Z,2,-66.02,72.27,20.648571428571426,3.5\n2026-05-06T16:08:19.424Z,2,-66.02,71.66,20.474285714285713,3.5\n2026-05-06T16:11:07.695Z,3,-65.5,24.88,7.1085714285714285,3.5\n2026-05-06T16:11:12.752Z,3,-65.5,26.18,7.4799999999999995,3.5\n2026-05-06T16:11:17.707Z,3,-65.5,26.67,7.62,3.5\n2026-05-06T16:11:22.767Z,3,-65.5,26.76,7.645714285714286,3.5\n2026-05-06T16:11:27.723Z,3,-65.5,26.82,7.662857142857143,3.5\n2026-05-06T16:11:39.072Z,3,-65.52,27.78,7.937142857142858,3.5\n2026-05-06T16:11:44.130Z,3,-65.52,27.82,7.948571428571428,3.5\n2026-05-06T16:11:49.082Z,3,-65.52,27.75,7.928571428571429,3.5\n2026-05-06T16:12:00.447Z,3,-65.54,28.51,8.145714285714286,3.5\n2026-05-06T16:12:05.501Z,3,-65.54,28.540000000000003,8.154285714285715,3.5\n2026-05-06T16:12:10.456Z,3,-65.54,28.48,8.137142857142857,3.5\n2026-05-06T16:12:21.809Z,3,-65.56,29.32,8.377142857142857,3.5\n2026-05-06T16:12:26.866Z,3,-65.56,29.33,8.379999999999999,3.5\n2026-05-06T16:12:31.824Z,3,-65.56,29.29,8.368571428571428,3.5\n2026-05-06T16:12:43.177Z,3,-65.58,29.989999999999995,8.568571428571428,3.5\n2026-05-06T16:12:48.231Z,3,-65.58,30.03,8.58,3.5\n2026-05-06T16:12:53.186Z,3,-65.58,29.96,8.56,3.5\n2026-05-06T16:13:04.540Z,3,-65.6,30.740000000000002,8.782857142857143,3.5\n2026-05-06T16:13:09.594Z,3,-65.6,30.780000000000005,8.794285714285715,3.5\n2026-05-06T16:13:14.549Z,3,-65.6,30.720000000000002,8.777142857142858,3.5\n2026-05-06T16:13:25.899Z,3,-65.62,31.309999999999995,8.945714285714285,3.5\n2026-05-06T16:13:30.953Z,3,-65.62,31.29,8.94,3.5\n2026-05-06T16:13:35.908Z,3,-65.62,31.22,8.92,3.5\n2026-05-06T16:13:47.261Z,3,-65.64,31.97,9.134285714285713,3.5\n2026-05-06T16:13:52.319Z,3,-65.64,32.02,9.14857142857143,3.5\n2026-05-06T16:13:57.277Z,3,-65.64,32,9.142857142857142,3.5\n2026-05-06T16:14:08.626Z,3,-65.66,32.7,9.342857142857143,3.5\n2026-05-06T16:14:13.683Z,3,-65.66,32.76,9.36,3.5\n2026-05-06T16:14:18.645Z,3,-65.66,32.72,9.348571428571429,3.5\n2026-05-06T16:14:29.995Z,3,-65.68,33.46,9.56,3.5\n2026-05-06T16:14:35.054Z,3,-65.68,33.54,9.582857142857142,3.5\n2026-05-06T16:14:40.012Z,3,-65.68,33.51,9.574285714285713,3.5\n2026-05-06T16:14:51.363Z,3,-65.7,34.38,9.822857142857144,3.5\n2026-05-06T16:14:56.420Z,3,-65.7,34.46,9.845714285714285,3.5\n2026-05-06T16:15:01.372Z,3,-65.7,34.39,9.825714285714286,3.5\n2026-05-06T16:15:12.728Z,3,-65.72,35.22,10.062857142857142,3.5\n2026-05-06T16:15:17.789Z,3,-65.72,35.31,10.088571428571429,3.5\n2026-05-06T16:15:22.743Z,3,-65.72,35.25,10.071428571428571,3.5\n2026-05-06T16:15:34.102Z,3,-65.74,36.14,10.325714285714286,3.5\n2026-05-06T16:15:39.160Z,3,-65.74,36.2,10.342857142857143,3.5\n2026-05-06T16:15:44.117Z,3,-65.74,36.16,10.331428571428571,3.5\n2026-05-06T16:15:55.474Z,3,-65.76,37.16,10.617142857142856,3.5\n2026-05-06T16:16:00.531Z,3,-65.76,37.22,10.634285714285713,3.5\n2026-05-06T16:16:05.482Z,3,-65.76,37.17,10.620000000000001,3.5\n2026-05-06T16:16:16.832Z,3,-65.78,38.25,10.928571428571429,3.5\n2026-05-06T16:16:21.889Z,3,-65.78,38.34,10.954285714285716,3.5\n2026-05-06T16:16:26.845Z,3,-65.78,38.28,10.937142857142858,3.5\n2026-05-06T16:16:38.198Z,3,-65.8,39.35,11.242857142857144,3.5\n2026-05-06T16:16:43.255Z,3,-65.8,39.48,11.28,3.5\n2026-05-06T16:16:48.211Z,3,-65.8,39.41,11.26,3.5\n2026-05-06T16:16:59.563Z,3,-65.82,40.65,11.614285714285714,3.5\n2026-05-06T16:17:04.620Z,3,-65.82,40.84,11.668571428571429,3.5\n2026-05-06T16:17:09.572Z,3,-65.82,40.77,11.64857142857143,3.5\n2026-05-06T16:17:20.928Z,3,-65.84,41.91,11.974285714285713,3.5\n2026-05-06T16:17:25.983Z,3,-65.84,42.14,12.040000000000001,3.5\n2026-05-06T16:17:30.938Z,3,-65.84,42.06,12.017142857142858,3.5\n2026-05-06T16:17:42.290Z,3,-65.86,43.32,12.377142857142857,3.5\n2026-05-06T16:17:47.350Z,3,-65.86,43.6,12.457142857142857,3.5\n2026-05-06T16:17:52.305Z,3,-65.86,43.55,12.442857142857141,3.5\n2026-05-06T16:18:03.659Z,3,-65.88,44.9,12.828571428571427,3.5\n2026-05-06T16:18:08.716Z,3,-65.88,45.21,12.917142857142858,3.5\n2026-05-06T16:18:13.674Z,3,-65.88,45.19,12.911428571428571,3.5\n2026-05-06T16:18:25.027Z,3,-65.9,46.48,13.28,3.5\n2026-05-06T16:18:30.084Z,3,-65.9,46.87,13.391428571428571,3.5\n2026-05-06T16:18:35.050Z,3,-65.9,46.88,13.394285714285715,3.5\n2026-05-06T16:18:46.404Z,3,-65.92,48.43,13.837142857142856,3.5\n2026-05-06T16:18:51.461Z,3,-65.92,48.97,13.991428571428571,3.5\n2026-05-06T16:18:56.413Z,3,-65.92,48.97,13.991428571428571,3.5\n2026-05-06T16:19:01.470Z,3,-65.92,49.03,14.008571428571429,3.5\n2026-05-06T16:19:12.826Z,3,-65.94,50.51,14.43142857142857,3.5\n2026-05-06T16:19:17.883Z,3,-65.94,51.08,14.594285714285714,3.5\n2026-05-06T16:19:22.833Z,3,-65.94,51.21,14.631428571428572,3.5\n2026-05-06T16:19:27.890Z,3,-65.94,51.27,14.64857142857143,3.5\n2026-05-06T16:19:39.240Z,3,-65.96,52.58,15.022857142857143,3.5\n2026-05-06T16:19:44.297Z,3,-65.96,53.34,15.24,3.5\n2026-05-06T16:19:49.252Z,3,-65.96,53.36,15.245714285714286,3.5\n2026-05-06T16:19:54.309Z,3,-65.96,53.54,15.297142857142857,3.5\n2026-05-06T16:20:05.659Z,3,-65.98,57.86999999999999,16.534285714285712,3.5\n2026-05-06T16:20:10.714Z,3,-65.98,60.22,17.205714285714286,3.5\n2026-05-06T16:20:15.671Z,3,-65.98,59.49,16.997142857142858,3.5\n2026-05-06T16:20:20.725Z,3,-65.98,57.78,16.50857142857143,3.5\n2026-05-06T16:20:25.680Z,3,-65.98,60.3,17.228571428571428,3.5\n2026-05-06T16:20:30.732Z,3,-65.98,60.33,17.237142857142857,3.5\n2026-05-06T16:20:35.688Z,3,-65.98,58.24,16.64,3.5\n2026-05-06T16:20:52.055Z,3,-66,62.25,17.785714285714285,3.5\n2026-05-06T16:20:57.109Z,3,-66,58.97,16.84857142857143,3.5\n2026-05-06T16:21:02.064Z,3,-66,61.15,17.47142857142857,3.5\n2026-05-06T16:21:07.121Z,3,-66,63.36,18.102857142857143,3.5\n2026-05-06T16:21:12.076Z,3,-66,60.38,17.251428571428573,3.5\n2026-05-06T16:21:17.131Z,3,-66,59.02000000000001,16.862857142857145,3.5\n2026-05-06T16:21:22.083Z,3,-66,63.50999999999999,18.145714285714284,3.5\n2026-05-06T16:21:38.451Z,3,-66.02,59.279999999999994,16.937142857142856,3.5\n2026-05-06T16:21:43.511Z,3,-66.02,64.64,18.46857142857143,3.5\n2026-05-06T16:21:48.466Z,3,-66.02,62.48,17.85142857142857,3.5\n2026-05-06T16:21:53.517Z,3,-66.02,59.53,17.00857142857143,3.5\n2026-05-06T16:21:58.473Z,3,-66.02,62.46000000000001,17.845714285714287,3.5\n2026-05-06T16:22:03.529Z,3,-66.02,64.63,18.465714285714284,3.5\n2026-05-06T16:22:08.484Z,3,-66.02,59.92,17.12,3.5\n2026-05-06T16:24:57.218Z,4,-65.5,26.85,7.671428571428572,3.5\n2026-05-06T16:25:02.272Z,4,-65.5,28.07,8.02,3.5\n2026-05-06T16:25:07.230Z,4,-65.5,28.66,8.188571428571429,3.5\n2026-05-06T16:25:12.284Z,4,-65.5,28.92,8.262857142857143,3.5\n2026-05-06T16:25:17.239Z,4,-65.5,28.990000000000002,8.282857142857143,3.5\n2026-05-06T16:25:28.592Z,4,-65.52,30.290000000000003,8.654285714285715,3.5\n2026-05-06T16:25:33.652Z,4,-65.52,30.340000000000003,8.668571428571429,3.5\n2026-05-06T16:25:38.607Z,4,-65.52,30.36,8.674285714285714,3.5\n2026-05-06T16:25:49.957Z,4,-65.54,31.329999999999995,8.95142857142857,3.5\n2026-05-06T16:25:55.011Z,4,-65.54,31.4,8.971428571428572,3.5\n2026-05-06T16:25:59.969Z,4,-65.54,31.389999999999997,8.968571428571428,3.5\n2026-05-06T16:26:11.325Z,4,-65.56,32.4,9.257142857142856,3.5\n2026-05-06T16:26:16.383Z,4,-65.56,32.47,9.277142857142858,3.5\n2026-05-06T16:26:21.338Z,4,-65.56,32.48,9.28,3.5\n2026-05-06T16:26:32.709Z,4,-65.58,33.38,9.537142857142857,3.5\n2026-05-06T16:26:37.766Z,4,-65.58,33.41,9.545714285714284,3.5\n2026-05-06T16:26:42.718Z,4,-65.58,33.42,9.54857142857143,3.5\n2026-05-06T16:26:54.074Z,4,-65.6,34.5,9.857142857142858,3.5\n2026-05-06T16:26:59.134Z,4,-65.6,34.47,9.848571428571429,3.5\n2026-05-06T16:27:04.092Z,4,-65.6,34.5,9.857142857142858,3.5\n2026-05-06T16:27:15.448Z,4,-65.62,35.4,10.114285714285714,3.5\n2026-05-06T16:27:20.505Z,4,-65.62,35.44,10.125714285714285,3.5\n2026-05-06T16:27:25.464Z,4,-65.62,35.48,10.137142857142857,3.5\n2026-05-06T16:27:36.819Z,4,-65.64,36.59,10.454285714285716,3.5\n2026-05-06T16:27:41.880Z,4,-65.64,36.6,10.457142857142857,3.5\n2026-05-06T16:27:46.835Z,4,-65.64,36.67,10.477142857142857,3.5\n2026-05-06T16:27:58.190Z,4,-65.66,37.65,10.757142857142856,3.5\n2026-05-06T16:28:03.248Z,4,-65.66,37.66,10.76,3.5\n2026-05-06T16:28:08.206Z,4,-65.66,37.72,10.777142857142858,3.5\n2026-05-06T16:28:19.559Z,4,-65.68,38.9,11.114285714285714,3.5\n2026-05-06T16:28:24.616Z,4,-65.68,38.93,11.122857142857143,3.5\n2026-05-06T16:28:29.571Z,4,-65.68,38.97,11.134285714285713,3.5\n2026-05-06T16:28:40.924Z,4,-65.7,40.08,11.45142857142857,3.5\n2026-05-06T16:28:45.979Z,4,-65.7,40.11,11.459999999999999,3.5\n2026-05-06T16:28:50.934Z,4,-65.7,40.15,11.471428571428572,3.5\n2026-05-06T16:29:02.286Z,4,-65.72,41.45,11.842857142857143,3.5\n2026-05-06T16:29:07.343Z,4,-65.72,41.52,11.862857142857143,3.5\n2026-05-06T16:29:12.295Z,4,-65.72,41.56,11.874285714285715,3.5\n2026-05-06T16:29:23.666Z,4,-65.74,42.77,12.22,3.5\n2026-05-06T16:29:28.721Z,4,-65.74,42.88,12.251428571428573,3.5\n2026-05-06T16:29:33.676Z,4,-65.74,42.92,12.262857142857143,3.5\n2026-05-06T16:29:45.029Z,4,-65.76,44.34,12.668571428571429,3.5\n2026-05-06T16:29:50.090Z,4,-65.76,44.48,12.708571428571428,3.5\n2026-05-06T16:29:55.047Z,4,-65.76,44.55,12.728571428571428,3.5\n2026-05-06T16:30:06.403Z,4,-65.78,45.85,13.1,3.5\n2026-05-06T16:30:11.464Z,4,-65.78,46.05,13.157142857142857,3.5\n2026-05-06T16:30:16.419Z,4,-65.78,46.08,13.165714285714285,3.5\n2026-05-06T16:30:27.777Z,4,-65.8,47.68,13.622857142857143,3.5\n2026-05-06T16:30:32.834Z,4,-65.8,47.94,13.697142857142856,3.5\n2026-05-06T16:30:37.792Z,4,-65.8,47.99,13.711428571428572,3.5\n2026-05-06T16:30:49.145Z,4,-65.82,49.42,14.120000000000001,3.5\n2026-05-06T16:30:54.205Z,4,-65.82,49.76,14.217142857142857,3.5\n2026-05-06T16:30:59.164Z,4,-65.82,49.82,14.234285714285715,3.5\n2026-05-06T16:31:10.516Z,4,-65.84,51.58,14.737142857142857,3.5\n2026-05-06T16:31:15.575Z,4,-65.84,52.02,14.862857142857143,3.5\n2026-05-06T16:31:20.529Z,4,-65.84,52.07,14.877142857142857,3.5\n2026-05-06T16:31:31.888Z,4,-65.86,53.72,15.348571428571429,3.5\n2026-05-06T16:31:36.948Z,4,-65.86,54.27,15.505714285714287,3.5\n2026-05-06T16:31:41.906Z,4,-65.86,54.35,15.528571428571428,3.5\n2026-05-06T16:31:46.960Z,4,-65.86,54.25,15.5,3.5\n2026-05-06T16:31:58.322Z,4,-65.88,56.31000000000001,16.08857142857143,3.5\n2026-05-06T16:32:03.379Z,4,-65.88,57.16,16.33142857142857,3.5\n2026-05-06T16:32:08.334Z,4,-65.88,57.14000000000001,16.325714285714287,3.5\n2026-05-06T16:32:13.389Z,4,-65.88,57.21000000000001,16.345714285714287,3.5\n2026-05-06T16:32:24.744Z,4,-65.9,61.440000000000005,17.554285714285715,3.5\n2026-05-06T16:32:29.799Z,4,-65.9,62.71999999999999,17.919999999999998,3.5\n2026-05-06T16:32:34.757Z,4,-65.9,63.47999999999999,18.137142857142855,3.5\n2026-05-06T16:32:39.814Z,4,-65.9,62.61,17.888571428571428,3.5\n2026-05-06T16:32:44.772Z,4,-65.9,62.07,17.734285714285715,3.5\n2026-05-06T16:32:49.829Z,4,-65.9,62.39000000000001,17.825714285714287,3.5\n2026-05-06T16:33:01.182Z,4,-65.92,62.96,17.98857142857143,3.5\n2026-05-06T16:33:06.236Z,4,-65.92,64.31,18.374285714285715,3.5\n2026-05-06T16:33:11.194Z,4,-65.92,63.09,18.025714285714287,3.5\n2026-05-06T16:33:16.248Z,4,-65.92,63.49,18.14,3.5\n2026-05-06T16:33:21.206Z,4,-65.92,64.35,18.385714285714283,3.5\n2026-05-06T16:33:26.260Z,4,-65.92,63.17,18.048571428571428,3.5\n2026-05-06T16:33:31.219Z,4,-65.92,61.410000000000004,17.545714285714286,3.5\n2026-05-06T16:33:47.479Z,4,-65.94,63.160000000000004,18.045714285714286,3.5\n2026-05-06T16:33:52.536Z,4,-65.94,62.21,17.774285714285714,3.5\n2026-05-06T16:33:57.491Z,4,-65.94,64.57,18.448571428571427,3.5\n2026-05-06T16:34:02.548Z,4,-65.94,65,18.571428571428573,3.5\n2026-05-06T16:34:07.500Z,4,-65.94,62.61999999999999,17.89142857142857,3.5\n2026-05-06T16:34:12.554Z,4,-65.94,63.17999999999999,18.05142857142857,3.5\n2026-05-06T16:34:17.507Z,4,-65.94,65.24,18.639999999999997,3.5\n2026-05-06T16:37:05.670Z,5,-65.5,5.29,1.5114285714285713,3.5\n2026-05-06T16:37:10.724Z,5,-65.5,6.82,1.9485714285714286,3.5\n2026-05-06T16:37:15.683Z,5,-65.5,8.29,2.3685714285714283,3.5\n2026-05-06T16:37:20.739Z,5,-65.5,9.43,2.6942857142857144,3.5\n2026-05-06T16:37:25.695Z,5,-65.5,10.09,2.882857142857143,3.5\n2026-05-06T16:37:30.751Z,5,-65.5,10.92,3.12,3.5\n2026-05-06T16:37:35.704Z,5,-65.5,12,3.4285714285714284,3.5\n2026-05-06T16:37:51.970Z,5,-65.52,14.9,4.257142857142857,3.5\n2026-05-06T16:37:57.027Z,5,-65.52,15.149999999999999,4.328571428571428,3.5\n2026-05-06T16:38:01.979Z,5,-65.52,15.75,4.5,3.5\n2026-05-06T16:38:07.037Z,5,-65.52,16.44,4.6971428571428575,3.5\n2026-05-06T16:38:11.991Z,5,-65.52,17.24,4.925714285714285,3.5\n2026-05-06T16:38:17.048Z,5,-65.52,17.8,5.085714285714286,3.5\n2026-05-06T16:38:22.001Z,5,-65.52,17.89,5.111428571428571,3.5\n2026-05-06T16:38:38.366Z,5,-65.54,19.72,5.634285714285714,3.5\n2026-05-06T16:38:43.423Z,5,-65.54,20.01,5.717142857142858,3.5\n2026-05-06T16:38:48.378Z,5,-65.54,20.5,5.857142857142857,3.5\n2026-05-06T16:38:53.439Z,5,-65.54,20.98,5.994285714285715,3.5\n2026-05-06T16:38:58.396Z,5,-65.54,21.05,6.014285714285714,3.5\n2026-05-06T16:39:03.354Z,5,-65.54,20.97,5.991428571428571,3.5\n2026-05-06T16:39:14.702Z,5,-65.56,23.23,6.637142857142857,3.5\n2026-05-06T16:39:19.761Z,5,-65.56,23.42,6.691428571428572,3.5\n2026-05-06T16:39:24.717Z,5,-65.56,23.54,6.725714285714285,3.5\n2026-05-06T16:39:29.768Z,5,-65.56,23.94,6.840000000000001,3.5\n2026-05-06T16:39:34.725Z,5,-65.56,24.05,6.871428571428572,3.5\n2026-05-06T16:39:39.779Z,5,-65.56,24.2,6.914285714285714,3.5\n2026-05-06T16:39:51.130Z,5,-65.58,25.85,7.385714285714286,3.5\n2026-05-06T16:39:56.187Z,5,-65.58,25.98,7.422857142857143,3.5\n2026-05-06T16:40:01.142Z,5,-65.58,26.32,7.5200000000000005,3.5\n2026-05-06T16:40:06.203Z,5,-65.58,26.4,7.542857142857143,3.5\n2026-05-06T16:40:11.160Z,5,-65.58,26.5,7.571428571428571,3.5\n2026-05-06T16:40:22.510Z,5,-65.6,28.61,8.174285714285714,3.5\n2026-05-06T16:40:27.567Z,5,-65.6,28.39,8.111428571428572,3.5\n2026-05-06T16:40:32.523Z,5,-65.6,28.340000000000003,8.097142857142858,3.5\n2026-05-06T16:40:43.878Z,5,-65.62,29.97,8.562857142857142,3.5\n2026-05-06T16:40:48.912Z,5,-65.62,29.609999999999996,8.459999999999999,3.5\n2026-05-06T16:40:53.867Z,5,-65.62,29.559999999999995,8.445714285714285,3.5\n2026-05-06T16:40:58.924Z,5,-65.62,29.76,8.502857142857144,3.5\n2026-05-06T16:41:10.280Z,5,-65.64,31.12,8.891428571428571,3.5\n2026-05-06T16:41:15.337Z,5,-65.64,31.11,8.888571428571428,3.5\n2026-05-06T16:41:20.295Z,5,-65.64,31.339999999999996,8.954285714285714,3.5\n2026-05-06T16:41:31.648Z,5,-65.66,32.49,9.282857142857143,3.5\n2026-05-06T16:41:36.705Z,5,-65.66,32.49,9.282857142857143,3.5\n2026-05-06T16:41:41.663Z,5,-65.66,32.74,9.354285714285714,3.5\n2026-05-06T16:41:53.016Z,5,-65.68,34.08,9.737142857142857,3.5\n2026-05-06T16:41:58.070Z,5,-65.68,34.04,9.725714285714286,3.5\n2026-05-06T16:42:03.022Z,5,-65.68,34.24,9.782857142857143,3.5\n2026-05-06T16:42:14.375Z,5,-65.7,35.35,10.1,3.5\n2026-05-06T16:42:19.432Z,5,-65.7,35.36,10.102857142857143,3.5\n2026-05-06T16:42:24.391Z,5,-65.7,35.67,10.191428571428572,3.5\n2026-05-06T16:42:35.743Z,5,-65.72,36.91,10.545714285714284,3.5\n2026-05-06T16:42:40.804Z,5,-65.72,36.98,10.565714285714284,3.5\n2026-05-06T16:42:45.762Z,5,-65.72,37.13,10.608571428571429,3.5\n2026-05-06T16:42:57.112Z,5,-65.74,38.47,10.991428571428571,3.5\n2026-05-06T16:43:02.172Z,5,-65.74,38.46,10.98857142857143,3.5\n2026-05-06T16:43:07.124Z,5,-65.74,38.53,11.008571428571429,3.5\n2026-05-06T16:43:18.474Z,5,-65.76,39.96,11.417142857142858,3.5\n2026-05-06T16:43:23.528Z,5,-65.76,40.16,11.474285714285713,3.5\n2026-05-06T16:43:28.483Z,5,-65.76,40.21,11.48857142857143,3.5\n2026-05-06T16:43:39.833Z,5,-65.78,41.49,11.854285714285714,3.5\n2026-05-06T16:43:44.887Z,5,-65.78,41.74,11.925714285714287,3.5\n2026-05-06T16:43:49.845Z,5,-65.78,41.74,11.925714285714287,3.5\n2026-05-06T16:44:01.198Z,5,-65.8,43.17,12.334285714285715,3.5\n2026-05-06T16:44:06.256Z,5,-65.8,43.34,12.382857142857144,3.5\n2026-05-06T16:44:11.214Z,5,-65.8,43.47,12.42,3.5\n2026-05-06T16:44:22.579Z,5,-65.82,44.77,12.791428571428572,3.5\n2026-05-06T16:44:27.633Z,5,-65.82,45.12,12.891428571428571,3.5\n2026-05-06T16:44:32.585Z,5,-65.82,45.2,12.914285714285715,3.5\n2026-05-06T16:44:43.941Z,5,-65.84,47.03,13.437142857142858,3.5\n2026-05-06T16:44:48.992Z,5,-65.84,47.18,13.48,3.5\n2026-05-06T16:44:53.950Z,5,-65.84,47.33,13.522857142857143,3.5\n2026-05-06T16:45:05.303Z,5,-65.86,48.78,13.937142857142858,3.5\n2026-05-06T16:45:10.360Z,5,-65.86,49.24,14.06857142857143,3.5\n2026-05-06T16:45:15.313Z,5,-65.86,49.4,14.114285714285714,3.5\n2026-05-06T16:45:20.367Z,5,-65.86,49.19,14.054285714285713,3.5\n2026-05-06T16:45:31.719Z,5,-65.88,51.2,14.62857142857143,3.5\n2026-05-06T16:45:36.776Z,5,-65.88,51.91,14.831428571428571,3.5\n2026-05-06T16:45:41.735Z,5,-65.88,51.83,14.808571428571428,3.5\n2026-05-06T16:45:46.795Z,5,-65.88,51.72,14.777142857142858,3.5\n2026-05-06T16:45:58.142Z,5,-65.9,57.14000000000001,16.325714285714287,3.5\n2026-05-06T16:46:03.202Z,5,-65.9,60.02,17.14857142857143,3.5\n2026-05-06T16:46:08.157Z,5,-65.9,57.42,16.405714285714286,3.5\n2026-05-06T16:46:13.211Z,5,-65.9,56.290000000000006,16.082857142857144,3.5\n2026-05-06T16:46:18.173Z,5,-65.9,59.2,16.914285714285715,3.5\n2026-05-06T16:46:23.229Z,5,-65.9,58.46000000000001,16.702857142857145,3.5\n2026-05-06T16:46:28.185Z,5,-65.9,55.75,15.928571428571429,3.5\n2026-05-06T16:46:44.448Z,5,-65.92,60.46,17.274285714285714,3.5\n2026-05-06T16:46:49.506Z,5,-65.92,57.120000000000005,16.32,3.5\n2026-05-06T16:46:54.460Z,5,-65.92,60.5,17.285714285714285,3.5\n2026-05-06T16:46:59.531Z,5,-65.92,62.59,17.882857142857144,3.5\n2026-05-06T16:47:04.484Z,5,-65.92,58.63,16.751428571428573,3.5\n2026-05-06T16:47:09.442Z,5,-65.92,58.879999999999995,16.822857142857142,3.5\n2026-05-06T16:47:14.499Z,5,-65.92,62.36000000000001,17.81714285714286,3.5\n2026-05-06T16:47:30.765Z,5,-65.94,58.419999999999995,16.69142857142857,3.5\n2026-05-06T16:47:35.819Z,5,-65.94,64.47,18.419999999999998,3.5\n2026-05-06T16:47:40.778Z,5,-65.94,61.059999999999995,17.445714285714285,3.5\n2026-05-06T16:47:45.832Z,5,-65.94,58.18,16.622857142857143,3.5\n2026-05-06T16:47:50.787Z,5,-65.94,61.27,17.505714285714287,3.5\n2026-05-06T16:47:55.841Z,5,-65.94,62.48,17.85142857142857,3.5\n2026-05-06T16:48:00.796Z,5,-65.94,58.58,16.737142857142857,3.5\n2026-05-06T16:50:49.410Z,6,-65.5,0.61,0.1742857142857143,3.5\n2026-05-06T16:50:54.467Z,6,-65.5,0.9600000000000001,0.2742857142857143,3.5\n2026-05-06T16:50:59.422Z,6,-65.5,1.31,0.3742857142857143,3.5\n2026-05-06T16:51:04.479Z,6,-65.5,1.58,0.45142857142857146,3.5\n2026-05-06T16:51:09.431Z,6,-65.5,1.81,0.5171428571428571,3.5\n2026-05-06T16:51:14.486Z,6,-65.5,2.04,0.5828571428571429,3.5\n2026-05-06T16:51:19.443Z,6,-65.5,2.31,0.66,3.5\n2026-05-06T16:51:35.709Z,6,-65.52,3.06,0.8742857142857143,3.5\n2026-05-06T16:51:40.766Z,6,-65.52,3.26,0.9314285714285714,3.5\n2026-05-06T16:51:45.718Z,6,-65.52,3.45,0.9857142857142858,3.5\n2026-05-06T16:51:50.772Z,6,-65.52,3.56,1.0171428571428571,3.5\n2026-05-06T16:51:55.731Z,6,-65.52,3.6799999999999997,1.0514285714285714,3.5\n2026-05-06T16:52:00.782Z,6,-65.52,3.8099999999999996,1.0885714285714285,3.5\n2026-05-06T16:52:05.740Z,6,-65.52,3.9300000000000006,1.122857142857143,3.5\n2026-05-06T16:52:22.012Z,6,-65.54,4.6,1.3142857142857143,3.5\n2026-05-06T16:52:27.073Z,6,-65.54,4.72,1.3485714285714285,3.5\n2026-05-06T16:52:32.028Z,6,-65.54,4.81,1.374285714285714,3.5\n2026-05-06T16:52:37.084Z,6,-65.54,4.92,1.4057142857142857,3.5\n2026-05-06T16:52:42.040Z,6,-65.54,4.98,1.422857142857143,3.5\n2026-05-06T16:52:46.997Z,6,-65.54,5.06,1.4457142857142855,3.5\n2026-05-06T16:52:52.052Z,6,-65.54,5.16,1.4742857142857144,3.5\n2026-05-06T16:53:08.318Z,6,-65.56,5.85,1.6714285714285713,3.5\n2026-05-06T16:53:13.375Z,6,-65.56,5.96,1.7028571428571428,3.5\n2026-05-06T16:53:18.330Z,6,-65.56,6.04,1.7257142857142858,3.5\n2026-05-06T16:53:23.384Z,6,-65.56,6.13,1.7514285714285713,3.5\n2026-05-06T16:53:28.337Z,6,-65.56,6.19,1.7685714285714287,3.5\n2026-05-06T16:53:33.393Z,6,-65.56,6.31,1.8028571428571427,3.5\n2026-05-06T16:53:38.349Z,6,-65.56,6.38,1.8228571428571427,3.5\n2026-05-06T16:53:54.711Z,6,-65.58,7.129999999999999,2.037142857142857,3.5\n2026-05-06T16:53:59.768Z,6,-65.58,7.22,2.0628571428571427,3.5\n2026-05-06T16:54:04.720Z,6,-65.58,7.289999999999999,2.0828571428571427,3.5\n2026-05-06T16:54:09.780Z,6,-65.58,7.370000000000001,2.105714285714286,3.5\n2026-05-06T16:54:14.735Z,6,-65.58,7.459999999999999,2.1314285714285712,3.5\n2026-05-06T16:54:19.789Z,6,-65.58,7.530000000000001,2.1514285714285717,3.5\n2026-05-06T16:54:24.742Z,6,-65.58,7.6,2.1714285714285713,3.5\n2026-05-06T16:54:41.004Z,6,-65.6,8.48,2.422857142857143,3.5\n2026-05-06T16:54:46.058Z,6,-65.6,8.58,2.4514285714285715,3.5\n2026-05-06T16:54:51.017Z,6,-65.6,8.7,2.4857142857142853,3.5\n2026-05-06T16:54:56.071Z,6,-65.6,8.81,2.5171428571428573,3.5\n2026-05-06T16:55:01.029Z,6,-65.6,8.84,2.525714285714286,3.5\n2026-05-06T16:55:06.083Z,6,-65.6,8.94,2.5542857142857143,3.5\n2026-05-06T16:55:11.039Z,6,-65.6,9.04,2.5828571428571427,3.5\n2026-05-06T16:55:27.305Z,6,-65.62,9.96,2.845714285714286,3.5\n2026-05-06T16:55:32.361Z,6,-65.62,10.11,2.8885714285714283,3.5\n2026-05-06T16:55:37.314Z,6,-65.62,10.16,2.902857142857143,3.5\n2026-05-06T16:55:42.371Z,6,-65.62,10.23,2.922857142857143,3.5\n2026-05-06T16:55:53.717Z,6,-65.64,11.4,3.257142857142857,3.5\n2026-05-06T16:55:58.772Z,6,-65.64,11.49,3.282857142857143,3.5\n2026-05-06T16:56:03.724Z,6,-65.64,11.59,3.3114285714285714,3.5\n2026-05-06T16:56:08.778Z,6,-65.64,11.71,3.345714285714286,3.5\n2026-05-06T16:56:13.733Z,6,-65.64,11.88,3.3942857142857146,3.5\n2026-05-06T16:56:18.788Z,6,-65.64,11.93,3.4085714285714284,3.5\n2026-05-06T16:56:23.748Z,6,-65.64,12.03,3.437142857142857,3.5\n2026-05-06T16:56:40.126Z,6,-65.66,13.3,3.8000000000000003,3.5\n2026-05-06T16:56:45.180Z,6,-65.66,13.45,3.8428571428571425,3.5\n2026-05-06T16:56:50.138Z,6,-65.66,13.59,3.882857142857143,3.5\n2026-05-06T16:56:55.192Z,6,-65.66,13.67,3.9057142857142857,3.5\n2026-05-06T16:57:00.147Z,6,-65.66,13.75,3.9285714285714284,3.5\n2026-05-06T16:57:11.503Z,6,-65.68,15.28,4.365714285714286,3.5\n2026-05-06T16:57:16.560Z,6,-65.68,15.41,4.402857142857143,3.5\n2026-05-06T16:57:21.518Z,6,-65.68,15.53,4.437142857142857,3.5\n2026-05-06T16:57:26.573Z,6,-65.68,15.669999999999998,4.477142857142857,3.5\n2026-05-06T16:57:31.527Z,6,-65.68,15.88,4.537142857142857,3.5\n2026-05-06T16:57:36.584Z,6,-65.68,15.920000000000002,4.548571428571429,3.5\n2026-05-06T16:57:41.539Z,6,-65.68,16.08,4.594285714285713,3.5\n2026-05-06T16:57:57.821Z,6,-65.7,17.65,5.042857142857143,3.5\n2026-05-06T16:58:02.875Z,6,-65.7,17.81,5.088571428571428,3.5\n2026-05-06T16:58:07.830Z,6,-65.7,17.98,5.137142857142857,3.5\n2026-05-06T16:58:12.887Z,6,-65.7,18.13,5.18,3.5\n2026-05-06T16:58:17.846Z,6,-65.7,18.15,5.185714285714285,3.5\n2026-05-06T16:58:29.201Z,6,-65.72,20.14,5.7542857142857144,3.5\n2026-05-06T16:58:34.258Z,6,-65.72,20.33,5.808571428571428,3.5\n2026-05-06T16:58:39.214Z,6,-65.72,20.43,5.837142857142857,3.5\n2026-05-06T16:58:44.268Z,6,-65.72,20.62,5.8914285714285715,3.5\n2026-05-06T16:58:49.220Z,6,-65.72,20.89,5.968571428571429,3.5\n2026-05-06T16:58:54.277Z,6,-65.72,20.93,5.9799999999999995,3.5\n2026-05-06T16:58:59.232Z,6,-65.72,21.07,6.0200000000000005,3.5\n2026-05-06T16:59:10.588Z,6,-65.74,23.15,6.614285714285714,3.5\n2026-05-06T16:59:15.642Z,6,-65.74,23.22,6.634285714285714,3.5\n2026-05-06T16:59:20.597Z,6,-65.74,23.44,6.6971428571428575,3.5\n2026-05-06T16:59:25.654Z,6,-65.74,23.7,6.771428571428571,3.5\n2026-05-06T16:59:30.612Z,6,-65.74,23.84,6.811428571428571,3.5\n2026-05-06T16:59:35.672Z,6,-65.74,23.87,6.82,3.5\n2026-05-06T16:59:47.025Z,6,-65.76,26.46,7.5600000000000005,3.5\n2026-05-06T16:59:52.086Z,6,-65.76,26.68,7.622857142857143,3.5\n2026-05-06T16:59:57.040Z,6,-65.76,26.8,7.6571428571428575,3.5\n2026-05-06T17:00:02.098Z,6,-65.76,27.04,7.725714285714285,3.5\n2026-05-06T17:00:07.056Z,6,-65.76,27.24,7.782857142857142,3.5\n2026-05-06T17:00:12.014Z,6,-65.76,27.38,7.822857142857143,3.5\n2026-05-06T17:00:17.071Z,6,-65.76,27.57,7.877142857142857,3.5\n2026-05-06T17:00:28.419Z,6,-65.78,29.77,8.505714285714285,3.5\n2026-05-06T17:00:33.476Z,6,-65.78,30.03,8.58,3.5\n2026-05-06T17:00:38.429Z,6,-65.78,30.28,8.651428571428571,3.5\n2026-05-06T17:00:43.485Z,6,-65.78,30.21,8.631428571428572,3.5\n2026-05-06T17:00:54.840Z,6,-65.8,32.37,9.248571428571427,3.5\n2026-05-06T17:00:59.894Z,6,-65.8,32.56,9.302857142857144,3.5\n2026-05-06T17:01:04.856Z,6,-65.8,32.36,9.245714285714286,3.5\n2026-05-06T17:01:16.209Z,6,-65.82,34.21,9.774285714285714,3.5\n2026-05-06T17:01:21.266Z,6,-65.82,34.35,9.814285714285715,3.5\n2026-05-06T17:01:26.224Z,6,-65.82,34.12,9.748571428571427,3.5\n2026-05-06T17:01:37.577Z,6,-65.84,36.02,10.291428571428572,3.5\n2026-05-06T17:01:42.637Z,6,-65.84,36.14,10.325714285714286,3.5\n2026-05-06T17:01:47.586Z,6,-65.84,35.97,10.277142857142858,3.5\n2026-05-06T17:01:58.939Z,6,-65.86,37.64,10.754285714285714,3.5\n2026-05-06T17:02:03.993Z,6,-65.86,37.78,10.794285714285715,3.5\n2026-05-06T17:02:08.952Z,6,-65.86,37.62,10.748571428571427,3.5\n2026-05-06T17:02:20.310Z,6,-65.88,39.44,11.268571428571429,3.5\n2026-05-06T17:02:25.361Z,6,-65.88,39.58,11.308571428571428,3.5\n2026-05-06T17:02:30.313Z,6,-65.88,39.44,11.268571428571429,3.5\n2026-05-06T17:02:41.667Z,6,-65.9,41.05,11.728571428571428,3.5\n2026-05-06T17:02:46.724Z,6,-65.9,41.25,11.785714285714286,3.5\n2026-05-06T17:02:51.682Z,6,-65.9,41.14,11.754285714285714,3.5\n2026-05-06T17:03:03.035Z,6,-65.92,42.96,12.274285714285714,3.5\n2026-05-06T17:03:08.092Z,6,-65.92,43.2,12.342857142857143,3.5\n2026-05-06T17:03:13.053Z,6,-65.92,43.12,12.319999999999999,3.5\n2026-05-06T17:03:24.406Z,6,-65.94,44.76,12.788571428571428,3.5\n2026-05-06T17:03:29.463Z,6,-65.94,45.04,12.868571428571428,3.5\n2026-05-06T17:03:34.418Z,6,-65.94,44.97,12.848571428571429,3.5\n2026-05-06T17:03:45.771Z,6,-65.96,46.88,13.394285714285715,3.5\n2026-05-06T17:03:50.828Z,6,-65.96,47.25,13.5,3.5\n2026-05-06T17:03:55.783Z,6,-65.96,47.17,13.477142857142857,3.5\n2026-05-06T17:04:07.133Z,6,-65.98,48.95,13.985714285714286,3.5\n2026-05-06T17:04:12.193Z,6,-65.98,49.42,14.120000000000001,3.5\n2026-05-06T17:04:17.146Z,6,-65.98,49.35,14.1,3.5\n2026-05-06T17:04:28.496Z,6,-66,51.51,14.717142857142857,3.5\n2026-05-06T17:04:33.553Z,6,-66,52.1,14.885714285714286,3.5\n2026-05-06T17:04:38.503Z,6,-66,52.04,14.868571428571428,3.5\n2026-05-06T17:04:43.557Z,6,-66,52.04,14.868571428571428,3.5\n2026-05-06T17:04:54.909Z,6,-66.02,59.15999999999999,16.90285714285714,3.5\n2026-05-06T17:04:59.963Z,6,-66.02,57.459999999999994,16.417142857142856,3.5\n2026-05-06T17:05:04.924Z,6,-66.02,56.95,16.271428571428572,3.5\n2026-05-06T17:05:09.982Z,6,-66.02,58.419999999999995,16.69142857142857,3.5\n2026-05-06T17:05:14.940Z,6,-66.02,58.449999999999996,16.7,3.5\n2026-05-06T17:05:19.996Z,6,-66.02,56.1,16.02857142857143,3.5\n2026-05-06T17:05:24.952Z,6,-66.02,56.8,16.228571428571428,3.5\n2026-05-06T17:05:41.218Z,6,-66.04,56.56999999999999,16.162857142857142,3.5\n2026-05-06T17:05:46.270Z,6,-66.04,58.56,16.731428571428573,3.5\n2026-05-06T17:05:51.227Z,6,-66.04,63.1,18.02857142857143,3.5\n2026-05-06T17:05:56.281Z,6,-66.04,59.93,17.122857142857143,3.5\n2026-05-06T17:06:01.236Z,6,-66.04,58.53,16.722857142857144,3.5\n2026-05-06T17:06:06.293Z,6,-66.04,60.89999999999999,17.4,3.5\n2026-05-06T17:06:11.248Z,6,-66.04,61.71,17.63142857142857,3.5\n2026-05-06T17:06:27.608Z,6,-66.06,62.02000000000001,17.720000000000002,3.5\n2026-05-06T17:06:32.666Z,6,-66.06,63,18,3.5\n2026-05-06T17:06:37.623Z,6,-66.06,59.75000000000001,17.071428571428573,3.5\n2026-05-06T17:06:42.677Z,6,-66.06,60.120000000000005,17.177142857142858,3.5\n2026-05-06T17:06:47.635Z,6,-66.06,65.47,18.705714285714286,3.5\n2026-05-06T17:06:52.711Z,6,-66.06,61.27,17.505714285714287,3.5\n2026-05-06T17:06:57.668Z,6,-66.06,58.879999999999995,16.822857142857142,3.5\n2026-05-06T17:07:13.937Z,6,-66.08,60.959999999999994,17.417142857142856,3.5\n2026-05-06T17:07:18.997Z,6,-66.08,59.78000000000001,17.080000000000002,3.5\n2026-05-06T17:07:23.956Z,6,-66.08,63.290000000000006,18.082857142857144,3.5\n2026-05-06T17:07:29.020Z,6,-66.08,62.52000000000001,17.862857142857145,3.5\n2026-05-06T17:07:33.977Z,6,-66.08,59.279999999999994,16.937142857142856,3.5\n2026-05-06T17:07:38.932Z,6,-66.08,61.17,17.47714285714286,3.5\n2026-05-06T17:07:43.987Z,6,-66.08,62.839999999999996,17.954285714285714,3.5\n2026-05-06T17:08:00.253Z,6,-66.1,59.81000000000001,17.08857142857143,3.5\n2026-05-06T17:08:05.310Z,6,-66.1,62.86,17.96,3.5\n2026-05-06T17:08:10.264Z,6,-66.1,60.16,17.18857142857143,3.5\n2026-05-06T17:08:15.319Z,6,-66.1,60.00999999999999,17.145714285714284,3.5\n2026-05-06T17:08:20.277Z,6,-66.1,63.269999999999996,18.077142857142857,3.5\n2026-05-06T17:08:25.334Z,6,-66.1,61.849999999999994,17.67142857142857,3.5\n2026-05-06T17:08:30.286Z,6,-66.1,59.01,16.86,3.5\n2026-05-06T17:10:47.235Z,1,-65.5,22.73,6.494285714285715,3.5\n2026-05-06T17:10:47.235Z,1,-65.52,23.37,6.677142857142857,3.5\n2026-05-06T17:10:47.235Z,1,-65.54,23.94,6.840000000000001,3.5\n2026-05-06T17:10:47.235Z,1,-65.56,24.55,7.014285714285714,3.5\n2026-05-06T17:10:47.236Z,1,-65.58,25.09,7.168571428571428,3.5\n2026-05-06T17:10:47.236Z,1,-65.6,25.69,7.340000000000001,3.5\n2026-05-06T17:10:47.236Z,1,-65.62,26.22,7.491428571428571,3.5\n2026-05-06T17:10:47.236Z,1,-65.64,26.84,7.668571428571428,3.5\n2026-05-06T17:10:47.236Z,1,-65.66,27.4,7.828571428571428,3.5\n2026-05-06T17:10:47.236Z,1,-65.68,28.04,8.01142857142857,3.5\n2026-05-06T17:10:47.236Z,1,-65.7,28.65,8.185714285714285,3.5\n2026-05-06T17:10:47.237Z,1,-65.72,29.37,8.391428571428571,3.5\n2026-05-06T17:10:47.237Z,1,-65.74,30,8.571428571428571,3.5\n2026-05-06T17:10:47.237Z,1,-65.76,30.770000000000003,8.791428571428572,3.5\n2026-05-06T17:10:47.237Z,1,-65.78,31.48,8.994285714285715,3.5\n2026-05-06T17:10:47.237Z,1,-65.8,32.3,9.228571428571428,3.5\n2026-05-06T17:10:47.237Z,1,-65.82,33.12,9.462857142857143,3.5\n2026-05-06T17:10:47.237Z,1,-65.84,34.03,9.722857142857142,3.5\n2026-05-06T17:10:47.238Z,1,-65.86,34.9,9.971428571428572,3.5\n2026-05-06T17:10:47.238Z,1,-65.88,35.92,10.262857142857143,3.5\n2026-05-06T17:10:47.238Z,1,-65.9,36.88,10.537142857142857,3.5\n2026-05-06T17:10:47.238Z,1,-65.92,38.06,10.874285714285715,3.5\n2026-05-06T17:10:47.238Z,1,-65.94,39.15,11.185714285714285,3.5\n2026-05-06T17:10:47.238Z,1,-65.96,40.45,11.557142857142859,3.5\n2026-05-06T17:10:47.238Z,1,-65.98,42.03,12.008571428571429,3.5\n2026-05-06T17:10:47.238Z,1,-66,43.22,12.348571428571429,3.5\n2026-05-06T17:10:47.238Z,1,-66.02,44.72,12.777142857142858,3.5\n2026-05-06T17:10:47.238Z,1,-66.04,46.49,13.282857142857143,3.5\n2026-05-06T17:10:47.238Z,1,-66.06,48.22,13.777142857142858,3.5\n2026-05-06T17:10:47.238Z,1,-66.08,50.3,14.37142857142857,3.5\n2026-05-06T17:10:47.239Z,1,-66.1,52.32,14.948571428571428,3.5\n2026-05-06T17:10:47.239Z,1,-66.12,54.89,15.682857142857143,3.5\n2026-05-06T17:10:47.239Z,2,-65.5,29.25,8.357142857142858,3.5\n2026-05-06T17:10:47.239Z,2,-65.52,30.120000000000005,8.605714285714287,3.5\n2026-05-06T17:10:47.239Z,2,-65.54,30.899999999999995,8.828571428571427,3.5\n2026-05-06T17:10:47.239Z,2,-65.56,31.769999999999996,9.077142857142857,3.5\n2026-05-06T17:10:47.239Z,2,-65.58,32.59,9.311428571428573,3.5\n2026-05-06T17:10:47.240Z,2,-65.6,33.53,9.58,3.5\n2026-05-06T17:10:47.240Z,2,-65.62,34.38,9.822857142857144,3.5\n2026-05-06T17:10:47.240Z,2,-65.64,35.41,10.117142857142856,3.5\n2026-05-06T17:10:47.240Z,2,-65.66,36.34,10.382857142857144,3.5\n2026-05-06T17:10:47.240Z,2,-65.68,37.47,10.705714285714285,3.5\n2026-05-06T17:10:47.240Z,2,-65.7,38.49,10.997142857142858,3.5\n2026-05-06T17:10:47.240Z,2,-65.72,39.73,11.35142857142857,3.5\n2026-05-06T17:10:47.240Z,2,-65.74,40.87,11.677142857142856,3.5\n2026-05-06T17:10:47.241Z,2,-65.76,42.3,12.085714285714285,3.5\n2026-05-06T17:10:47.241Z,2,-65.78,43.61,12.459999999999999,3.5\n2026-05-06T17:10:47.241Z,2,-65.8,45.19,12.911428571428571,3.5\n2026-05-06T17:10:47.241Z,2,-65.82,46.56,13.302857142857144,3.5\n2026-05-06T17:10:47.241Z,2,-65.84,48.56,13.874285714285715,3.5\n2026-05-06T17:10:47.241Z,2,-65.86,50.34,14.382857142857144,3.5\n2026-05-06T17:10:47.241Z,2,-65.88,52.64,15.040000000000001,3.5\n2026-05-06T17:10:47.241Z,2,-65.9,54.75,15.642857142857142,3.5\n2026-05-06T17:10:47.242Z,2,-65.92,57.33,16.38,3.5\n2026-05-06T17:10:47.242Z,2,-65.94,60.10999999999999,17.174285714285713,3.5\n2026-05-06T17:10:47.242Z,2,-65.96,63.68000000000001,18.194285714285716,3.5\n2026-05-06T17:10:47.242Z,2,-65.98,68.35,19.52857142857143,3.5\n2026-05-06T17:10:47.242Z,2,-66,70.68,20.194285714285716,3.5\n2026-05-06T17:10:47.242Z,2,-66.02,71.66,20.474285714285713,3.5\n2026-05-06T17:10:47.242Z,3,-65.5,26.82,7.662857142857143,3.5\n2026-05-06T17:10:47.242Z,3,-65.52,27.75,7.928571428571429,3.5\n2026-05-06T17:10:47.242Z,3,-65.54,28.48,8.137142857142857,3.5\n2026-05-06T17:10:47.242Z,3,-65.56,29.29,8.368571428571428,3.5\n2026-05-06T17:10:47.243Z,3,-65.58,29.96,8.56,3.5\n2026-05-06T17:10:47.243Z,3,-65.6,30.720000000000002,8.777142857142858,3.5\n2026-05-06T17:10:47.243Z,3,-65.62,31.22,8.92,3.5\n2026-05-06T17:10:47.243Z,3,-65.64,32,9.142857142857142,3.5\n2026-05-06T17:10:47.243Z,3,-65.66,32.72,9.348571428571429,3.5\n2026-05-06T17:10:47.243Z,3,-65.68,33.51,9.574285714285713,3.5\n2026-05-06T17:10:47.243Z,3,-65.7,34.39,9.825714285714286,3.5\n2026-05-06T17:10:47.244Z,3,-65.72,35.25,10.071428571428571,3.5\n2026-05-06T17:10:47.244Z,3,-65.74,36.16,10.331428571428571,3.5\n2026-05-06T17:10:47.244Z,3,-65.76,37.17,10.620000000000001,3.5\n2026-05-06T17:10:47.244Z,3,-65.78,38.28,10.937142857142858,3.5\n2026-05-06T17:10:47.244Z,3,-65.8,39.41,11.26,3.5\n2026-05-06T17:10:47.244Z,3,-65.82,40.77,11.64857142857143,3.5\n2026-05-06T17:10:47.244Z,3,-65.84,42.06,12.017142857142858,3.5\n2026-05-06T17:10:47.244Z,3,-65.86,43.55,12.442857142857141,3.5\n2026-05-06T17:10:47.244Z,3,-65.88,45.19,12.911428571428571,3.5\n2026-05-06T17:10:47.244Z,3,-65.9,46.88,13.394285714285715,3.5\n2026-05-06T17:10:47.244Z,3,-65.92,49.03,14.008571428571429,3.5\n2026-05-06T17:10:47.244Z,3,-65.94,51.27,14.64857142857143,3.5\n2026-05-06T17:10:47.244Z,3,-65.96,53.54,15.297142857142857,3.5\n2026-05-06T17:10:47.244Z,3,-65.98,58.24,16.64,3.5\n2026-05-06T17:10:47.245Z,3,-66,63.50999999999999,18.145714285714284,3.5\n2026-05-06T17:10:47.245Z,3,-66.02,59.92,17.12,3.5\n2026-05-06T17:10:47.245Z,4,-65.5,28.990000000000002,8.282857142857143,3.5\n2026-05-06T17:10:47.245Z,4,-65.52,30.36,8.674285714285714,3.5\n2026-05-06T17:10:47.245Z,4,-65.54,31.389999999999997,8.968571428571428,3.5\n2026-05-06T17:10:47.245Z,4,-65.56,32.48,9.28,3.5\n2026-05-06T17:10:47.246Z,4,-65.58,33.42,9.54857142857143,3.5\n2026-05-06T17:10:47.246Z,4,-65.6,34.5,9.857142857142858,3.5\n2026-05-06T17:10:47.246Z,4,-65.62,35.48,10.137142857142857,3.5\n2026-05-06T17:10:47.246Z,4,-65.64,36.67,10.477142857142857,3.5\n2026-05-06T17:10:47.246Z,4,-65.66,37.72,10.777142857142858,3.5\n2026-05-06T17:10:47.246Z,4,-65.68,38.97,11.134285714285713,3.5\n2026-05-06T17:10:47.246Z,4,-65.7,40.15,11.471428571428572,3.5\n2026-05-06T17:10:47.246Z,4,-65.72,41.56,11.874285714285715,3.5\n2026-05-06T17:10:47.246Z,4,-65.74,42.92,12.262857142857143,3.5\n2026-05-06T17:10:47.246Z,4,-65.76,44.55,12.728571428571428,3.5\n2026-05-06T17:10:47.246Z,4,-65.78,46.08,13.165714285714285,3.5\n2026-05-06T17:10:47.247Z,4,-65.8,47.99,13.711428571428572,3.5\n2026-05-06T17:10:47.247Z,4,-65.82,49.82,14.234285714285715,3.5\n2026-05-06T17:10:47.247Z,4,-65.84,52.07,14.877142857142857,3.5\n2026-05-06T17:10:47.247Z,4,-65.86,54.25,15.5,3.5\n2026-05-06T17:10:47.247Z,4,-65.88,57.21000000000001,16.345714285714287,3.5\n2026-05-06T17:10:47.247Z,4,-65.9,62.39000000000001,17.825714285714287,3.5\n2026-05-06T17:10:47.247Z,4,-65.92,61.410000000000004,17.545714285714286,3.5\n2026-05-06T17:10:47.247Z,4,-65.94,65.24,18.639999999999997,3.5\n2026-05-06T17:10:47.247Z,5,-65.5,12,3.4285714285714284,3.5\n2026-05-06T17:10:47.247Z,5,-65.52,17.89,5.111428571428571,3.5\n2026-05-06T17:10:47.247Z,5,-65.54,20.97,5.991428571428571,3.5\n2026-05-06T17:10:47.247Z,5,-65.56,24.2,6.914285714285714,3.5\n2026-05-06T17:10:47.247Z,5,-65.58,26.5,7.571428571428571,3.5\n2026-05-06T17:10:47.248Z,5,-65.6,28.340000000000003,8.097142857142858,3.5\n2026-05-06T17:10:47.248Z,5,-65.62,29.76,8.502857142857144,3.5\n2026-05-06T17:10:47.248Z,5,-65.64,31.339999999999996,8.954285714285714,3.5\n2026-05-06T17:10:47.248Z,5,-65.66,32.74,9.354285714285714,3.5\n2026-05-06T17:10:47.248Z,5,-65.68,34.24,9.782857142857143,3.5\n2026-05-06T17:10:47.248Z,5,-65.7,35.67,10.191428571428572,3.5\n2026-05-06T17:10:47.248Z,5,-65.72,37.13,10.608571428571429,3.5\n2026-05-06T17:10:47.248Z,5,-65.74,38.53,11.008571428571429,3.5\n2026-05-06T17:10:47.248Z,5,-65.76,40.21,11.48857142857143,3.5\n2026-05-06T17:10:47.248Z,5,-65.78,41.74,11.925714285714287,3.5\n2026-05-06T17:10:47.248Z,5,-65.8,43.47,12.42,3.5\n2026-05-06T17:10:47.248Z,5,-65.82,45.2,12.914285714285715,3.5\n2026-05-06T17:10:47.248Z,5,-65.84,47.33,13.522857142857143,3.5\n2026-05-06T17:10:47.248Z,5,-65.86,49.19,14.054285714285713,3.5\n2026-05-06T17:10:47.249Z,5,-65.88,51.72,14.777142857142858,3.5\n2026-05-06T17:10:47.249Z,5,-65.9,55.75,15.928571428571429,3.5\n2026-05-06T17:10:47.249Z,5,-65.92,62.36000000000001,17.81714285714286,3.5\n2026-05-06T17:10:47.249Z,5,-65.94,58.58,16.737142857142857,3.5\n2026-05-06T17:10:47.249Z,6,-65.5,2.31,0.66,3.5\n2026-05-06T17:10:47.249Z,6,-65.52,3.9300000000000006,1.122857142857143,3.5\n2026-05-06T17:10:47.249Z,6,-65.54,5.16,1.4742857142857144,3.5\n2026-05-06T17:10:47.249Z,6,-65.56,6.38,1.8228571428571427,3.5\n2026-05-06T17:10:47.249Z,6,-65.58,7.6,2.1714285714285713,3.5\n2026-05-06T17:10:47.249Z,6,-65.6,9.04,2.5828571428571427,3.5\n2026-05-06T17:10:47.250Z,6,-65.62,10.23,2.922857142857143,3.5\n2026-05-06T17:10:47.250Z,6,-65.64,12.03,3.437142857142857,3.5\n2026-05-06T17:10:47.250Z,6,-65.66,13.75,3.9285714285714284,3.5\n2026-05-06T17:10:47.250Z,6,-65.68,16.08,4.594285714285713,3.5\n2026-05-06T17:10:47.250Z,6,-65.7,18.15,5.185714285714285,3.5\n2026-05-06T17:10:47.250Z,6,-65.72,21.07,6.0200000000000005,3.5\n2026-05-06T17:10:47.250Z,6,-65.74,23.87,6.82,3.5\n2026-05-06T17:10:47.250Z,6,-65.76,27.57,7.877142857142857,3.5\n2026-05-06T17:10:47.250Z,6,-65.78,30.21,8.631428571428572,3.5\n2026-05-06T17:10:47.251Z,6,-65.8,32.36,9.245714285714286,3.5\n2026-05-06T17:10:47.251Z,6,-65.82,34.12,9.748571428571427,3.5\n2026-05-06T17:10:47.251Z,6,-65.84,35.97,10.277142857142858,3.5\n2026-05-06T17:10:47.251Z,6,-65.86,37.62,10.748571428571427,3.5\n2026-05-06T17:10:47.251Z,6,-65.88,39.44,11.268571428571429,3.5\n2026-05-06T17:10:47.251Z,6,-65.9,41.14,11.754285714285714,3.5\n2026-05-06T17:10:47.251Z,6,-65.92,43.12,12.319999999999999,3.5\n2026-05-06T17:10:47.251Z,6,-65.94,44.97,12.848571428571429,3.5\n2026-05-06T17:10:47.251Z,6,-65.96,47.17,13.477142857142857,3.5\n2026-05-06T17:10:47.251Z,6,-65.98,49.35,14.1,3.5\n2026-05-06T17:10:47.252Z,6,-66,52.04,14.868571428571428,3.5\n2026-05-06T17:10:47.252Z,6,-66.02,56.8,16.228571428571428,3.5\n2026-05-06T17:10:47.252Z,6,-66.04,61.71,17.63142857142857,3.5\n2026-05-06T17:10:47.252Z,6,-66.06,58.879999999999995,16.822857142857142,3.5\n2026-05-06T17:10:47.252Z,6,-66.08,62.839999999999996,17.954285714285714,3.5\n2026-05-06T17:10:47.252Z,6,-66.1,59.01,16.86,3.5"
+  },
+  {
     "id": "exp-1778081139295",
     "created_at": 1778081139295,
     "measurement_count": 10,
