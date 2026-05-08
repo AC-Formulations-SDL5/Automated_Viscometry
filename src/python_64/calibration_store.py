@@ -176,6 +176,72 @@ def get_calibration_summary() -> Dict[str, Any]:
         return {"is_calibrated": False, "calibrated_at": None, "cell_count": 0, "cells": {}}
 
 
+def update_calibration_for_cells(cells: Dict[int, float], calibrated_at: str | None = None) -> None:
+    """Update calibration data for specific cells without affecting others.
+    
+    - Loads existing calibration data
+    - Merges in the new cells (overwrites only those specified)
+    - Saves the merged result back to disk
+    - `cells` maps integer cell IDs to float Z values.
+    - `calibrated_at` defaults to current UTC ISO timestamp if not supplied.
+    """
+    # Load existing calibration
+    existing_cal = load_calibration()
+    existing_cells = existing_cal.get("cells", {}) if isinstance(existing_cal, dict) else {}
+    
+    # Merge: existing cells + new cells (new cells override)
+    merged_cells: Dict[str, float] = {}
+    
+    # Add all existing cells
+    for k, v in existing_cells.items():
+        try:
+            merged_cells[str(int(k))] = float(v)
+        except Exception:
+            continue
+    
+    # Override with new cells
+    for k, v in cells.items():
+        try:
+            key_str = str(int(k))
+            merged_cells[key_str] = float(v)
+        except Exception:
+            print(f"update_calibration_for_cells: skipping invalid cell entry {k}: {v}")
+            continue
+    
+    # Now save the merged result
+    if calibrated_at is None:
+        calibrated_at = datetime.utcnow().isoformat()
+    
+    path = _get_path()
+    dirpath = path.parent
+    try:
+        dirpath.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"update_calibration_for_cells: failed to create directory '{dirpath}': {e}")
+        return
+    
+    payload = {"version": 1, "calibrated_at": calibrated_at, "cells": merged_cells}
+    
+    tmp_path = path.with_suffix(".tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        # Atomic replace
+        try:
+            shutil.move(str(tmp_path), str(path))
+        except Exception:
+            os.replace(str(tmp_path), str(path))
+    except Exception as e:
+        print(f"update_calibration_for_cells: failed to write calibration file '{path}': {e}")
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
+
 def clear_calibration() -> None:
     """Delete the calibration file if it exists."""
     path = _get_path()

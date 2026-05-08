@@ -193,7 +193,7 @@
                             <div class="dual-fields">
                                 <label>
                                     <span>Sample Interval</span>
-                                    <input id="sample-interval" name="sample_interval" type="number" step="0.1" value="5">
+                                    <input id="sample-interval" name="sample_interval" type="number" step="0.1" value="4">
                                 </label>
                                 <label>
                                     <span>Dwell (s)</span>
@@ -320,6 +320,7 @@
                         </form>
                     </section>
 
+                            <div class="controls-right-stack">
                             <!-- ===== CALIBRATION PANEL ===== -->
                             <section id="calibration-panel-section" class="card calibration-card">
                                 <div class="card-title-row">
@@ -387,6 +388,48 @@
                                         </button>
                                     </div>
 
+                                    <!-- Recalibration Mode Toggle and Cell Selector -->
+                                    <div class="cal-recalibration-section">
+                                        <label class="cal-recalibration-toggle">
+                                            <input type="checkbox" id="cal-recalibrate-individual" class="cal-checkbox">
+                                            <span>Recalibrate Individual Cells</span>
+                                        </label>
+                                        <div id="cal-cell-selector-container" class="cal-cell-selector-container hidden">
+                                            <p class="cal-section-label">Select Cells to Recalibrate</p>
+                                            <div class="cal-cell-grid">
+                                                <div class="cal-cell-row">
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="1"> Cell 1</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="2"> Cell 2</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="3"> Cell 3</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="4"> Cell 4</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="5"> Cell 5</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="6"> Cell 6</label>
+                                                </div>
+                                                <div class="cal-cell-row">
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="7"> Cell 7</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="8"> Cell 8</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="9"> Cell 9</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="10"> Cell 10</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="11"> Cell 11</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="12"> Cell 12</label>
+                                                </div>
+                                                <div class="cal-cell-row">
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="13"> Cell 13</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="14"> Cell 14</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="15"> Cell 15</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="16"> Cell 16</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="17"> Cell 17</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="18"> Cell 18</label>
+                                                </div>
+                                            </div>
+                                            <div id="cal-custom-z-container" class="cal-custom-z-container">
+                                                <p class="cal-section-label">Custom Starting Z-Height (Optional)</p>
+                                                <p class="cal-custom-z-hint">Leave empty to auto-detect. Enter custom Z value to start recalibration from a specific height.</p>
+                                                <div id="cal-cell-z-inputs" class="cal-cell-z-inputs"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div class="cal-actions">
                                         <button
                                             type="button"
@@ -395,6 +438,14 @@
                                             disabled
                                             title="Check all items above before starting">
                                             Start Calibration (All 18 Cells)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            id="cal-start-recalibration-btn"
+                                            class="btn cal-start-btn hidden"
+                                            disabled
+                                            title="Select at least one cell to recalibrate">
+                                            Start Recalibration
                                         </button>
                                         <span id="cal-action-hint" class="cal-action-hint">
                                             Complete the checklist above to enable calibration
@@ -464,6 +515,7 @@
                             </div>
                         </div>
                     </section>
+                    </div>
                 </div>
 
                 <section class="card plot-card skeleton-host">

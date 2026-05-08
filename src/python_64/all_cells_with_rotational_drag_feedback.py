@@ -17,7 +17,7 @@ from feedback_helper_function import RotationalDragFeedbackController
 from web_interface import web_interface
 from calibration_store import (
     is_calibrated, load_calibration, save_calibration,
-    get_safe_z_for_cell, get_calibration_summary, clear_calibration
+    update_calibration_for_cells, get_safe_z_for_cell, get_calibration_summary, clear_calibration
 )
 
 # Ensure progress prints appear in real time even when launched in buffered contexts.
@@ -102,6 +102,8 @@ SMART_WINDOW_SIZE = 3
 
 # ========== CALIBRATION MODE CONFIGURATION ==========
 CALIBRATION_MODE = False          # Set to True when a calibration run is requested
+RECALIBRATE_INDIVIDUAL_CELLS = False  # Set to True for individual cell recalibration mode
+RECALIBRATION_CELLS = {}  # Dict[cell_id, optional_starting_z] for individual recalibration
 CALIBRATION_OFFSET = 0.5         # mm above rough hitpoint to use as safe_z
 
 # ========== TESTING MODE CONFIGURATION ==========
@@ -178,8 +180,11 @@ def apply_runtime_settings_from_web():
     WEIGHT_R2_SLOPE = float(settings.get('weight_r2_slope', WEIGHT_R2_SLOPE))
     BASELINE_N_CALIBRATION = int(settings.get('baseline_n_calibration', BASELINE_N_CALIBRATION))
     BASELINE_Z_THRESHOLD = float(settings.get('baseline_z_threshold', BASELINE_Z_THRESHOLD))
-    global CALIBRATION_MODE
+    global CALIBRATION_MODE, RECALIBRATE_INDIVIDUAL_CELLS, RECALIBRATION_CELLS
     CALIBRATION_MODE = bool(settings.get('calibration_mode', False))
+    RECALIBRATE_INDIVIDUAL_CELLS = bool(settings.get('recalibrate_individual_cells', False))
+    # Parse recalibration cells: expect dict {cell_id: optional_starting_z}
+    RECALIBRATION_CELLS = settings.get('recalibration_cells', {})
 
 
 def get_rpms_for_cell(global_cell: int) -> List[float]:
@@ -255,6 +260,11 @@ def _reliable_pump_command(pump: PumpESP32, command: bytes, description: str) ->
 
 def get_selected_cells():
     """Get the list of cells to test based on configuration parameters"""
+    if RECALIBRATE_INDIVIDUAL_CELLS:
+        # Individual cell recalibration mode: only recalibrate specified cells
+        selected = list(RECALIBRATION_CELLS.keys()) if RECALIBRATION_CELLS else []
+        selected.sort()
+        return "recalibration", selected
     if CALIBRATION_MODE:
         # Calibration always runs all 18 cells
         return "calibration", list(range(1, 19))
@@ -492,7 +502,8 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
         recent_torques = []
         start_time = time.time()
         measurement_start_time = time.time()
-        next_sample_time = start_time + SAMPLE_INTERVAL
+        # Try an immediate sample first (more robust to timing/jitter), then schedule periodic samples
+        next_sample_time = start_time
         
         while time.time() - start_time < MEASUREMENT_DURATION:
             raise_if_stop_requested()
@@ -501,6 +512,9 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
             if current_time >= next_sample_time:
                 try:
                     data = client.read_single(timeout=TORQUE_READ_TIMEOUT)
+                    # After the first immediate attempt, schedule the next sample SAMPLE_INTERVAL seconds later
+                    if next_sample_time == start_time:
+                        next_sample_time = current_time + SAMPLE_INTERVAL
                     if data and data.get("torque_valid") and data.get("torque_percent") is not None:
                         measurement = {
                             "timestamp": current_time,
@@ -618,13 +632,20 @@ def test_cell_dynamic_z_series(
     max_z_travel: float,
     cell_rpms: List[float],
     pump: Optional[PumpESP32] = None,
+    custom_starting_z: Optional[float] = None,
 ) -> Tuple[Dict[float, Dict[float, Optional[List[Dict]]]], Optional[threading.Thread]]:
-    """Test dynamic analysis (multiple RPMs) across Z-gap range for one cell using global cell numbering with rotational drag feedback control"""
+    """Test dynamic analysis (multiple RPMs) across Z-gap range for one cell using global cell numbering with rotational drag feedback control
+    
+    Args:
+        custom_starting_z: Optional custom starting Z-height for recalibration mode. If provided, overrides safe_z.
+    """
     row_number, local_cell = global_cell_to_row_and_local(global_cell)
     print(f"\n{'='*60}")
     print(f"DYNAMIC ANALYSIS - CELL {global_cell} (Row {row_number}, Local Cell {local_cell})")
     print(f"Testing RPMs {cell_rpms} across Z-gap range")
     print(f"Safe Z: {safe_z:.3f}, Max Z Travel: {max_z_travel:.3f}")
+    if custom_starting_z is not None:
+        print(f"Custom Starting Z: {custom_starting_z:.3f}")
     print(f"Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}")
     print(f"{'='*60}")
     
@@ -647,10 +668,15 @@ def test_cell_dynamic_z_series(
     )
     
     cell_z_rpm_data = {}
-    # Use calibrated safe_z if available, otherwise use the row default
-    if not CALIBRATION_MODE:
+    # Determine starting Z: custom_starting_z > RECALIBRATE_INDIVIDUAL_CELLS > CALIBRATION_MODE > normal
+    if custom_starting_z is not None:
+        current_z = custom_starting_z
+    elif not (CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS):
         safe_z = get_safe_z_for_cell(global_cell, safe_z, offset=CALIBRATION_OFFSET)
-    current_z = safe_z
+        current_z = safe_z
+    else:
+        # In calibration or recalibration mode, use the provided safe_z
+        current_z = safe_z
     print(f"Starting from Z-safe: {current_z:.3f}")
 
     # Require persistent confidence trigger before terminating the Z-series.
@@ -1468,7 +1494,17 @@ def main():
                     # Resolve per-cell RPMs before the cell test
                     cell_rpms = get_rpms_for_cell(global_cell)
                     print(f"  RPMs for Cell {global_cell}: {cell_rpms}")
-                    if CALIBRATION_MODE:
+                    
+                    # Determine status message and custom starting Z for recalibration
+                    custom_z = None
+                    if RECALIBRATE_INDIVIDUAL_CELLS:
+                        # Check if a custom starting Z is provided for this cell
+                        custom_z = RECALIBRATION_CELLS.get(global_cell, None)
+                        if custom_z is not None:
+                            web_interface.update_status(f"Recalibrating cell {i+1}/{len(selected_cells)} (Cell {global_cell}, starting at Z={custom_z:.3f})")
+                        else:
+                            web_interface.update_status(f"Recalibrating cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
+                    elif CALIBRATION_MODE:
                         web_interface.update_status(f"Calibrating cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                     else:
                         web_interface.update_status(f"Testing Cell {global_cell} at RPMs {cell_rpms}")
@@ -1480,7 +1516,8 @@ def main():
                         row_config['safe_z'],        # Always pass the ROW default; calibration handled inside
                         row_config['max_z_travel'],
                         cell_rpms,
-                        pump=None if CALIBRATION_MODE else pump,   # No pump in calibration mode
+                        pump=None if (CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS) else pump,   # No pump in calibration/recalibration mode
+                        custom_starting_z=custom_z,  # Pass custom starting Z if in recalibration mode
                     )
                     try:
                         cell_data, _fill_thread = result
@@ -1493,7 +1530,7 @@ def main():
                     completed_cells.append(global_cell)
                     print(f"Cell {global_cell} testing completed")
 
-                    if CALIBRATION_MODE:
+                    if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
                         # Extract and save rough hitpoint for this cell
                         rough_z = extract_rough_hitpoint(cell_data)
                         if rough_z is not None:
@@ -1501,8 +1538,11 @@ def main():
                             calibration_cells[global_cell] = rough_z
                         else:
                             print(f"  Calibration: Cell {global_cell} — no reliable hitpoint found, skipping")
-                        web_interface.update_status(f"Calibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
-                        # NO washing in calibration mode — move directly to next cell
+                        if CALIBRATION_MODE:
+                            web_interface.update_status(f"Calibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
+                        else:
+                            web_interface.update_status(f"Recalibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
+                        # NO washing in calibration/recalibration mode — move directly to next cell
                     else:
                         # Normal run: perform washing as before
                         if pump:
@@ -1529,12 +1569,19 @@ def main():
             
             web_interface.update_status("Saving final results...")
             
-            # If this was a calibration run, save per-cell rough hitpoints
-            if CALIBRATION_MODE and calibration_cells:
+            # If this was a calibration or recalibration run, save per-cell rough hitpoints
+            if (CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS) and calibration_cells:
                 try:
-                    save_calibration(calibration_cells)
-                    print(f"Calibration data saved for {len(calibration_cells)} cells.")
-                    web_interface.update_status("Calibration complete — Z-height data saved")
+                    if RECALIBRATE_INDIVIDUAL_CELLS:
+                        # For individual cell recalibration, use update_calibration_for_cells to merge with existing data
+                        update_calibration_for_cells(calibration_cells)
+                        print(f"Updated calibration data for {len(calibration_cells)} cells (other cells preserved).")
+                        web_interface.update_status("Individual cell recalibration complete — Z-height data updated")
+                    else:
+                        # For full calibration, replace all calibration data
+                        save_calibration(calibration_cells)
+                        print(f"Calibration data saved for {len(calibration_cells)} cells.")
+                        web_interface.update_status("Calibration complete — Z-height data saved")
                     try:
                         web_interface.emit_calibration_complete(get_calibration_summary())
                     except Exception:
