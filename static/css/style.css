@@ -436,13 +436,13 @@ body.running .header-sweep {
 #controls-tab {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
 }
 
 .controls-tracking-grid {
     display: grid;
     grid-template-columns: 1.15fr 0.85fr;
-    gap: 20px;
+    gap: 16px;
     align-items: start;
 }
 
@@ -456,7 +456,7 @@ body.running .header-sweep {
 .tracking-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 18px;
+    gap: 16px;
 }
 
 /* Data Tab */

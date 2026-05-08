@@ -224,7 +224,9 @@ class ViscometryDashboard {
         this.el.applySettings.addEventListener("click", () => this.applyControlSettings());
         this.el.startRun.addEventListener("click", () => this.startRunFromUI());
         this.el.stopRun.addEventListener("click", () => this.stopRunFromUI());
-        this.el.themeToggle.addEventListener("click", () => this.toggleTheme());
+        if (this.el.themeToggle) {
+            this.el.themeToggle.addEventListener("click", () => this.toggleTheme());
+        }
         if (this.el.zFilterAll) {
             this.el.zFilterAll.addEventListener("click", () => {
                 this.zLatestOnly = false;
@@ -2819,6 +2821,7 @@ class ViscometryDashboard {
     }
 
     toggleTheme() {
+        if (!this.el.themeToggle) return;
         const isDark = this.el.body.classList.contains("theme-dark");
         if (isDark) {
             this.el.body.classList.remove("theme-dark");
