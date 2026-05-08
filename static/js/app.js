@@ -192,8 +192,8 @@ class ViscometryDashboard {
             calPanelSection: document.getElementById("calibration-panel-section"),
             calStatusPill: document.getElementById("cal-status-pill"),
             calStatusText: document.getElementById("cal-status-text"),
+            calPanelDetails: document.getElementById("cal-panel-details"),
             calPanelBody: document.getElementById("cal-panel-body"),
-            calToggleBtn: document.getElementById("cal-toggle-btn"),
             calCheckEmpty: document.getElementById("cal-check-empty"),
             calCheckFeedback: document.getElementById("cal-check-feedback"),
             calCheckSmartExit: document.getElementById("cal-check-smart-exit"),
@@ -294,9 +294,12 @@ class ViscometryDashboard {
             });
         });
 
-        // Calibration panel toggle
-        if (this.el.calToggleBtn) {
-            this.el.calToggleBtn.addEventListener("click", () => this.toggleCalibrationPanel());
+        // Calibration panel (compact details dropdown)
+        if (this.el.calPanelDetails) {
+            this.el.calPanelDetails.open = false;
+            this.el.calPanelDetails.addEventListener("toggle", () => {
+                this.calibrationPanelOpen = this.el.calPanelDetails.open;
+            });
         }
 
         // Checklist validation
@@ -319,7 +322,7 @@ class ViscometryDashboard {
         }
         if (this.el.calApplyInterval) {
             this.el.calApplyInterval.addEventListener("click", () => {
-                if (this.el.sampleInterval) this.el.sampleInterval.value = "5";
+                if (this.el.sampleInterval) this.el.sampleInterval.value = "4";
                 this.setUiState("idle");
             });
         }
@@ -327,7 +330,7 @@ class ViscometryDashboard {
             this.el.calApplyAll.addEventListener("click", () => {
                 if (this.el.zStepSize) this.el.zStepSize.value = "-0.02";
                 if (this.el.measurementDuration) this.el.measurementDuration.value = "5";
-                if (this.el.sampleInterval) this.el.sampleInterval.value = "5";
+                if (this.el.sampleInterval) this.el.sampleInterval.value = "4";
                 this.setUiState("idle");
             });
         }
@@ -1072,7 +1075,7 @@ class ViscometryDashboard {
             this.pushStatusMessage("✓ Calibration complete — Z-height data saved for all cells");
             // Auto-open panel so user sees the green confirmation
             if (!this.calibrationPanelOpen) {
-                this.toggleCalibrationPanel();
+                this.toggleCalibrationPanel(true);
             }
             this.isCalibrationRun = false;
         });
@@ -1796,16 +1799,18 @@ class ViscometryDashboard {
         }
     }
 
-    toggleCalibrationPanel() {
-        this.calibrationPanelOpen = !this.calibrationPanelOpen;
-        if (this.el.calPanelBody) {
-            this.el.calPanelBody.classList.toggle("hidden", !this.calibrationPanelOpen);
+    toggleCalibrationPanel(forceOpen = null) {
+        if (!this.el.calPanelDetails) return;
+
+        if (forceOpen === true) {
+            this.el.calPanelDetails.open = true;
+        } else if (forceOpen === false) {
+            this.el.calPanelDetails.open = false;
+        } else {
+            this.el.calPanelDetails.open = !this.el.calPanelDetails.open;
         }
-        if (this.el.calToggleBtn) {
-            this.el.calToggleBtn.textContent = this.calibrationPanelOpen
-                ? "▲ Hide Calibration Options"
-                : "▼ Show Calibration Options";
-        }
+
+        this.calibrationPanelOpen = this.el.calPanelDetails.open;
     }
 
     validateCalibrationChecklist() {

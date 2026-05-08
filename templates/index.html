@@ -331,8 +331,13 @@
                                     </div>
                                 </div>
 
-                                <!-- Collapsible calibration details — toggled by JS -->
-                                <div id="cal-panel-body" class="cal-panel-body hidden">
+                                <details id="cal-panel-details" class="feedback-params-section cal-panel-details">
+                                    <summary class="feedback-params-toggle">
+                                        Calibration Options
+                                        <span class="feedback-params-hint">(expand to configure and run)</span>
+                                    </summary>
+
+                                <div id="cal-panel-body" class="cal-panel-body">
 
                                     <div class="cal-checklist">
                                         <p class="cal-checklist-title">⚠ Pre-Calibration Checklist</p>
@@ -365,7 +370,7 @@
                                             </div>
                                             <div class="cal-setting-item">
                                                 <span class="cal-setting-label">Sample Interval</span>
-                                                <span class="cal-setting-value">5 s</span>
+                                                <span class="cal-setting-value">4 s</span>
                                                 <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-interval">Apply</button>
                                             </div>
                                         </div>
@@ -396,11 +401,7 @@
                                         </span>
                                     </div>
                                 </div>
-
-                                <!-- Toggle button at the bottom of the title row -->
-                                <button type="button" id="cal-toggle-btn" class="btn subtle cal-toggle-btn">
-                                    ▼ Show Calibration Options
-                                </button>
+                                </details>
                             </section>
                             <!-- ===== END CALIBRATION PANEL ===== -->
 
