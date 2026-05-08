@@ -1,5 +1,818 @@
 [
   {
+    "id": "exp-1778265020781",
+    "created_at": 1778265020781,
+    "measurement_count": 54,
+    "cells": [
+      3,
+      10
+    ],
+    "rpms": [
+      0.8
+    ],
+    "settings": {
+      "experiment_name": "",
+      "testing_mode": "custom",
+      "selected_rows": [
+        2
+      ],
+      "selected_cells": [
+        3,
+        10,
+        11,
+        18
+      ],
+      "test_rpms": [
+        0.8
+      ],
+      "cell_rpm_map": {},
+      "cell_content_map": {},
+      "z_step_size": -0.02,
+      "measurement_duration": 5,
+      "sample_interval": 4,
+      "dwell_seconds": 2,
+      "inter_rpm_pause": 3,
+      "feedback_control_enabled": true,
+      "smart_early_exit_enabled": false,
+      "smart_cv_threshold": 0.005,
+      "smart_window_size": 3,
+      "min_data_points_for_trend": 8,
+      "r2_drag_min": 0.975,
+      "r2_cv_min": 0.975,
+      "r2_slope_min": 0.975,
+      "hit_point_confidence_threshold": 0.8,
+      "weight_2nd_deriv_drag": 0.2,
+      "weight_2nd_deriv_cv": 0.2,
+      "weight_2nd_deriv_slope": 0.2,
+      "weight_r2_drag": 0.2,
+      "weight_r2_cv": 0.2,
+      "weight_r2_slope": 0.2,
+      "baseline_n_calibration": 10,
+      "baseline_z_threshold": 10,
+      "torque_break_threshold": 100,
+      "calibration_mode": false
+    },
+    "latestPerZ": [
+      {
+        "timestamp": 1778264457.5965555,
+        "height": -65.5,
+        "rotational_drag": 0.11249999999999999,
+        "torque_percent": 0.09,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264469.9477913,
+        "height": -65.52,
+        "rotational_drag": 0.049999999999999996,
+        "torque_percent": 0.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264482.2996566,
+        "height": -65.54,
+        "rotational_drag": 0.08750000000000001,
+        "torque_percent": 0.07,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264494.6545641,
+        "height": -65.56,
+        "rotational_drag": 0.09999999999999999,
+        "torque_percent": 0.08,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264507.0035362,
+        "height": -65.58,
+        "rotational_drag": 0.09999999999999999,
+        "torque_percent": 0.08,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264519.3614979,
+        "height": -65.6,
+        "rotational_drag": 0.09999999999999999,
+        "torque_percent": 0.08,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264531.7134147,
+        "height": -65.62,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264544.0624232,
+        "height": -65.64,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264556.4202812,
+        "height": -65.66,
+        "rotational_drag": 0.049999999999999996,
+        "torque_percent": 0.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264568.7783172,
+        "height": -65.68,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264581.1331706,
+        "height": -65.7,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264593.483037,
+        "height": -65.72,
+        "rotational_drag": 0.049999999999999996,
+        "torque_percent": 0.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264605.8371322,
+        "height": -65.74,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264618.1924229,
+        "height": -65.76,
+        "rotational_drag": 0.049999999999999996,
+        "torque_percent": 0.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264630.5440855,
+        "height": -65.78,
+        "rotational_drag": 0.08750000000000001,
+        "torque_percent": 0.07,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264642.8995304,
+        "height": -65.8,
+        "rotational_drag": 0.075,
+        "torque_percent": 0.06,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264655.2539496,
+        "height": -65.82,
+        "rotational_drag": 0.08750000000000001,
+        "torque_percent": 0.07,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264667.6059358,
+        "height": -65.84,
+        "rotational_drag": 5.225,
+        "torque_percent": 4.18,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264679.9609125,
+        "height": -65.86,
+        "rotational_drag": 4.6125,
+        "torque_percent": 3.69,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264692.3159335,
+        "height": -65.88,
+        "rotational_drag": 7.55,
+        "torque_percent": 6.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264854.5149872,
+        "height": -65.5,
+        "rotational_drag": 0.075,
+        "torque_percent": 0.06,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264866.863841,
+        "height": -65.52,
+        "rotational_drag": 0.0375,
+        "torque_percent": 0.03,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264879.2098713,
+        "height": -65.54,
+        "rotational_drag": 0.024999999999999998,
+        "torque_percent": 0.02,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264891.5557375,
+        "height": -65.56,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264903.911149,
+        "height": -65.58,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264916.2874653,
+        "height": -65.6,
+        "rotational_drag": 0.012499999999999999,
+        "torque_percent": 0.01,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264928.638672,
+        "height": -65.62,
+        "rotational_drag": 0.19999999999999998,
+        "torque_percent": 0.16,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264940.9906836,
+        "height": -65.64,
+        "rotational_drag": 2.4875,
+        "torque_percent": 1.99,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264953.3460186,
+        "height": -65.66,
+        "rotational_drag": 2.5,
+        "torque_percent": 2,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264965.7004282,
+        "height": -65.68,
+        "rotational_drag": 2.15,
+        "torque_percent": 1.72,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264978.0534172,
+        "height": -65.7,
+        "rotational_drag": 2.3375,
+        "torque_percent": 1.87,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264990.4043787,
+        "height": -65.72,
+        "rotational_drag": 2.7,
+        "torque_percent": 2.16,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778265002.753253,
+        "height": -65.74,
+        "rotational_drag": 3.4749999999999996,
+        "torque_percent": 2.78,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778265015.105226,
+        "height": -65.76,
+        "rotational_drag": 4.124999999999999,
+        "torque_percent": 3.2999999999999994,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      }
+    ],
+    "median_samples_per_z": 2,
+    "cell_median_samples_per_z": {
+      "3": 2,
+      "10": 1
+    },
+    "cellDurations": {
+      "3": 234719.37799453735,
+      "10": 160590.23880958557
+    },
+    "runStartTsSec": 1778264431.0198996,
+    "runEndTsSec": 1778265015.105226,
+    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n2026-05-08T18:20:57.596Z,3,-65.5,0.09,0.11249999999999999,0.8\n2026-05-08T18:21:09.947Z,3,-65.52,0.04,0.049999999999999996,0.8\n2026-05-08T18:21:22.299Z,3,-65.54,0.07,0.08750000000000001,0.8\n2026-05-08T18:21:34.654Z,3,-65.56,0.08,0.09999999999999999,0.8\n2026-05-08T18:21:47.003Z,3,-65.58,0.08,0.09999999999999999,0.8\n2026-05-08T18:21:59.361Z,3,-65.6,0.08,0.09999999999999999,0.8\n2026-05-08T18:22:11.713Z,3,-65.62,0.05,0.0625,0.8\n2026-05-08T18:22:24.062Z,3,-65.64,0.05,0.0625,0.8\n2026-05-08T18:22:36.420Z,3,-65.66,0.04,0.049999999999999996,0.8\n2026-05-08T18:22:48.778Z,3,-65.68,0.05,0.0625,0.8\n2026-05-08T18:23:01.133Z,3,-65.7,0.05,0.0625,0.8\n2026-05-08T18:23:13.483Z,3,-65.72,0.04,0.049999999999999996,0.8\n2026-05-08T18:23:25.837Z,3,-65.74,0.05,0.0625,0.8\n2026-05-08T18:23:38.192Z,3,-65.76,0.04,0.049999999999999996,0.8\n2026-05-08T18:23:50.544Z,3,-65.78,0.07,0.08750000000000001,0.8\n2026-05-08T18:24:02.899Z,3,-65.8,0.06,0.075,0.8\n2026-05-08T18:24:15.253Z,3,-65.82,0.07,0.08750000000000001,0.8\n2026-05-08T18:24:27.605Z,3,-65.84,4.18,5.225,0.8\n2026-05-08T18:24:39.960Z,3,-65.86,3.69,4.6125,0.8\n2026-05-08T18:24:52.315Z,3,-65.88,6.04,7.55,0.8\n2026-05-08T18:20:57.596Z,3,-65.5,0.09,0.11249999999999999,0.8\n2026-05-08T18:21:09.947Z,3,-65.52,0.04,0.049999999999999996,0.8\n2026-05-08T18:21:22.299Z,3,-65.54,0.07,0.08750000000000001,0.8\n2026-05-08T18:21:34.654Z,3,-65.56,0.08,0.09999999999999999,0.8\n2026-05-08T18:21:47.003Z,3,-65.58,0.08,0.09999999999999999,0.8\n2026-05-08T18:21:59.361Z,3,-65.6,0.08,0.09999999999999999,0.8\n2026-05-08T18:22:11.713Z,3,-65.62,0.05,0.0625,0.8\n2026-05-08T18:22:24.062Z,3,-65.64,0.05,0.0625,0.8\n2026-05-08T18:22:36.420Z,3,-65.66,0.04,0.049999999999999996,0.8\n2026-05-08T18:22:48.778Z,3,-65.68,0.05,0.0625,0.8\n2026-05-08T18:23:01.133Z,3,-65.7,0.05,0.0625,0.8\n2026-05-08T18:23:13.483Z,3,-65.72,0.04,0.049999999999999996,0.8\n2026-05-08T18:23:25.837Z,3,-65.74,0.05,0.0625,0.8\n2026-05-08T18:23:38.192Z,3,-65.76,0.04,0.049999999999999996,0.8\n2026-05-08T18:23:50.544Z,3,-65.78,0.07,0.08750000000000001,0.8\n2026-05-08T18:24:02.899Z,3,-65.8,0.06,0.075,0.8\n2026-05-08T18:24:15.253Z,3,-65.82,0.07,0.08750000000000001,0.8\n2026-05-08T18:24:27.605Z,3,-65.84,4.18,5.225,0.8\n2026-05-08T18:24:39.960Z,3,-65.86,3.69,4.6125,0.8\n2026-05-08T18:24:52.315Z,3,-65.88,6.04,7.55,0.8\n2026-05-08T18:27:34.514Z,10,-65.5,0.06,0.075,0.8\n2026-05-08T18:27:46.863Z,10,-65.52,0.03,0.0375,0.8\n2026-05-08T18:27:59.209Z,10,-65.54,0.02,0.024999999999999998,0.8\n2026-05-08T18:28:11.555Z,10,-65.56,0.05,0.0625,0.8\n2026-05-08T18:28:23.911Z,10,-65.58,0.05,0.0625,0.8\n2026-05-08T18:28:36.287Z,10,-65.6,0.01,0.012499999999999999,0.8\n2026-05-08T18:28:48.638Z,10,-65.62,0.16,0.19999999999999998,0.8\n2026-05-08T18:29:00.990Z,10,-65.64,1.99,2.4875,0.8\n2026-05-08T18:29:13.346Z,10,-65.66,2,2.5,0.8\n2026-05-08T18:29:25.700Z,10,-65.68,1.72,2.15,0.8\n2026-05-08T18:29:38.053Z,10,-65.7,1.87,2.3375,0.8\n2026-05-08T18:29:50.404Z,10,-65.72,2.16,2.7,0.8\n2026-05-08T18:30:02.753Z,10,-65.74,2.78,3.4749999999999996,0.8\n2026-05-08T18:30:15.105Z,10,-65.76,3.2999999999999994,4.124999999999999,0.8"
+  },
+  {
+    "id": "exp-1778265021026",
+    "created_at": 1778265021026,
+    "measurement_count": 34,
+    "cells": [
+      3,
+      10
+    ],
+    "rpms": [
+      0.8
+    ],
+    "settings": {
+      "experiment_name": "",
+      "testing_mode": "custom",
+      "selected_rows": [
+        2
+      ],
+      "selected_cells": [
+        1
+      ],
+      "test_rpms": [
+        0.8
+      ],
+      "cell_rpm_map": {},
+      "cell_content_map": {},
+      "z_step_size": -0.02,
+      "measurement_duration": 40,
+      "sample_interval": 4,
+      "dwell_seconds": 2,
+      "inter_rpm_pause": 2,
+      "feedback_control_enabled": true,
+      "smart_early_exit_enabled": false,
+      "smart_cv_threshold": 0.005,
+      "smart_window_size": 3,
+      "min_data_points_for_trend": 8,
+      "r2_drag_min": 0.975,
+      "r2_cv_min": 0.975,
+      "r2_slope_min": 0.975,
+      "hit_point_confidence_threshold": 0.8,
+      "weight_2nd_deriv_drag": 0.2,
+      "weight_2nd_deriv_cv": 0.2,
+      "weight_2nd_deriv_slope": 0.2,
+      "weight_r2_drag": 0.2,
+      "weight_r2_cv": 0.2,
+      "weight_r2_slope": 0.2,
+      "baseline_n_calibration": 10,
+      "baseline_z_threshold": 10,
+      "torque_break_threshold": 100,
+      "calibration_mode": false
+    },
+    "latestPerZ": [
+      {
+        "timestamp": 1778264457.5965555,
+        "height": -65.5,
+        "rotational_drag": 0.11249999999999999,
+        "torque_percent": 0.09,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264469.9477913,
+        "height": -65.52,
+        "rotational_drag": 0.049999999999999996,
+        "torque_percent": 0.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264482.2996566,
+        "height": -65.54,
+        "rotational_drag": 0.08750000000000001,
+        "torque_percent": 0.07,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264494.6545641,
+        "height": -65.56,
+        "rotational_drag": 0.09999999999999999,
+        "torque_percent": 0.08,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264507.0035362,
+        "height": -65.58,
+        "rotational_drag": 0.09999999999999999,
+        "torque_percent": 0.08,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264519.3614979,
+        "height": -65.6,
+        "rotational_drag": 0.09999999999999999,
+        "torque_percent": 0.08,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264531.7134147,
+        "height": -65.62,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264544.0624232,
+        "height": -65.64,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264556.4202812,
+        "height": -65.66,
+        "rotational_drag": 0.049999999999999996,
+        "torque_percent": 0.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264568.7783172,
+        "height": -65.68,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264581.1331706,
+        "height": -65.7,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264593.483037,
+        "height": -65.72,
+        "rotational_drag": 0.049999999999999996,
+        "torque_percent": 0.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264605.8371322,
+        "height": -65.74,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264618.1924229,
+        "height": -65.76,
+        "rotational_drag": 0.049999999999999996,
+        "torque_percent": 0.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264630.5440855,
+        "height": -65.78,
+        "rotational_drag": 0.08750000000000001,
+        "torque_percent": 0.07,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264642.8995304,
+        "height": -65.8,
+        "rotational_drag": 0.075,
+        "torque_percent": 0.06,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264655.2539496,
+        "height": -65.82,
+        "rotational_drag": 0.08750000000000001,
+        "torque_percent": 0.07,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264667.6059358,
+        "height": -65.84,
+        "rotational_drag": 5.225,
+        "torque_percent": 4.18,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264679.9609125,
+        "height": -65.86,
+        "rotational_drag": 4.6125,
+        "torque_percent": 3.69,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264692.3159335,
+        "height": -65.88,
+        "rotational_drag": 7.55,
+        "torque_percent": 6.04,
+        "rpm": 0.8,
+        "cell_id": 3,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264854.5149872,
+        "height": -65.5,
+        "rotational_drag": 0.075,
+        "torque_percent": 0.06,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264866.863841,
+        "height": -65.52,
+        "rotational_drag": 0.0375,
+        "torque_percent": 0.03,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264879.2098713,
+        "height": -65.54,
+        "rotational_drag": 0.024999999999999998,
+        "torque_percent": 0.02,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264891.5557375,
+        "height": -65.56,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264903.911149,
+        "height": -65.58,
+        "rotational_drag": 0.0625,
+        "torque_percent": 0.05,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264916.2874653,
+        "height": -65.6,
+        "rotational_drag": 0.012499999999999999,
+        "torque_percent": 0.01,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264928.638672,
+        "height": -65.62,
+        "rotational_drag": 0.19999999999999998,
+        "torque_percent": 0.16,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264940.9906836,
+        "height": -65.64,
+        "rotational_drag": 2.4875,
+        "torque_percent": 1.99,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264953.3460186,
+        "height": -65.66,
+        "rotational_drag": 2.5,
+        "torque_percent": 2,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264965.7004282,
+        "height": -65.68,
+        "rotational_drag": 2.15,
+        "torque_percent": 1.72,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264978.0534172,
+        "height": -65.7,
+        "rotational_drag": 2.3375,
+        "torque_percent": 1.87,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778264990.4043787,
+        "height": -65.72,
+        "rotational_drag": 2.7,
+        "torque_percent": 2.16,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778265002.753253,
+        "height": -65.74,
+        "rotational_drag": 3.4749999999999996,
+        "torque_percent": 2.78,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      },
+      {
+        "timestamp": 1778265015.105226,
+        "height": -65.76,
+        "rotational_drag": 4.124999999999999,
+        "torque_percent": 3.2999999999999994,
+        "rpm": 0.8,
+        "cell_id": 10,
+        "is_final_save": false,
+        "hit_detected": null
+      }
+    ],
+    "median_samples_per_z": 1,
+    "cell_median_samples_per_z": {
+      "3": 1,
+      "10": 1
+    },
+    "cellDurations": {
+      "3": 234719.37799453735,
+      "10": 160590.23880958557
+    },
+    "runStartTsSec": 1778264431.0198996,
+    "runEndTsSec": 1778265015.105226,
+    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n2026-05-08T18:20:57.596Z,3,-65.5,0.09,0.11249999999999999,0.8\n2026-05-08T18:21:09.947Z,3,-65.52,0.04,0.049999999999999996,0.8\n2026-05-08T18:21:22.299Z,3,-65.54,0.07,0.08750000000000001,0.8\n2026-05-08T18:21:34.654Z,3,-65.56,0.08,0.09999999999999999,0.8\n2026-05-08T18:21:47.003Z,3,-65.58,0.08,0.09999999999999999,0.8\n2026-05-08T18:21:59.361Z,3,-65.6,0.08,0.09999999999999999,0.8\n2026-05-08T18:22:11.713Z,3,-65.62,0.05,0.0625,0.8\n2026-05-08T18:22:24.062Z,3,-65.64,0.05,0.0625,0.8\n2026-05-08T18:22:36.420Z,3,-65.66,0.04,0.049999999999999996,0.8\n2026-05-08T18:22:48.778Z,3,-65.68,0.05,0.0625,0.8\n2026-05-08T18:23:01.133Z,3,-65.7,0.05,0.0625,0.8\n2026-05-08T18:23:13.483Z,3,-65.72,0.04,0.049999999999999996,0.8\n2026-05-08T18:23:25.837Z,3,-65.74,0.05,0.0625,0.8\n2026-05-08T18:23:38.192Z,3,-65.76,0.04,0.049999999999999996,0.8\n2026-05-08T18:23:50.544Z,3,-65.78,0.07,0.08750000000000001,0.8\n2026-05-08T18:24:02.899Z,3,-65.8,0.06,0.075,0.8\n2026-05-08T18:24:15.253Z,3,-65.82,0.07,0.08750000000000001,0.8\n2026-05-08T18:24:27.605Z,3,-65.84,4.18,5.225,0.8\n2026-05-08T18:24:39.960Z,3,-65.86,3.69,4.6125,0.8\n2026-05-08T18:24:52.315Z,3,-65.88,6.04,7.55,0.8\n2026-05-08T18:27:34.514Z,10,-65.5,0.06,0.075,0.8\n2026-05-08T18:27:46.863Z,10,-65.52,0.03,0.0375,0.8\n2026-05-08T18:27:59.209Z,10,-65.54,0.02,0.024999999999999998,0.8\n2026-05-08T18:28:11.555Z,10,-65.56,0.05,0.0625,0.8\n2026-05-08T18:28:23.911Z,10,-65.58,0.05,0.0625,0.8\n2026-05-08T18:28:36.287Z,10,-65.6,0.01,0.012499999999999999,0.8\n2026-05-08T18:28:48.638Z,10,-65.62,0.16,0.19999999999999998,0.8\n2026-05-08T18:29:00.990Z,10,-65.64,1.99,2.4875,0.8\n2026-05-08T18:29:13.346Z,10,-65.66,2,2.5,0.8\n2026-05-08T18:29:25.700Z,10,-65.68,1.72,2.15,0.8\n2026-05-08T18:29:38.053Z,10,-65.7,1.87,2.3375,0.8\n2026-05-08T18:29:50.404Z,10,-65.72,2.16,2.7,0.8\n2026-05-08T18:30:02.753Z,10,-65.74,2.78,3.4749999999999996,0.8\n2026-05-08T18:30:15.105Z,10,-65.76,3.2999999999999994,4.124999999999999,0.8"
+  },
+  {
     "id": "exp-1778262011571",
     "created_at": 1778262011571,
     "measurement_count": 932,
