@@ -1003,9 +1003,9 @@ def extract_rough_hitpoint(cell_z_rpm_data: dict) -> Optional[float]:
     """
     Extract the rough hitpoint Z from a completed cell's measurement data.
 
-    The rough hitpoint is defined as the LAST z-level (in descent order, i.e.
-    most negative first) where Hit_Detected == True, provided that it is
-    followed by at least 3 consecutive z-levels where Hit_Detected == False.
+    The rough hitpoint is defined as the LAST z-level (in descent order)
+    where Hit_Detected == False, provided that it is immediately followed by
+    at least 3 consecutive z-levels where Hit_Detected == True.
 
     Returns the Z-height (float) or None if no reliable hitpoint was found.
     """
@@ -1028,17 +1028,17 @@ def extract_rough_hitpoint(cell_z_rpm_data: dict) -> Optional[float]:
         )
         hit_sequence.append((z, any_hit))
 
-    # Find last z where hit==True AND at least 3 subsequent z-levels are all False
+    # Find last z where hit==False AND at least 3 subsequent z-levels are all True
     rough_hitpoint = None
     n = len(hit_sequence)
     for i in range(n - 3):
         z_val, is_hit = hit_sequence[i]
-        if is_hit:
-            # Check next 3 are all False
-            next_three_false = all(
-                not hit_sequence[j][1] for j in range(i + 1, min(i + 4, n))
+        if not is_hit:
+            # Check next 3 are all True
+            next_three_true = all(
+                hit_sequence[j][1] for j in range(i + 1, min(i + 4, n))
             )
-            if next_three_false:
+            if next_three_true:
                 rough_hitpoint = z_val  # Keep updating — we want the LAST such point
 
     return rough_hitpoint
