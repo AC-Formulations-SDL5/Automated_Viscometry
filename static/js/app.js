@@ -204,6 +204,7 @@ class ViscometryDashboard {
             calApplyInterval: document.getElementById("cal-apply-interval"),
             calApplyAll: document.getElementById("cal-apply-all-recommended"),
             calExistingInfo: document.getElementById("cal-existing-info"),
+            calExistingSelect: document.getElementById("cal-existing-select"),
             calExistingDetail: document.getElementById("cal-existing-detail"),
             calClearBtn: document.getElementById("cal-clear-btn"),
             calStartBtn: document.getElementById("cal-start-btn"),
@@ -355,6 +356,9 @@ class ViscometryDashboard {
                     })
                     .catch(() => this.pushStatusMessage("Failed to clear calibration data"));
             });
+        }
+        if (this.el.calExistingSelect) {
+            this.el.calExistingSelect.addEventListener("change", () => this.renderSelectedCalibrationCellDetail());
         }
 
         // Start calibration run
@@ -1900,7 +1904,7 @@ class ViscometryDashboard {
         }
         if (text) {
             text.textContent = isOk
-                ? `Per-Cell Z-Height Calibrated — ${summary.cell_count} cells (${new Date(summary.calibrated_at).toLocaleString()})`
+                ? `Per-Cell Z-Height Calibrated — ${summary.cell_count} cells`
                 : "No Z-Height Per-Cell Calibration Performed";
         }
 
@@ -1910,15 +1914,55 @@ class ViscometryDashboard {
         if (infoBlock) {
             infoBlock.classList.toggle("hidden", !isOk);
         }
-        if (detail && isOk && summary.cells) {
-            const lines = Object.entries(summary.cells)
-                .sort((a, b) => Number(a[0]) - Number(b[0]))
-                .map(([cellId, z]) => `Cell ${cellId}: rough hitpoint ${Number(z).toFixed(3)} mm → safe_z ${(Number(z) + 0.5).toFixed(3)} mm`);
-            detail.innerHTML = lines.join("<br>");
+        if (isOk && summary.cells) {
+            this.renderCalibrationDropdown(summary);
+            this.renderSelectedCalibrationCellDetail();
+        } else {
+            if (this.el.calExistingSelect) this.el.calExistingSelect.innerHTML = "";
+            if (detail) detail.textContent = "";
         }
 
         // Re-validate checklist (running state may have changed)
         this.validateCalibrationChecklist();
+    }
+
+    renderCalibrationDropdown(summary) {
+        const select = this.el.calExistingSelect;
+        if (!select || !summary) return;
+        const allCellIds = Array.from({ length: 18 }, (_, idx) => idx + 1);
+        const perCellTimes = summary.cell_calibrated_at || {};
+        const globalTime = summary.calibrated_at;
+        const previousValue = Number(select.value) || 1;
+        const options = allCellIds.map((cellId) => {
+            const rough = summary.cells?.[String(cellId)];
+            const hasData = Number.isFinite(Number(rough));
+            const calibratedAt = perCellTimes[String(cellId)] || globalTime;
+            const timeLabel = calibratedAt ? new Date(calibratedAt).toLocaleString() : "N/A";
+            const statusLabel = hasData ? "calibrated" : "not calibrated";
+            return `<option value="${cellId}">Cell ${cellId} | ${statusLabel} | ${timeLabel}</option>`;
+        });
+        select.innerHTML = options.join("");
+        const nextValue = allCellIds.includes(previousValue) ? previousValue : 1;
+        select.value = String(nextValue);
+    }
+
+    renderSelectedCalibrationCellDetail() {
+        const select = this.el.calExistingSelect;
+        const detail = this.el.calExistingDetail;
+        const summary = this.calibrationSummary;
+        if (!select || !detail || !summary) return;
+        const cellId = String(Number(select.value) || 1);
+        const rough = summary.cells?.[cellId];
+        const roughNum = Number(rough);
+        const perCellTimes = summary.cell_calibrated_at || {};
+        const calibratedAt = perCellTimes[cellId] || summary.calibrated_at;
+        const timeLabel = calibratedAt ? new Date(calibratedAt).toLocaleString() : "N/A";
+        if (!Number.isFinite(roughNum)) {
+            detail.innerHTML = `Cell ${cellId}: no calibration saved yet<br>Calibrated at: ${timeLabel}`;
+            return;
+        }
+        const safeZ = roughNum + 0.4;
+        detail.innerHTML = `Cell ${cellId}: rough hitpoint ${roughNum.toFixed(3)} mm -> safe_z ${safeZ.toFixed(3)} mm<br>Calibrated at: ${timeLabel}`;
     }
 
     startCalibrationRun() {

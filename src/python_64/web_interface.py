@@ -374,7 +374,7 @@ class ViscometryWebInterface:
                 'measurement_data': [],
                 'control_settings': {}
                 ,
-                'calibration_summary': {'is_calibrated': False, 'calibrated_at': None, 'cell_count': 0, 'cells': {}},
+                'calibration_summary': {'is_calibrated': False, 'calibrated_at': None, 'cell_count': 0, 'cell_calibrated_at': {}, 'cells': {}},
                 'calibration_mode': False
             }
 
@@ -512,6 +512,7 @@ class ViscometryWebInterface:
                 "is_calibrated": False,
                 "calibrated_at": None,
                 "cell_count": 0,
+                "cell_calibrated_at": {},
                 "cells": {}
             }
 

@@ -24,11 +24,15 @@ CALIBRATION_FILE_PATH: str = str(
     Path(__file__).resolve().parent.joinpath("calibration_data", "per_cell_z_calibration.json")
 )
 
-_DEFAULT_CAL = {"version": 1, "calibrated_at": None, "cells": {}}
+_DEFAULT_CAL = {"version": 1, "calibrated_at": None, "cell_calibrated_at": {}, "cells": {}}
 
 
 def _get_path() -> Path:
     return Path(CALIBRATION_FILE_PATH)
+
+def _local_iso_now() -> str:
+    """Return current local timestamp with timezone offset."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def is_calibrated() -> bool:
@@ -65,8 +69,11 @@ def load_calibration() -> Dict[str, Any]:
         version = data.get("version", 1)
         calibrated_at = data.get("calibrated_at")
         cells = data.get("cells", {})
+        cell_calibrated_at = data.get("cell_calibrated_at", {})
         if not isinstance(cells, dict):
             raise ValueError("Calibration 'cells' must be a mapping")
+        if not isinstance(cell_calibrated_at, dict):
+            cell_calibrated_at = {}
 
         # Normalize keys to strings and values to floats where possible
         norm_cells: Dict[str, float] = {}
@@ -81,7 +88,21 @@ def load_calibration() -> Dict[str, Any]:
                 # Skip non-numeric values
                 continue
 
-        return {"version": int(version), "calibrated_at": calibrated_at, "cells": norm_cells}
+        norm_cell_times: Dict[str, str] = {}
+        for k, v in cell_calibrated_at.items():
+            try:
+                key_str = str(int(k)) if isinstance(k, (int, float, str)) and str(k).isdigit() else str(k)
+            except Exception:
+                key_str = str(k)
+            if isinstance(v, str) and v.strip():
+                norm_cell_times[key_str] = v.strip()
+
+        return {
+            "version": int(version),
+            "calibrated_at": calibrated_at,
+            "cell_calibrated_at": norm_cell_times,
+            "cells": norm_cells,
+        }
 
     except Exception as e:
         print(f"load_calibration: failed to load calibration file '{path}': {e}")
@@ -103,7 +124,7 @@ def save_calibration(cells: Dict[int, float], calibrated_at: str | None = None) 
         return
 
     if calibrated_at is None:
-        calibrated_at = datetime.utcnow().isoformat()
+        calibrated_at = _local_iso_now()
 
     # Convert keys to strings for JSON
     cells_out: Dict[str, float] = {}
@@ -115,7 +136,13 @@ def save_calibration(cells: Dict[int, float], calibrated_at: str | None = None) 
             print(f"save_calibration: skipping invalid cell entry {k}: {v}")
             continue
 
-    payload = {"version": 1, "calibrated_at": calibrated_at, "cells": cells_out}
+    cell_times_out = {cell_id: calibrated_at for cell_id in cells_out.keys()}
+    payload = {
+        "version": 1,
+        "calibrated_at": calibrated_at,
+        "cell_calibrated_at": cell_times_out,
+        "cells": cells_out,
+    }
 
     tmp_path = path.with_suffix(".tmp")
     try:
@@ -139,7 +166,7 @@ def save_calibration(cells: Dict[int, float], calibrated_at: str | None = None) 
             pass
 
 
-def get_safe_z_for_cell(cell_id: int, default_safe_z: float, offset: float = 0.5) -> float:
+def get_safe_z_for_cell(cell_id: int, default_safe_z: float, offset: float = 0.4) -> float:
     """Return a safety starting Z for a given cell.
 
     If a rough hitpoint exists for the cell, returns rough_hitpoint_z + offset.
@@ -165,15 +192,23 @@ def get_calibration_summary() -> Dict[str, Any]:
     try:
         cal = load_calibration()
         cells = cal.get("cells", {}) if isinstance(cal, dict) else {}
+        cell_times = cal.get("cell_calibrated_at", {}) if isinstance(cal, dict) else {}
         return {
             "is_calibrated": bool(cells) and len(cells) > 0,
             "calibrated_at": cal.get("calibrated_at"),
             "cell_count": len(cells),
+            "cell_calibrated_at": {str(k): str(v) for k, v in cell_times.items()},
             "cells": {str(k): float(v) for k, v in cells.items()},
         }
     except Exception as e:
         print(f"get_calibration_summary: error producing summary: {e}")
-        return {"is_calibrated": False, "calibrated_at": None, "cell_count": 0, "cells": {}}
+        return {
+            "is_calibrated": False,
+            "calibrated_at": None,
+            "cell_count": 0,
+            "cell_calibrated_at": {},
+            "cells": {},
+        }
 
 
 def update_calibration_for_cells(cells: Dict[int, float], calibrated_at: str | None = None) -> None:
@@ -188,6 +223,7 @@ def update_calibration_for_cells(cells: Dict[int, float], calibrated_at: str | N
     # Load existing calibration
     existing_cal = load_calibration()
     existing_cells = existing_cal.get("cells", {}) if isinstance(existing_cal, dict) else {}
+    existing_cell_times = existing_cal.get("cell_calibrated_at", {}) if isinstance(existing_cal, dict) else {}
     
     # Merge: existing cells + new cells (new cells override)
     merged_cells: Dict[str, float] = {}
@@ -208,9 +244,24 @@ def update_calibration_for_cells(cells: Dict[int, float], calibrated_at: str | N
             print(f"update_calibration_for_cells: skipping invalid cell entry {k}: {v}")
             continue
     
+    # Merge existing per-cell timestamps
+    merged_cell_times: Dict[str, str] = {}
+    for k, v in existing_cell_times.items():
+        try:
+            key_str = str(int(k))
+        except Exception:
+            key_str = str(k)
+        if isinstance(v, str) and v.strip():
+            merged_cell_times[key_str] = v.strip()
+
     # Now save the merged result
     if calibrated_at is None:
-        calibrated_at = datetime.utcnow().isoformat()
+        calibrated_at = _local_iso_now()
+    for cell_key in cells.keys():
+        try:
+            merged_cell_times[str(int(cell_key))] = calibrated_at
+        except Exception:
+            continue
     
     path = _get_path()
     dirpath = path.parent
@@ -220,7 +271,12 @@ def update_calibration_for_cells(cells: Dict[int, float], calibrated_at: str | N
         print(f"update_calibration_for_cells: failed to create directory '{dirpath}': {e}")
         return
     
-    payload = {"version": 1, "calibrated_at": calibrated_at, "cells": merged_cells}
+    payload = {
+        "version": 1,
+        "calibrated_at": calibrated_at,
+        "cell_calibrated_at": merged_cell_times,
+        "cells": merged_cells,
+    }
     
     tmp_path = path.with_suffix(".tmp")
     try:

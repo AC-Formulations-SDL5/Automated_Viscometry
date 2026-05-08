@@ -2009,6 +2009,18 @@ body.loading .skeleton-lines {
     line-height: 1.7;
 }
 
+.cal-existing-select {
+    width: 100%;
+    margin: 2px 0 8px 0;
+    font-size: 0.74rem;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(139, 148, 158, 0.35);
+    border-radius: 8px;
+    padding: 6px 8px;
+}
+
 /* Actions row */
 .cal-actions {
     display: flex;
