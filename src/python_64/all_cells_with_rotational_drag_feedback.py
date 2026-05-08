@@ -492,7 +492,8 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
         recent_torques = []
         start_time = time.time()
         measurement_start_time = time.time()
-        next_sample_time = start_time + SAMPLE_INTERVAL
+        # Try an immediate sample first (more robust to timing/jitter), then schedule periodic samples
+        next_sample_time = start_time
         
         while time.time() - start_time < MEASUREMENT_DURATION:
             raise_if_stop_requested()
@@ -501,6 +502,9 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
             if current_time >= next_sample_time:
                 try:
                     data = client.read_single(timeout=TORQUE_READ_TIMEOUT)
+                    # After the first immediate attempt, schedule the next sample SAMPLE_INTERVAL seconds later
+                    if next_sample_time == start_time:
+                        next_sample_time = current_time + SAMPLE_INTERVAL
                     if data and data.get("torque_valid") and data.get("torque_percent") is not None:
                         measurement = {
                             "timestamp": current_time,
