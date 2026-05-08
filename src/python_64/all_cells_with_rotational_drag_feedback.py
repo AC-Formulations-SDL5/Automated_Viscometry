@@ -1538,6 +1538,8 @@ def main():
                             calibration_cells[global_cell] = rough_z
                         else:
                             print(f"  Calibration: Cell {global_cell} — no reliable hitpoint found, skipping")
+                        # Track calibration/recalibration progress for live cross-device UI sync.
+                        web_interface.add_completed_cell(global_cell)
                         if CALIBRATION_MODE:
                             web_interface.update_status(f"Calibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                         else:

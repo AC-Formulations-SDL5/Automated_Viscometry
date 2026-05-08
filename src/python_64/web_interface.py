@@ -77,6 +77,8 @@ class ViscometryWebInterface:
             'baseline_z_threshold': 10.0,
             'torque_break_threshold': 100.0,
             'calibration_mode': False,
+            'recalibrate_individual_cells': False,
+            'recalibration_cells': {},
         }
         # ========== Calibration state ==========
         self.calibration_mode = False         # True when a calibration run is active
@@ -338,6 +340,10 @@ class ViscometryWebInterface:
     def get_status_dict(self) -> Dict:
         """Get current status as dictionary"""
         try:
+            runtime = self.get_runtime_settings()
+            recalibration_cells = runtime.get('recalibration_cells') if isinstance(runtime, dict) else {}
+            recalibration_target_count = len(recalibration_cells) if isinstance(recalibration_cells, dict) else 0
+            recalibration_mode_active = bool(self.calibration_mode and runtime.get('recalibrate_individual_cells', False))
             return {
                 'position': self.current_position,
                 'current_cell': self.current_cell,
@@ -351,10 +357,12 @@ class ViscometryWebInterface:
                 'completed_cells': self.completed_cells,
                 'status_message': self.status_message,
                 'measurement_data': self.measurement_data,
-                'control_settings': self.get_runtime_settings()
+                'control_settings': runtime
                 ,
                 'calibration_summary': self._calibration_summary,
                 'calibration_mode': self.calibration_mode,
+                'recalibration_mode_active': recalibration_mode_active,
+                'recalibration_target_count': recalibration_target_count,
             }
         except Exception as e:
             print(f"Error in get_status_dict: {e}")
@@ -375,7 +383,9 @@ class ViscometryWebInterface:
                 'control_settings': {}
                 ,
                 'calibration_summary': {'is_calibrated': False, 'calibrated_at': None, 'cell_count': 0, 'cell_calibrated_at': {}, 'cells': {}},
-                'calibration_mode': False
+                'calibration_mode': False,
+                'recalibration_mode_active': False,
+                'recalibration_target_count': 0,
             }
 
     def get_runtime_settings(self) -> Dict:
@@ -492,6 +502,27 @@ class ViscometryWebInterface:
                 normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
             if 'calibration_mode' in settings:
                 normalized['calibration_mode'] = bool(settings['calibration_mode'])
+            if 'recalibrate_individual_cells' in settings:
+                normalized['recalibrate_individual_cells'] = bool(settings['recalibrate_individual_cells'])
+            if 'recalibration_cells' in settings:
+                raw_cells = settings['recalibration_cells']
+                if isinstance(raw_cells, dict):
+                    parsed_cells = {}
+                    for cell_key, starting_z in raw_cells.items():
+                        try:
+                            normalized_key = str(int(cell_key))
+                        except Exception:
+                            continue
+                        if starting_z in (None, ''):
+                            parsed_cells[normalized_key] = None
+                        else:
+                            try:
+                                parsed_cells[normalized_key] = float(starting_z)
+                            except Exception:
+                                parsed_cells[normalized_key] = None
+                    normalized['recalibration_cells'] = parsed_cells
+                else:
+                    normalized['recalibration_cells'] = {}
 
             self.runtime_settings = normalized
             # Mirror calibration_mode into instance state
@@ -536,9 +567,15 @@ class ViscometryWebInterface:
 
     def broadcast_calibration_mode(self):
         """Broadcast current calibration mode to all connected clients."""
+        runtime = self.get_runtime_settings()
+        recalibration_cells = runtime.get('recalibration_cells') if isinstance(runtime, dict) else {}
+        recalibration_target_count = len(recalibration_cells) if isinstance(recalibration_cells, dict) else 0
+        recalibration_mode_active = bool(self.calibration_mode and runtime.get('recalibrate_individual_cells', False))
         self.socketio.emit('calibration_mode_update', {
             'calibration_mode': self.calibration_mode,
-            'completed_cells': self.completed_cells
+            'completed_cells': self.completed_cells,
+            'recalibration_mode_active': recalibration_mode_active,
+            'recalibration_target_count': recalibration_target_count,
         })
 
     def request_stop(self):
@@ -599,7 +636,15 @@ class ViscometryWebInterface:
             return
         if normalized not in self.completed_cells:
             self.completed_cells.append(normalized)
-        self.socketio.emit('completed_cells_update', {'completed_cells': self.completed_cells})
+        runtime = self.get_runtime_settings()
+        recalibration_cells = runtime.get('recalibration_cells') if isinstance(runtime, dict) else {}
+        recalibration_target_count = len(recalibration_cells) if isinstance(recalibration_cells, dict) else 0
+        recalibration_mode_active = bool(self.calibration_mode and runtime.get('recalibrate_individual_cells', False))
+        self.socketio.emit('completed_cells_update', {
+            'completed_cells': self.completed_cells,
+            'recalibration_mode_active': recalibration_mode_active,
+            'recalibration_target_count': recalibration_target_count,
+        })
         
     def set_current_rpm(self, rpm: float):
         """Set current RPM"""

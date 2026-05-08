@@ -64,6 +64,8 @@ class ViscometryDashboard {
         ];
 
     this.calibrationModeActive = false;  // Server's calibration mode state (persists across page reloads)
+    this.recalibrationModeActive = false;
+    this.recalibrationTargetCount = 0;
 
         this.initElements();
         this.bindUI();
@@ -1076,6 +1078,8 @@ class ViscometryDashboard {
             );
             this.measuredCells = new Set(this.completedCells);
             this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
+            this.recalibrationModeActive = Boolean(data?.recalibration_mode_active);
+            this.recalibrationTargetCount = Number(data?.recalibration_target_count) || 0;
             this.updateCompletionBar();
             this.updateCellVisuals();
         });
@@ -1095,6 +1099,8 @@ class ViscometryDashboard {
                                     this.measuredCells = new Set(this.completedCells);
                                     this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
                                 }
+                                this.recalibrationModeActive = Boolean(data.recalibration_mode_active);
+                                this.recalibrationTargetCount = Number(data.recalibration_target_count) || 0;
                                 this.updateCompletionBar();
                                 this.updateCellVisuals();
                             }
@@ -1257,6 +1263,12 @@ class ViscometryDashboard {
             this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
             this.updateCompletionBar();
             this.updateCellVisuals();
+        }
+        if (status.recalibration_mode_active !== undefined) {
+            this.recalibrationModeActive = Boolean(status.recalibration_mode_active);
+        }
+        if (status.recalibration_target_count !== undefined) {
+            this.recalibrationTargetCount = Number(status.recalibration_target_count) || 0;
         }
 
         if (status.current_rpm !== undefined) {
@@ -2668,8 +2680,11 @@ class ViscometryDashboard {
         // Use server's calibration mode state which persists across page reloads
         const isCalibrating = this.calibrationModeActive;
         
-        // During calibration, always show 18 as total; otherwise use plannedCells count
-        const total = isCalibrating ? 18 : (this.plannedCells.length || 18);
+        const isRecalibrating = isCalibrating && this.recalibrationModeActive;
+        // During full calibration, show 18 total. During recalibration, use selected total.
+        const total = isRecalibrating
+            ? (this.recalibrationTargetCount || this.plannedCells.length || 18)
+            : (isCalibrating ? 18 : (this.plannedCells.length || 18));
         const done = this.measuredCells.size;
         const ratio = total > 0 ? done / total : 0;
 
@@ -2680,7 +2695,9 @@ class ViscometryDashboard {
         const isAllDone = done >= total && total > 0;
         // Determine display text based on server's calibration mode
         let chipText;
-        if (isCalibrating) {
+        if (isRecalibrating) {
+            chipText = `${done}/${total} cells recalibrating`;
+        } else if (isCalibrating) {
             chipText = `Calibrating ${done} / ${total} cells`;
         } else if (isAllDone) {
             chipText = `${done} / ${total} cells — EXPERIMENT COMPLETE!`;
