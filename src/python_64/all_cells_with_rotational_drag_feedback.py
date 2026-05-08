@@ -15,6 +15,10 @@ from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 from feedback_helper_function import RotationalDragFeedbackController
 from web_interface import web_interface
+from calibration_store import (
+    is_calibrated, load_calibration, save_calibration,
+    get_safe_z_for_cell, get_calibration_summary, clear_calibration
+)
 
 # Ensure progress prints appear in real time even when launched in buffered contexts.
 if hasattr(sys.stdout, "reconfigure"):
@@ -96,6 +100,10 @@ SMART_EARLY_EXIT_ENABLED = False
 SMART_CV_THRESHOLD = 0.005
 SMART_WINDOW_SIZE = 3
 
+# ========== CALIBRATION MODE CONFIGURATION ==========
+CALIBRATION_MODE = False          # Set to True when a calibration run is requested
+CALIBRATION_OFFSET = 0.5         # mm above rough hitpoint to use as safe_z
+
 # ========== TESTING MODE CONFIGURATION ==========
 # Set the testing mode and parameters here (no runtime input required)
 
@@ -170,6 +178,8 @@ def apply_runtime_settings_from_web():
     WEIGHT_R2_SLOPE = float(settings.get('weight_r2_slope', WEIGHT_R2_SLOPE))
     BASELINE_N_CALIBRATION = int(settings.get('baseline_n_calibration', BASELINE_N_CALIBRATION))
     BASELINE_Z_THRESHOLD = float(settings.get('baseline_z_threshold', BASELINE_Z_THRESHOLD))
+    global CALIBRATION_MODE
+    CALIBRATION_MODE = bool(settings.get('calibration_mode', False))
 
 
 def get_rpms_for_cell(global_cell: int) -> List[float]:
@@ -245,6 +255,9 @@ def _reliable_pump_command(pump: PumpESP32, command: bytes, description: str) ->
 
 def get_selected_cells():
     """Get the list of cells to test based on configuration parameters"""
+    if CALIBRATION_MODE:
+        # Calibration always runs all 18 cells
+        return "calibration", list(range(1, 19))
     if TESTING_MODE == "full":
         return "full", list(range(1, 19))
     
@@ -634,6 +647,9 @@ def test_cell_dynamic_z_series(
     )
     
     cell_z_rpm_data = {}
+    # Use calibrated safe_z if available, otherwise use the row default
+    if not CALIBRATION_MODE:
+        safe_z = get_safe_z_for_cell(global_cell, safe_z, offset=CALIBRATION_OFFSET)
     current_z = safe_z
     print(f"Starting from Z-safe: {current_z:.3f}")
 
@@ -955,6 +971,51 @@ def test_cell_dynamic_z_series(
     
     print(f"Cell {global_cell} dynamic analysis completed: {len(cell_z_rpm_data)} Z-positions tested")
     return cell_z_rpm_data, _fill_thread
+
+
+def extract_rough_hitpoint(cell_z_rpm_data: dict) -> Optional[float]:
+    """
+    Extract the rough hitpoint Z from a completed cell's measurement data.
+
+    The rough hitpoint is defined as the LAST z-level (in descent order, i.e.
+    most negative first) where Hit_Detected == True, provided that it is
+    followed by at least 3 consecutive z-levels where Hit_Detected == False.
+
+    Returns the Z-height (float) or None if no reliable hitpoint was found.
+    """
+    # Sort from highest (start of descent) to lowest (end of descent)
+    # safe_z is least negative, max_z_travel is most negative
+    # Sorted descending by value: -65.5, -65.52, -65.54, ... -66.5
+    z_levels = sorted(
+        [k for k in cell_z_rpm_data.keys() if k != '_metrics'],
+        reverse=True
+    )
+
+    # Build a list of (z, any_hit_detected) tuples in descent order
+    hit_sequence = []
+    for z in z_levels:
+        rpm_data = cell_z_rpm_data[z]
+        metrics = rpm_data.get('_metrics', {})
+        any_hit = any(
+            bool(metrics.get(rpm, {}).get('Hit_Detected', False))
+            for rpm in metrics
+        )
+        hit_sequence.append((z, any_hit))
+
+    # Find last z where hit==True AND at least 3 subsequent z-levels are all False
+    rough_hitpoint = None
+    n = len(hit_sequence)
+    for i in range(n - 3):
+        z_val, is_hit = hit_sequence[i]
+        if is_hit:
+            # Check next 3 are all False
+            next_three_false = all(
+                not hit_sequence[j][1] for j in range(i + 1, min(i + 4, n))
+            )
+            if next_three_false:
+                rough_hitpoint = z_val  # Keep updating — we want the LAST such point
+
+    return rough_hitpoint
 
 def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
                      timestamp: str, mode: str, completed_cells: List[int], experiment_name: str) -> str:
@@ -1369,6 +1430,7 @@ def main():
             print(f"Testing {len(selected_cells)} cells with {len(TEST_RPMS)} RPMs per Z-position")
         
             # Go through each selected cell
+            calibration_cells: dict[int, float] = {}  # Populated during calibration runs
             for i, global_cell in enumerate(selected_cells):
                 raise_if_stop_requested()
                 _fill_thread: Optional[threading.Thread] = None
@@ -1406,15 +1468,19 @@ def main():
                     # Resolve per-cell RPMs before the cell test
                     cell_rpms = get_rpms_for_cell(global_cell)
                     print(f"  RPMs for Cell {global_cell}: {cell_rpms}")
-                    web_interface.update_status(f"Testing Cell {global_cell} at RPMs {cell_rpms}")
+                    if CALIBRATION_MODE:
+                        web_interface.update_status(f"Calibrating cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
+                    else:
+                        web_interface.update_status(f"Testing Cell {global_cell} at RPMs {cell_rpms}")
+
                     result = test_cell_dynamic_z_series(
                         cnc,
                         client,
                         global_cell,
-                        row_config['safe_z'],
+                        row_config['safe_z'],        # Always pass the ROW default; calibration handled inside
                         row_config['max_z_travel'],
                         cell_rpms,
-                        pump=pump,
+                        pump=None if CALIBRATION_MODE else pump,   # No pump in calibration mode
                     )
                     try:
                         cell_data, _fill_thread = result
@@ -1426,16 +1492,27 @@ def main():
                     all_data[global_cell] = cell_data
                     completed_cells.append(global_cell)
                     print(f"Cell {global_cell} testing completed")
-                    
-                    # Perform washing sequence after each cell completion
-                    if pump:
-                        perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)
-                        web_interface.add_completed_cell(global_cell)
+
+                    if CALIBRATION_MODE:
+                        # Extract and save rough hitpoint for this cell
+                        rough_z = extract_rough_hitpoint(cell_data)
+                        if rough_z is not None:
+                            print(f"  Calibration: Cell {global_cell} rough hitpoint = {rough_z:.3f}")
+                            calibration_cells[global_cell] = rough_z
+                        else:
+                            print(f"  Calibration: Cell {global_cell} — no reliable hitpoint found, skipping")
+                        web_interface.update_status(f"Calibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
+                        # NO washing in calibration mode — move directly to next cell
                     else:
-                        print(f"Warning: Pump not available, skipping washing for Cell {global_cell}")
-                        
-                    print(f"Cell {global_cell} fully completed (including wash)")
-                    
+                        # Normal run: perform washing as before
+                        if pump:
+                            perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)
+                            web_interface.add_completed_cell(global_cell)
+                        else:
+                            print(f"Warning: Pump not available, skipping washing for Cell {global_cell}")
+
+                    print(f"Cell {global_cell} fully completed")
+
                 except Exception as e:
                     print(f"Error during testing of Cell {global_cell}: {e}")
                     print(f"Saving partial results and terminating...")
@@ -1452,6 +1529,19 @@ def main():
             
             web_interface.update_status("Saving final results...")
             
+            # If this was a calibration run, save per-cell rough hitpoints
+            if CALIBRATION_MODE and calibration_cells:
+                try:
+                    save_calibration(calibration_cells)
+                    print(f"Calibration data saved for {len(calibration_cells)} cells.")
+                    web_interface.update_status("Calibration complete — Z-height data saved")
+                    try:
+                        web_interface.emit_calibration_complete(get_calibration_summary())
+                    except Exception:
+                        pass
+                except Exception as e:
+                    print(f"Error saving calibration data: {e}")
+
             csv_filename = save_dynamic_analysis_data(all_data, timestamp, mode, run_experiment_name)
             print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
             print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

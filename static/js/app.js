@@ -52,6 +52,10 @@ class ViscometryDashboard {
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
         this.latestControlSettings = {};
+        this.calibrationSummary = { is_calibrated: false, cell_count: 0, cells: {}, calibrated_at: null };
+        this.calibrationPanelOpen = false;
+        this.calChecksComplete = false;
+        this.isCalibrationRun = false;
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -184,7 +188,24 @@ class ViscometryDashboard {
             summaryAlignHitpoint: document.getElementById("summary-align-hitpoint"),
             summaryPlot: document.getElementById("summary-plot"),
             tabButtons: document.querySelectorAll(".tab-button"),
-            tabPanels: document.querySelectorAll(".tab-panel")
+            tabPanels: document.querySelectorAll(".tab-panel"),
+            calPanelSection: document.getElementById("calibration-panel-section"),
+            calStatusPill: document.getElementById("cal-status-pill"),
+            calStatusText: document.getElementById("cal-status-text"),
+            calPanelBody: document.getElementById("cal-panel-body"),
+            calToggleBtn: document.getElementById("cal-toggle-btn"),
+            calCheckEmpty: document.getElementById("cal-check-empty"),
+            calCheckFeedback: document.getElementById("cal-check-feedback"),
+            calCheckSmartExit: document.getElementById("cal-check-smart-exit"),
+            calApplyZStep: document.getElementById("cal-apply-z-step"),
+            calApplyDuration: document.getElementById("cal-apply-duration"),
+            calApplyInterval: document.getElementById("cal-apply-interval"),
+            calApplyAll: document.getElementById("cal-apply-all-recommended"),
+            calExistingInfo: document.getElementById("cal-existing-info"),
+            calExistingDetail: document.getElementById("cal-existing-detail"),
+            calClearBtn: document.getElementById("cal-clear-btn"),
+            calStartBtn: document.getElementById("cal-start-btn"),
+            calActionHint: document.getElementById("cal-action-hint")
         };
     }
 
@@ -272,6 +293,64 @@ class ViscometryDashboard {
                 setTimeout(() => btn.classList.remove("btn-pressed"), 200);
             });
         });
+
+        // Calibration panel toggle
+        if (this.el.calToggleBtn) {
+            this.el.calToggleBtn.addEventListener("click", () => this.toggleCalibrationPanel());
+        }
+
+        // Checklist validation
+        [this.el.calCheckEmpty, this.el.calCheckFeedback, this.el.calCheckSmartExit].forEach((cb) => {
+            if (cb) cb.addEventListener("change", () => this.validateCalibrationChecklist());
+        });
+
+        // Apply recommended settings buttons
+        if (this.el.calApplyZStep) {
+            this.el.calApplyZStep.addEventListener("click", () => {
+                if (this.el.zStepSize) this.el.zStepSize.value = "-0.02";
+                this.setUiState("idle");
+            });
+        }
+        if (this.el.calApplyDuration) {
+            this.el.calApplyDuration.addEventListener("click", () => {
+                if (this.el.measurementDuration) this.el.measurementDuration.value = "5";
+                this.setUiState("idle");
+            });
+        }
+        if (this.el.calApplyInterval) {
+            this.el.calApplyInterval.addEventListener("click", () => {
+                if (this.el.sampleInterval) this.el.sampleInterval.value = "5";
+                this.setUiState("idle");
+            });
+        }
+        if (this.el.calApplyAll) {
+            this.el.calApplyAll.addEventListener("click", () => {
+                if (this.el.zStepSize) this.el.zStepSize.value = "-0.02";
+                if (this.el.measurementDuration) this.el.measurementDuration.value = "5";
+                if (this.el.sampleInterval) this.el.sampleInterval.value = "5";
+                this.setUiState("idle");
+            });
+        }
+
+        // Clear calibration data
+        if (this.el.calClearBtn) {
+            this.el.calClearBtn.addEventListener("click", () => {
+                if (!confirm("Clear all per-cell Z-height calibration data?")) return;
+                fetch("/api/calibration/clear", { method: "POST" })
+                    .then((r) => r.json())
+                    .then(() => {
+                        this.calibrationSummary = { is_calibrated: false, cell_count: 0, cells: {}, calibrated_at: null };
+                        this.applyCalibrationStatus(this.calibrationSummary);
+                        this.pushStatusMessage("Calibration data cleared");
+                    })
+                    .catch(() => this.pushStatusMessage("Failed to clear calibration data"));
+            });
+        }
+
+        // Start calibration run
+        if (this.el.calStartBtn) {
+            this.el.calStartBtn.addEventListener("click", () => this.startCalibrationRun());
+        }
     }
 
     switchTab(tabId) {
@@ -489,14 +568,16 @@ class ViscometryDashboard {
     fetchInitialData() {
         Promise.all([
             fetch("/api/status").then((r) => r.json()),
-            fetch("/api/measurement_data").then((r) => r.json())
+            fetch("/api/measurement_data").then((r) => r.json()),
+            fetch("/api/calibration/status").then((r) => r.json())
         ])
-            .then(([status, measurementData]) => {
+            .then(([status, measurementData, calSummary]) => {
                 this.applyStatusSnapshot(status);
                 if (Array.isArray(measurementData)) {
                     measurementData.forEach((m) => this.ingestMeasurement(m, true));
                     this.refreshLivePlots();
                 }
+                this.applyCalibrationStatus(calSummary);
                 this.el.body.classList.remove("loading");
                 this.pushStatusMessage(status.status_message || "Connected and ready");
             })
@@ -980,6 +1061,20 @@ class ViscometryDashboard {
 
         this.socket.on("clear_dashboard", () => {
             this.clearDashboard();
+        });
+
+        this.socket.on("calibration_status_update", (summary) => {
+            this.applyCalibrationStatus(summary);
+        });
+
+        this.socket.on("calibration_complete", (summary) => {
+            this.applyCalibrationStatus(summary);
+            this.pushStatusMessage("✓ Calibration complete — Z-height data saved for all cells");
+            // Auto-open panel so user sees the green confirmation
+            if (!this.calibrationPanelOpen) {
+                this.toggleCalibrationPanel();
+            }
+            this.isCalibrationRun = false;
         });
 
     }
@@ -1701,6 +1796,109 @@ class ViscometryDashboard {
         }
     }
 
+    toggleCalibrationPanel() {
+        this.calibrationPanelOpen = !this.calibrationPanelOpen;
+        if (this.el.calPanelBody) {
+            this.el.calPanelBody.classList.toggle("hidden", !this.calibrationPanelOpen);
+        }
+        if (this.el.calToggleBtn) {
+            this.el.calToggleBtn.textContent = this.calibrationPanelOpen
+                ? "▲ Hide Calibration Options"
+                : "▼ Show Calibration Options";
+        }
+    }
+
+    validateCalibrationChecklist() {
+        const empty = this.el.calCheckEmpty?.checked || false;
+        const feedback = this.el.calCheckFeedback?.checked || false;
+        const noSmartExit = this.el.calCheckSmartExit?.checked || false;
+        this.calChecksComplete = empty && feedback && noSmartExit;
+
+        if (this.el.calStartBtn) {
+            this.el.calStartBtn.disabled = !this.calChecksComplete || this.isRunning;
+        }
+        if (this.el.calActionHint) {
+            this.el.calActionHint.textContent = this.calChecksComplete
+                ? "Ready to calibrate all 18 cells"
+                : "Complete the checklist above to enable calibration";
+        }
+    }
+
+    applyCalibrationStatus(summary) {
+        if (!summary) return;
+        this.calibrationSummary = summary;
+        const isOk = Boolean(summary.is_calibrated);
+        const section = this.el.calPanelSection;
+        const pill = this.el.calStatusPill;
+        const text = this.el.calStatusText;
+
+        // Section glow
+        if (section) {
+            section.classList.toggle("cal-ok", isOk);
+            section.classList.toggle("cal-none", !isOk);
+        }
+
+        // Pill style
+        if (pill) {
+            pill.classList.toggle("cal-status-ok", isOk);
+            pill.classList.toggle("cal-status-none", !isOk);
+        }
+        if (text) {
+            text.textContent = isOk
+                ? `Per-Cell Z-Height Calibrated — ${summary.cell_count} cells (${new Date(summary.calibrated_at).toLocaleString()})`
+                : "No Z-Height Per-Cell Calibration Performed";
+        }
+
+        // Existing calibration info block
+        const infoBlock = this.el.calExistingInfo;
+        const detail = this.el.calExistingDetail;
+        if (infoBlock) {
+            infoBlock.classList.toggle("hidden", !isOk);
+        }
+        if (detail && isOk && summary.cells) {
+            const lines = Object.entries(summary.cells)
+                .sort((a, b) => Number(a[0]) - Number(b[0]))
+                .map(([cellId, z]) => `Cell ${cellId}: rough hitpoint ${Number(z).toFixed(3)} mm → safe_z ${(Number(z) + 0.5).toFixed(3)} mm`);
+            detail.innerHTML = lines.join("<br>");
+        }
+
+        // Re-validate checklist (running state may have changed)
+        this.validateCalibrationChecklist();
+    }
+
+    startCalibrationRun() {
+        if (!this.calChecksComplete) {
+            this.pushStatusMessage("Complete the calibration checklist before starting");
+            return;
+        }
+        if (this.isRunning) {
+            this.pushStatusMessage("A run is already in progress");
+            return;
+        }
+
+        // Build settings — apply recommended values if not already set
+        const settings = this.readControlSettings();
+        settings.calibration_mode = true;
+        settings.testing_mode = "full";  // Always all 18 cells
+
+        this.isCalibrationRun = true;
+        this.setUiState("running");
+        fetch("/api/run/start_calibration", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(settings)
+        })
+            .then((r) => r.json())
+            .then((result) => {
+                this.pushStatusMessage(result.status_message || "Calibration run started");
+            })
+            .catch(() => {
+                this.isCalibrationRun = false;
+                this.setUiState("idle");
+                this.pushStatusMessage("Failed to start calibration run");
+            });
+    }
+
     updateCalibrationBadge(node, isCalibrated) {
         if (!node) return;
         node.textContent = isCalibrated ? "AUTO Z-SCORE (active)" : "AUTO Z-SCORE (calibrating...)";
@@ -1813,6 +2011,10 @@ class ViscometryDashboard {
             if (this.uiState === "running") {
                 this.setUiState("idle");
             }
+        }
+
+        if (this.el.calStartBtn) {
+            this.el.calStartBtn.disabled = isRunning || !this.calChecksComplete;
         }
     }
 
@@ -2251,9 +2453,11 @@ class ViscometryDashboard {
             this.el.completionBar.style.width = `${(ratio * 100).toFixed(1)}%`;
         }
         const isAllDone = done >= total && total > 0;
-        const chipText = isAllDone
-            ? `${done} / ${total} cells — EXPERIMENT COMPLETE!`
-            : `${done} / ${total} cells completed`;
+        const chipText = this.isCalibrationRun
+            ? `Calibrating ${done} / ${total} cells`
+            : (isAllDone
+                ? `${done} / ${total} cells — EXPERIMENT COMPLETE!`
+                : `${done} / ${total} cells completed`);
         if (this.el.completionText) {
             this.el.completionText.textContent = chipText;
         }

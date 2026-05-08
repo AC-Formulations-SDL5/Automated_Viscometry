@@ -11,6 +11,7 @@ import os
 import math
 from typing import Dict, List, Tuple, Optional
 import json
+from calibration_store import is_calibrated, get_calibration_summary, clear_calibration
 
 class ViscometryWebInterface:
     def __init__(self, port=5001):
@@ -75,7 +76,12 @@ class ViscometryWebInterface:
             'baseline_n_calibration': 10,
             'baseline_z_threshold': 10.0,
             'torque_break_threshold': 100.0,
+            'calibration_mode': False,
         }
+        # ========== Calibration state ==========
+        self.calibration_mode = False         # True when a calibration run is active
+        self._calibration_summary = {}        # Cached summary from last calibration check
+        self._refresh_calibration_summary()   # Populate on startup
         
         # Platform configuration from your code
         self.X_LOW_BOUND = 0
@@ -207,12 +213,50 @@ class ViscometryWebInterface:
             except Exception as e:
                 print(f"Error in experiment_history_delete: {e}")
                 return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/calibration/status', methods=['GET'])
+        def calibration_status():
+            try:
+                self._refresh_calibration_summary()
+                return jsonify(self._calibration_summary)
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/calibration/clear', methods=['POST'])
+        def calibration_clear():
+            try:
+                clear_calibration()
+                self._refresh_calibration_summary()
+                self.socketio.emit('calibration_status_update', self._calibration_summary)
+                return jsonify({'ok': True})
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/run/start_calibration', methods=['POST'])
+        def api_run_start_calibration():
+            try:
+                payload = request.get_json(silent=True) or {}
+                # Force calibration_mode flag into settings before starting
+                payload['calibration_mode'] = True
+                self.update_runtime_settings(payload)
+                self.calibration_mode = True
+                self.request_start()
+                self.update_status('Calibration run started')
+                return jsonify({'ok': True, 'status_message': self.status_message})
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
             
         @self.socketio.on('connect')
         def handle_connect():
             try:
                 emit('status_update', self.get_status_dict())
                 emit('control_settings_update', self.get_runtime_settings())
+                # Send current calibration status
+                try:
+                    self._refresh_calibration_summary()
+                    emit('calibration_status_update', self._calibration_summary)
+                except Exception:
+                    pass
             except Exception as e:
                 print(f"Error in handle_connect: {e}")
                 try:
@@ -292,6 +336,9 @@ class ViscometryWebInterface:
                 'status_message': self.status_message,
                 'measurement_data': self.measurement_data,
                 'control_settings': self.get_runtime_settings()
+                ,
+                'calibration_summary': self._calibration_summary,
+                'calibration_mode': self.calibration_mode,
             }
         except Exception as e:
             print(f"Error in get_status_dict: {e}")
@@ -310,6 +357,9 @@ class ViscometryWebInterface:
                 'status_message': f"Error building status: {str(e)[:100]}",
                 'measurement_data': [],
                 'control_settings': {}
+                ,
+                'calibration_summary': {'is_calibrated': False, 'calibrated_at': None, 'cell_count': 0, 'cells': {}},
+                'calibration_mode': False
             }
 
     def get_runtime_settings(self) -> Dict:
@@ -424,10 +474,38 @@ class ViscometryWebInterface:
                 normalized['feedback_control_enabled'] = bool(settings['feedback_control_enabled'])
             if 'smart_early_exit_enabled' in settings:
                 normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
+            if 'calibration_mode' in settings:
+                normalized['calibration_mode'] = bool(settings['calibration_mode'])
 
             self.runtime_settings = normalized
+            # Mirror calibration_mode into instance state
+            try:
+                self.calibration_mode = bool(normalized.get('calibration_mode', False))
+            except Exception:
+                self.calibration_mode = False
 
         return self.get_runtime_settings()
+
+    def _refresh_calibration_summary(self):
+        """Re-read calibration file and cache the summary."""
+        try:
+            self._calibration_summary = get_calibration_summary()
+        except Exception as e:
+            print(f"Warning: failed to read calibration summary: {e}")
+            self._calibration_summary = {
+                "is_calibrated": False,
+                "calibrated_at": None,
+                "cell_count": 0,
+                "cells": {}
+            }
+
+    def emit_calibration_complete(self, summary: dict):
+        """Broadcast calibration completion to all connected clients."""
+        try:
+            self._calibration_summary = summary
+            self.socketio.emit('calibration_complete', summary)
+        except Exception as e:
+            print(f"Warning: failed to emit calibration complete: {e}")
 
     def request_start(self):
         """Mark that the experiment should start."""
@@ -661,6 +739,14 @@ class ViscometryWebInterface:
                 self.socketio.emit('experiment_stop', {})
         if previous_state != is_running:
             self.socketio.emit('running_state_update', {'is_running': is_running})
+        # If a calibration run just stopped, clear calibration_mode and refresh status
+        if not is_running and self.calibration_mode:
+            self.calibration_mode = False
+            try:
+                self._refresh_calibration_summary()
+                self.socketio.emit('calibration_status_update', self._calibration_summary)
+            except Exception:
+                pass
         
     def start_server(self, debug=False):
         """Start the web server"""

@@ -320,6 +320,90 @@
                         </form>
                     </section>
 
+                            <!-- ===== CALIBRATION PANEL ===== -->
+                            <section id="calibration-panel-section" class="card calibration-card">
+                                <div class="card-title-row">
+                                    <h2>Per-Cell Z-Height Calibration</h2>
+                                    <!-- Status pill: toggled between .cal-status-ok and .cal-status-none by JS -->
+                                    <div id="cal-status-pill" class="cal-status-pill cal-status-none">
+                                        <span id="cal-status-dot" class="cal-status-dot"></span>
+                                        <span id="cal-status-text">No Z-Height Calibration Performed</span>
+                                    </div>
+                                </div>
+
+                                <!-- Collapsible calibration details — toggled by JS -->
+                                <div id="cal-panel-body" class="cal-panel-body hidden">
+
+                                    <div class="cal-checklist">
+                                        <p class="cal-checklist-title">⚠ Pre-Calibration Checklist</p>
+                                        <label class="cal-check-item">
+                                            <input type="checkbox" id="cal-check-empty" class="cal-checkbox">
+                                            <span>All cells are <strong>empty and clean</strong> — no sample loaded in any cell</span>
+                                        </label>
+                                        <label class="cal-check-item">
+                                            <input type="checkbox" id="cal-check-feedback" class="cal-checkbox">
+                                            <span>Feedback (hit-point detection) is <strong>enabled</strong> in the experiment settings above</span>
+                                        </label>
+                                        <label class="cal-check-item">
+                                            <input type="checkbox" id="cal-check-smart-exit" class="cal-checkbox">
+                                            <span>Smart Early Exit is <strong>disabled</strong> (unchecked above)</span>
+                                        </label>
+                                    </div>
+
+                                    <div class="cal-recommended-settings">
+                                        <p class="cal-section-label">Recommended Settings for Fast Calibration</p>
+                                        <div class="cal-settings-grid">
+                                            <div class="cal-setting-item">
+                                                <span class="cal-setting-label">Z Step Size</span>
+                                                <span class="cal-setting-value">−0.02 mm</span>
+                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-z-step">Apply</button>
+                                            </div>
+                                            <div class="cal-setting-item">
+                                                <span class="cal-setting-label">Measurement Duration</span>
+                                                <span class="cal-setting-value">5 s</span>
+                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-duration">Apply</button>
+                                            </div>
+                                            <div class="cal-setting-item">
+                                                <span class="cal-setting-label">Sample Interval</span>
+                                                <span class="cal-setting-value">5 s</span>
+                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-interval">Apply</button>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn subtle" id="cal-apply-all-recommended" style="margin-top:8px;">
+                                            Apply All Recommended Settings
+                                        </button>
+                                    </div>
+
+                                    <div class="cal-calibrated-info hidden" id="cal-existing-info">
+                                        <p class="cal-section-label">Current Calibration Data</p>
+                                        <div id="cal-existing-detail" class="cal-existing-detail"></div>
+                                        <button type="button" class="btn subtle" id="cal-clear-btn" style="margin-top:6px;">
+                                            Clear Calibration Data
+                                        </button>
+                                    </div>
+
+                                    <div class="cal-actions">
+                                        <button
+                                            type="button"
+                                            id="cal-start-btn"
+                                            class="btn cal-start-btn"
+                                            disabled
+                                            title="Check all items above before starting">
+                                            Start Calibration (All 18 Cells)
+                                        </button>
+                                        <span id="cal-action-hint" class="cal-action-hint">
+                                            Complete the checklist above to enable calibration
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <!-- Toggle button at the bottom of the title row -->
+                                <button type="button" id="cal-toggle-btn" class="btn subtle cal-toggle-btn">
+                                    ▼ Show Calibration Options
+                                </button>
+                            </section>
+                            <!-- ===== END CALIBRATION PANEL ===== -->
+
                     <section class="card tracking-card">
                         <div class="card-title-row">
                             <h2>Live Tracking</h2>

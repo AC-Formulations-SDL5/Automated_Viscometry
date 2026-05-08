@@ -1,0 +1,193 @@
+"""
+calibration_store.py
+
+Manage persistent per-cell Z-height calibration data for the automated viscometry platform.
+
+The calibration data is stored as JSON at:
+    ./calibration_data/per_cell_z_calibration.json
+relative to the directory containing this module (the project root / main script folder).
+
+All file I/O is wrapped in try/except and uses only the Python standard library.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any
+
+# Module-level constant: path to the calibration JSON file (resolved relative to this file)
+CALIBRATION_FILE_PATH: str = str(
+    Path(__file__).resolve().parent.joinpath("calibration_data", "per_cell_z_calibration.json")
+)
+
+_DEFAULT_CAL = {"version": 1, "calibrated_at": None, "cells": {}}
+
+
+def _get_path() -> Path:
+    return Path(CALIBRATION_FILE_PATH)
+
+
+def is_calibrated() -> bool:
+    """Return True if the calibration file exists and has at least one cell entry."""
+    path = _get_path()
+    try:
+        if not path.exists():
+            return False
+        cal = load_calibration()
+        cells = cal.get("cells") if isinstance(cal, dict) else None
+        return bool(cells) and isinstance(cells, dict) and len(cells) > 0
+    except Exception as e:
+        print(f"is_calibrated: error checking calibration file: {e}")
+        return False
+
+
+def load_calibration() -> Dict[str, Any]:
+    """Load and return the calibration dict from disk.
+
+    Returns a default structure if the file does not exist or is malformed.
+    """
+    path = _get_path()
+    if not path.exists():
+        return dict(_DEFAULT_CAL)
+
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Basic validation
+        if not isinstance(data, dict):
+            raise ValueError("Calibration file content is not a JSON object")
+
+        version = data.get("version", 1)
+        calibrated_at = data.get("calibrated_at")
+        cells = data.get("cells", {})
+        if not isinstance(cells, dict):
+            raise ValueError("Calibration 'cells' must be a mapping")
+
+        # Normalize keys to strings and values to floats where possible
+        norm_cells: Dict[str, float] = {}
+        for k, v in cells.items():
+            try:
+                key_str = str(int(k)) if isinstance(k, (int, float, str)) and str(k).isdigit() else str(k)
+            except Exception:
+                key_str = str(k)
+            try:
+                norm_cells[key_str] = float(v)
+            except Exception:
+                # Skip non-numeric values
+                continue
+
+        return {"version": int(version), "calibrated_at": calibrated_at, "cells": norm_cells}
+
+    except Exception as e:
+        print(f"load_calibration: failed to load calibration file '{path}': {e}")
+        return dict(_DEFAULT_CAL)
+
+
+def save_calibration(cells: Dict[int, float], calibrated_at: str | None = None) -> None:
+    """Save calibration data to disk atomically.
+
+    - `cells` maps integer cell IDs to float Z values.
+    - `calibrated_at` defaults to current UTC ISO timestamp if not supplied.
+    """
+    path = _get_path()
+    dirpath = path.parent
+    try:
+        dirpath.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"save_calibration: failed to create directory '{dirpath}': {e}")
+        return
+
+    if calibrated_at is None:
+        calibrated_at = datetime.utcnow().isoformat()
+
+    # Convert keys to strings for JSON
+    cells_out: Dict[str, float] = {}
+    for k, v in cells.items():
+        try:
+            key_str = str(int(k))
+            cells_out[key_str] = float(v)
+        except Exception:
+            print(f"save_calibration: skipping invalid cell entry {k}: {v}")
+            continue
+
+    payload = {"version": 1, "calibrated_at": calibrated_at, "cells": cells_out}
+
+    tmp_path = path.with_suffix(".tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        # Atomic replace
+        try:
+            shutil.move(str(tmp_path), str(path))
+        except Exception:
+            # Fallback to os.replace
+            os.replace(str(tmp_path), str(path))
+    except Exception as e:
+        print(f"save_calibration: failed to write calibration file '{path}': {e}")
+        # Clean up tmp file if present
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
+
+def get_safe_z_for_cell(cell_id: int, default_safe_z: float, offset: float = 0.5) -> float:
+    """Return a safety starting Z for a given cell.
+
+    If a rough hitpoint exists for the cell, returns rough_hitpoint_z + offset.
+    Otherwise returns `default_safe_z`.
+    """
+    try:
+        cal = load_calibration()
+        cells = cal.get("cells", {}) if isinstance(cal, dict) else {}
+        key = str(int(cell_id))
+        if key in cells:
+            try:
+                return float(cells[key]) + float(offset)
+            except Exception:
+                pass
+        return float(default_safe_z)
+    except Exception as e:
+        print(f"get_safe_z_for_cell: error retrieving calibration for cell {cell_id}: {e}")
+        return float(default_safe_z)
+
+
+def get_calibration_summary() -> Dict[str, Any]:
+    """Return a JSON-serialisable summary of the calibration state."""
+    try:
+        cal = load_calibration()
+        cells = cal.get("cells", {}) if isinstance(cal, dict) else {}
+        return {
+            "is_calibrated": bool(cells) and len(cells) > 0,
+            "calibrated_at": cal.get("calibrated_at"),
+            "cell_count": len(cells),
+            "cells": {str(k): float(v) for k, v in cells.items()},
+        }
+    except Exception as e:
+        print(f"get_calibration_summary: error producing summary: {e}")
+        return {"is_calibrated": False, "calibrated_at": None, "cell_count": 0, "cells": {}}
+
+
+def clear_calibration() -> None:
+    """Delete the calibration file if it exists."""
+    path = _get_path()
+    try:
+        if path.exists():
+            path.unlink()
+    except Exception as e:
+        print(f"clear_calibration: failed to delete calibration file '{path}': {e}")
+
+
+if __name__ == "__main__":
+    # Quick self-check when run directly
+    print("Calibration file path:", CALIBRATION_FILE_PATH)
+    print("Currently calibrated:", is_calibrated())
+    print("Summary:", get_calibration_summary())
