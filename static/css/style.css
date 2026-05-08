@@ -1893,26 +1893,16 @@ body.loading .skeleton-lines {
     display: inline-block;
 }
 
-/* Toggle button */
-.cal-toggle-btn {
+.cal-panel-details {
     margin-top: 10px;
-    width: 100%;
-    text-align: center;
-    font-size: 0.8rem;
 }
 
 /* Panel body */
 .cal-panel-body {
-    margin-top: 14px;
+    margin-top: 8px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding-top: 10px;
-    border-top: 1px solid rgba(139, 148, 158, 0.2);
-}
-
-.cal-panel-body.hidden {
-    display: none;
+    gap: 10px;
 }
 
 /* Checklist */
