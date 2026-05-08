@@ -184,7 +184,23 @@ def apply_runtime_settings_from_web():
     CALIBRATION_MODE = bool(settings.get('calibration_mode', False))
     RECALIBRATE_INDIVIDUAL_CELLS = bool(settings.get('recalibrate_individual_cells', False))
     # Parse recalibration cells: expect dict {cell_id: optional_starting_z}
-    RECALIBRATION_CELLS = settings.get('recalibration_cells', {})
+    # JSON object keys arrive as strings; normalize to int keys for runtime lookup.
+    raw_recalibration_cells = settings.get('recalibration_cells', {})
+    normalized_recalibration_cells: Dict[int, Optional[float]] = {}
+    if isinstance(raw_recalibration_cells, dict):
+        for cell_id, maybe_z in raw_recalibration_cells.items():
+            try:
+                normalized_cell_id = int(cell_id)
+            except (TypeError, ValueError):
+                continue
+            if maybe_z in (None, ''):
+                normalized_recalibration_cells[normalized_cell_id] = None
+            else:
+                try:
+                    normalized_recalibration_cells[normalized_cell_id] = float(maybe_z)
+                except (TypeError, ValueError):
+                    normalized_recalibration_cells[normalized_cell_id] = None
+    RECALIBRATION_CELLS = normalized_recalibration_cells
 
 
 def get_rpms_for_cell(global_cell: int) -> List[float]:
@@ -1494,6 +1510,8 @@ def main():
                     # Resolve per-cell RPMs before the cell test
                     cell_rpms = get_rpms_for_cell(global_cell)
                     print(f"  RPMs for Cell {global_cell}: {cell_rpms}")
+                    # Use resolved run mode (set once at run start) to avoid accidental drift in per-cell flags.
+                    is_calibration_like_run = mode in ("calibration", "recalibration")
                     
                     # Determine status message and custom starting Z for recalibration
                     custom_z = None
@@ -1516,7 +1534,7 @@ def main():
                         row_config['safe_z'],        # Always pass the ROW default; calibration handled inside
                         row_config['max_z_travel'],
                         cell_rpms,
-                        pump=None if (CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS) else pump,   # No pump in calibration/recalibration mode
+                        pump=None if is_calibration_like_run else pump,   # No pump in calibration/recalibration mode
                         custom_starting_z=custom_z,  # Pass custom starting Z if in recalibration mode
                     )
                     try:
@@ -1530,7 +1548,7 @@ def main():
                     completed_cells.append(global_cell)
                     print(f"Cell {global_cell} testing completed")
 
-                    if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                    if is_calibration_like_run:
                         # Extract and save rough hitpoint for this cell
                         rough_z = extract_rough_hitpoint(cell_data)
                         if rough_z is not None:
