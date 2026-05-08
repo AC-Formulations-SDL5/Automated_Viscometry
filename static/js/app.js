@@ -63,6 +63,8 @@ class ViscometryDashboard {
             "#73B0F9", "#FFD36A", "#69D5C7", "#86E0A8", "#EFA17C", "#BFC7D5"
         ];
 
+    this.calibrationModeActive = false;  // Server's calibration mode state (persists across page reloads)
+
         this.initElements();
         this.bindUI();
         this.handleLogoFallback();
@@ -205,6 +207,11 @@ class ViscometryDashboard {
             calExistingDetail: document.getElementById("cal-existing-detail"),
             calClearBtn: document.getElementById("cal-clear-btn"),
             calStartBtn: document.getElementById("cal-start-btn"),
+            calStartRecalibrationBtn: document.getElementById("cal-start-recalibration-btn"),
+            calRecalibrateIndividual: document.getElementById("cal-recalibrate-individual"),
+            calCellSelectorContainer: document.getElementById("cal-cell-selector-container"),
+            calCellChecks: document.querySelectorAll(".cal-cell-check"),
+            calCellZInputs: document.getElementById("cal-cell-z-inputs"),
             calActionHint: document.getElementById("cal-action-hint")
         };
     }
@@ -353,6 +360,28 @@ class ViscometryDashboard {
         // Start calibration run
         if (this.el.calStartBtn) {
             this.el.calStartBtn.addEventListener("click", () => this.startCalibrationRun());
+        }
+
+        // Recalibrate individual cells toggle
+        if (this.el.calRecalibrateIndividual) {
+            this.el.calRecalibrateIndividual.addEventListener("change", () => {
+                this.handleRecalibrateToggle();
+            });
+        }
+
+        // Cell checkboxes for recalibration
+        if (this.el.calCellChecks) {
+            this.el.calCellChecks.forEach((checkbox) => {
+                checkbox.addEventListener("change", () => {
+                    this.updateRecalibrationCellInputs();
+                    this.updateRecalibrationButtonState();
+                });
+            });
+        }
+
+        // Start recalibration run
+        if (this.el.calStartRecalibrationBtn) {
+            this.el.calStartRecalibrationBtn.addEventListener("click", () => this.startRecalibrationRun());
         }
     }
 
@@ -1049,6 +1078,23 @@ class ViscometryDashboard {
 
         this.socket.on("instrument_status_update", (status) => {
             if (!status) {
+
+                        this.socket.on("calibration_mode_update", (data) => {
+                            if (data && typeof data === "object") {
+                                this.calibrationModeActive = Boolean(data.calibration_mode);
+                                if (Array.isArray(data.completed_cells)) {
+                                    this.completedCells = new Set(
+                                        data.completed_cells
+                                            .map((c) => Number(c))
+                                            .filter((c) => Number.isInteger(c) && c > 0)
+                                    );
+                                    this.measuredCells = new Set(this.completedCells);
+                                    this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
+                                }
+                                this.updateCompletionBar();
+                                this.updateCellVisuals();
+                            }
+                        });
                 return;
             }
             this.setInstrumentStatus("cnc", Boolean(status.cnc));
@@ -1211,6 +1257,10 @@ class ViscometryDashboard {
 
         if (status.current_rpm !== undefined) {
             this.currentRPM = Number(status.current_rpm) || 0;
+
+                    if (status.calibration_mode !== undefined) {
+                        this.calibrationModeActive = Boolean(status.calibration_mode);
+                    }
             this.updateGauge(this.currentRPM);
         }
 
@@ -1904,6 +1954,121 @@ class ViscometryDashboard {
             });
     }
 
+    handleRecalibrateToggle() {
+        const isEnabled = this.el.calRecalibrateIndividual?.checked || false;
+        if (isEnabled) {
+            this.el.calCellSelectorContainer?.classList.remove("hidden");
+            this.el.calStartBtn?.classList.add("hidden");
+            this.el.calStartRecalibrationBtn?.classList.remove("hidden");
+        } else {
+            this.el.calCellSelectorContainer?.classList.add("hidden");
+            this.el.calStartBtn?.classList.remove("hidden");
+            this.el.calStartRecalibrationBtn?.classList.add("hidden");
+            // Uncheck all cells and clear inputs
+            this.el.calCellChecks.forEach((checkbox) => {
+                checkbox.checked = false;
+            });
+            this.el.calCellZInputs.innerHTML = "";
+            this.updateRecalibrationButtonState();
+        }
+    }
+
+    updateRecalibrationCellInputs() {
+        // Get selected cells
+        const selectedCells = [];
+        this.el.calCellChecks.forEach((checkbox) => {
+            if (checkbox.checked) {
+                selectedCells.push(parseInt(checkbox.value));
+            }
+        });
+        selectedCells.sort((a, b) => a - b);
+
+        // Generate input fields for selected cells
+        const container = this.el.calCellZInputs;
+        container.innerHTML = "";
+        selectedCells.forEach((cellId) => {
+            const row = document.createElement("div");
+            row.className = "cal-cell-z-input-row";
+            row.innerHTML = `
+                <label class="cal-cell-z-label">Cell ${cellId}</label>
+                <input 
+                    type="number" 
+                    step="0.001" 
+                    placeholder="Auto-detect" 
+                    data-cell="${cellId}"
+                    class="cal-cell-z-input"
+                    title="Optional: custom starting Z-height for this cell"
+                >
+            `;
+            container.appendChild(row);
+        });
+    }
+
+    updateRecalibrationButtonState() {
+        const selectedCells = [];
+        this.el.calCellChecks.forEach((checkbox) => {
+            if (checkbox.checked) {
+                selectedCells.push(true);
+            }
+        });
+        const hasSelected = selectedCells.length > 0;
+        if (this.el.calStartRecalibrationBtn) {
+            this.el.calStartRecalibrationBtn.disabled = !hasSelected || this.isRunning;
+        }
+    }
+
+    startRecalibrationRun() {
+        const selectedCells = [];
+        this.el.calCellChecks.forEach((checkbox) => {
+            if (checkbox.checked) {
+                selectedCells.push(parseInt(checkbox.value));
+            }
+        });
+
+        if (selectedCells.length === 0) {
+            this.pushStatusMessage("Select at least one cell to recalibrate");
+            return;
+        }
+
+        if (this.isRunning) {
+            this.pushStatusMessage("A run is already in progress");
+            return;
+        }
+
+        // Collect custom Z-heights for selected cells
+        const recalibrationCells = {};
+        selectedCells.forEach((cellId) => {
+            const input = document.querySelector(`.cal-cell-z-input[data-cell="${cellId}"]`);
+            const customZ = input?.value ? parseFloat(input.value) : null;
+            recalibrationCells[cellId] = customZ;  // null means auto-detect
+        });
+
+        // Build settings
+        const settings = this.readControlSettings();
+        settings.recalibrate_individual_cells = true;
+        settings.recalibration_cells = recalibrationCells;
+        settings.calibration_mode = false;  // Not full calibration mode
+        settings.testing_mode = "custom";
+        settings.selected_cells = selectedCells;
+
+        this.isCalibrationRun = true;
+        this.setUiState("running");
+        fetch("/api/run/start_recalibration", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(settings)
+        })
+            .then((r) => r.json())
+            .then((result) => {
+                this.pushStatusMessage(result.status_message || "Individual cell recalibration started");
+            })
+            .catch(() => {
+                this.isCalibrationRun = false;
+                this.setUiState("idle");
+                this.pushStatusMessage("Failed to start recalibration run");
+            });
+    }
+
     updateCalibrationBadge(node, isCalibrated) {
         if (!node) return;
         node.textContent = isCalibrated ? "AUTO Z-SCORE (active)" : "AUTO Z-SCORE (calibrating...)";
@@ -2020,6 +2185,11 @@ class ViscometryDashboard {
 
         if (this.el.calStartBtn) {
             this.el.calStartBtn.disabled = isRunning || !this.calChecksComplete;
+        }
+
+        // Update recalibration button state based on running status
+        if (this.el.calStartRecalibrationBtn) {
+            this.updateRecalibrationButtonState();
         }
     }
 
@@ -2450,19 +2620,30 @@ class ViscometryDashboard {
     }
 
     updateCompletionBar() {
-        const total = this.plannedCells.length || 18;
+
+        // Use server's calibration mode state which persists across page reloads
+        const isCalibrating = this.calibrationModeActive;
+        
+        // During calibration, always show 18 as total; otherwise use plannedCells count
+        const total = isCalibrating ? 18 : (this.plannedCells.length || 18);
         const done = this.measuredCells.size;
         const ratio = total > 0 ? done / total : 0;
 
         if (this.el.completionBar) {
             this.el.completionBar.style.width = `${(ratio * 100).toFixed(1)}%`;
         }
+        
         const isAllDone = done >= total && total > 0;
-        const chipText = this.isCalibrationRun
-            ? `Calibrating ${done} / ${total} cells`
-            : (isAllDone
-                ? `${done} / ${total} cells — EXPERIMENT COMPLETE!`
-                : `${done} / ${total} cells completed`);
+        // Determine display text based on server's calibration mode
+        let chipText;
+        if (isCalibrating) {
+            chipText = `Calibrating ${done} / ${total} cells`;
+        } else if (isAllDone) {
+            chipText = `${done} / ${total} cells — EXPERIMENT COMPLETE!`;
+        } else {
+            chipText = `${done} / ${total} cells completed`;
+        }
+        
         if (this.el.completionText) {
             this.el.completionText.textContent = chipText;
         }

@@ -245,6 +245,22 @@ class ViscometryWebInterface:
                 return jsonify({'ok': True, 'status_message': self.status_message})
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/run/start_recalibration', methods=['POST'])
+        def api_run_start_recalibration():
+            try:
+                payload = request.get_json(silent=True) or {}
+                # Force individual cell recalibration flags
+                payload['recalibrate_individual_cells'] = True
+                payload['calibration_mode'] = False  # Not full calibration, individual only
+                self.update_runtime_settings(payload)
+                self.calibration_mode = True  # Mark as in calibration-like mode for UI purposes
+                self.request_start()
+                self.broadcast_calibration_mode()
+                self.update_status('Individual cell recalibration run started')
+                return jsonify({'ok': True, 'status_message': self.status_message})
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
             
         @self.socketio.on('connect')
         def handle_connect():
@@ -515,11 +531,21 @@ class ViscometryWebInterface:
         self.completed_cells = []
         self.start_requested_event.set()
         self.socketio.emit('experiment_start', {'start_ts': self.experiment_start_ts})
+        self.broadcast_calibration_mode()
+
+    def broadcast_calibration_mode(self):
+        """Broadcast current calibration mode to all connected clients."""
+        self.socketio.emit('calibration_mode_update', {
+            'calibration_mode': self.calibration_mode,
+            'completed_cells': self.completed_cells
+        })
 
     def request_stop(self):
         """Mark that the experiment should stop."""
         self.stop_requested_event.set()
         self.set_running_state(False)
+        self.calibration_mode = False
+        self.broadcast_calibration_mode()
 
     def wait_for_start_command(self, poll_interval=0.2):
         """Block until a start request is received from the web UI."""
