@@ -104,7 +104,7 @@ SMART_WINDOW_SIZE = 3
 CALIBRATION_MODE = False          # Set to True when a calibration run is requested
 RECALIBRATE_INDIVIDUAL_CELLS = False  # Set to True for individual cell recalibration mode
 RECALIBRATION_CELLS = {}  # Dict[cell_id, optional_starting_z] for individual recalibration
-CALIBRATION_OFFSET = 0.5         # mm above rough hitpoint to use as safe_z
+CALIBRATION_OFFSET = 0.4         # mm above rough hitpoint to use as safe_z
 
 # ========== TESTING MODE CONFIGURATION ==========
 # Set the testing mode and parameters here (no runtime input required)
@@ -1572,14 +1572,15 @@ def main():
             # If this was a calibration or recalibration run, save per-cell rough hitpoints
             if (CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS) and calibration_cells:
                 try:
+                    calibrated_at_local = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
                     if RECALIBRATE_INDIVIDUAL_CELLS:
                         # For individual cell recalibration, use update_calibration_for_cells to merge with existing data
-                        update_calibration_for_cells(calibration_cells)
+                        update_calibration_for_cells(calibration_cells, calibrated_at=calibrated_at_local)
                         print(f"Updated calibration data for {len(calibration_cells)} cells (other cells preserved).")
                         web_interface.update_status("Individual cell recalibration complete — Z-height data updated")
                     else:
                         # For full calibration, replace all calibration data
-                        save_calibration(calibration_cells)
+                        save_calibration(calibration_cells, calibrated_at=calibrated_at_local)
                         print(f"Calibration data saved for {len(calibration_cells)} cells.")
                         web_interface.update_status("Calibration complete — Z-height data saved")
                     try:
