@@ -48,6 +48,9 @@ class ViscometryDashboard {
         this.lastRunStartTsSec = null;
         this.completedSaveLock = false;
         this.summaryPlotInitialized = false;
+        this._summaryHistoryPollIntervalId = null;
+        this._summaryHistoryPollMs = 8000;
+        this.customHitpointSelectedCellId = null;
         this.isSavingFinalResults = false;
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
@@ -190,6 +193,11 @@ class ViscometryDashboard {
             summaryDownload: document.getElementById("summary-download"),
             summaryShowHitLine: document.getElementById("summary-show-hit-line"),
             summaryAlignHitpoint: document.getElementById("summary-align-hitpoint"),
+            summaryCustomHitpointCell: document.getElementById("summary-custom-hitpoint-cell"),
+            summaryCustomHitpointZ: document.getElementById("summary-custom-hitpoint-z"),
+            summaryMakeCustomHitpoint: document.getElementById("summary-make-custom-hitpoint"),
+            summaryUndoCustomHitpoint: document.getElementById("summary-undo-custom-hitpoint"),
+            summaryCustomHitpointStatus: document.getElementById("summary-custom-hitpoint-status"),
             summaryPlot: document.getElementById("summary-plot"),
             tabButtons: document.querySelectorAll(".tab-button"),
             tabPanels: document.querySelectorAll(".tab-panel"),
@@ -261,6 +269,23 @@ class ViscometryDashboard {
             this.el.summaryAlignHitpoint.addEventListener("change", () => {
                 if (this.selectedExperimentId) this.selectExperiment(this.selectedExperimentId);
             });
+        }
+
+        if (this.el.summaryCustomHitpointCell) {
+            this.el.summaryCustomHitpointCell.addEventListener("change", () => {
+                this.customHitpointSelectedCellId = this.el.summaryCustomHitpointCell.value
+                    ? Number(this.el.summaryCustomHitpointCell.value)
+                    : null;
+                if (this.selectedExperimentId) this.updateCustomHitpointControlsUI();
+            });
+        }
+
+        if (this.el.summaryMakeCustomHitpoint) {
+            this.el.summaryMakeCustomHitpoint.addEventListener("click", () => this.applyCustomHitpointOverrideFromUI());
+        }
+
+        if (this.el.summaryUndoCustomHitpoint) {
+            this.el.summaryUndoCustomHitpoint.addEventListener("click", () => this.undoCustomHitpointOverrideFromUI());
         }
 
         document.addEventListener("keydown", (event) => {
@@ -409,6 +434,62 @@ class ViscometryDashboard {
 
         // Store active tab in localStorage
         localStorage.setItem("activeTab", tabId);
+
+        if (tabId === "summary-tab") {
+            this.startSummaryHistoryPolling();
+        } else {
+            this.stopSummaryHistoryPolling();
+        }
+    }
+
+    startSummaryHistoryPolling() {
+        if (this._summaryHistoryPollIntervalId) {
+            return;
+        }
+        this._summaryHistoryPollIntervalId = window.setInterval(() => {
+            this.pollExperimentHistoryForCustomHitpoints();
+        }, this._summaryHistoryPollMs);
+        // Do an immediate sync so another device's changes show up quickly.
+        this.pollExperimentHistoryForCustomHitpoints();
+    }
+
+    stopSummaryHistoryPolling() {
+        if (!this._summaryHistoryPollIntervalId) {
+            return;
+        }
+        window.clearInterval(this._summaryHistoryPollIntervalId);
+        this._summaryHistoryPollIntervalId = null;
+    }
+
+    pollExperimentHistoryForCustomHitpoints() {
+        if (!this.selectedExperimentId) {
+            return;
+        }
+        if (!this.el.summaryDetail || this.el.summaryDetail.classList.contains("hidden")) {
+            return;
+        }
+
+        const selectedId = this.selectedExperimentId;
+        const prevExp = this.experimentHistory.find((e) => e.id === selectedId);
+        const prevCustom = JSON.stringify(prevExp?.custom_hitpoints || {});
+
+        fetch("/api/experiment_history")
+            .then((r) => r.json())
+            .then((history) => {
+                if (!Array.isArray(history)) return;
+                const nextExp = history.find((e) => e.id === selectedId);
+                if (!nextExp) return;
+                const nextCustom = JSON.stringify(nextExp?.custom_hitpoints || {});
+                if (nextCustom === prevCustom) {
+                    return;
+                }
+                this.experimentHistory = history;
+                // Re-render the plot/controls with the synced overrides.
+                this.selectExperiment(selectedId);
+            })
+            .catch(() => {
+                // Polling is best-effort; ignore failures to avoid noisy status messages.
+            });
     }
 
     handleLogoFallback() {
@@ -1573,6 +1654,10 @@ class ViscometryDashboard {
     }
 
     ingestMeasurement(rawMeasurement, bootstrap) {
+        const rawSampleCount = Number(rawMeasurement.sample_count);
+        const sampleCount = Number.isFinite(rawSampleCount) && rawSampleCount >= 1
+            ? Math.floor(rawSampleCount)
+            : 1;
         const measurement = {
             timestamp: Number(rawMeasurement.timestamp) || Date.now() / 1000,
             height: Number(rawMeasurement.height) || 0,
@@ -1586,6 +1671,7 @@ class ViscometryDashboard {
             hit_detected: rawMeasurement.hit_detected === true
                 ? true
                 : (rawMeasurement.hit_detected === false ? false : null),
+            sample_count: sampleCount,
         };
 
         if (!measurement.cell_id) {
@@ -2317,8 +2403,14 @@ class ViscometryDashboard {
         runData.forEach((m) => {
             const k = `${m.cell_id}|${Number(m.height).toFixed(3)}|${m.rpm}`;
             latestByKey.set(k, m);
+            if (m.is_final_save) {
+                return;
+            }
             const zKey = `${m.cell_id}|${Number(m.height).toFixed(3)}`;
-            sampleCountByCellZ.set(zKey, (sampleCountByCellZ.get(zKey) || 0) + 1);
+            const add = Number.isFinite(Number(m.sample_count)) && Number(m.sample_count) >= 1
+                ? Math.floor(Number(m.sample_count))
+                : 1;
+            sampleCountByCellZ.set(zKey, (sampleCountByCellZ.get(zKey) || 0) + add);
         });
         const samplesPerZ = [...sampleCountByCellZ.values()].sort((a, b) => a - b);
         let medianSamplesPerZ = null;
@@ -2528,6 +2620,8 @@ class ViscometryDashboard {
             rightEl.innerHTML = rightLines.map((line) => `<div>${line}</div>`).join("");
         }
 
+        this.syncCustomHitpointControlsForExperiment(exp);
+
         const byCellRpm = {};
         (exp.latestPerZ || []).forEach((p) => {
             const cellId = Number(p.cell_id);
@@ -2541,6 +2635,8 @@ class ViscometryDashboard {
         });
         const showHitLine = Boolean(this.el.summaryShowHitLine?.checked);
         const alignToHit = Boolean(this.el.summaryAlignHitpoint?.checked);
+        const customHitpoints = this._getCustomHitpointsForExperiment(exp);
+        const getCustomHitZForCell = (cellId) => this._getCustomHitZForCell(customHitpoints, cellId);
 
         const traces = Object.entries(byCellRpm)
             .sort((a, b) => {
@@ -2557,10 +2653,36 @@ class ViscometryDashboard {
             pts.sort((a, b) => a.height - b.height);
             const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
             const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
-            const plotPoints = alignToHit
-                ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
-                : [...timeOrdered];
-            const alignReference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
+            const customHitZ = Number.isFinite(getCustomHitZForCell(cellId))
+                ? getCustomHitZForCell(cellId)
+                : null;
+
+            let plotPoints;
+            let alignReference;
+
+            if (customHitZ != null) {
+                // Trim to "hitpoint + 3 points behind" for consistent looking traces.
+                let bestIdx = 0;
+                let bestDist = timeOrdered.length
+                    ? Math.abs(Number(timeOrdered[0].height) - customHitZ)
+                    : Number.POSITIVE_INFINITY;
+                for (let i = 1; i < timeOrdered.length; i += 1) {
+                    const d = Math.abs(Number(timeOrdered[i].height) - customHitZ);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        bestIdx = i;
+                    }
+                }
+                const startIdx = Math.max(0, bestIdx - 3);
+                const endIdx = Math.min(timeOrdered.length, bestIdx + 1); // include the hitpoint index
+                plotPoints = timeOrdered.slice(startIdx, endIdx);
+                alignReference = customHitZ;
+            } else {
+                plotPoints = alignToHit
+                    ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
+                    : [...timeOrdered];
+                alignReference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
+            }
             const rawX = plotPoints.map((p) => Number(p.height));
             const xSeries = (alignToHit && Number.isFinite(alignReference))
                 ? rawX.map((x) => x - alignReference)
@@ -2586,13 +2708,23 @@ class ViscometryDashboard {
 
         if (this.summaryPlotInitialized && this.el.summaryPlot) {
             const referenceXs = [];
-            Object.values(byCellRpm).forEach((pts) => {
-                const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
-                const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
-                const plotPoints = alignToHit
-                    ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
-                    : [...timeOrdered];
-                const reference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
+            Object.entries(byCellRpm).forEach(([key, pts]) => {
+                const [cellIdStr] = key.split("|");
+                const cellId = Number(cellIdStr);
+                const customHitZ = getCustomHitZForCell(cellId);
+
+                let reference = null;
+                if (Number.isFinite(customHitZ)) {
+                    reference = customHitZ;
+                } else {
+                    const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+                    const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
+                    const plotPoints = alignToHit
+                        ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
+                        : [...timeOrdered];
+                    reference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
+                }
+
                 if (Number.isFinite(reference)) {
                     referenceXs.push(alignToHit ? 0 : reference);
                 }
@@ -2623,6 +2755,140 @@ class ViscometryDashboard {
             Plotly.react(this.el.summaryPlot, traces, layout,
                 { responsive: true, displayModeBar: false });
         }
+    }
+
+    _getCustomHitpointsForExperiment(exp) {
+        const ch = exp?.custom_hitpoints;
+        if (ch && typeof ch === "object") return ch;
+        return {};
+    }
+
+    _getCustomHitZForCell(customHitpoints, cellId) {
+        const key = String(cellId);
+        const raw = customHitpoints?.[key];
+        const num = typeof raw === "number"
+            ? raw
+            : (raw && typeof raw === "object" ? Number(raw.hit_z) : Number(raw));
+        return Number.isFinite(num) ? num : null;
+    }
+
+    syncCustomHitpointControlsForExperiment(exp) {
+        if (!this.el.summaryCustomHitpointCell) return;
+        const cells = Array.isArray(exp?.cells) ? exp.cells : [];
+        const select = this.el.summaryCustomHitpointCell;
+        if (!select) return;
+
+        select.innerHTML = "";
+        cells.forEach((cellId) => {
+            const opt = document.createElement("option");
+            opt.value = String(cellId);
+            opt.textContent = `Cell ${cellId}`;
+            select.appendChild(opt);
+        });
+
+        const desired = cells.includes(this.customHitpointSelectedCellId)
+            ? this.customHitpointSelectedCellId
+            : (cells.length ? cells[0] : null);
+        this.customHitpointSelectedCellId = desired;
+        select.value = desired != null ? String(desired) : "";
+
+        this.updateCustomHitpointControlsUI(exp, desired);
+    }
+
+    updateCustomHitpointControlsUI(exp = null, selectedCellId = null) {
+        if (!this.el.summaryCustomHitpointZ || !this.el.summaryUndoCustomHitpoint || !this.el.summaryCustomHitpointStatus) {
+            return;
+        }
+
+        if (!exp) {
+            exp = this.experimentHistory.find((e) => e.id === this.selectedExperimentId);
+        }
+        if (!exp) return;
+
+        const cells = Array.isArray(exp.cells) ? exp.cells : [];
+        if (selectedCellId == null) {
+            selectedCellId = this.customHitpointSelectedCellId;
+        }
+        if (selectedCellId == null || !cells.includes(selectedCellId)) {
+            selectedCellId = cells.length ? cells[0] : null;
+        }
+
+        const customHitpoints = this._getCustomHitpointsForExperiment(exp);
+        const hitZ = selectedCellId != null
+            ? this._getCustomHitZForCell(customHitpoints, selectedCellId)
+            : null;
+
+        this.el.summaryCustomHitpointZ.value = Number.isFinite(hitZ) ? String(hitZ.toFixed(3)) : "";
+        const hasOverride = Number.isFinite(hitZ);
+
+        this.el.summaryUndoCustomHitpoint.disabled = !hasOverride;
+        this.el.summaryCustomHitpointStatus.textContent = hasOverride
+            ? `Custom hitpoint: Cell ${selectedCellId} @ ${hitZ.toFixed(3)} mm`
+            : "Using auto hitpoint for this cell";
+    }
+
+    applyCustomHitpointOverrideFromUI() {
+        if (!this.selectedExperimentId) return;
+        const exp = this.experimentHistory.find((e) => e.id === this.selectedExperimentId);
+        if (!exp) return;
+        if (!this.el.summaryCustomHitpointCell || !this.el.summaryCustomHitpointZ) return;
+
+        const cellId = Number(this.el.summaryCustomHitpointCell.value);
+        const hitZ = Number(this.el.summaryCustomHitpointZ.value);
+        if (!Number.isFinite(cellId) || !Number.isFinite(hitZ)) {
+            this.pushStatusMessage("Enter a valid cell and Hitpoint Z value first");
+            return;
+        }
+
+        const overrides = { ...this._getCustomHitpointsForExperiment(exp) };
+        overrides[String(cellId)] = hitZ;
+        const updatedExp = { ...exp, custom_hitpoints: overrides };
+
+        const idx = this.experimentHistory.findIndex((e) => e.id === updatedExp.id);
+        if (idx >= 0) this.experimentHistory[idx] = updatedExp;
+        else this.experimentHistory.unshift(updatedExp);
+
+        // Persist to server so other devices get the override.
+        this.saveExperimentHistoryEntry(updatedExp).catch(() => {
+            this.pushStatusMessage("Warning: failed to sync custom hitpoint to server");
+        });
+
+        this.customHitpointSelectedCellId = cellId;
+        this.selectExperiment(updatedExp.id);
+    }
+
+    undoCustomHitpointOverrideFromUI() {
+        if (!this.selectedExperimentId) return;
+        const exp = this.experimentHistory.find((e) => e.id === this.selectedExperimentId);
+        if (!exp) return;
+        if (!this.el.summaryCustomHitpointCell) return;
+
+        const cellId = Number(this.el.summaryCustomHitpointCell.value);
+        if (!Number.isFinite(cellId)) return;
+
+        const overrides = { ...this._getCustomHitpointsForExperiment(exp) };
+        const key = String(cellId);
+        if (!(key in overrides)) {
+            return;
+        }
+
+        delete overrides[key];
+        const updatedExp = { ...exp };
+        if (Object.keys(overrides).length > 0) {
+            updatedExp.custom_hitpoints = overrides;
+        } else {
+            delete updatedExp.custom_hitpoints;
+        }
+
+        const idx = this.experimentHistory.findIndex((e) => e.id === updatedExp.id);
+        if (idx >= 0) this.experimentHistory[idx] = updatedExp;
+        else this.experimentHistory.unshift(updatedExp);
+
+        this.saveExperimentHistoryEntry(updatedExp).catch(() => {
+            this.pushStatusMessage("Warning: failed to sync undo to server");
+        });
+
+        this.selectExperiment(updatedExp.id);
     }
 
     deleteExperiment(id) {
@@ -2702,7 +2968,8 @@ class ViscometryDashboard {
         } else if (isCalibrating) {
             chipText = `Calibrating ${done} / ${total} cells`;
         } else if (isAllDone) {
-            chipText = `${done} / ${total} cells — EXPERIMENT COMPLETE!`;
+            // Keep the top status bar clean; the popup bubble is shown separately.
+            chipText = `${done} / ${total} cells completed`;
         } else {
             chipText = `${done} / ${total} cells completed`;
         }

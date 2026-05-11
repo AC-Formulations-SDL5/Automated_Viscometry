@@ -1271,9 +1271,9 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 height=z_height,
                                 rotational_drag=rotational_drag,
                                 rpm=rpm,
-                                cell_id=global_cell
-                                ,
-                                hit_detected=bool(rpm_metrics.get('Hit_Detected', False))
+                                cell_id=global_cell,
+                                hit_detected=bool(rpm_metrics.get('Hit_Detected', False)),
+                                sample_count=len(measurements),
                             )
                             
                             data_row = [
