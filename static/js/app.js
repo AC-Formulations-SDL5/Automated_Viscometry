@@ -2661,22 +2661,15 @@ class ViscometryDashboard {
             let alignReference;
 
             if (customHitZ != null) {
-                // Trim to "hitpoint + 3 points behind" for consistent looking traces.
-                let bestIdx = 0;
-                let bestDist = timeOrdered.length
-                    ? Math.abs(Number(timeOrdered[0].height) - customHitZ)
-                    : Number.POSITIVE_INFINITY;
-                for (let i = 1; i < timeOrdered.length; i += 1) {
-                    const d = Math.abs(Number(timeOrdered[i].height) - customHitZ);
-                    if (d < bestDist) {
-                        bestDist = d;
-                        bestIdx = i;
-                    }
-                }
-                const startIdx = Math.max(0, bestIdx - 3);
-                const endIdx = Math.min(timeOrdered.length, bestIdx + 1); // include the hitpoint index
-                plotPoints = timeOrdered.slice(startIdx, endIdx);
-                alignReference = customHitZ;
+                // Drop points before (hit − 3 samples); keep 3 points before hit + rest through end.
+                // With "align traces": keep only those 3 + hit, then shift so hit = 0 (same as auto logic).
+                const hitIdx = this._closestMeasurementIndexByZ(timeOrdered, customHitZ);
+                const startIdx = Math.max(0, hitIdx - 3);
+                const hitZMeasured = Number(timeOrdered[hitIdx].height);
+                plotPoints = alignToHit
+                    ? timeOrdered.slice(startIdx, hitIdx + 1)
+                    : timeOrdered.slice(startIdx);
+                alignReference = Number.isFinite(hitZMeasured) ? hitZMeasured : customHitZ;
             } else {
                 plotPoints = alignToHit
                     ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
@@ -2715,7 +2708,9 @@ class ViscometryDashboard {
 
                 let reference = null;
                 if (Number.isFinite(customHitZ)) {
-                    reference = customHitZ;
+                    const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+                    const hitIdx = this._closestMeasurementIndexByZ(timeOrdered, customHitZ);
+                    reference = Number(timeOrdered[hitIdx]?.height);
                 } else {
                     const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
                     const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
@@ -2755,6 +2750,26 @@ class ViscometryDashboard {
             Plotly.react(this.el.summaryPlot, traces, layout,
                 { responsive: true, displayModeBar: false });
         }
+    }
+
+    _closestMeasurementIndexByZ(timeOrdered, targetZ) {
+        if (!Array.isArray(timeOrdered) || timeOrdered.length === 0) {
+            return 0;
+        }
+        const z = Number(targetZ);
+        if (!Number.isFinite(z)) {
+            return 0;
+        }
+        let bestIdx = 0;
+        let bestDist = Math.abs(Number(timeOrdered[0].height) - z);
+        for (let i = 1; i < timeOrdered.length; i += 1) {
+            const d = Math.abs(Number(timeOrdered[i].height) - z);
+            if (d < bestDist) {
+                bestDist = d;
+                bestIdx = i;
+            }
+        }
+        return bestIdx;
     }
 
     _getCustomHitpointsForExperiment(exp) {
