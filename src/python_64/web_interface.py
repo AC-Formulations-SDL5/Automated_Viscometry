@@ -772,8 +772,13 @@ class ViscometryWebInterface:
         rpm: float,
         cell_id: int,
         hit_detected: Optional[bool] = None,
+        sample_count: int = 1,
     ):
-        """Add a new measurement point"""
+        """Add a new measurement point.
+
+        sample_count: viscometer torque samples represented by this point (e.g. one live
+        stream row = 1; a single summary row for an RPM dwell = number of reads in that dwell).
+        """
         try:
             # Sanitize rotational_drag: replace inf with None for JSON serialization
             safe_drag = None if (isinstance(rotational_drag, float) and math.isinf(rotational_drag)) else rotational_drag
@@ -781,6 +786,13 @@ class ViscometryWebInterface:
             # Sanitize torque calculation to handle potential inf
             torque_calc = safe_drag * rpm if safe_drag is not None else None
             
+            try:
+                sc = int(sample_count)
+            except (TypeError, ValueError):
+                sc = 1
+            if sc < 1:
+                sc = 1
+
             measurement = {
                 'timestamp': time.time(),
                 'height': height,
@@ -789,6 +801,7 @@ class ViscometryWebInterface:
                 'rpm': rpm,
                 'cell_id': cell_id,
                 'hit_detected': bool(hit_detected) if hit_detected is not None else None,
+                'sample_count': sc,
             }
             self.measurement_data.append(measurement)
             
