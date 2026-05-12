@@ -310,6 +310,11 @@ class ViscometryDashboard {
                 }
             });
         }
+        if (this.el.lowTorqueLiquidContactThresholdPct) {
+            this.el.lowTorqueLiquidContactThresholdPct.addEventListener("input", () => {
+                this._schedulePlotRefresh();
+            });
+        }
 
         // Rebuild cell-RPM table when mode or cell list changes
         if (this.el.testingMode) {
@@ -1810,9 +1815,26 @@ class ViscometryDashboard {
         });
     }
 
+    /** Torque % floor from "First-sample torque floor (%)" — used to tint live Z plots (below = red). */
+    _torqueFloorPctForLivePlots() {
+        const v = Number(this.el.lowTorqueLiquidContactThresholdPct?.value);
+        return Number.isFinite(v) ? v : 20;
+    }
+
+    _markerColorsForTorqueFloor(measurements, floorPct) {
+        const belowFill = "#f85149";
+        const belowLine = "#ffb4a6";
+        return measurements.map((m) => {
+            const tp = Number(m.torque_percent);
+            const below = Number.isFinite(tp) && tp < floorPct;
+            return { fill: below ? belowFill : null, line: below ? belowLine : null, below };
+        });
+    }
+
     refreshLivePlots() {
         const activeCell = this.getActiveGraphCellId();
         const source = activeCell ? (this.measurementsByCell.get(activeCell) || []) : [];
+        const torqueFloor = this._torqueFloorPctForLivePlots();
 
         let zData = source;
         if (this.zLatestOnly && source.length > 0) {
@@ -1829,15 +1851,26 @@ class ViscometryDashboard {
         zData = [...zData].sort((a, b) => a.height - b.height);
 
         if (this.zPlotInitialized && this.el.zSparklinePlot) {
+            const dragDefault = "#39C5BB";
+            const dragLineDefault = "#8ff5ee";
+            const zPalette = zData.length ? this._markerColorsForTorqueFloor(zData, torqueFloor) : [];
             const zTrace = zData.length ? [{
                 x: zData.map((m) => m.height),
                 y: zData.map((m) => m.rotational_drag),
                 mode: this.zConnectDots ? "lines+markers" : "markers",
                 type: "scatter",
                 name: activeCell ? `Cell ${activeCell}` : "No Cell",
-                marker: { size: 8, color: "#39C5BB", line: { color: "#8ff5ee", width: 1 } },
+                marker: {
+                    size: 8,
+                    color: zPalette.map((p) => p.fill || dragDefault),
+                    line: {
+                        width: 1,
+                        color: zPalette.map((p) => p.line || dragLineDefault),
+                    },
+                },
                 line: { color: "#39C5BB", width: 2 },
-                hovertemplate: "Z %{x:.3f} mm<br>Drag %{y:.4f}<extra></extra>"
+                hovertemplate: "Z %{x:.3f} mm<br>Drag %{y:.4f}<br>Torque %{customdata:.2f}%<extra></extra>",
+                customdata: zData.map((m) => Number(m.torque_percent)),
             }] : [];
 
             Plotly.react(this.el.zSparklinePlot, zTrace, undefined, { responsive: true, displayModeBar: false });
@@ -1848,13 +1881,23 @@ class ViscometryDashboard {
 
         const torqueData = [...source].sort((a, b) => a.height - b.height);
         if (this.torquePlotInitialized && this.el.torqueZPlot) {
+            const torqueDefault = "#F5A623";
+            const torqueLineDefault = "#ffd37a";
+            const tPalette = torqueData.length ? this._markerColorsForTorqueFloor(torqueData, torqueFloor) : [];
             const torqueTrace = torqueData.length ? [{
                 x: torqueData.map((m) => m.height),
                 y: torqueData.map((m) => m.torque_percent),
                 mode: "markers",
                 type: "scatter",
                 name: activeCell ? `Cell ${activeCell}` : "No Cell",
-                marker: { size: 8, color: "#F5A623", line: { color: "#ffd37a", width: 1 } },
+                marker: {
+                    size: 8,
+                    color: tPalette.map((p) => p.fill || torqueDefault),
+                    line: {
+                        width: 1,
+                        color: tPalette.map((p) => p.line || torqueLineDefault),
+                    },
+                },
                 hovertemplate: "Z %{x:.3f} mm<br>Torque %{y:.3f}%<extra></extra>"
             }] : [];
 

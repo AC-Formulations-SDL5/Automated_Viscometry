@@ -79,7 +79,7 @@ class ViscometryWebInterface:
             'calibration_mode': False,
             'recalibrate_individual_cells': False,
             'recalibration_cells': {},
-            # Regular runs only: skip Z-levels until first-sample torque meets threshold (no liquid contact).
+            # Regular runs only: skip Z-levels when torque (first sample at elapsed >= SAMPLE_INTERVAL) is below threshold.
             'low_torque_liquid_contact_skip_enabled': False,
             'low_torque_liquid_contact_threshold_pct': 20.0,
         }
