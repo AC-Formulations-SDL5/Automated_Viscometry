@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,17 +11,9 @@ from matplotlib.patches import Patch
 from scipy.optimize import curve_fit
 
 
-@dataclass
-class FitResult:
-    cell: int
-    a_poly2: float
-    poly_coeffs: Optional[np.ndarray]
-    a_hyperbola: float
-    hyperbola_params: Optional[np.ndarray]
-
-
-def _hyperbola(x: np.ndarray, a: float, b: float, c: float) -> np.ndarray:
-    return a / (x - b) + c
+def _hyperbola_2param(x: np.ndarray, a: float, b: float) -> np.ndarray:
+    """2-parameter hyperbola: a / (x - b)"""
+    return a / (x - b)
 
 
 def load_rotational_drag_csv(
@@ -149,74 +140,44 @@ def fit_cell_models(
     y_col: str = "Rotational_Drag",
 ) -> pd.DataFrame:
     """Fit per-cell 2nd-order polynomial and hyperbola and return coefficients."""
-    rows = []
+    def hyperbola(x, a, b):
+        return a / (x - b)
 
+    rows = []
     for cid, g in df.groupby(cell_col, sort=True):
         g = g.sort_values(x_col)
         x = g[x_col].to_numpy(float)
         y = g[y_col].to_numpy(float)
 
         poly_a = np.nan
-        poly_coeffs = None
         hyp_a = np.nan
-        hyp_params = None
 
         if len(g) >= 3:
-            try:
-                poly_coeffs = np.polyfit(x, y, 2)
-                poly_a = float(poly_coeffs[0])
-            except Exception:
-                poly_coeffs = None
+            poly_a = float(np.polyfit(x, y, 2)[0])
 
         if len(g) >= 4 and np.ptp(x) > 0:
+            # Initialize b away from x domain to avoid singularity during fitting.
             b0 = float(np.min(x) - 0.5 * max(np.ptp(x), 1e-6))
             a0 = float((y[0] - y[-1]) * max(np.ptp(x), 1e-6))
-            c0 = float(np.nanmedian(y))
             lower_b = float(np.min(x) - 5.0 * max(np.ptp(x), 1e-6))
             upper_b = float(np.min(x) - 1e-6)
+
             try:
-                hyp_params, _ = curve_fit(
-                    _hyperbola,
+                p, _ = curve_fit(
+                    hyperbola,
                     x,
                     y,
-                    p0=[a0, b0, c0],
-                    bounds=([-np.inf, lower_b, -np.inf], [np.inf, upper_b, np.inf]),
+                    p0=[a0, b0],
+                    bounds=([-np.inf, lower_b], [np.inf, upper_b]),
                     maxfev=20000,
                 )
-                hyp_a = float(hyp_params[0])
+                hyp_a = float(p[0])
             except Exception:
-                hyp_params = None
+                hyp_a = np.nan
 
-        rows.append(
-            FitResult(
-                cell=int(cid),
-                a_poly2=poly_a,
-                poly_coeffs=poly_coeffs,
-                a_hyperbola=hyp_a,
-                hyperbola_params=hyp_params,
-            )
-        )
+        rows.append({"cell": int(cid), "a_poly2": poly_a, "a_hyperbola": hyp_a})
 
-    rows_df = pd.DataFrame(
-        [
-            {
-                "cell": r.cell,
-                "a_poly2": r.a_poly2,
-                "a_hyperbola": r.a_hyperbola,
-                "poly_coeffs": r.poly_coeffs,
-                "hyperbola_params": r.hyperbola_params,
-            }
-            for r in rows
-        ]
-    )
-    return rows_df.sort_values("cell").reset_index(drop=True)
-
-
-def _fit_origin_scale(x: np.ndarray, y: np.ndarray) -> float:
-    denom = float(np.sum(x ** 2))
-    if denom <= 0:
-        return np.nan
-    return float(np.sum(x * y) / denom)
+    return pd.DataFrame(rows).sort_values("cell").reset_index(drop=True)
 
 
 def _plot_trimmed_with_fits(
@@ -227,85 +188,147 @@ def _plot_trimmed_with_fits(
     y_col: str,
     title: str,
 ) -> None:
-    n_cells = int(max(trimmed_df[cell_col].max(), 1))
+    """Plot trimmed data with polynomial and hyperbola fits overlaid."""
+    from scipy.optimize import curve_fit
+
+    cc, xc, yc = cell_col, x_col, y_col
+
+    def hyperbola(x, a, b):
+        return a / (x - b)
+
+    n_cells = int(max(trimmed_df[cc].max(), 1))
     n_cols = 3
     n_rows = int(np.ceil(n_cells / n_cols))
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, max(5 * n_rows, 6)))
     axes = np.atleast_1d(axes).ravel()
 
-    by_cell = fit_df.set_index("cell")
-
-    for idx, ax in enumerate(axes, start=1):
-        g = trimmed_df[trimmed_df[cell_col].eq(idx)].sort_values(x_col)
+    for i, ax in enumerate(axes, 1):
+        g = trimmed_df[trimmed_df[cc].eq(i)].sort_values(xc)
         if g.empty:
             ax.axis("off")
             continue
 
-        x = g[x_col].to_numpy(float)
-        y = g[y_col].to_numpy(float)
-        ax.scatter(x, y, s=24, alpha=0.8, label="Selected raw", zorder=3)
+        x = g[xc].to_numpy(float)
+        y = g[yc].to_numpy(float)
 
-        row = by_cell.loc[idx] if idx in by_cell.index else None
-        x_line = np.linspace(x.min(), x.max(), 120)
+        # Plot raw data
+        ax.scatter(x, y, lw=1.5, alpha=0.7, label="Data", zorder=3)
 
-        if row is not None and isinstance(row["poly_coeffs"], np.ndarray):
-            y_poly = np.polyval(row["poly_coeffs"], x_line)
-            ax.plot(x_line, y_poly, color="#1f77b4", linestyle="--", lw=2.0, label="Poly2 fit")
+        # Fit and plot polynomial
+        if len(g) >= 3:
+            p_poly = np.polyfit(x, y, 2)
+            x_line = np.linspace(x.min(), x.max(), 100)
+            y_poly = np.polyval(p_poly, x_line)
+            ax.plot(x_line, y_poly, color="#4285F4", lw=2, linestyle="--", label="Poly2", zorder=2)
 
-        if row is not None and isinstance(row["hyperbola_params"], np.ndarray):
-            y_hyp = _hyperbola(x_line, *row["hyperbola_params"])
-            ax.plot(x_line, y_hyp, color="#d62728", linestyle=":", lw=2.0, label="Hyperbola fit")
+        # Fit and plot hyperbola
+        if len(g) >= 4 and np.ptp(x) > 0:
+            b0 = float(np.min(x) - 0.5 * max(np.ptp(x), 1e-6))
+            a0 = float((y[0] - y[-1]) * max(np.ptp(x), 1e-6))
+            lower_b = float(np.min(x) - 5.0 * max(np.ptp(x), 1e-6))
+            upper_b = float(np.min(x) - 1e-6)
+            try:
+                p, _ = curve_fit(
+                    hyperbola,
+                    x,
+                    y,
+                    p0=[a0, b0],
+                    bounds=([-np.inf, lower_b], [np.inf, upper_b]),
+                    maxfev=20000,
+                )
+                x_line = np.linspace(x.min(), x.max(), 100)
+                y_hyp = hyperbola(x_line, *p)
+                ax.plot(x_line, y_hyp, color="#EA4335", lw=2, linestyle=":", label="Hyperbola", zorder=2)
+            except Exception:
+                pass
 
-        ax.set_title(f"Cell {idx}")
-        ax.set_xlabel("Normalized Height (mm)")
-        ax.set_ylabel("Rotational Drag")
+        ax.set_title(f"Cell {i}", fontsize=12, fontweight="bold")
         ax.grid(alpha=0.25)
-        ax.legend(fontsize=8, loc="best")
+        ax.set_xlabel("Height (mm)", fontsize=10)
+        ax.set_ylabel("Rotational Drag", fontsize=10)
+        ax.legend(fontsize=9, loc="best")
 
-    fig.suptitle(title, y=0.995)
+    fig.suptitle(f"{title}: Trimmed Data with Fitted Curves", y=0.995, fontsize=14)
     plt.tight_layout()
     plt.show()
 
 
-def _plot_prediction_accuracy(df_pred: pd.DataFrame, method: str, slope: float) -> None:
-    y_col = f"predicted_visc_{method}"
-    err_col = f"rel_error_{method}"
-
-    known = df_pred.dropna(subset=["real_viscosity", y_col]).copy()
-    if known.empty:
-        print(f"No known-viscosity rows to plot for method: {method}")
+def _plot_prediction_accuracy(df_pred: pd.DataFrame, m_hyp: float, m_pol2: float) -> None:
+    req_cols = ["predicted_visc_hyp", "predicted_visc_pol", "rel_error_hyp", "rel_error_pol"]
+    all_pred = df_pred.dropna(subset=req_cols, how="any").copy()
+    if all_pred.empty:
+        print("No predictions found for plotting accuracy.")
         return
 
-    cells = known["cell"].astype(int).to_numpy()
-    real = known["real_viscosity"].to_numpy(float) / 1000.0
-    pred = known[y_col].to_numpy(float) / 1000.0
-    errs = known[err_col].to_numpy(float)
+    cells = all_pred["cell"].astype(int).to_numpy()
+    if "real_viscosity_kcp" in all_pred.columns:
+        real = all_pred["real_viscosity_kcp"].to_numpy(float)
+    else:
+        real = all_pred["real_viscosity"].to_numpy(float) / 1000.0
+
+    pred_hyp = all_pred["predicted_visc_hyp"].to_numpy(float)
+    pred_pol = all_pred["predicted_visc_pol"].to_numpy(float)
+    errs_hyp = all_pred["rel_error_hyp"].to_numpy(float)
+    errs_pol = all_pred["rel_error_pol"].to_numpy(float)
+    if "provider" in all_pred.columns:
+        prov = all_pred["provider"].fillna("").astype(str).str.lower().to_numpy()
+    else:
+        prov = np.array([""] * len(all_pred))
+
     x = np.arange(len(cells))
     bw = 0.35
 
-    fig, ax = plt.subplots(figsize=(11, 5))
-    ax.bar(x - bw / 2, real, bw, color="#1f77b4", alpha=0.65, edgecolor="k", lw=0.7, label="Real")
-    ax.bar(x + bw / 2, pred, bw, color="#ff7f0e", alpha=0.65, edgecolor="k", lw=0.7, label="Predicted")
-    ax.set_ylabel("Viscosity (k cP)")
-    ax.set_xlabel("Cell")
-    ax.set_xticks(x)
-    ax.set_xticklabels(cells)
-    ax.set_title(f"{method.upper()} Accuracy (scale={slope:.4f})")
-    ax.grid(axis="y", alpha=0.2)
+    fig, (ax_hyp, ax_pol) = plt.subplots(1, 2, figsize=(20, 6), sharey=False)
 
-    ax2 = ax.twinx()
-    ax2.scatter(x, errs, color="#2ca02c", s=80, edgecolor="k", lw=0.7, zorder=5)
-    ax2.plot(x, errs, color="#444", lw=1.0, linestyle="--", alpha=0.5)
-    ax2.set_ylabel("Relative Error (%)")
-    ax2.set_ylim(0, max(100, float(np.nanmax(errs)) * 1.2))
-    ax2.axhline(10, color="#2ca02c", linestyle=":", lw=1.2, alpha=0.7)
+    def draw_panel(ax, real_vals, pred_vals, errs, providers, cell_ids, x_vals, bar_w, title):
+        has_real = ~np.isnan(real_vals)
+        for i in range(len(cell_ids)):
+            h = "//" if providers[i] == "sdl5" else None
+            if has_real[i]:
+                ax.bar(x_vals[i] - bar_w / 2, real_vals[i], bar_w, color="#4285F4", alpha=0.6, hatch=h, edgecolor="k", lw=0.8)
+            ax.bar(x_vals[i] + bar_w / 2, pred_vals[i], bar_w, color="#E37400", alpha=0.6, hatch=h, edgecolor="k", lw=0.8)
 
-    handles = [
-        Patch(facecolor="#1f77b4", alpha=0.65, edgecolor="k", label="Real viscosity"),
-        Patch(facecolor="#ff7f0e", alpha=0.65, edgecolor="k", label="Predicted viscosity"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ca02c", markeredgecolor="k", label="Relative error", markersize=7),
-    ]
-    ax.legend(handles=handles, loc="upper left", frameon=False)
+        finite_real = real_vals[has_real]
+        y_real_max = float(np.nanmax(finite_real)) if finite_real.size else 0.0
+        y_pred_max = float(np.nanmax(pred_vals)) if pred_vals.size else 0.0
+        y_max = max(y_real_max, y_pred_max, 1e-9)
+        for i, p in enumerate(providers):
+            if p:
+                ax.text(x_vals[i] + 0.06, y_max * 1.05, p, ha="center", va="bottom", fontsize=10, rotation=90)
+
+        ax.set_ylabel("Viscosity (k cP)", fontsize=14)
+        ax.set_xlabel("Cell", fontsize=14)
+        ax.set_xticks(x_vals)
+        ax.set_xticklabels(cell_ids.astype(int), fontsize=11)
+        ax.set_ylim(0, y_max * 1.35)
+        ax.grid(False)
+        ax.set_title(title, fontsize=14, fontweight="bold")
+
+        ax2 = ax.twinx()
+        colors = ["#34A853" if e <= 10 else "#9E9E9E" if e <= 50 else "#EA4335" for e in errs]
+        ax2.scatter(x_vals, errs, color=colors, s=130, zorder=5, edgecolor="k", lw=0.8)
+        ax2.plot(x_vals, errs, color="#3C4043", lw=1.2, linestyle="--", alpha=0.4)
+        ax2.set_ylabel("Relative Error (%)", fontsize=14)
+        ax2.axhline(10, color="#34A853", linestyle=":", lw=1.3, alpha=0.7)
+        ax2.axhline(50, color="#9E9E9E", linestyle=":", lw=1.3, alpha=0.7)
+        ax2.set_ylim(0, 100)
+
+        leg = [
+            Patch(facecolor="#4285F4", alpha=0.6, edgecolor="k", label="Real Visc."),
+            Patch(facecolor="#E37400", alpha=0.6, edgecolor="k", label="Pred. Visc."),
+            Patch(facecolor="white", hatch="//", edgecolor="k", label="SDL5"),
+            Line2D([0], [0], marker="o", color="w", markerfacecolor="#34A853", markeredgecolor="k", markersize=8, label="Error ≤10%"),
+            Line2D([0], [0], marker="o", color="w", markerfacecolor="#9E9E9E", markeredgecolor="k", markersize=8, label="10%<Error≤50%"),
+            Line2D([0], [0], marker="o", color="w", markerfacecolor="#EA4335", markeredgecolor="k", markersize=8, label="Error>50%"),
+        ]
+        ax.legend(handles=leg, fontsize=10, frameon=False)
+
+        for sp in ax.spines.values():
+            sp.set_linewidth(1.5)
+
+    draw_panel(ax_hyp, real, pred_hyp, errs_hyp, prov, cells, x, bw, f"Hyperbola Fit  (m={m_hyp})")
+    draw_panel(ax_pol, real, pred_pol, errs_pol, prov, cells, x, bw, f"Polynomial Fit  (m={m_pol2})")
+
     plt.tight_layout()
     plt.show()
 
@@ -348,19 +371,20 @@ def run_viscosity_pipeline(
     fit_df = fit_cell_models(df_trimmed, cell_col=cell_col, x_col=x_col, y_col=y_col)
 
     fit_df["real_viscosity"] = fit_df["cell"].map(real_viscosity_map)
+    fit_df["real_viscosity_kcp"] = fit_df["real_viscosity"] / 1000.0
     fit_df["is_calibration"] = fit_df["real_viscosity"].notna()
 
     fit_df["predicted_visc_pol"] = np.abs(fit_df["a_poly2"]) * m_poly
     fit_df["predicted_visc_hyp"] = np.abs(fit_df["a_hyperbola"]) * m_hyp
 
     fit_df["rel_error_pol"] = (
-        np.abs(fit_df["real_viscosity"] - fit_df["predicted_visc_pol"])
-        / fit_df["real_viscosity"]
+        np.abs(fit_df["real_viscosity_kcp"] - fit_df["predicted_visc_pol"])
+        / fit_df["real_viscosity_kcp"]
         * 100.0
     )
     fit_df["rel_error_hyp"] = (
-        np.abs(fit_df["real_viscosity"] - fit_df["predicted_visc_hyp"])
-        / fit_df["real_viscosity"]
+        np.abs(fit_df["real_viscosity_kcp"] - fit_df["predicted_visc_hyp"])
+        / fit_df["real_viscosity_kcp"]
         * 100.0
     )
 
@@ -373,8 +397,7 @@ def run_viscosity_pipeline(
             y_col=y_col,
             title=f"{data_path.name}: Selected Raw Segment + Fits",
         )
-        _plot_prediction_accuracy(fit_df, method="pol", slope=m_poly)
-        _plot_prediction_accuracy(fit_df, method="hyp", slope=m_hyp)
+        _plot_prediction_accuracy(fit_df, m_hyp=m_hyp, m_pol2=m_poly)
 
     return {
         "raw_df": df_raw,
