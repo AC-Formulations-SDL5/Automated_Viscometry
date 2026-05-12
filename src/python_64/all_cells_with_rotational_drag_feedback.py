@@ -100,7 +100,8 @@ SMART_EARLY_EXIT_ENABLED = False
 SMART_CV_THRESHOLD = 0.005
 SMART_WINDOW_SIZE = 3
 
-# Skip Z-levels until first-sample torque ≥ threshold (regular runs only; see web toggle).
+# Skip Z-levels until post-interval torque ≥ threshold (first sample at elapsed ≥ SAMPLE_INTERVAL;
+# regular runs only; see web toggle).
 LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = False
 LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 20.0
 
@@ -544,10 +545,13 @@ def measure_torque_at_rpm(
 ) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps.
 
+    Recorded samples (and live web points) occur only on a fixed grid every ``SAMPLE_INTERVAL``
+    seconds from the start of the measurement window (after dwell)—no off-grid immediate read.
+
     If ``hunting_first_contact_min_pct`` is set (liquid-contact hunt at first Z after spindle starts):
-    after the **first** valid torque sample, if it is **strictly less than** that threshold, sampling
-    stops immediately (remaining window is not measured). If it is **greater than or equal to** the
-    threshold, the full ``MEASUREMENT_DURATION`` collection proceeds as normal.
+    on the **first** recorded sample, if torque is **strictly less than** that threshold, sampling
+    stops immediately. Otherwise the full ``MEASUREMENT_DURATION`` collection proceeds.
+    Smart early exit is disabled until this gate is resolved.
     """
     try:
         # Set spindle speed
@@ -561,8 +565,9 @@ def measure_torque_at_rpm(
         recent_torques = []
         start_time = time.time()
         measurement_start_time = time.time()
-        # Try an immediate sample first (more robust to timing/jitter), then schedule periodic samples
-        next_sample_time = start_time
+        # Recorded samples and live plots: fixed grid at SAMPLE_INTERVAL (first slot = 1 * interval).
+        sample_index = 1
+        next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
         hunt_contact_confirmed = False
 
         while time.time() - start_time < MEASUREMENT_DURATION:
@@ -572,45 +577,21 @@ def measure_torque_at_rpm(
             if current_time >= next_sample_time:
                 try:
                     data = client.read_single(timeout=TORQUE_READ_TIMEOUT)
-                    # After the first immediate attempt, schedule the next sample SAMPLE_INTERVAL seconds later
-                    if next_sample_time == start_time:
-                        next_sample_time = current_time + SAMPLE_INTERVAL
                     if data and data.get("torque_valid") and data.get("torque_percent") is not None:
                         tp = float(data["torque_percent"])
+                        elapsed_since_start = current_time - measurement_start_time
+                        liquid_hunt_stop = False
                         if (
                             hunting_first_contact_min_pct is not None
                             and not hunt_contact_confirmed
                         ):
                             if tp < hunting_first_contact_min_pct:
-                                measurement = {
-                                    "timestamp": current_time,
-                                    "elapsed_time": current_time - measurement_start_time,
-                                    "torque_percent": tp,
-                                    "rpm": rpm,
-                                }
-                                measurements.append(measurement)
-                                recent_torques.append(tp)
-                                recent_torques = recent_torques[-SMART_WINDOW_SIZE:]
-                                web_interface.update_live_torque(
-                                    torque_percent=tp,
-                                    rpm=rpm,
-                                    elapsed=current_time - measurement_start_time,
-                                )
-                                web_interface.add_measurement_point(
-                                    height=z_height,
-                                    rotational_drag=abs(tp) / rpm if rpm > 0 else 0.0,
-                                    rpm=rpm,
-                                    cell_id=web_interface.current_cell,
-                                )
-                                print(
-                                    f"      [LIQUID CONTACT] First sample {tp:.2f}% < "
-                                    f"{hunting_first_contact_min_pct:.2f}% — stopping this Z-level sample early"
-                                )
-                                break
-                            hunt_contact_confirmed = True
+                                liquid_hunt_stop = True
+                            else:
+                                hunt_contact_confirmed = True
                         measurement = {
                             "timestamp": current_time,
-                            "elapsed_time": current_time - measurement_start_time,
+                            "elapsed_time": elapsed_since_start,
                             "torque_percent": tp,
                             "rpm": rpm
                         }
@@ -620,7 +601,7 @@ def measure_torque_at_rpm(
                         web_interface.update_live_torque(
                             torque_percent=tp,
                             rpm=rpm,
-                            elapsed=current_time - measurement_start_time,
+                            elapsed=elapsed_since_start,
                         )
                         web_interface.add_measurement_point(
                             height=z_height,
@@ -628,16 +609,33 @@ def measure_torque_at_rpm(
                             rpm=rpm,
                             cell_id=web_interface.current_cell,
                         )
-                        if SMART_EARLY_EXIT_ENABLED and len(recent_torques) == SMART_WINDOW_SIZE:
+                        if liquid_hunt_stop:
+                            print(
+                                f"      [LIQUID CONTACT] Sample at {elapsed_since_start:.2f}s "
+                                f"{tp:.2f}% < {hunting_first_contact_min_pct:.2f}% — "
+                                "stopping this Z-level sample early"
+                            )
+                            break
+                        hunting_unresolved = (
+                            hunting_first_contact_min_pct is not None and not hunt_contact_confirmed
+                        )
+                        if (
+                            SMART_EARLY_EXIT_ENABLED
+                            and not hunting_unresolved
+                            and len(recent_torques) == SMART_WINDOW_SIZE
+                        ):
                             recent_mean = statistics.mean(recent_torques)
                             if recent_mean > 0:
                                 cv = statistics.pstdev(recent_torques) / recent_mean
                                 if cv < SMART_CV_THRESHOLD:
                                     print(f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD}")
                                     break
-                    next_sample_time += SAMPLE_INTERVAL
+                    sample_index += 1
+                    next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
                 except Exception as e:
                     print(f"      Measurement error at RPM {rpm}: {e}")
+                    sample_index += 1
+                    next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
             
             sleep_with_stop(0.1)
         
@@ -701,15 +699,26 @@ def test_dynamic_analysis_at_z(
             for r in cell_rpms:
                 rpm_torque_data[r] = None
             return rpm_torque_data, False, True
-        t0 = float(measurements[0]["torque_percent"])
-        if t0 < liquid_threshold_pct:
+        post_interval = next(
+            (m for m in measurements if float(m.get("elapsed_time", 0)) >= SAMPLE_INTERVAL),
+            None,
+        )
+        if post_interval is not None:
+            t_gate = float(post_interval["torque_percent"])
+            if t_gate < liquid_threshold_pct:
+                print(
+                    f"      [LIQUID CONTACT] Post-interval torque {t_gate:.2f}% (first sample at "
+                    f"elapsed ≥ {SAMPLE_INTERVAL:.1f}s) < {liquid_threshold_pct:.2f}% — "
+                    "skipping Z-level (no hit-point inputs, no further RPMs)"
+                )
+                for r in cell_rpms:
+                    rpm_torque_data[r] = None
+                return rpm_torque_data, False, True
+        else:
             print(
-                f"      [LIQUID CONTACT] First sample {t0:.2f}% < {liquid_threshold_pct:.2f}% — "
-                f"skipping Z-level (no hit-point inputs, no further RPMs)"
+                f"      [LIQUID CONTACT] No sample with elapsed ≥ {SAMPLE_INTERVAL:.1f}s — "
+                "cannot evaluate air gap; treating as liquid contact at this Z"
             )
-            for r in cell_rpms:
-                rpm_torque_data[r] = None
-            return rpm_torque_data, False, True
         box[0] = True
         rpm_torque_data[first_rpm] = measurements
         start_i = 1
@@ -817,8 +826,9 @@ def test_cell_dynamic_z_series(
     liquid_contact_established_box: Optional[List[bool]] = [False] if use_liquid_z_skip else None
     if use_liquid_z_skip:
         print(
-            f"  Liquid-contact hunt enabled (regular run): skip Z-rows until first torque sample is "
-            f"≥ {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% — below-threshold rows use torque "
+            f"  Liquid-contact hunt enabled (regular run): skip Z-rows when first torque sample at "
+            f"elapsed ≥ {SAMPLE_INTERVAL:.1f}s is < "
+            f"{LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (otherwise continue); skipped rows use torque "
             f"{_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
         )
     
@@ -889,7 +899,7 @@ def test_cell_dynamic_z_series(
                     rpm_data["_liquid_skip_torque_label"] = tlab
                     rpm_data["_metrics"] = {}
                     print(
-                        f"  Z={z_rounded:.3f}: no liquid contact (first sample below "
+                        f"  Z={z_rounded:.3f}: no liquid contact (post-interval sample below "
                         f"{LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}%) — hit-point logic skipped for this Z"
                     )
                     current_z += Z_STEP_SIZE
@@ -1249,8 +1259,8 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
             csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = {WEIGHT_2ND_DERIV_DRAG}/{WEIGHT_2ND_DERIV_CV}/{WEIGHT_2ND_DERIV_SLOPE}, R2(Drag/CV/Slope) = {WEIGHT_R2_DRAG}/{WEIGHT_R2_CV}/{WEIGHT_R2_SLOPE}"])
         if LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED:
             csv_writer.writerow([
-                f"# Low-torque liquid-contact hunt: skip Z-rows until first sample "
-                f">= {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
+                f"# Low-torque liquid-contact hunt: skip Z-rows when first sample at elapsed >= "
+                f"{SAMPLE_INTERVAL:.1f}s is < {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
                 f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
             ])
         csv_writer.writerow([f"# WARNING: Experiment was terminated early - these are partial results"])
@@ -1382,8 +1392,8 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = {WEIGHT_2ND_DERIV_DRAG}/{WEIGHT_2ND_DERIV_CV}/{WEIGHT_2ND_DERIV_SLOPE}, R2(Drag/CV/Slope) = {WEIGHT_R2_DRAG}/{WEIGHT_R2_CV}/{WEIGHT_R2_SLOPE}"])
         if LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED:
             csv_writer.writerow([
-                f"# Low-torque liquid-contact hunt: skip Z-rows until first sample "
-                f">= {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
+                f"# Low-torque liquid-contact hunt: skip Z-rows when first sample at elapsed >= "
+                f"{SAMPLE_INTERVAL:.1f}s is < {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
                 f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
             ])
         csv_writer.writerow([])
