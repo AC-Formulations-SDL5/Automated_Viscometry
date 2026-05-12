@@ -129,6 +129,8 @@ class ViscometryDashboard {
             smartEarlyExitEnabled: document.getElementById("smart-early-exit-enabled"),
             smartCvThreshold: document.getElementById("smart-cv-threshold"),
             smartWindowSize: document.getElementById("smart-window-size"),
+            lowTorqueLiquidContactSkipEnabled: document.getElementById("low-torque-liquid-contact-skip-enabled"),
+            lowTorqueLiquidContactThresholdPct: document.getElementById("low-torque-liquid-contact-threshold-pct"),
             r2DragMin: document.getElementById("r2-drag-min"),
             r2CvMin: document.getElementById("r2-cv-min"),
             r2SlopeMin: document.getElementById("r2-slope-min"),
@@ -743,6 +745,12 @@ class ViscometryDashboard {
         if (this.el.smartEarlyExitEnabled) this.el.smartEarlyExitEnabled.checked = Boolean(settings.smart_early_exit_enabled);
         if (this.el.smartCvThreshold) this.el.smartCvThreshold.value = settings.smart_cv_threshold ?? 0.005;
         if (this.el.smartWindowSize) this.el.smartWindowSize.value = settings.smart_window_size ?? 3;
+        if (this.el.lowTorqueLiquidContactSkipEnabled) {
+            this.el.lowTorqueLiquidContactSkipEnabled.checked = Boolean(settings.low_torque_liquid_contact_skip_enabled);
+        }
+        if (this.el.lowTorqueLiquidContactThresholdPct) {
+            this.el.lowTorqueLiquidContactThresholdPct.value = settings.low_torque_liquid_contact_threshold_pct ?? 20;
+        }
         if (this.el.r2DragMin) this.el.r2DragMin.value = settings.r2_drag_min ?? 0.975;
         if (this.el.r2CvMin) this.el.r2CvMin.value = settings.r2_cv_min ?? 0.975;
         if (this.el.r2SlopeMin) this.el.r2SlopeMin.value = settings.r2_slope_min ?? 0.975;
@@ -946,6 +954,8 @@ class ViscometryDashboard {
             smart_early_exit_enabled: Boolean(this.el.smartEarlyExitEnabled?.checked),
             smart_cv_threshold: Number(this.el.smartCvThreshold?.value ?? 0.005),
             smart_window_size: Number(this.el.smartWindowSize?.value ?? 3),
+            low_torque_liquid_contact_skip_enabled: Boolean(this.el.lowTorqueLiquidContactSkipEnabled?.checked),
+            low_torque_liquid_contact_threshold_pct: Number(this.el.lowTorqueLiquidContactThresholdPct?.value ?? 20),
             r2_drag_min: Number(this.el.r2DragMin?.value ?? 0.975),
             r2_cv_min: Number(this.el.r2CvMin?.value ?? 0.975),
             r2_slope_min: Number(this.el.r2SlopeMin?.value ?? 0.975),

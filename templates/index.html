@@ -217,6 +217,14 @@
                                 <input id="smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox">
                                 <span>Smart Early Exit (CV-based)</span>
                             </label>
+                            <label class="checkbox-row">
+                                <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox">
+                                <span>Skip Z-levels until liquid contact (regular runs only; not calibration / recalibration)</span>
+                            </label>
+                            <label>
+                                <span>First-sample torque floor (%)</span>
+                                <input id="low-torque-liquid-contact-threshold-pct" name="low_torque_liquid_contact_threshold_pct" type="number" step="0.1" min="0" max="100" value="20" title="Z-levels are skipped until the first torque sample at that height is ≥ this value. Skipped rows use torque label &lt;x% and SKIPPED metrics.">
+                            </label>
                             <details id="smart-exit-params-details" class="feedback-params-section">
                                 <summary class="feedback-params-toggle">
                                     Smart Early Exit Parameters

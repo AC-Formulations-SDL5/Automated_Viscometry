@@ -100,6 +100,10 @@ SMART_EARLY_EXIT_ENABLED = False
 SMART_CV_THRESHOLD = 0.005
 SMART_WINDOW_SIZE = 3
 
+# Skip Z-levels until first-sample torque ≥ threshold (regular runs only; see web toggle).
+LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = False
+LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 20.0
+
 # ========== CALIBRATION MODE CONFIGURATION ==========
 CALIBRATION_MODE = False          # Set to True when a calibration run is requested
 RECALIBRATE_INDIVIDUAL_CELLS = False  # Set to True for individual cell recalibration mode
@@ -141,6 +145,8 @@ def apply_runtime_settings_from_web():
     global WEIGHT_2ND_DERIV_DRAG, WEIGHT_2ND_DERIV_CV, WEIGHT_2ND_DERIV_SLOPE
     global WEIGHT_R2_DRAG, WEIGHT_R2_CV, WEIGHT_R2_SLOPE
     global BASELINE_N_CALIBRATION, BASELINE_Z_THRESHOLD
+    global CALIBRATION_MODE, RECALIBRATE_INDIVIDUAL_CELLS, RECALIBRATION_CELLS
+    global LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED, LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT
 
     settings = web_interface.get_runtime_settings()
 
@@ -180,9 +186,14 @@ def apply_runtime_settings_from_web():
     WEIGHT_R2_SLOPE = float(settings.get('weight_r2_slope', WEIGHT_R2_SLOPE))
     BASELINE_N_CALIBRATION = int(settings.get('baseline_n_calibration', BASELINE_N_CALIBRATION))
     BASELINE_Z_THRESHOLD = float(settings.get('baseline_z_threshold', BASELINE_Z_THRESHOLD))
-    global CALIBRATION_MODE, RECALIBRATE_INDIVIDUAL_CELLS, RECALIBRATION_CELLS
     CALIBRATION_MODE = bool(settings.get('calibration_mode', False))
     RECALIBRATE_INDIVIDUAL_CELLS = bool(settings.get('recalibrate_individual_cells', False))
+    LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = bool(
+        settings.get('low_torque_liquid_contact_skip_enabled', LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED)
+    )
+    LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = float(
+        settings.get('low_torque_liquid_contact_threshold_pct', LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)
+    )
     # Parse recalibration cells: expect dict {cell_id: optional_starting_z}
     # JSON object keys arrive as strings; normalize to int keys for runtime lookup.
     raw_recalibration_cells = settings.get('recalibration_cells', {})
@@ -228,6 +239,27 @@ def raise_if_stop_requested():
     """Raise KeyboardInterrupt if the web UI has requested a stop."""
     if web_interface.should_stop():
         raise KeyboardInterrupt("Stop requested from web interface")
+
+
+def _liquid_skip_csv_row(row_number: int, global_cell: int, z_height: float, rpm: float, torque_label: str) -> List[str]:
+    """One CSV row for a Z-level skipped due to low torque (no liquid contact)."""
+    sk = "SKIPPED"
+    return [
+        str(row_number),
+        str(global_cell),
+        CELL_CONTENT_MAP.get(global_cell, ""),
+        f"{z_height:.3f}",
+        f"{rpm:.1f}",
+        sk,
+        torque_label,
+        sk,
+    ] + [sk] * 10 + [sk] * 6 + [sk, sk, sk, sk]
+
+
+def _liquid_skip_torque_label(th: float) -> str:
+    if abs(th - round(th)) < 1e-9:
+        return f"<{int(round(th))}%"
+    return f"<{th:.1f}%"
 
 
 def _run_in_thread(fn, *args, **kwargs) -> threading.Thread:
@@ -504,8 +536,19 @@ def _drain_station1(pump: PumpESP32):
     except KeyboardInterrupt:
         print("[CONCURRENT] Station 1 drain cancelled due to stop request.")
 
-def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float) -> Optional[List[Dict]]:
-    """Measure torque at a specific RPM, returning all individual measurements with timestamps"""
+def measure_torque_at_rpm(
+    client: ViscometerClient,
+    rpm: float,
+    z_height: float,
+    hunting_first_contact_min_pct: Optional[float] = None,
+) -> Optional[List[Dict]]:
+    """Measure torque at a specific RPM, returning all individual measurements with timestamps.
+
+    If ``hunting_first_contact_min_pct`` is set (liquid-contact hunt at first Z after spindle starts):
+    after the **first** valid torque sample, if it is **strictly less than** that threshold, sampling
+    stops immediately (remaining window is not measured). If it is **greater than or equal to** the
+    threshold, the full ``MEASUREMENT_DURATION`` collection proceeds as normal.
+    """
     try:
         # Set spindle speed
         client.set_speed(rpm)
@@ -520,7 +563,8 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
         measurement_start_time = time.time()
         # Try an immediate sample first (more robust to timing/jitter), then schedule periodic samples
         next_sample_time = start_time
-        
+        hunt_contact_confirmed = False
+
         while time.time() - start_time < MEASUREMENT_DURATION:
             raise_if_stop_requested()
             current_time = time.time()
@@ -532,23 +576,55 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
                     if next_sample_time == start_time:
                         next_sample_time = current_time + SAMPLE_INTERVAL
                     if data and data.get("torque_valid") and data.get("torque_percent") is not None:
+                        tp = float(data["torque_percent"])
+                        if (
+                            hunting_first_contact_min_pct is not None
+                            and not hunt_contact_confirmed
+                        ):
+                            if tp < hunting_first_contact_min_pct:
+                                measurement = {
+                                    "timestamp": current_time,
+                                    "elapsed_time": current_time - measurement_start_time,
+                                    "torque_percent": tp,
+                                    "rpm": rpm,
+                                }
+                                measurements.append(measurement)
+                                recent_torques.append(tp)
+                                recent_torques = recent_torques[-SMART_WINDOW_SIZE:]
+                                web_interface.update_live_torque(
+                                    torque_percent=tp,
+                                    rpm=rpm,
+                                    elapsed=current_time - measurement_start_time,
+                                )
+                                web_interface.add_measurement_point(
+                                    height=z_height,
+                                    rotational_drag=abs(tp) / rpm if rpm > 0 else 0.0,
+                                    rpm=rpm,
+                                    cell_id=web_interface.current_cell,
+                                )
+                                print(
+                                    f"      [LIQUID CONTACT] First sample {tp:.2f}% < "
+                                    f"{hunting_first_contact_min_pct:.2f}% — stopping this Z-level sample early"
+                                )
+                                break
+                            hunt_contact_confirmed = True
                         measurement = {
                             "timestamp": current_time,
                             "elapsed_time": current_time - measurement_start_time,
-                            "torque_percent": data["torque_percent"],
+                            "torque_percent": tp,
                             "rpm": rpm
                         }
                         measurements.append(measurement)
-                        recent_torques.append(data["torque_percent"])
+                        recent_torques.append(tp)
                         recent_torques = recent_torques[-SMART_WINDOW_SIZE:]
                         web_interface.update_live_torque(
-                            torque_percent=data["torque_percent"],
+                            torque_percent=tp,
                             rpm=rpm,
                             elapsed=current_time - measurement_start_time,
                         )
                         web_interface.add_measurement_point(
                             height=z_height,
-                            rotational_drag=abs(data["torque_percent"]) / rpm if rpm > 0 else 0.0,
+                            rotational_drag=abs(tp) / rpm if rpm > 0 else 0.0,
                             rpm=rpm,
                             cell_id=web_interface.current_cell,
                         )
@@ -594,20 +670,69 @@ def measure_torque_at_rpm(client: ViscometerClient, rpm: float, z_height: float)
 def test_dynamic_analysis_at_z(
     client: ViscometerClient,
     z_height: float,
-    cell_rpms: List[float]
-) -> Tuple[Dict[float, Optional[List[Dict]]], bool]:
-    """Test all RPMs at a specific Z-height and return torque data and first_rpm_exceeded flag"""
+    cell_rpms: List[float],
+    *,
+    liquid_skip_enabled: bool = False,
+    liquid_threshold_pct: float = 20.0,
+    liquid_contact_established_box: Optional[List[bool]] = None,
+) -> Tuple[Dict[float, Optional[List[Dict]]], bool, bool]:
+    """Test all RPMs at a specific Z-height.
+
+    Returns ``(rpm_torque_data, first_rpm_exceeded_threshold, z_skipped_due_to_liquid)``.
+    When ``z_skipped_due_to_liquid`` is True, ``rpm_torque_data`` maps every RPM to ``None`` and no
+    further RPMs were measured at this Z-level.
+    """
     print(f"    Testing {len(cell_rpms)} RPMs at Z={z_height:.3f}")
-    rpm_torque_data = {}
+    rpm_torque_data: Dict[float, Optional[List[Dict]]] = {}
     first_rpm_exceeded_threshold = False
-    
-    for i, rpm in enumerate(cell_rpms):
+    start_i = 0
+    box = liquid_contact_established_box
+
+    if liquid_skip_enabled and box is not None and (not box[0]) and len(cell_rpms) > 0:
+        first_rpm = cell_rpms[0]
+        measurements = measure_torque_at_rpm(
+            client,
+            first_rpm,
+            z_height,
+            hunting_first_contact_min_pct=liquid_threshold_pct,
+        )
+        if measurements is None or len(measurements) == 0:
+            print(f"      [LIQUID CONTACT] No valid torque samples at Z={z_height:.3f} — skipping Z-level")
+            for r in cell_rpms:
+                rpm_torque_data[r] = None
+            return rpm_torque_data, False, True
+        t0 = float(measurements[0]["torque_percent"])
+        if t0 < liquid_threshold_pct:
+            print(
+                f"      [LIQUID CONTACT] First sample {t0:.2f}% < {liquid_threshold_pct:.2f}% — "
+                f"skipping Z-level (no hit-point inputs, no further RPMs)"
+            )
+            for r in cell_rpms:
+                rpm_torque_data[r] = None
+            return rpm_torque_data, False, True
+        box[0] = True
+        rpm_torque_data[first_rpm] = measurements
+        start_i = 1
+        max_torque = max(abs(m["torque_percent"]) for m in measurements)
+        if max_torque >= TORQUE_BREAK_THRESHOLD:
+            print(
+                f"      CRITICAL: First RPM {first_rpm} exceeded safety threshold with max {max_torque:.2f}% "
+                f"- will break entire cell"
+            )
+            first_rpm_exceeded_threshold = True
+            for remaining_rpm in cell_rpms[1:]:
+                rpm_torque_data[remaining_rpm] = None
+            return rpm_torque_data, first_rpm_exceeded_threshold, False
+
+    for i in range(start_i, len(cell_rpms)):
+        rpm = cell_rpms[i]
         measurements = measure_torque_at_rpm(client, rpm, z_height)
         rpm_torque_data[rpm] = measurements
-        
+        is_first_rpm_in_profile = rpm == cell_rpms[0]
+
         # Check if measurements are invalid (high resistance condition) or exceed threshold
         if measurements is None:
-            if i == 0:  # First RPM failed - critical condition
+            if is_first_rpm_in_profile:  # First RPM failed - critical condition
                 print(f"      CRITICAL: First RPM {rpm} returned invalid torque (high resistance) - will break entire cell")
                 first_rpm_exceeded_threshold = True
                 # Fill remaining RPMs with None
@@ -624,7 +749,7 @@ def test_dynamic_analysis_at_z(
             # Check if any torque measurement exceeds threshold
             max_torque = max(abs(m["torque_percent"]) for m in measurements)
             if max_torque >= TORQUE_BREAK_THRESHOLD:
-                if i == 0:  # First RPM exceeded threshold
+                if is_first_rpm_in_profile:  # First RPM exceeded threshold
                     print(f"      CRITICAL: First RPM {rpm} exceeded threshold with max {max_torque:.2f}% - will break entire cell")
                     first_rpm_exceeded_threshold = True
                     # Fill remaining RPMs with None
@@ -637,8 +762,8 @@ def test_dynamic_analysis_at_z(
                     for remaining_rpm in cell_rpms[cell_rpms.index(rpm) + 1:]:
                         rpm_torque_data[remaining_rpm] = None
                     break
-    
-    return rpm_torque_data, first_rpm_exceeded_threshold
+
+    return rpm_torque_data, first_rpm_exceeded_threshold, False
 
 def test_cell_dynamic_z_series(
     cnc: CNC_Machine,
@@ -684,6 +809,19 @@ def test_cell_dynamic_z_series(
     )
     
     cell_z_rpm_data = {}
+    use_liquid_z_skip = (
+        LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED
+        and (not CALIBRATION_MODE)
+        and (not RECALIBRATE_INDIVIDUAL_CELLS)
+    )
+    liquid_contact_established_box: Optional[List[bool]] = [False] if use_liquid_z_skip else None
+    if use_liquid_z_skip:
+        print(
+            f"  Liquid-contact hunt enabled (regular run): skip Z-rows until first torque sample is "
+            f"≥ {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% — below-threshold rows use torque "
+            f"{_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
+        )
+    
     # Determine starting Z: custom_starting_z > RECALIBRATE_INDIVIDUAL_CELLS > CALIBRATION_MODE > normal
     if custom_starting_z is not None:
         current_z = custom_starting_z
@@ -735,9 +873,28 @@ def test_cell_dynamic_z_series(
                     sleep_with_stop(SETTLE_TIME)
                 
                 # Test all RPMs at this Z-height
-                rpm_data, first_rpm_exceeded = test_dynamic_analysis_at_z(client, z_rounded, cell_rpms)
+                rpm_data, first_rpm_exceeded, z_liquid_skipped = test_dynamic_analysis_at_z(
+                    client,
+                    z_rounded,
+                    cell_rpms,
+                    liquid_skip_enabled=use_liquid_z_skip,
+                    liquid_threshold_pct=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT,
+                    liquid_contact_established_box=liquid_contact_established_box,
+                )
                 cell_z_rpm_data[z_rounded] = rpm_data
-                
+
+                if z_liquid_skipped:
+                    tlab = _liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)
+                    rpm_data["_liquid_skipped_z"] = True
+                    rpm_data["_liquid_skip_torque_label"] = tlab
+                    rpm_data["_metrics"] = {}
+                    print(
+                        f"  Z={z_rounded:.3f}: no liquid contact (first sample below "
+                        f"{LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}%) — hit-point logic skipped for this Z"
+                    )
+                    current_z += Z_STEP_SIZE
+                    continue
+
                 # Check if first RPM exceeded threshold - if so, break entire cell
                 if first_rpm_exceeded:
                     print(f"  CELL TERMINATION: First RPM exceeded threshold at Z={z_rounded:.3f}")
@@ -1090,6 +1247,12 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
         if FEEDBACK_CONTROL_ENABLED:
             csv_writer.writerow([f"# Feedback R2 Thresholds: Drag = {R2_DRAG_MIN}, CV = {R2_CV_MIN}, Slope = {R2_SLOPE_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
             csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = {WEIGHT_2ND_DERIV_DRAG}/{WEIGHT_2ND_DERIV_CV}/{WEIGHT_2ND_DERIV_SLOPE}, R2(Drag/CV/Slope) = {WEIGHT_R2_DRAG}/{WEIGHT_R2_CV}/{WEIGHT_R2_SLOPE}"])
+        if LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED:
+            csv_writer.writerow([
+                f"# Low-torque liquid-contact hunt: skip Z-rows until first sample "
+                f">= {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
+                f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
+            ])
         csv_writer.writerow([f"# WARNING: Experiment was terminated early - these are partial results"])
         csv_writer.writerow([])
         
@@ -1117,8 +1280,17 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
             for z_height in z_heights:
                 if z_height in cell_data:
                     rpm_data = cell_data[z_height]
-                    metrics_data = cell_data[z_height].get('_metrics', {})
-                    for rpm in sorted(k for k in rpm_data.keys() if k != '_metrics'):
+                    _md_keys = {"_metrics", "_liquid_skipped_z", "_liquid_skip_torque_label"}
+                    if rpm_data.get("_liquid_skipped_z"):
+                        tlab = rpm_data.get(
+                            "_liquid_skip_torque_label",
+                            _liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT),
+                        )
+                        for rpm in sorted(k for k in rpm_data.keys() if k not in _md_keys):
+                            csv_writer.writerow(_liquid_skip_csv_row(row_number, global_cell, z_height, rpm, tlab))
+                        continue
+                    metrics_data = cell_data[z_height].get("_metrics", {})
+                    for rpm in sorted(k for k in rpm_data.keys() if k not in _md_keys):
                         measurements = rpm_data.get(rpm)
                         if measurements is not None:
                             # Get metrics for this RPM at this Z-height
@@ -1208,6 +1380,12 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         if FEEDBACK_CONTROL_ENABLED:
             csv_writer.writerow([f"# Feedback R2 Thresholds: Drag = {R2_DRAG_MIN}, CV = {R2_CV_MIN}, Slope = {R2_SLOPE_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
             csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = {WEIGHT_2ND_DERIV_DRAG}/{WEIGHT_2ND_DERIV_CV}/{WEIGHT_2ND_DERIV_SLOPE}, R2(Drag/CV/Slope) = {WEIGHT_R2_DRAG}/{WEIGHT_R2_CV}/{WEIGHT_R2_SLOPE}"])
+        if LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED:
+            csv_writer.writerow([
+                f"# Low-torque liquid-contact hunt: skip Z-rows until first sample "
+                f">= {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
+                f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
+            ])
         csv_writer.writerow([])
         
         # Write column headers with Rotational_Drag and metrics columns
@@ -1234,8 +1412,17 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             for z_height in z_heights:
                 if z_height in cell_data:
                     rpm_data = cell_data[z_height]
-                    metrics_data = cell_data[z_height].get('_metrics', {})
-                    for rpm in sorted(k for k in rpm_data.keys() if k != '_metrics'):
+                    _md_keys = {"_metrics", "_liquid_skipped_z", "_liquid_skip_torque_label"}
+                    if rpm_data.get("_liquid_skipped_z"):
+                        tlab = rpm_data.get(
+                            "_liquid_skip_torque_label",
+                            _liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT),
+                        )
+                        for rpm in sorted(k for k in rpm_data.keys() if k not in _md_keys):
+                            csv_writer.writerow(_liquid_skip_csv_row(row_number, global_cell, z_height, rpm, tlab))
+                        continue
+                    metrics_data = cell_data[z_height].get("_metrics", {})
+                    for rpm in sorted(k for k in rpm_data.keys() if k not in _md_keys):
                         measurements = rpm_data.get(rpm)
                         if measurements is not None:
                             # Get metrics for this RPM at this Z-height

@@ -79,6 +79,9 @@ class ViscometryWebInterface:
             'calibration_mode': False,
             'recalibrate_individual_cells': False,
             'recalibration_cells': {},
+            # Regular runs only: skip Z-levels until first-sample torque meets threshold (no liquid contact).
+            'low_torque_liquid_contact_skip_enabled': False,
+            'low_torque_liquid_contact_threshold_pct': 20.0,
         }
         # ========== Calibration state ==========
         self.calibration_mode = False         # True when a calibration run is active
@@ -500,6 +503,14 @@ class ViscometryWebInterface:
                 normalized['feedback_control_enabled'] = bool(settings['feedback_control_enabled'])
             if 'smart_early_exit_enabled' in settings:
                 normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
+            if 'low_torque_liquid_contact_skip_enabled' in settings:
+                normalized['low_torque_liquid_contact_skip_enabled'] = bool(
+                    settings['low_torque_liquid_contact_skip_enabled']
+                )
+            if 'low_torque_liquid_contact_threshold_pct' in settings and settings['low_torque_liquid_contact_threshold_pct'] not in (None, ''):
+                normalized['low_torque_liquid_contact_threshold_pct'] = float(
+                    settings['low_torque_liquid_contact_threshold_pct']
+                )
             if 'calibration_mode' in settings:
                 normalized['calibration_mode'] = bool(settings['calibration_mode'])
             if 'recalibrate_individual_cells' in settings:
