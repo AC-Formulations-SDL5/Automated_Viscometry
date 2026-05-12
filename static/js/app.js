@@ -50,6 +50,10 @@ class ViscometryDashboard {
         this.summaryPlotInitialized = false;
         this._summaryHistoryPollIntervalId = null;
         this._summaryHistoryPollMs = 8000;
+        /** Debounce heavy Plotly / table DOM work during streaming measurements (remote viewers). */
+        this._plotRefreshTimer = null;
+        this._tableRefreshTimer = null;
+        this._graphTabIdsKey = "";
         this.customHitpointSelectedCellId = null;
         this.isSavingFinalResults = false;
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
@@ -129,6 +133,8 @@ class ViscometryDashboard {
             smartEarlyExitEnabled: document.getElementById("smart-early-exit-enabled"),
             smartCvThreshold: document.getElementById("smart-cv-threshold"),
             smartWindowSize: document.getElementById("smart-window-size"),
+            lowTorqueLiquidContactSkipEnabled: document.getElementById("low-torque-liquid-contact-skip-enabled"),
+            lowTorqueLiquidContactThresholdPct: document.getElementById("low-torque-liquid-contact-threshold-pct"),
             r2DragMin: document.getElementById("r2-drag-min"),
             r2CvMin: document.getElementById("r2-cv-min"),
             r2SlopeMin: document.getElementById("r2-slope-min"),
@@ -743,6 +749,12 @@ class ViscometryDashboard {
         if (this.el.smartEarlyExitEnabled) this.el.smartEarlyExitEnabled.checked = Boolean(settings.smart_early_exit_enabled);
         if (this.el.smartCvThreshold) this.el.smartCvThreshold.value = settings.smart_cv_threshold ?? 0.005;
         if (this.el.smartWindowSize) this.el.smartWindowSize.value = settings.smart_window_size ?? 3;
+        if (this.el.lowTorqueLiquidContactSkipEnabled) {
+            this.el.lowTorqueLiquidContactSkipEnabled.checked = Boolean(settings.low_torque_liquid_contact_skip_enabled);
+        }
+        if (this.el.lowTorqueLiquidContactThresholdPct) {
+            this.el.lowTorqueLiquidContactThresholdPct.value = settings.low_torque_liquid_contact_threshold_pct ?? 20;
+        }
         if (this.el.r2DragMin) this.el.r2DragMin.value = settings.r2_drag_min ?? 0.975;
         if (this.el.r2CvMin) this.el.r2CvMin.value = settings.r2_cv_min ?? 0.975;
         if (this.el.r2SlopeMin) this.el.r2SlopeMin.value = settings.r2_slope_min ?? 0.975;
@@ -946,6 +958,8 @@ class ViscometryDashboard {
             smart_early_exit_enabled: Boolean(this.el.smartEarlyExitEnabled?.checked),
             smart_cv_threshold: Number(this.el.smartCvThreshold?.value ?? 0.005),
             smart_window_size: Number(this.el.smartWindowSize?.value ?? 3),
+            low_torque_liquid_contact_skip_enabled: Boolean(this.el.lowTorqueLiquidContactSkipEnabled?.checked),
+            low_torque_liquid_contact_threshold_pct: Number(this.el.lowTorqueLiquidContactThresholdPct?.value ?? 20),
             r2_drag_min: Number(this.el.r2DragMin?.value ?? 0.975),
             r2_cv_min: Number(this.el.r2CvMin?.value ?? 0.975),
             r2_slope_min: Number(this.el.r2SlopeMin?.value ?? 0.975),
@@ -1169,30 +1183,30 @@ class ViscometryDashboard {
 
         this.socket.on("instrument_status_update", (status) => {
             if (!status) {
-
-                        this.socket.on("calibration_mode_update", (data) => {
-                            if (data && typeof data === "object") {
-                                this.calibrationModeActive = Boolean(data.calibration_mode);
-                                if (Array.isArray(data.completed_cells)) {
-                                    this.completedCells = new Set(
-                                        data.completed_cells
-                                            .map((c) => Number(c))
-                                            .filter((c) => Number.isInteger(c) && c > 0)
-                                    );
-                                    this.measuredCells = new Set(this.completedCells);
-                                    this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
-                                }
-                                this.recalibrationModeActive = Boolean(data.recalibration_mode_active);
-                                this.recalibrationTargetCount = Number(data.recalibration_target_count) || 0;
-                                this.updateCompletionBar();
-                                this.updateCellVisuals();
-                            }
-                        });
                 return;
             }
             this.setInstrumentStatus("cnc", Boolean(status.cnc));
             this.setInstrumentStatus("viscometer", Boolean(status.viscometer));
             this.setInstrumentStatus("pump", Boolean(status.pump));
+        });
+
+        this.socket.on("calibration_mode_update", (data) => {
+            if (data && typeof data === "object") {
+                this.calibrationModeActive = Boolean(data.calibration_mode);
+                if (Array.isArray(data.completed_cells)) {
+                    this.completedCells = new Set(
+                        data.completed_cells
+                            .map((c) => Number(c))
+                            .filter((c) => Number.isInteger(c) && c > 0)
+                    );
+                    this.measuredCells = new Set(this.completedCells);
+                    this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
+                }
+                this.recalibrationModeActive = Boolean(data.recalibration_mode_active);
+                this.recalibrationTargetCount = Number(data.recalibration_target_count) || 0;
+                this.updateCompletionBar();
+                this.updateCellVisuals();
+            }
         });
 
         this.socket.on("feedback_metrics_update", (data) => {
@@ -1243,6 +1257,15 @@ class ViscometryDashboard {
         this.isSavingFinalResults = false;
         this.runMeasurementStartIndex = 0;
         this.currentPhase = 0;
+        this._graphTabIdsKey = "";
+        if (this._plotRefreshTimer) {
+            window.clearTimeout(this._plotRefreshTimer);
+            this._plotRefreshTimer = null;
+        }
+        if (this._tableRefreshTimer) {
+            window.clearTimeout(this._tableRefreshTimer);
+            this._tableRefreshTimer = null;
+        }
 
         if (this.el.statusLog) {
             this.el.statusLog.innerHTML = "";
@@ -1297,6 +1320,7 @@ class ViscometryDashboard {
         if (this.el.zMeasuringDisplay) {
             this.el.zMeasuringDisplay.textContent = "-";
         }
+        this.updateGraphCellTabs();
         this.refreshLivePlots();
         this.updateTable();
     }
@@ -1354,12 +1378,12 @@ class ViscometryDashboard {
             this.recalibrationTargetCount = Number(status.recalibration_target_count) || 0;
         }
 
+        if (status.calibration_mode !== undefined) {
+            this.calibrationModeActive = Boolean(status.calibration_mode);
+        }
+
         if (status.current_rpm !== undefined) {
             this.currentRPM = Number(status.current_rpm) || 0;
-
-                    if (status.calibration_mode !== undefined) {
-                        this.calibrationModeActive = Boolean(status.calibration_mode);
-                    }
             this.updateGauge(this.currentRPM);
         }
 
@@ -1653,6 +1677,26 @@ class ViscometryDashboard {
         this.el.timelineFill.style.transform = `scaleX(${fillPct})`;
     }
 
+    _schedulePlotRefresh() {
+        if (this._plotRefreshTimer) {
+            window.clearTimeout(this._plotRefreshTimer);
+        }
+        this._plotRefreshTimer = window.setTimeout(() => {
+            this._plotRefreshTimer = null;
+            this.refreshLivePlots();
+        }, 110);
+    }
+
+    _scheduleTableRefresh() {
+        if (this._tableRefreshTimer) {
+            window.clearTimeout(this._tableRefreshTimer);
+        }
+        this._tableRefreshTimer = window.setTimeout(() => {
+            this._tableRefreshTimer = null;
+            this.updateTable();
+        }, 140);
+    }
+
     ingestMeasurement(rawMeasurement, bootstrap) {
         const rawSampleCount = Number(rawMeasurement.sample_count);
         const sampleCount = Number.isFinite(rawSampleCount) && rawSampleCount >= 1
@@ -1693,9 +1737,14 @@ class ViscometryDashboard {
             this.updateLiveRotationalDragDisplay(measurement.rotational_drag);
         }
 
-        this.updateGraphCellTabs();
-        this.refreshLivePlots();
-        this.updateTable();
+        const nextTabKey = this.getGraphCellIds().join(",");
+        if (nextTabKey !== this._graphTabIdsKey) {
+            this._graphTabIdsKey = nextTabKey;
+            this.updateGraphCellTabs();
+        }
+
+        this._schedulePlotRefresh();
+        this._scheduleTableRefresh();
         this.updateCellVisuals();
     }
 
