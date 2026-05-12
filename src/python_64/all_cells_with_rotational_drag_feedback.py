@@ -545,10 +545,12 @@ def measure_torque_at_rpm(
 ) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps.
 
+    Recorded samples (and live web points) occur only on a fixed grid every ``SAMPLE_INTERVAL``
+    seconds from the start of the measurement window (after dwell)—no off-grid immediate read.
+
     If ``hunting_first_contact_min_pct`` is set (liquid-contact hunt at first Z after spindle starts):
-    ignore the immediate first read for that decision; after ``elapsed_time >= SAMPLE_INTERVAL``,
-    if torque is **strictly less than** that threshold, sampling stops immediately. If it is
-    **greater than or equal to** the threshold, the full ``MEASUREMENT_DURATION`` collection proceeds.
+    on the **first** recorded sample, if torque is **strictly less than** that threshold, sampling
+    stops immediately. Otherwise the full ``MEASUREMENT_DURATION`` collection proceeds.
     Smart early exit is disabled until this gate is resolved.
     """
     try:
@@ -563,8 +565,9 @@ def measure_torque_at_rpm(
         recent_torques = []
         start_time = time.time()
         measurement_start_time = time.time()
-        # Try an immediate sample first (more robust to timing/jitter), then schedule periodic samples
-        next_sample_time = start_time
+        # Recorded samples and live plots: fixed grid at SAMPLE_INTERVAL (first slot = 1 * interval).
+        sample_index = 1
+        next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
         hunt_contact_confirmed = False
 
         while time.time() - start_time < MEASUREMENT_DURATION:
@@ -574,44 +577,17 @@ def measure_torque_at_rpm(
             if current_time >= next_sample_time:
                 try:
                     data = client.read_single(timeout=TORQUE_READ_TIMEOUT)
-                    # After the first immediate attempt, schedule the next sample SAMPLE_INTERVAL seconds later
-                    if next_sample_time == start_time:
-                        next_sample_time = current_time + SAMPLE_INTERVAL
                     if data and data.get("torque_valid") and data.get("torque_percent") is not None:
                         tp = float(data["torque_percent"])
                         elapsed_since_start = current_time - measurement_start_time
+                        liquid_hunt_stop = False
                         if (
                             hunting_first_contact_min_pct is not None
                             and not hunt_contact_confirmed
                         ):
-                            if elapsed_since_start >= SAMPLE_INTERVAL:
-                                if tp < hunting_first_contact_min_pct:
-                                    measurement = {
-                                        "timestamp": current_time,
-                                        "elapsed_time": elapsed_since_start,
-                                        "torque_percent": tp,
-                                        "rpm": rpm,
-                                    }
-                                    measurements.append(measurement)
-                                    recent_torques.append(tp)
-                                    recent_torques = recent_torques[-SMART_WINDOW_SIZE:]
-                                    web_interface.update_live_torque(
-                                        torque_percent=tp,
-                                        rpm=rpm,
-                                        elapsed=elapsed_since_start,
-                                    )
-                                    web_interface.add_measurement_point(
-                                        height=z_height,
-                                        rotational_drag=abs(tp) / rpm if rpm > 0 else 0.0,
-                                        rpm=rpm,
-                                        cell_id=web_interface.current_cell,
-                                    )
-                                    print(
-                                        f"      [LIQUID CONTACT] Post-interval sample ({elapsed_since_start:.2f}s) "
-                                        f"{tp:.2f}% < {hunting_first_contact_min_pct:.2f}% — "
-                                        "stopping this Z-level sample early"
-                                    )
-                                    break
+                            if tp < hunting_first_contact_min_pct:
+                                liquid_hunt_stop = True
+                            else:
                                 hunt_contact_confirmed = True
                         measurement = {
                             "timestamp": current_time,
@@ -633,6 +609,13 @@ def measure_torque_at_rpm(
                             rpm=rpm,
                             cell_id=web_interface.current_cell,
                         )
+                        if liquid_hunt_stop:
+                            print(
+                                f"      [LIQUID CONTACT] Sample at {elapsed_since_start:.2f}s "
+                                f"{tp:.2f}% < {hunting_first_contact_min_pct:.2f}% — "
+                                "stopping this Z-level sample early"
+                            )
+                            break
                         hunting_unresolved = (
                             hunting_first_contact_min_pct is not None and not hunt_contact_confirmed
                         )
@@ -647,9 +630,12 @@ def measure_torque_at_rpm(
                                 if cv < SMART_CV_THRESHOLD:
                                     print(f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD}")
                                     break
-                    next_sample_time += SAMPLE_INTERVAL
+                    sample_index += 1
+                    next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
                 except Exception as e:
                     print(f"      Measurement error at RPM {rpm}: {e}")
+                    sample_index += 1
+                    next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
             
             sleep_with_stop(0.1)
         
