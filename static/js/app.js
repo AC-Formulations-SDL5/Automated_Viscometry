@@ -50,6 +50,10 @@ class ViscometryDashboard {
         this.summaryPlotInitialized = false;
         this._summaryHistoryPollIntervalId = null;
         this._summaryHistoryPollMs = 8000;
+        /** Debounce heavy Plotly / table DOM work during streaming measurements (remote viewers). */
+        this._plotRefreshTimer = null;
+        this._tableRefreshTimer = null;
+        this._graphTabIdsKey = "";
         this.customHitpointSelectedCellId = null;
         this.isSavingFinalResults = false;
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
@@ -1179,30 +1183,30 @@ class ViscometryDashboard {
 
         this.socket.on("instrument_status_update", (status) => {
             if (!status) {
-
-                        this.socket.on("calibration_mode_update", (data) => {
-                            if (data && typeof data === "object") {
-                                this.calibrationModeActive = Boolean(data.calibration_mode);
-                                if (Array.isArray(data.completed_cells)) {
-                                    this.completedCells = new Set(
-                                        data.completed_cells
-                                            .map((c) => Number(c))
-                                            .filter((c) => Number.isInteger(c) && c > 0)
-                                    );
-                                    this.measuredCells = new Set(this.completedCells);
-                                    this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
-                                }
-                                this.recalibrationModeActive = Boolean(data.recalibration_mode_active);
-                                this.recalibrationTargetCount = Number(data.recalibration_target_count) || 0;
-                                this.updateCompletionBar();
-                                this.updateCellVisuals();
-                            }
-                        });
                 return;
             }
             this.setInstrumentStatus("cnc", Boolean(status.cnc));
             this.setInstrumentStatus("viscometer", Boolean(status.viscometer));
             this.setInstrumentStatus("pump", Boolean(status.pump));
+        });
+
+        this.socket.on("calibration_mode_update", (data) => {
+            if (data && typeof data === "object") {
+                this.calibrationModeActive = Boolean(data.calibration_mode);
+                if (Array.isArray(data.completed_cells)) {
+                    this.completedCells = new Set(
+                        data.completed_cells
+                            .map((c) => Number(c))
+                            .filter((c) => Number.isInteger(c) && c > 0)
+                    );
+                    this.measuredCells = new Set(this.completedCells);
+                    this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
+                }
+                this.recalibrationModeActive = Boolean(data.recalibration_mode_active);
+                this.recalibrationTargetCount = Number(data.recalibration_target_count) || 0;
+                this.updateCompletionBar();
+                this.updateCellVisuals();
+            }
         });
 
         this.socket.on("feedback_metrics_update", (data) => {
@@ -1253,6 +1257,15 @@ class ViscometryDashboard {
         this.isSavingFinalResults = false;
         this.runMeasurementStartIndex = 0;
         this.currentPhase = 0;
+        this._graphTabIdsKey = "";
+        if (this._plotRefreshTimer) {
+            window.clearTimeout(this._plotRefreshTimer);
+            this._plotRefreshTimer = null;
+        }
+        if (this._tableRefreshTimer) {
+            window.clearTimeout(this._tableRefreshTimer);
+            this._tableRefreshTimer = null;
+        }
 
         if (this.el.statusLog) {
             this.el.statusLog.innerHTML = "";
@@ -1307,6 +1320,7 @@ class ViscometryDashboard {
         if (this.el.zMeasuringDisplay) {
             this.el.zMeasuringDisplay.textContent = "-";
         }
+        this.updateGraphCellTabs();
         this.refreshLivePlots();
         this.updateTable();
     }
@@ -1364,12 +1378,12 @@ class ViscometryDashboard {
             this.recalibrationTargetCount = Number(status.recalibration_target_count) || 0;
         }
 
+        if (status.calibration_mode !== undefined) {
+            this.calibrationModeActive = Boolean(status.calibration_mode);
+        }
+
         if (status.current_rpm !== undefined) {
             this.currentRPM = Number(status.current_rpm) || 0;
-
-                    if (status.calibration_mode !== undefined) {
-                        this.calibrationModeActive = Boolean(status.calibration_mode);
-                    }
             this.updateGauge(this.currentRPM);
         }
 
@@ -1663,6 +1677,26 @@ class ViscometryDashboard {
         this.el.timelineFill.style.transform = `scaleX(${fillPct})`;
     }
 
+    _schedulePlotRefresh() {
+        if (this._plotRefreshTimer) {
+            window.clearTimeout(this._plotRefreshTimer);
+        }
+        this._plotRefreshTimer = window.setTimeout(() => {
+            this._plotRefreshTimer = null;
+            this.refreshLivePlots();
+        }, 110);
+    }
+
+    _scheduleTableRefresh() {
+        if (this._tableRefreshTimer) {
+            window.clearTimeout(this._tableRefreshTimer);
+        }
+        this._tableRefreshTimer = window.setTimeout(() => {
+            this._tableRefreshTimer = null;
+            this.updateTable();
+        }, 140);
+    }
+
     ingestMeasurement(rawMeasurement, bootstrap) {
         const rawSampleCount = Number(rawMeasurement.sample_count);
         const sampleCount = Number.isFinite(rawSampleCount) && rawSampleCount >= 1
@@ -1703,9 +1737,14 @@ class ViscometryDashboard {
             this.updateLiveRotationalDragDisplay(measurement.rotational_drag);
         }
 
-        this.updateGraphCellTabs();
-        this.refreshLivePlots();
-        this.updateTable();
+        const nextTabKey = this.getGraphCellIds().join(",");
+        if (nextTabKey !== this._graphTabIdsKey) {
+            this._graphTabIdsKey = nextTabKey;
+            this.updateGraphCellTabs();
+        }
+
+        this._schedulePlotRefresh();
+        this._scheduleTableRefresh();
         this.updateCellVisuals();
     }
 
