@@ -862,10 +862,8 @@ class ViscometryWebInterface:
             ordered = list(measurements)
 
         filtered = []
-        # include points collected before the first hit_detected == True
+        # Include all points (pre-hit and post-hit) that pass the torque floor threshold
         for m in ordered:
-            if m.get('hit_detected'):
-                break
             try:
                 torque = float(m.get('torque_percent', 0))
             except Exception:

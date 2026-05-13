@@ -2718,10 +2718,9 @@ class ViscometryDashboard {
                     const cellId = Number(cellStr);
                     const rpm = Number(rpmStr);
                     // Filter valid points: before first hit_detected and torque above threshold
-                    let beforeHit = true;
+                    // Include all points (pre-hit and post-hit) that pass torque floor threshold
                     const valid = [];
                     for (const point of pts.sort((a,b) => Number(a.timestamp) - Number(b.timestamp))) {
-                        if (point.hit_detected) { beforeHit = false; break; }
                         const torque = Number(point.torque_percent ?? 0);
                         if (Number.isFinite(torque) && torque > (s.low_torque_liquid_contact_threshold_pct ?? 20)) {
                             valid.push(point);
