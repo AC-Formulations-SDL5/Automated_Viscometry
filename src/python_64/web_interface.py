@@ -716,6 +716,20 @@ class ViscometryWebInterface:
             'predicted_viscosity_h0': predicted_viscosity_h0,
         })
 
+    def emit_predicted_viscosity_plot(
+        self, cell_id: int, rpm: float, viscosity_kcP: float, 
+        heights: List[float], drags: List[float], h0: Optional[float] = None
+    ):
+        """Emit plot data for predicted viscosity visualization."""
+        self.socketio.emit('predicted_viscosity_plot_data', {
+            'cell_id': cell_id,
+            'rpm': rpm,
+            'viscosity_kcP': viscosity_kcP,
+            'h0': h0,
+            'heights': heights,
+            'drags': drags,
+        })
+
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
         with self.control_lock:
@@ -831,56 +845,49 @@ class ViscometryWebInterface:
         except Exception as e:
             print(f"Error in add_measurement_point: {e}")
 
-    def calculate_predicted_viscosity(self, measurements, geometry_k=2.330):
-        """Estimate viscosity by fitting a hyperbola to rotational drag data.
-
-        Model: (D / omega) = (eta * K) / (h + h0)
+    def calculate_predicted_viscosity(self, measurements, hitpoint_z=None, torque_floor=25.0, m_hyp=2.330):
+        """Calculate predicted viscosity using hyperbola fitting.
+        
+        Matches the logic from viscosity_pipeline_helper.py
 
         Parameters:
-            measurements: iterable of measurement dicts containing at least
-                'height', 'rotational_drag', 'torque_percent', and optionally 'hit_detected' and 'timestamp'.
-            geometry_k: geometric constant K used in the model (default 2.330).
+            measurements: iterable of measurement dicts with 'height', 'rotational_drag', 'torque_percent'
+            hitpoint_z: Z-height where liquid contact is detected (if None, uses oldest measurement as reference)
+            torque_floor: Minimum torque percentage threshold for inclusion (default 25.0)
+            m_hyp: Scaling factor for converting hyperbola parameter a to viscosity (kcP) - default 2.330
 
         Returns:
-            (eta, h0, (heights_list, drags_list)) on success, or (None, None, ([], []))
-            if fitting failed or insufficient data.
+            (viscosity_kcP, offset_b, (trimmed_heights, trimmed_drags)) on success, or
+            (None, None, ([], [])) on failure
         """
         try:
             import numpy as _np
             from scipy.optimize import curve_fit as _curve_fit
         except Exception:
-            # SciPy / NumPy not available
             return None, None, ([], [])
 
-        # Use the same threshold semantics as the UI/runtime default
-        LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 25.0
+        if not measurements or len(measurements) < 3:
+            return None, None, ([], [])
 
-        # Sort by timestamp if present, otherwise keep original order
-        try:
-            ordered = sorted(measurements, key=lambda m: float(m.get('timestamp', 0)))
-        except Exception:
-            ordered = list(measurements)
-
+        # Filter: only pre-hitpoint with sufficient torque
         filtered = []
-        # include points collected before the first hit_detected == True
-        for m in ordered:
-            if m.get('hit_detected'):
-                break
+        for m in measurements:
             try:
+                z = float(m.get('height', 0))
+                drag = float(m.get('rotational_drag', 0))
                 torque = float(m.get('torque_percent', 0))
-            except Exception:
+            except (ValueError, TypeError):
                 continue
-            if torque <= LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:
+
+            # Must pass torque floor
+            if torque <= torque_floor:
                 continue
-            try:
-                h = float(m.get('height'))
-                d = float(m.get('rotational_drag'))
-            except Exception:
+
+            # If hitpoint_z is specified, only include pre-hitpoint (z < hitpoint_z)
+            if hitpoint_z is not None and z >= hitpoint_z:
                 continue
-            # must be finite and non-negative drag
-            if not _np.isfinite(d) or not _np.isfinite(h):
-                continue
-            filtered.append((h, d))
+
+            filtered.append((z, drag))
 
         if len(filtered) < 3:
             return None, None, ([], [])
@@ -888,48 +895,55 @@ class ViscometryWebInterface:
         heights = _np.array([f[0] for f in filtered], dtype=float)
         drags = _np.array([f[1] for f in filtered], dtype=float)
 
-        # Fit using the same hyperbola form as viscosity_pipeline_helper: a / (x - b)
+        # If hitpoint_z specified, check Z-span and potentially trim to 0.3mm window
+        if hitpoint_z is not None:
+            z_max = _np.max(heights)
+            z_min = _np.min(heights)
+            z_span = z_max - z_min
+
+            if z_span > 0.3:
+                # Trim to only points within 0.3mm above hitpoint
+                cutoff_z = hitpoint_z + 0.3
+                mask = heights <= cutoff_z
+                if _np.sum(mask) >= 3:
+                    heights = heights[mask]
+                    drags = drags[mask]
+
+        if len(heights) < 3:
+            return None, None, ([], [])
+
+        # Fit hyperbola: y = a / (x - b) from viscosity_pipeline_helper
         def _hyperbola(x, a, b):
             return a / (x - b)
 
-        # Require at least 3-4 points for a stable hyperbola fit
-        if len(heights) < 3 or _np.ptp(heights) == 0:
-            return None, None, (list(heights.tolist()), list(drags.tolist()))
-
-        # Heuristic initial guesses and bounds to avoid singularities (match helper logic)
         try:
+            # Initial guesses matching viscosity_pipeline_helper
             x_min = float(_np.min(heights))
-            x_ptp = float(_np.ptp(heights))
-            b0 = float(x_min - 0.5 * max(x_ptp, 1e-6))
-            a0 = float((drags[0] - drags[-1]) * max(x_ptp, 1e-6))
-            lower_b = float(x_min - 5.0 * max(x_ptp, 1e-6))
-            upper_b = float(x_min - 1e-6)
-        except Exception:
-            # Fallback initial guesses
-            b0 = 1.0
-            a0 = float(_np.median(drags))
-            lower_b = -_np.inf
-            upper_b = _np.inf
+            x_range = float(_np.ptp(heights))
+            b_guess = x_min - 0.5 * max(x_range, 1e-6)
+            a_guess = float((drags[0] - drags[-1]) * max(x_range, 1e-6))
 
-        try:
+            lower_b = x_min - 5.0 * max(x_range, 1e-6)
+            upper_b = x_min - 1e-6
+
             popt, pcov = _curve_fit(
                 _hyperbola,
                 heights,
                 drags,
-                p0=[a0, b0],
+                p0=[a_guess, b_guess],
                 bounds=([-_np.inf, lower_b], [_np.inf, upper_b]),
-                maxfev=20000,
+                maxfev=5000,
             )
-            A = float(popt[0])
-            B = float(popt[1])
-            # Convert to centipoise (cP) using empirical scale factor
-            viscosity_cP = abs(A) * geometry_k * 1000.0
-            return viscosity_cP, B, (list(heights.tolist()), list(drags.tolist()))
+
+            a, b = float(popt[0]), float(popt[1])
+            viscosity_kcP = abs(a) * m_hyp
+
+            return viscosity_kcP, b, (list(heights), list(drags))
+
         except RuntimeError:
-            # Fit did not converge
-            return None, None, (list(heights.tolist()), list(drags.tolist()))
+            return None, None, (list(heights), list(drags))
         except Exception:
-            return None, None, (list(heights.tolist()), list(drags.tolist()))
+            return None, None, ([], [])
         
     def set_running_state(self, is_running: bool):
         """Set running state"""

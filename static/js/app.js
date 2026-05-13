@@ -192,6 +192,7 @@ class ViscometryDashboard {
             cncStatus: document.getElementById("cnc-status"),
             viscometerStatus: document.getElementById("viscometer-status"),
             pumpStatus: document.getElementById("pump-status"),
+            predictedViscosityContainer: document.getElementById("predicted-viscosity-plots-container"),
             summaryCards: document.getElementById("experiment-cards"),
             summaryEmpty: document.getElementById("summary-empty"),
             summaryDetail: document.getElementById("summary-detail"),
@@ -690,6 +691,112 @@ class ViscometryDashboard {
         this.el.gaugeValue.style.strokeDasharray = `${this.gaugeArcLength} ${circumference}`;
         this.el.gaugeValue.style.strokeDashoffset = `${this.gaugeArcLength}`;
         this.updateGauge(0);
+    }
+
+    renderPredictedViscosityPlot(cellId, rpm, viscosityKcp, heights, drags, h0) {
+        /**
+         * Render hyperbolic curve fit plot for predicted viscosity.
+         * Shows raw data points and fitted hyperbola: y = a/(x-b)
+         * where y = rotational drag, x = z-height, a = viscosity * m_hyp, b = h0 offset
+         */
+        const container = this.el.predictedViscosityContainer;
+        if (!container) return;
+
+        // Create plot card for this cell/RPM
+        let plotCard = document.getElementById(`pv-plot-${cellId}-${rpm}`);
+        if (!plotCard) {
+            plotCard = document.createElement('div');
+            plotCard.id = `pv-plot-${cellId}-${rpm}`;
+            plotCard.className = 'pv-plot';
+            container.appendChild(plotCard);
+        }
+
+        // Scatter plot: raw data points
+        const scatterTrace = {
+            x: heights,
+            y: drags,
+            mode: 'markers',
+            type: 'scatter',
+            name: 'Measurements',
+            marker: {
+                size: 8,
+                color: '#3b82f6',
+                opacity: 0.7,
+                line: { color: '#1e40af', width: 1 }
+            }
+        };
+
+        // Fitted hyperbola curve: y = a/(x - b)
+        // From backend: a = viscosityKcp * m_hyp where m_hyp = 2.330
+        const m_hyp = 2.330;
+        const a = viscosityKcp * m_hyp;
+        const b = h0 || 0;
+
+        // Generate smooth curve across the height range
+        const xMin = Math.min(...heights);
+        const xMax = Math.max(...heights);
+        const xRange = xMax - xMin;
+        const xCurvePoints = [];
+        for (let i = 0; i <= 100; i++) {
+            xCurvePoints.push(xMin - xRange * 0.1 + (xRange * 1.2 * i / 100));
+        }
+
+        const yCurvePoints = xCurvePoints.map(x => {
+            const denominator = x - b;
+            if (Math.abs(denominator) < 0.001) return null; // Avoid singularity
+            return a / denominator;
+        });
+
+        const curveTrace = {
+            x: xCurvePoints,
+            y: yCurvePoints,
+            mode: 'lines',
+            type: 'scatter',
+            name: 'Fitted Hyperbola',
+            line: {
+                color: '#ef4444',
+                width: 2,
+                dash: 'solid'
+            }
+        };
+
+        const layout = {
+            title: {
+                text: `Cell ${cellId} @ ${rpm.toFixed(1)} RPM — Predicted Viscosity: η = ${viscosityKcp.toFixed(3)} kcP`,
+                font: { size: 14, color: '#C9D1D9' }
+            },
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'rgba(255,255,255,0.03)',
+            font: { family: 'DM Mono', color: '#C9D1D9', size: 11 },
+            xaxis: {
+                title: 'Z-Height (mm)',
+                gridcolor: '#21262D',
+                zeroline: false
+            },
+            yaxis: {
+                title: 'Rotational Drag (torque/RPM)',
+                gridcolor: '#21262D',
+                zeroline: false
+            },
+            margin: { t: 50, r: 16, b: 45, l: 58 },
+            legend: { 
+                bgcolor: 'rgba(0,0,0,0.3)', 
+                bordercolor: '#30363D',
+                x: 1.05,
+                y: 1
+            },
+            hovermode: 'closest'
+        };
+
+        const config = {
+            responsive: true,
+            displayModeBar: false,
+            staticPlot: false
+        };
+
+        Plotly.newPlot(plotCard, [scatterTrace, curveTrace], layout, config).catch(err => {
+            console.error('Failed to render predicted viscosity plot:', err);
+        });
     }
 
     startTimerLoop() {
@@ -1227,6 +1334,19 @@ class ViscometryDashboard {
                 if (data.predicted_viscosity_h0 != null) {
                     this.lastPredictedViscosityH0 = Number(data.predicted_viscosity_h0);
                 }
+            }
+        });
+
+        this.socket.on("predicted_viscosity_plot_data", (data) => {
+            if (data && data.heights && data.drags && data.viscosity_kcP != null) {
+                this.renderPredictedViscosityPlot(
+                    data.cell_id,
+                    data.rpm,
+                    data.viscosity_kcP,
+                    data.heights,
+                    data.drags,
+                    data.h0
+                );
             }
         });
 
@@ -2718,10 +2838,9 @@ class ViscometryDashboard {
                     const cellId = Number(cellStr);
                     const rpm = Number(rpmStr);
                     // Filter valid points: before first hit_detected and torque above threshold
-                    let beforeHit = true;
+                    // Include all points (pre-hit and post-hit) that pass torque floor threshold
                     const valid = [];
                     for (const point of pts.sort((a,b) => Number(a.timestamp) - Number(b.timestamp))) {
-                        if (point.hit_detected) { beforeHit = false; break; }
                         const torque = Number(point.torque_percent ?? 0);
                         if (Number.isFinite(torque) && torque > (s.low_torque_liquid_contact_threshold_pct ?? 20)) {
                             valid.push(point);
@@ -2960,7 +3079,8 @@ class ViscometryDashboard {
             const xSorted = pairs.map(p=>p.x);
             const ySorted = pairs.map(p=>p.y);
 
-            // Compute fitted curve using eta/h0 if numeric, else skip curve
+            // Compute fitted curve using eta/h0 if numeric
+            // Formula: y = a / (x - b) where a = eta * K, b = h0
             const K = 2.330;
             let etaNum = Number(entry.eta);
             let h0Num = Number(entry.h0);
@@ -2971,7 +3091,7 @@ class ViscometryDashboard {
                 mode: 'markers',
                 type: 'scatter',
                 name: `Cell ${entry.cellId} @ ${Number(entry.rpm).toFixed(3)} RPM - data`,
-                marker: { size: 6 }
+                marker: { size: 6, color: '#3b82f6', line: { color: '#1e40af', width: 1 } }
             });
             if (Number.isFinite(etaNum) && Number.isFinite(h0Num)) {
                 const xMin = Math.min(...xSorted);
@@ -2979,22 +3099,35 @@ class ViscometryDashboard {
                 const grid = [];
                 const N = 200;
                 for (let i=0;i<N;i++) grid.push(xMin + (xMax - xMin) * (i/(N-1)));
-                const fittedY = grid.map((h) => (etaNum * K) / (h + h0Num));
+                // y = a / (x - b), where a = eta * K, b = h0
+                const a = etaNum * K;
+                const fittedY = grid.map((h) => {
+                    const denom = h - h0Num;
+                    return Math.abs(denom) < 0.001 ? null : a / denom;
+                });
                 traces.push({
                     x: grid,
                     y: fittedY,
                     mode: 'lines',
                     type: 'scatter',
-                    name: `Fitted η=${etaNum.toFixed(6)}`,
-                    line: { width: 2 }
+                    name: `Fitted η=${etaNum.toFixed(3)} kcP`,
+                    line: { width: 2, color: '#ef4444' }
                 });
             }
 
             const layout = {
-                margin: { t: 30, r: 10, l: 50, b: 40 },
-                xaxis: { title: 'Z-Height (mm)' },
-                yaxis: { title: 'Rotational Drag' },
-                showlegend: true
+                title: {
+                    text: `Cell ${entry.cellId} @ ${Number(entry.rpm).toFixed(3)} RPM — η = ${etaNum.toFixed(3)} kcP`,
+                    font: { size: 13 }
+                },
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'rgba(255,255,255,0.03)',
+                font: { family: 'DM Mono', color: '#C9D1D9', size: 11 },
+                margin: { t: 40, r: 10, l: 50, b: 40 },
+                xaxis: { title: 'Z-Height (mm)', gridcolor: '#21262D', zeroline: false },
+                yaxis: { title: 'Rotational Drag (torque/RPM)', gridcolor: '#21262D', zeroline: false },
+                showlegend: true,
+                hovermode: 'closest'
             };
             try { Plotly.react(div, traces, layout, {responsive:true, displayModeBar:false}); } catch (e) { console.warn('Plotly plot failed', e); }
         });

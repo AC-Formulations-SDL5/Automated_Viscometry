@@ -266,6 +266,108 @@ def _liquid_skip_torque_label(th: float) -> str:
     return f"<{th:.1f}%"
 
 
+def calculate_predicted_viscosity(
+    measurements: List[Dict],
+    hitpoint_z: float,
+    torque_floor: float = 25.0,
+    m_hyp: float = 2.330,
+) -> Tuple[Optional[float], Optional[float], Tuple[list, list]]:
+    """Calculate predicted viscosity using hyperbola fitting.
+    
+    Args:
+        measurements: List of measurement dicts with 'height', 'rotational_drag', 'torque_percent'
+        hitpoint_z: Z-height where liquid contact is detected
+        torque_floor: Minimum torque percentage threshold for inclusion
+        m_hyp: Scaling factor for converting hyperbola parameter a to viscosity (kcP)
+        
+    Returns:
+        (viscosity_kcP, offset_b, (trimmed_heights, trimmed_drags)) or
+        (None, None, ([], [])) on failure
+    """
+    try:
+        import numpy as np
+        from scipy.optimize import curve_fit
+    except ImportError:
+        return None, None, ([], [])
+    
+    if not measurements or len(measurements) < 3:
+        return None, None, ([], [])
+    
+    # Filter: only pre-hitpoint with sufficient torque
+    filtered = []
+    for m in measurements:
+        try:
+            z = float(m.get('height', 0))
+            drag = float(m.get('rotational_drag', 0))
+            torque = float(m.get('torque_percent', 0))
+        except (ValueError, TypeError):
+            continue
+        
+        # Must be above hitpoint (lower Z value = higher position) and pass torque floor
+        if z >= hitpoint_z or torque <= torque_floor:
+            continue
+        
+        filtered.append((z, drag))
+    
+    if len(filtered) < 3:
+        return None, None, ([], [])
+    
+    heights = np.array([f[0] for f in filtered], dtype=float)
+    drags = np.array([f[1] for f in filtered], dtype=float)
+    
+    # Check Z-span and potentially trim to 0.3mm window above hitpoint
+    z_max = np.max(heights)
+    z_min = np.min(heights)
+    z_span = z_max - z_min
+    
+    if z_span > 0.3:
+        # Trim to only points within 0.3mm above hitpoint
+        cutoff_z = hitpoint_z + 0.3
+        mask = heights <= cutoff_z
+        if np.sum(mask) < 3:
+            # Not enough points in the window, use original filtered set
+            pass
+        else:
+            heights = heights[mask]
+            drags = drags[mask]
+    
+    if len(heights) < 3:
+        return None, None, ([], [])
+    
+    # Fit hyperbola: y = a / (x - b)
+    def hyperbola_fit(x, a, b):
+        return a / (x - b)
+    
+    try:
+        # Initial guesses
+        x_min = np.min(heights)
+        x_range = np.ptp(heights)
+        b_guess = x_min - 0.5 * max(x_range, 1e-6)
+        a_guess = (drags[0] - drags[-1]) * max(x_range, 1e-6)
+        
+        lower_b = x_min - 5.0 * max(x_range, 1e-6)
+        upper_b = x_min - 1e-6
+        
+        popt, pcov = curve_fit(
+            hyperbola_fit,
+            heights,
+            drags,
+            p0=[a_guess, b_guess],
+            bounds=([-np.inf, lower_b], [np.inf, upper_b]),
+            maxfev=5000,
+        )
+        
+        a, b = float(popt[0]), float(popt[1])
+        viscosity_kcP = abs(a) * m_hyp
+        
+        return viscosity_kcP, b, (list(heights), list(drags))
+    
+    except RuntimeError:
+        return None, None, (list(heights), list(drags))
+    except Exception:
+        return None, None, ([], [])
+
+
 def _run_in_thread(fn, *args, **kwargs) -> threading.Thread:
     """Launch fn(*args, **kwargs) in a daemon thread and return the thread object."""
     t = threading.Thread(target=fn, args=args, kwargs=kwargs, daemon=True)
@@ -1186,6 +1288,15 @@ def test_cell_dynamic_z_series(
     try:
         if FEEDBACK_CONTROL_ENABLED and PREDICTED_VISCOSITY_ENABLED:
             predicted_map = {}
+            
+            # Extract hitpoint Z if available
+            hitpoint_z_value = None
+            try:
+                summary = feedback_controller.get_summary()
+                hitpoint_z_value = summary.get('hit_point_z')
+            except Exception:
+                pass
+            
             for rpm in cell_rpms:
                 # Collect measurements across all Z for this RPM
                 all_measurements = []
@@ -1207,8 +1318,28 @@ def test_cell_dynamic_z_series(
                 if len(all_measurements) < 3:
                     predicted_map[rpm] = None
                     continue
-                eta, h0, (heights, drags) = web_interface.calculate_predicted_viscosity(all_measurements)
+                
+                # Call updated web_interface function with hitpoint_z and torque_floor
+                eta, h0, (heights, drags) = web_interface.calculate_predicted_viscosity(
+                    all_measurements,
+                    hitpoint_z=hitpoint_z_value,
+                    torque_floor=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT
+                )
                 predicted_map[rpm] = eta
+
+                # Emit plot data to frontend if prediction succeeded
+                if eta is not None and heights and drags:
+                    try:
+                        web_interface.emit_predicted_viscosity_plot(
+                            cell_id=global_cell,
+                            rpm=rpm,
+                            viscosity_kcP=eta,
+                            heights=heights,
+                            drags=drags,
+                            h0=h0
+                        )
+                    except Exception as e:
+                        print(f"Warning: Failed to emit viscosity plot data: {e}")
 
                 # Store in per-cell metrics: attach to last Z-level metrics if available
                 if z_keys:
@@ -1245,6 +1376,7 @@ def test_cell_dynamic_z_series(
                         cv_sd2_calibrated=False,
                         slope_sd2_calibrated=False,
                         predicted_viscosity=eta,
+                        predicted_viscosity_h0=h0,
                     )
                 except Exception:
                     pass
@@ -1358,8 +1490,10 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
             row_number, local_cell = global_cell_to_row_and_local(global_cell)
             cell_data = all_data[global_cell]
             
-            # Sort Z heights from highest to lowest
-            z_heights = sorted(cell_data.keys(), reverse=True)
+            # Sort Z heights from highest to lowest (filter out metadata keys like "_metrics")
+            _md_keys = {"_metrics", "_liquid_skipped_z", "_liquid_skip_torque_label"}
+            numeric_keys = [k for k in cell_data.keys() if k not in _md_keys]
+            z_heights = sorted(numeric_keys, key=lambda x: float(x) if isinstance(x, (int, float)) else 0, reverse=True)
             
             for z_height in z_heights:
                 if z_height in cell_data:
@@ -1538,8 +1672,10 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             row_number, local_cell = global_cell_to_row_and_local(global_cell)
             cell_data = all_data[global_cell]
             
-            # Sort Z heights from highest to lowest
-            z_heights = sorted(cell_data.keys(), reverse=True)
+            # Sort Z heights from highest to lowest (filter out metadata keys like "_metrics")
+            _md_keys = {"_metrics", "_liquid_skipped_z", "_liquid_skip_torque_label"}
+            numeric_keys = [k for k in cell_data.keys() if k not in _md_keys]
+            z_heights = sorted(numeric_keys, key=lambda x: float(x) if isinstance(x, (int, float)) else 0, reverse=True)
             
             for z_height in z_heights:
                 if z_height in cell_data:
