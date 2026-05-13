@@ -2548,12 +2548,16 @@ class ViscometryDashboard {
             csv: csvHeader + csvBody
         };
 
-        this.experimentHistory.unshift(exp);
-        this.experimentHistory = this.experimentHistory.slice(0, 40);
-        this.saveExperimentHistoryEntry(exp).catch(() => {
-            this.pushStatusMessage("Warning: failed to sync experiment history to server");
-        });
-        this.renderExperimentCards();
+        // Persist to server and then refresh local history from the server to avoid duplicate entries
+        this.saveExperimentHistoryEntry(exp)
+            .then(() => this.loadExperimentHistory())
+            .catch(() => {
+                // If server sync fails, keep a local copy so user doesn't lose the summary
+                this.experimentHistory.unshift(exp);
+                this.experimentHistory = this.experimentHistory.slice(0, 40);
+                this.renderExperimentCards();
+                this.pushStatusMessage("Warning: failed to sync experiment history to server");
+            });
     }
 
     renderExperimentCards() {
@@ -2665,7 +2669,7 @@ class ViscometryDashboard {
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
             `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
             // median samples per Z removed from summary
-            `<strong>Points collected:</strong> ${exp.measurement_count}`,
+            // Points collected removed from summary
             durationTable,
         ];
         const rightLines = [

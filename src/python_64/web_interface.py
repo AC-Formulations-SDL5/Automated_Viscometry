@@ -888,18 +888,45 @@ class ViscometryWebInterface:
         heights = _np.array([f[0] for f in filtered], dtype=float)
         drags = _np.array([f[1] for f in filtered], dtype=float)
 
-        def _model(h, eta, h0):
-            return (eta * geometry_k) / (h + h0)
+        # Fit using the same hyperbola form as viscosity_pipeline_helper: a / (x - b)
+        def _hyperbola(x, a, b):
+            return a / (x - b)
 
-        # Initial guesses
-        eta0 = float(_np.median(drags) * (abs(_np.median(heights)) + 1.0) / max(geometry_k, 1e-6))
-        h0_0 = 1.0
+        # Require at least 3-4 points for a stable hyperbola fit
+        if len(heights) < 3 or _np.ptp(heights) == 0:
+            return None, None, (list(heights.tolist()), list(drags.tolist()))
+
+        # Heuristic initial guesses and bounds to avoid singularities (match helper logic)
+        try:
+            x_min = float(_np.min(heights))
+            x_ptp = float(_np.ptp(heights))
+            b0 = float(x_min - 0.5 * max(x_ptp, 1e-6))
+            a0 = float((drags[0] - drags[-1]) * max(x_ptp, 1e-6))
+            lower_b = float(x_min - 5.0 * max(x_ptp, 1e-6))
+            upper_b = float(x_min - 1e-6)
+        except Exception:
+            # Fallback initial guesses
+            b0 = 1.0
+            a0 = float(_np.median(drags))
+            lower_b = -_np.inf
+            upper_b = _np.inf
 
         try:
-            popt, _ = _curve_fit(_model, heights, drags, p0=[eta0, h0_0], maxfev=10000)
-            eta_fit, h0_fit = float(popt[0]), float(popt[1])
-            return eta_fit, h0_fit, (list(heights.tolist()), list(drags.tolist()))
+            popt, pcov = _curve_fit(
+                _hyperbola,
+                heights,
+                drags,
+                p0=[a0, b0],
+                bounds=([-_np.inf, lower_b], [_np.inf, upper_b]),
+                maxfev=20000,
+            )
+            A = float(popt[0])
+            B = float(popt[1])
+            # Convert to centipoise (cP) using empirical scale factor
+            viscosity_cP = abs(A) * geometry_k * 1000.0
+            return viscosity_cP, B, (list(heights.tolist()), list(drags.tolist()))
         except RuntimeError:
+            # Fit did not converge
             return None, None, (list(heights.tolist()), list(drags.tolist()))
         except Exception:
             return None, None, (list(heights.tolist()), list(drags.tolist()))
