@@ -131,6 +131,7 @@ class ViscometryDashboard {
             torqueBreakThreshold: document.getElementById("torque-break-threshold"),
             feedbackEnabled: document.getElementById("feedback-control-enabled"),
             smartEarlyExitEnabled: document.getElementById("smart-early-exit-enabled"),
+            predictedViscosityEnabled: document.getElementById("predicted-viscosity-enabled"),
             smartCvThreshold: document.getElementById("smart-cv-threshold"),
             smartWindowSize: document.getElementById("smart-window-size"),
             lowTorqueLiquidContactSkipEnabled: document.getElementById("low-torque-liquid-contact-skip-enabled"),
@@ -757,6 +758,7 @@ class ViscometryDashboard {
         if (this.el.lowTorqueLiquidContactSkipEnabled) {
             this.el.lowTorqueLiquidContactSkipEnabled.checked = Boolean(settings.low_torque_liquid_contact_skip_enabled);
         }
+        if (this.el.predictedViscosityEnabled) this.el.predictedViscosityEnabled.checked = Boolean(settings.predicted_viscosity_enabled);
         if (this.el.lowTorqueLiquidContactThresholdPct) {
             this.el.lowTorqueLiquidContactThresholdPct.value = settings.low_torque_liquid_contact_threshold_pct ?? 20;
         }
@@ -965,6 +967,7 @@ class ViscometryDashboard {
             smart_window_size: Number(this.el.smartWindowSize?.value ?? 3),
             low_torque_liquid_contact_skip_enabled: Boolean(this.el.lowTorqueLiquidContactSkipEnabled?.checked),
             low_torque_liquid_contact_threshold_pct: Number(this.el.lowTorqueLiquidContactThresholdPct?.value ?? 20),
+            predicted_viscosity_enabled: Boolean(this.el.predictedViscosityEnabled?.checked),
             r2_drag_min: Number(this.el.r2DragMin?.value ?? 0.975),
             r2_cv_min: Number(this.el.r2CvMin?.value ?? 0.975),
             r2_slope_min: Number(this.el.r2SlopeMin?.value ?? 0.975),
@@ -1217,6 +1220,13 @@ class ViscometryDashboard {
         this.socket.on("feedback_metrics_update", (data) => {
             if (data) {
                 this.updateDragZSidebar(data);
+                // Capture predicted viscosity metrics if provided
+                if (data.predicted_viscosity != null) {
+                    this.lastPredictedViscosity = Number(data.predicted_viscosity);
+                }
+                if (data.predicted_viscosity_h0 != null) {
+                    this.lastPredictedViscosityH0 = Number(data.predicted_viscosity_h0);
+                }
             }
         });
 
@@ -2008,6 +2018,9 @@ class ViscometryDashboard {
             this.el.sidebarHit.textContent = isHit ? "YES ⚠" : "No";
             this.el.sidebarHit.className = `sidebar-value mono ${isHit ? "hit-yes" : "hit-no"}`;
         }
+        // Store latest predicted viscosity values for UI/plots
+        if (data.predicted_viscosity != null) this._latestPredictedViscosity = Number(data.predicted_viscosity);
+        if (data.predicted_viscosity_h0 != null) this._latestPredictedViscosityH0 = Number(data.predicted_viscosity_h0);
     }
 
     setUiState(state) {
@@ -2491,42 +2504,9 @@ class ViscometryDashboard {
         }
 
         const latestByKey = new Map();
-        const sampleCountByCellZ = new Map();
         runData.forEach((m) => {
             const k = `${m.cell_id}|${Number(m.height).toFixed(3)}|${m.rpm}`;
             latestByKey.set(k, m);
-            if (m.is_final_save) {
-                return;
-            }
-            const zKey = `${m.cell_id}|${Number(m.height).toFixed(3)}`;
-            const add = Number.isFinite(Number(m.sample_count)) && Number(m.sample_count) >= 1
-                ? Math.floor(Number(m.sample_count))
-                : 1;
-            sampleCountByCellZ.set(zKey, (sampleCountByCellZ.get(zKey) || 0) + add);
-        });
-        const samplesPerZ = [...sampleCountByCellZ.values()].sort((a, b) => a - b);
-        let medianSamplesPerZ = null;
-        if (samplesPerZ.length > 0) {
-            const mid = Math.floor(samplesPerZ.length / 2);
-            medianSamplesPerZ = samplesPerZ.length % 2 === 0
-                ? (samplesPerZ[mid - 1] + samplesPerZ[mid]) / 2
-                : samplesPerZ[mid];
-        }
-        const sampleCountsByCell = new Map();
-        sampleCountByCellZ.forEach((count, key) => {
-            const cellId = Number(String(key).split("|")[0]);
-            if (!Number.isFinite(cellId)) return;
-            if (!sampleCountsByCell.has(cellId)) sampleCountsByCell.set(cellId, []);
-            sampleCountsByCell.get(cellId).push(count);
-        });
-        const cellMedianSamplesPerZ = {};
-        sampleCountsByCell.forEach((counts, cellId) => {
-            const ordered = [...counts].sort((a, b) => a - b);
-            const mid = Math.floor(ordered.length / 2);
-            const median = ordered.length % 2 === 0
-                ? (ordered[mid - 1] + ordered[mid]) / 2
-                : ordered[mid];
-            cellMedianSamplesPerZ[cellId] = median;
         });
 
         const cells = [...new Set(runData.map((m) => m.cell_id))].sort((a, b) => a - b);
@@ -2561,20 +2541,23 @@ class ViscometryDashboard {
                 ? this.latestControlSettings
                 : (this.readControlSettings ? this.readControlSettings() : {}),
             latestPerZ: [...latestByKey.values()],
-            median_samples_per_z: medianSamplesPerZ,
-            cell_median_samples_per_z: cellMedianSamplesPerZ,
+            // median samples per Z removed
             cellDurations,
             runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
             runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
             csv: csvHeader + csvBody
         };
 
-        this.experimentHistory.unshift(exp);
-        this.experimentHistory = this.experimentHistory.slice(0, 40);
-        this.saveExperimentHistoryEntry(exp).catch(() => {
-            this.pushStatusMessage("Warning: failed to sync experiment history to server");
-        });
-        this.renderExperimentCards();
+        // Persist to server and then refresh local history from the server to avoid duplicate entries
+        this.saveExperimentHistoryEntry(exp)
+            .then(() => this.loadExperimentHistory())
+            .catch(() => {
+                // If server sync fails, keep a local copy so user doesn't lose the summary
+                this.experimentHistory.unshift(exp);
+                this.experimentHistory = this.experimentHistory.slice(0, 40);
+                this.renderExperimentCards();
+                this.pushStatusMessage("Warning: failed to sync experiment history to server");
+            });
     }
 
     renderExperimentCards() {
@@ -2652,11 +2635,9 @@ class ViscometryDashboard {
 
         const durationRows = exp.cells.map((cellId) => {
             const dur = exp.cellDurations?.[cellId];
-            const medianSamples = exp.cell_median_samples_per_z?.[cellId];
             const label = s.cell_content_map?.[cellId] ? ` (${s.cell_content_map[cellId]})` : "";
             const timeStr = dur != null ? this.formatDuration(dur) : "—";
-            const medianStr = Number.isFinite(medianSamples) ? String(medianSamples) : "—";
-            return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td><td>${medianStr}</td></tr>`;
+            return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td></tr>`;
         }).join("");
         const allTimestamps = (exp.latestPerZ || [])
             .map((p) => Number(p.timestamp))
@@ -2674,7 +2655,7 @@ class ViscometryDashboard {
             : null;
         const durationTable = `
 <table class="duration-table">
-  <thead><tr><th>Cell</th><th>Duration</th><th>Median Samples / Z</th></tr></thead>
+    <thead><tr><th>Cell</th><th>Duration</th></tr></thead>
   <tbody>${durationRows}</tbody>
 </table>
 <div><strong>Total Time:</strong> ${totalDurationMs != null ? this.formatDuration(totalDurationMs) : "—"}</div>`;
@@ -2687,10 +2668,8 @@ class ViscometryDashboard {
             `<strong>Z step:</strong> ${s.z_step_size ?? "-"} mm`,
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
             `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
-            `<strong>Median samples per Z height:</strong> ${
-                Number.isFinite(exp.median_samples_per_z) ? exp.median_samples_per_z : "-"
-            }`,
-            `<strong>Points collected:</strong> ${exp.measurement_count}`,
+            // median samples per Z removed from summary
+            // Points collected removed from summary
             durationTable,
         ];
         const rightLines = [
@@ -2709,7 +2688,79 @@ class ViscometryDashboard {
             leftEl.innerHTML = leftLines.map((line) => line.startsWith("<table") ? line : `<div>${line}</div>`).join("");
         }
         if (rightEl) {
-            rightEl.innerHTML = rightLines.map((line) => `<div>${line}</div>`).join("");
+            // Inject predicted-viscosity summary into rightLines if available in experiment
+            const pvLines = [];
+            // Try to read precomputed summary from exp.predicted_viscosity_summary
+            if (exp.predicted_viscosity_summary && typeof exp.predicted_viscosity_summary === 'object') {
+                pvLines.push('<strong>Predicted Viscosity:</strong>');
+                Object.entries(exp.predicted_viscosity_summary).forEach(([cellKey, rpmMap]) => {
+                    // cellKey expected like 'cell_7'
+                    Object.entries(rpmMap).forEach(([rpm, vals]) => {
+                        const eta = vals?.eta != null ? Number(vals.eta).toFixed(6) : '—';
+                        const h0 = vals?.h0 != null ? Number(vals.h0).toFixed(6) : '—';
+                        pvLines.push(`<div>Cell ${cellKey} @ ${rpm} RPM: η=${eta}, h₀=${h0}</div>`);
+                    });
+                });
+            } else {
+                // Attempt to compute summary from exp.latestPerZ if present
+                const byCellRpmForPred = {};
+                (exp.latestPerZ || []).forEach((p) => {
+                    const cellId = Number(p.cell_id);
+                    const rpm = Number(p.rpm);
+                    if (!Number.isFinite(cellId) || !Number.isFinite(rpm)) return;
+                    const key = `${cellId}|${rpm.toFixed(3)}`;
+                    if (!byCellRpmForPred[key]) byCellRpmForPred[key] = [];
+                    byCellRpmForPred[key].push(p);
+                });
+                const pvEntries = [];
+                Object.entries(byCellRpmForPred).forEach(([key, pts]) => {
+                    const [cellStr, rpmStr] = key.split('|');
+                    const cellId = Number(cellStr);
+                    const rpm = Number(rpmStr);
+                    // Filter valid points: before first hit_detected and torque above threshold
+                    let beforeHit = true;
+                    const valid = [];
+                    for (const point of pts.sort((a,b) => Number(a.timestamp) - Number(b.timestamp))) {
+                        if (point.hit_detected) { beforeHit = false; break; }
+                        const torque = Number(point.torque_percent ?? 0);
+                        if (Number.isFinite(torque) && torque > (s.low_torque_liquid_contact_threshold_pct ?? 20)) {
+                            valid.push(point);
+                        }
+                    }
+                    if (valid.length >= 3) {
+                        // compute linearized fit: 1/y = a*h + b
+                        const K = 2.330;
+                        const xs = valid.map((v) => Number(v.height));
+                        const ys = valid.map((v) => Number(v.rotational_drag));
+                        const invY = ys.map((v) => (v > 0 ? 1.0 / v : NaN)).filter(Number.isFinite);
+                        if (invY.length === ys.length) {
+                            const n = xs.length;
+                            let sumX=0,sumY=0,sumXY=0,sumXX=0;
+                            for (let i=0;i<n;i++){ sumX+=xs[i]; sumY+=invY[i]; sumXY+=xs[i]*invY[i]; sumXX+=xs[i]*xs[i]; }
+                            const denom = (n*sumXX - sumX*sumX);
+                            if (Math.abs(denom) > 1e-12) {
+                                const a = (n*sumXY - sumX*sumY)/denom;
+                                const b = (sumY - a*sumX)/n;
+                                const eta = a !== 0 ? 1.0/(a*K) : null;
+                                const h0 = (a !== 0) ? (b / a) : null;
+                                const etaText = eta != null && Number.isFinite(eta) ? eta.toFixed(6) : '—';
+                                const h0Text = h0 != null && Number.isFinite(h0) ? h0.toFixed(6) : '—';
+                                pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs: xs, ys: ys});
+                            }
+                        }
+                    }
+                });
+                if (pvEntries.length > 0) {
+                    pvLines.push('<strong>Predicted Viscosity:</strong>');
+                    pvEntries.forEach((e) => {
+                        pvLines.push(`<div>Cell ${e.cellId} @ ${Number(e.rpm).toFixed(3)} RPM: η=${e.eta}, h₀=${e.h0}</div>`);
+                    });
+                    // Also render plots
+                    this.renderPredictedViscosityPlots(pvEntries);
+                }
+            }
+
+            rightEl.innerHTML = rightLines.map((line) => `<div>${line}</div>`).concat(pvLines.map((line) => `<div>${line}</div>`)).join("");
         }
 
         this.syncCustomHitpointControlsForExperiment(exp);
@@ -2719,6 +2770,14 @@ class ViscometryDashboard {
             const cellId = Number(p.cell_id);
             const rpm = Number(p.rpm);
             if (!Number.isFinite(cellId) || !Number.isFinite(rpm)) {
+                return;
+            }
+            // Skip points collected in the air gap: torque below the configured low-torque threshold
+            const torque = Number(p.torque_percent);
+            const threshold = Number.isFinite(Number(s.low_torque_liquid_contact_threshold_pct))
+                ? Number(s.low_torque_liquid_contact_threshold_pct)
+                : 25;
+            if (torque < threshold) {
                 return;
             }
             const k = `${cellId}|${rpm.toFixed(3)}`;
@@ -2753,14 +2812,16 @@ class ViscometryDashboard {
             let alignReference;
 
             if (customHitZ != null) {
-                // Drop points before (hit − 3 samples); keep 3 points before hit + rest through end.
-                // With "align traces": keep only those 3 + hit, then shift so hit = 0 (same as auto logic).
+                // Custom hitpoint handling:
+                // - When alignToHit is false: keep all points from start until hit + 3 following samples (hitIdx + 4).
+                // - When alignToHit is true: keep start..hit only (hitIdx + 1) so hit aligns to 0 like auto-detected graphs.
                 const hitIdx = this._closestMeasurementIndexByZ(timeOrdered, customHitZ);
-                const startIdx = Math.max(0, hitIdx - 3);
                 const hitZMeasured = Number(timeOrdered[hitIdx].height);
-                plotPoints = alignToHit
-                    ? timeOrdered.slice(startIdx, hitIdx + 1)
-                    : timeOrdered.slice(startIdx);
+                if (alignToHit) {
+                    plotPoints = timeOrdered.slice(0, hitIdx + 1);
+                } else {
+                    plotPoints = timeOrdered.slice(0, hitIdx + 4);
+                }
                 alignReference = Number.isFinite(hitZMeasured) ? hitZMeasured : customHitZ;
             } else {
                 plotPoints = alignToHit
@@ -2877,6 +2938,66 @@ class ViscometryDashboard {
             ? raw
             : (raw && typeof raw === "object" ? Number(raw.hit_z) : Number(raw));
         return Number.isFinite(num) ? num : null;
+    }
+
+    renderPredictedViscosityPlots(pvEntries) {
+        // pvEntries: array of {cellId, rpm, eta, h0, xs, ys}
+        const container = document.getElementById('predicted-viscosity-plots-container');
+        if (!container) return;
+        container.innerHTML = '';
+        pvEntries.forEach((entry, idx) => {
+            const div = document.createElement('div');
+            div.className = 'pv-plot';
+            div.style.width = '100%';
+            div.style.height = '320px';
+            div.style.marginBottom = '12px';
+            container.appendChild(div);
+
+            const xs = entry.xs.slice();
+            const ys = entry.ys.slice();
+            // sort by x ascending for plot
+            const pairs = xs.map((x,i) => ({x: Number(x), y: Number(ys[i])})).sort((a,b)=>a.x-b.x);
+            const xSorted = pairs.map(p=>p.x);
+            const ySorted = pairs.map(p=>p.y);
+
+            // Compute fitted curve using eta/h0 if numeric, else skip curve
+            const K = 2.330;
+            let etaNum = Number(entry.eta);
+            let h0Num = Number(entry.h0);
+            const traces = [];
+            traces.push({
+                x: xSorted,
+                y: ySorted,
+                mode: 'markers',
+                type: 'scatter',
+                name: `Cell ${entry.cellId} @ ${Number(entry.rpm).toFixed(3)} RPM - data`,
+                marker: { size: 6 }
+            });
+            if (Number.isFinite(etaNum) && Number.isFinite(h0Num)) {
+                const xMin = Math.min(...xSorted);
+                const xMax = Math.max(...xSorted);
+                const grid = [];
+                const N = 200;
+                for (let i=0;i<N;i++) grid.push(xMin + (xMax - xMin) * (i/(N-1)));
+                const fittedY = grid.map((h) => (etaNum * K) / (h + h0Num));
+                traces.push({
+                    x: grid,
+                    y: fittedY,
+                    mode: 'lines',
+                    type: 'scatter',
+                    name: `Fitted η=${etaNum.toFixed(6)}`,
+                    line: { width: 2 }
+                });
+            }
+
+            const layout = {
+                margin: { t: 30, r: 10, l: 50, b: 40 },
+                xaxis: { title: 'Z-Height (mm)' },
+                yaxis: { title: 'Rotational Drag' },
+                showlegend: true
+            };
+            try { Plotly.react(div, traces, layout, {responsive:true, displayModeBar:false}); } catch (e) { console.warn('Plotly plot failed', e); }
+        });
     }
 
     syncCustomHitpointControlsForExperiment(exp) {

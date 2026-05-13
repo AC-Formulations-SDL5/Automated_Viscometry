@@ -61,7 +61,7 @@
         <nav class="tab-nav">
             <button class="tab-button active" data-tab="layout-tab">Layout & Timeline</button>
             <button class="tab-button" data-tab="controls-tab">Parameters & Tracking</button>
-            <button class="tab-button" data-tab="data-tab">Data Management</button>
+            <button class="tab-button" data-tab="data-tab">Data and Processing</button>
             <button class="tab-button" data-tab="summary-tab">Experimental Summary</button>
         </nav>
 
@@ -192,7 +192,7 @@
                             <div class="dual-fields">
                                 <label>
                                     <span>Sample Interval</span>
-                                    <input id="sample-interval" name="sample_interval" type="number" step="0.1" value="4">
+                                    <input id="sample-interval" name="sample_interval" type="number" step="0.1" value="5">
                                 </label>
                                 <label>
                                     <span>Dwell (s)</span>
@@ -214,16 +214,20 @@
                                 <span>Feedback control enabled</span>
                             </label>
                             <label class="checkbox-row">
-                                <input id="smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox">
+                                <input id="smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox" checked>
                                 <span>Smart Early Exit (CV-based)</span>
                             </label>
                             <label class="checkbox-row">
-                                <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox">
+                                <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox" checked>
                                 <span>Skip Z-levels until liquid contact (regular runs only; not calibration / recalibration)</span>
+                            </label>
+                            <label class="checkbox-row">
+                                <input id="predicted-viscosity-enabled" name="predicted_viscosity_enabled" type="checkbox">
+                                <span>Predicted Viscosity (enable estimated viscosity prediction)</span>
                             </label>
                             <label>
                                 <span>First-sample torque floor (%)</span>
-                                <input id="low-torque-liquid-contact-threshold-pct" name="low_torque_liquid_contact_threshold_pct" type="number" step="0.1" min="0" max="100" value="20" title="Z-levels are skipped when the first torque sample at elapsed ≥ Sample interval (s) is below this value. Earlier samples are ignored for this gate. Skipped rows use torque label &lt;x% and SKIPPED metrics.">
+                                <input id="low-torque-liquid-contact-threshold-pct" name="low_torque_liquid_contact_threshold_pct" type="number" step="0.1" min="0" max="100" value="25" title="Z-levels are skipped when the first torque sample at elapsed ≥ Sample interval (s) is below this value. Earlier samples are ignored for this gate. Skipped rows use torque label &lt;x% and SKIPPED metrics.">
                             </label>
                             <details id="smart-exit-params-details" class="feedback-params-section">
                                 <summary class="feedback-params-toggle">
@@ -313,7 +317,7 @@
                                         </label>
                                         <label>
                                             <span>Auto-detect Z-Score Threshold</span>
-                                            <input id="baseline-z-threshold" name="baseline_z_threshold" type="number" step="0.1" min="0.1" value="10.0">
+                                            <input id="baseline-z-threshold" name="baseline_z_threshold" type="number" step="0.1" min="0.1" value="5.0">
                                         </label>
                                     </div>
                                 </div>
@@ -618,24 +622,28 @@
                             <button id="clear-data" class="btn subtle">Clear Data</button>
                         </div>
                     </div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Cell</th>
-                                    <th>Z (mm)</th>
-                                    <th>Torque (%)</th>
-                                    <th>RPM</th>
-                                    <th>Time</th>
-                                </tr>
-                            </thead>
-                            <tbody id="measurement-table"></tbody>
-                        </table>
-                    </div>
+                    <!-- Recent measurements table removed per redesign; Export button retained -->
                     <div class="skeleton-lines">
                         <div class="skeleton-line"></div>
                         <div class="skeleton-line"></div>
                         <div class="skeleton-line short"></div>
+                    </div>
+                </section>
+
+                <section class="card model-card">
+                    <div class="card-title-row">
+                        <h2>Viscosity Prediction Model</h2>
+                    </div>
+                    <div class="model-body">
+                        <p>
+                            The viscosity prediction model fits a hyperbolic curve to rotational drag data
+                            across Z-gap measurements. The fitted equation is:
+                            <strong>(D/ω) = η·K / (h + h₀)</strong>
+                            where D is torque, ω is spindle speed (so D/ω represents rotational drag), η is the
+                            viscosity, K is a geometry constant, h is the gap height, and h₀ is an offset parameter.
+                            Results are visualized below.
+                        </p>
+                        <div id="predicted-viscosity-plots-container" class="plots-container"></div>
                     </div>
                 </section>
 

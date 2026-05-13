@@ -55,11 +55,11 @@ class ViscometryWebInterface:
             'cell_content_map': {},
             'z_step_size': -0.02,
             'measurement_duration': 40.0,
-            'sample_interval': 4.0,
+            'sample_interval': 5.0,
             'dwell_seconds': 2.0,
             'inter_rpm_pause': 2.0,
             'feedback_control_enabled': True,
-            'smart_early_exit_enabled': False,
+            'smart_early_exit_enabled': True,
             'smart_cv_threshold': 0.005,
             'smart_window_size': 3,
             'min_data_points_for_trend': 8,
@@ -74,14 +74,16 @@ class ViscometryWebInterface:
             'weight_r2_cv': 0.2,
             'weight_r2_slope': 0.2,
             'baseline_n_calibration': 10,
-            'baseline_z_threshold': 10.0,
+            'baseline_z_threshold': 5.0,
             'torque_break_threshold': 100.0,
             'calibration_mode': False,
             'recalibrate_individual_cells': False,
             'recalibration_cells': {},
             # Regular runs only: skip Z-levels when torque (first sample at elapsed >= SAMPLE_INTERVAL) is below threshold.
-            'low_torque_liquid_contact_skip_enabled': False,
-            'low_torque_liquid_contact_threshold_pct': 20.0,
+            'low_torque_liquid_contact_skip_enabled': True,
+            'low_torque_liquid_contact_threshold_pct': 25.0,
+            # Feature toggles
+            'predicted_viscosity_enabled': False,
         }
         # ========== Calibration state ==========
         self.calibration_mode = False         # True when a calibration run is active
@@ -503,6 +505,8 @@ class ViscometryWebInterface:
                 normalized['feedback_control_enabled'] = bool(settings['feedback_control_enabled'])
             if 'smart_early_exit_enabled' in settings:
                 normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
+            if 'predicted_viscosity_enabled' in settings:
+                normalized['predicted_viscosity_enabled'] = bool(settings['predicted_viscosity_enabled'])
             if 'low_torque_liquid_contact_skip_enabled' in settings:
                 normalized['low_torque_liquid_contact_skip_enabled'] = bool(
                     settings['low_torque_liquid_contact_skip_enabled']
@@ -692,6 +696,7 @@ class ViscometryWebInterface:
         moving_r2_cv, moving_r2_slope,
         hit_confidence: float, hit_detected: bool,
         drag_sd2_calibrated: bool, cv_sd2_calibrated: bool, slope_sd2_calibrated: bool
+        , predicted_viscosity: Optional[float] = None, predicted_viscosity_h0: Optional[float] = None
     ):
         """Emit latest feedback controller metrics for a single RPM to the sidebar."""
         self.socketio.emit('feedback_metrics_update', {
@@ -707,6 +712,8 @@ class ViscometryWebInterface:
             'drag_sd2_calibrated': drag_sd2_calibrated,
             'cv_sd2_calibrated': cv_sd2_calibrated,
             'slope_sd2_calibrated': slope_sd2_calibrated,
+            'predicted_viscosity': predicted_viscosity,
+            'predicted_viscosity_h0': predicted_viscosity_h0,
         })
 
     def clear_run_data(self):
@@ -823,6 +830,106 @@ class ViscometryWebInterface:
                 print(f"Warning: Failed to emit measurement: {emit_error}")
         except Exception as e:
             print(f"Error in add_measurement_point: {e}")
+
+    def calculate_predicted_viscosity(self, measurements, geometry_k=2.330):
+        """Estimate viscosity by fitting a hyperbola to rotational drag data.
+
+        Model: (D / omega) = (eta * K) / (h + h0)
+
+        Parameters:
+            measurements: iterable of measurement dicts containing at least
+                'height', 'rotational_drag', 'torque_percent', and optionally 'hit_detected' and 'timestamp'.
+            geometry_k: geometric constant K used in the model (default 2.330).
+
+        Returns:
+            (eta, h0, (heights_list, drags_list)) on success, or (None, None, ([], []))
+            if fitting failed or insufficient data.
+        """
+        try:
+            import numpy as _np
+            from scipy.optimize import curve_fit as _curve_fit
+        except Exception:
+            # SciPy / NumPy not available
+            return None, None, ([], [])
+
+        # Use the same threshold semantics as the UI/runtime default
+        LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 25.0
+
+        # Sort by timestamp if present, otherwise keep original order
+        try:
+            ordered = sorted(measurements, key=lambda m: float(m.get('timestamp', 0)))
+        except Exception:
+            ordered = list(measurements)
+
+        filtered = []
+        # include points collected before the first hit_detected == True
+        for m in ordered:
+            if m.get('hit_detected'):
+                break
+            try:
+                torque = float(m.get('torque_percent', 0))
+            except Exception:
+                continue
+            if torque <= LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:
+                continue
+            try:
+                h = float(m.get('height'))
+                d = float(m.get('rotational_drag'))
+            except Exception:
+                continue
+            # must be finite and non-negative drag
+            if not _np.isfinite(d) or not _np.isfinite(h):
+                continue
+            filtered.append((h, d))
+
+        if len(filtered) < 3:
+            return None, None, ([], [])
+
+        heights = _np.array([f[0] for f in filtered], dtype=float)
+        drags = _np.array([f[1] for f in filtered], dtype=float)
+
+        # Fit using the same hyperbola form as viscosity_pipeline_helper: a / (x - b)
+        def _hyperbola(x, a, b):
+            return a / (x - b)
+
+        # Require at least 3-4 points for a stable hyperbola fit
+        if len(heights) < 3 or _np.ptp(heights) == 0:
+            return None, None, (list(heights.tolist()), list(drags.tolist()))
+
+        # Heuristic initial guesses and bounds to avoid singularities (match helper logic)
+        try:
+            x_min = float(_np.min(heights))
+            x_ptp = float(_np.ptp(heights))
+            b0 = float(x_min - 0.5 * max(x_ptp, 1e-6))
+            a0 = float((drags[0] - drags[-1]) * max(x_ptp, 1e-6))
+            lower_b = float(x_min - 5.0 * max(x_ptp, 1e-6))
+            upper_b = float(x_min - 1e-6)
+        except Exception:
+            # Fallback initial guesses
+            b0 = 1.0
+            a0 = float(_np.median(drags))
+            lower_b = -_np.inf
+            upper_b = _np.inf
+
+        try:
+            popt, pcov = _curve_fit(
+                _hyperbola,
+                heights,
+                drags,
+                p0=[a0, b0],
+                bounds=([-_np.inf, lower_b], [_np.inf, upper_b]),
+                maxfev=20000,
+            )
+            A = float(popt[0])
+            B = float(popt[1])
+            # Convert to centipoise (cP) using empirical scale factor
+            viscosity_cP = abs(A) * geometry_k * 1000.0
+            return viscosity_cP, B, (list(heights.tolist()), list(drags.tolist()))
+        except RuntimeError:
+            # Fit did not converge
+            return None, None, (list(heights.tolist()), list(drags.tolist()))
+        except Exception:
+            return None, None, (list(heights.tolist()), list(drags.tolist()))
         
     def set_running_state(self, is_running: bool):
         """Set running state"""
