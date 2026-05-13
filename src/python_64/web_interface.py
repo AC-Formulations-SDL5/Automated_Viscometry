@@ -833,6 +833,8 @@ class ViscometryWebInterface:
 
     def calculate_predicted_viscosity(self, measurements, geometry_k=2.330):
         """Estimate viscosity by fitting a hyperbola to rotational drag data.
+        
+        Uses the same trim_stat_middle + hyperbola fitting logic as viscosity_pipeline_helper.
 
         Model: (D / omega) = (eta * K) / (h + h0)
 
@@ -848,12 +850,10 @@ class ViscometryWebInterface:
         try:
             import numpy as _np
             from scipy.optimize import curve_fit as _curve_fit
+            import pandas as _pd
         except Exception:
-            # SciPy / NumPy not available
+            # SciPy / NumPy / pandas not available
             return None, None, ([], [])
-
-        # Use the same threshold semantics as the UI/runtime default
-        LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 25.0
 
         # Sort by timestamp if present, otherwise keep original order
         try:
@@ -861,59 +861,111 @@ class ViscometryWebInterface:
         except Exception:
             ordered = list(measurements)
 
-        filtered = []
-        # Include all points (pre-hit and post-hit) that pass the torque floor threshold
+        # Convert to DataFrame for easier manipulation
+        raw_list = []
         for m in ordered:
             try:
-                torque = float(m.get('torque_percent', 0))
+                raw_list.append({
+                    'height': float(m.get('height')),
+                    'rotational_drag': float(m.get('rotational_drag')),
+                    'torque_percent': float(m.get('torque_percent', 0))
+                })
             except Exception:
                 continue
-            if torque <= LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:
-                continue
-            try:
-                h = float(m.get('height'))
-                d = float(m.get('rotational_drag'))
-            except Exception:
-                continue
-            # must be finite and non-negative drag
-            if not _np.isfinite(d) or not _np.isfinite(h):
-                continue
-            filtered.append((h, d))
-
-        if len(filtered) < 3:
+        
+        if len(raw_list) < 4:
             return None, None, ([], [])
 
-        heights = _np.array([f[0] for f in filtered], dtype=float)
-        drags = _np.array([f[1] for f in filtered], dtype=float)
+        df_raw = _pd.DataFrame(raw_list)
+        x = df_raw['height'].to_numpy(float)
+        y = df_raw['rotational_drag'].to_numpy(float)
 
-        # Fit using the same hyperbola form as viscosity_pipeline_helper: a / (x - b)
-        def _hyperbola(x, a, b):
-            return a / (x - b)
+        # ===== TRIM STAT MIDDLE: Select clean middle segment =====
+        # This is the critical preprocessing step from viscosity_pipeline_helper
+        if len(x) < 6:
+            trimmed_x, trimmed_y = x, y
+        else:
+            # Calculate rolling statistics
+            n = len(x)
+            win = 5
+            ys = _pd.Series(y)
+            y_sm = ys.rolling(win, center=True, min_periods=2).mean().bfill().ffill().to_numpy()
+            sd = ys.rolling(win, center=True, min_periods=2).std().fillna(0).to_numpy()
+            dy = _np.gradient(y_sm, x)
+            d2 = _np.gradient(dy, x)
+            
+            eps = 1e-9
+            cv = _np.abs(sd / (_np.abs(y_sm) + eps))
+            d1_dev = _np.abs(dy - _np.nanmedian(dy))
+            d2_abs = _np.abs(d2)
+            
+            q = 0.65
+            t_cv = float(_np.nanquantile(cv, q))
+            t_d1 = float(_np.nanquantile(d1_dev, q))
+            t_d2 = float(_np.nanquantile(d2_abs, q))
+            neg = _np.clip(-dy, 0, None)
+            t_neg = max(float(_np.nanquantile(neg, q)), eps)
+            
+            # Quality scoring
+            raw = (
+                cv / (t_cv + eps)
+                + d1_dev / (t_d1 + eps)
+                + d2_abs / (t_d2 + eps)
+                + 2.0 * _np.clip(dy, 0, None) / t_neg
+                - 0.8 * neg / t_neg
+            )
+            
+            # Find best segment
+            min_keep_frac, max_keep_frac = 0.5, 0.8
+            min_k = max(5, int(_np.ceil(min_keep_frac * n)))
+            max_frac = 0.92 if n <= 14 else max_keep_frac
+            max_k = min(n, max(min_k, int(_np.floor(max_frac * n))))
+            mid = 0.5 * (n - 1)
+            
+            best = (_np.inf, 0, n)
+            for length in range(min_k, max_k + 1):
+                for i in range(0, n - length + 1):
+                    j = i + length
+                    dy_w = dy[i:j]
+                    pos_w = _np.clip(dy_w, 0, None)
+                    neg_strength = float(_np.nanmean(_np.clip(-dy_w, 0, None)) / (t_neg + eps))
+                    score = float(_np.nanmean(raw[i:j]))
+                    score += 1.8 * float(_np.nanmean(pos_w / (t_neg + eps)))
+                    score += 0.9 * max(0.0, float(_np.mean(dy_w > 0)) - 0.15)
+                    score += 0.35 * max(0.0, 0.55 - neg_strength)
+                    score += 0.10 * abs((i + j - 1) * 0.5 - mid) / max(n, 1)
+                    if score < best[0]:
+                        best = (score, i, j)
+            
+            score, i, j = best
+            trimmed_x = x[i:j]
+            trimmed_y = y[i:j]
 
-        # Require at least 3-4 points for a stable hyperbola fit
-        if len(heights) < 3 or _np.ptp(heights) == 0:
-            return None, None, (list(heights.tolist()), list(drags.tolist()))
+        # ===== HYPERBOLA FIT on trimmed data =====
+        if len(trimmed_x) < 3 or _np.ptp(trimmed_x) == 0:
+            return None, None, (list(trimmed_x.tolist()), list(trimmed_y.tolist()))
 
-        # Heuristic initial guesses and bounds to avoid singularities (match helper logic)
+        def _hyperbola(xx, a, b):
+            return a / (xx - b)
+
         try:
-            x_min = float(_np.min(heights))
-            x_ptp = float(_np.ptp(heights))
+            x_min = float(_np.min(trimmed_x))
+            x_ptp = float(_np.ptp(trimmed_x))
             b0 = float(x_min - 0.5 * max(x_ptp, 1e-6))
-            a0 = float((drags[0] - drags[-1]) * max(x_ptp, 1e-6))
+            a0 = float((trimmed_y[0] - trimmed_y[-1]) * max(x_ptp, 1e-6))
             lower_b = float(x_min - 5.0 * max(x_ptp, 1e-6))
             upper_b = float(x_min - 1e-6)
         except Exception:
-            # Fallback initial guesses
             b0 = 1.0
-            a0 = float(_np.median(drags))
+            a0 = float(_np.median(trimmed_y))
             lower_b = -_np.inf
             upper_b = _np.inf
 
         try:
             popt, pcov = _curve_fit(
                 _hyperbola,
-                heights,
-                drags,
+                trimmed_x,
+                trimmed_y,
                 p0=[a0, b0],
                 bounds=([-_np.inf, lower_b], [_np.inf, upper_b]),
                 maxfev=20000,
@@ -921,14 +973,10 @@ class ViscometryWebInterface:
             A = float(popt[0])
             B = float(popt[1])
             # Match notebook logic: viscosity in k cP = |a| * geometry_k
-            # (m_hyp = 2.330 is the scaling factor used in viscosity_pipeline_helper)
             viscosity_kcP = abs(A) * geometry_k
-            return viscosity_kcP, B, (list(heights.tolist()), list(drags.tolist()))
-        except RuntimeError:
-            # Fit did not converge
-            return None, None, (list(heights.tolist()), list(drags.tolist()))
+            return viscosity_kcP, B, (list(trimmed_x.tolist()), list(trimmed_y.tolist()))
         except Exception:
-            return None, None, (list(heights.tolist()), list(drags.tolist()))
+            return None, None, (list(trimmed_x.tolist()), list(trimmed_y.tolist()))
         
     def set_running_state(self, is_running: bool):
         """Set running state"""
