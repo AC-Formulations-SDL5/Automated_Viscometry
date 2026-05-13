@@ -180,6 +180,41 @@ def fit_cell_models(
     return pd.DataFrame(rows).sort_values("cell").reset_index(drop=True)
 
 
+def _plot_raw_overview(
+    raw_df: pd.DataFrame,
+    cell_col: str,
+    x_col: str,
+    y_col: str,
+    title: str,
+) -> None:
+    """Plot all cells' raw rotational-drag vs height curves on a single axes."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    cells = sorted(raw_df[cell_col].dropna().unique())
+    cmap = plt.get_cmap("tab10")
+    for idx, c in enumerate(cells):
+        g = raw_df[raw_df[cell_col].eq(c)].sort_values(x_col)
+        if g.empty:
+            continue
+        color = cmap(idx % cmap.N)
+        ax.plot(
+            g[x_col].to_numpy(float),
+            g[y_col].to_numpy(float),
+            marker="o",
+            ms=3,
+            lw=1.2,
+            alpha=0.85,
+            color=color,
+            label=f"Cell {int(c)}",
+        )
+    ax.set_xlabel("Height (mm)", fontsize=12)
+    ax.set_ylabel("Rotational Drag", fontsize=12)
+    ax.set_title(f"{title}: Raw Rotational Drag vs Height (all cells)", fontsize=13, fontweight="bold")
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=9, loc="best", ncol=2)
+    plt.tight_layout()
+    plt.show()
+
+
 def _plot_trimmed_with_fits(
     trimmed_df: pd.DataFrame,
     fit_df: pd.DataFrame,
@@ -389,6 +424,13 @@ def run_viscosity_pipeline(
     )
 
     if visualize:
+        _plot_raw_overview(
+            raw_df=df_raw,
+            cell_col=cell_col,
+            x_col=x_col,
+            y_col=y_col,
+            title=data_path.name,
+        )
         _plot_trimmed_with_fits(
             trimmed_df=df_trimmed,
             fit_df=fit_df,
