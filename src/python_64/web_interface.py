@@ -716,6 +716,20 @@ class ViscometryWebInterface:
             'predicted_viscosity_h0': predicted_viscosity_h0,
         })
 
+    def emit_predicted_viscosity_plot(
+        self, cell_id: int, rpm: float, viscosity_kcP: float, 
+        heights: List[float], drags: List[float], h0: Optional[float] = None
+    ):
+        """Emit plot data for predicted viscosity visualization."""
+        self.socketio.emit('predicted_viscosity_plot_data', {
+            'cell_id': cell_id,
+            'rpm': rpm,
+            'viscosity_kcP': viscosity_kcP,
+            'h0': h0,
+            'heights': heights,
+            'drags': drags,
+        })
+
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
         with self.control_lock:

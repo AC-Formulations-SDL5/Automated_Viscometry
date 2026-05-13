@@ -1327,6 +1327,20 @@ def test_cell_dynamic_z_series(
                 )
                 predicted_map[rpm] = eta
 
+                # Emit plot data to frontend if prediction succeeded
+                if eta is not None and heights and drags:
+                    try:
+                        web_interface.emit_predicted_viscosity_plot(
+                            cell_id=global_cell,
+                            rpm=rpm,
+                            viscosity_kcP=eta,
+                            heights=heights,
+                            drags=drags,
+                            h0=h0
+                        )
+                    except Exception as e:
+                        print(f"Warning: Failed to emit viscosity plot data: {e}")
+
                 # Store in per-cell metrics: attach to last Z-level metrics if available
                 if z_keys:
                     last_z = z_keys[0]
