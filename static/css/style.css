@@ -536,6 +536,33 @@ h2 {
 
 .map-card { grid-area: map; min-height: 430px; }
 .plot-card { grid-area: plot; min-height: 430px; margin-top: 20px; }
+/* Predicted viscosity plots layout: 3 cards per row with hover microinteraction */
+.plots-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 12px;
+}
+.pv-plot {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+    padding: 8px;
+    box-shadow: var(--shadow-card);
+    transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+}
+.pv-plot:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-glow);
+    border-color: var(--accent-primary-border);
+}
+.pv-plot .plotly {
+    width: 100% !important;
+    height: 100% !important;
+}
 .sidebar-card { grid-area: sidebar; min-height: 430px; }
 .timeline-card { grid-area: timeline; }
 .table-card { grid-area: table; }
