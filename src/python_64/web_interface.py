@@ -716,6 +716,20 @@ class ViscometryWebInterface:
             'predicted_viscosity_h0': predicted_viscosity_h0,
         })
 
+    def emit_predicted_viscosity_plot(
+        self, cell_id: int, rpm: float, viscosity_kcP: float, 
+        heights: List[float], drags: List[float], h0: Optional[float] = None
+    ):
+        """Emit plot data for predicted viscosity visualization."""
+        self.socketio.emit('predicted_viscosity_plot_data', {
+            'cell_id': cell_id,
+            'rpm': rpm,
+            'viscosity_kcP': viscosity_kcP,
+            'h0': h0,
+            'heights': heights,
+            'drags': drags,
+        })
+
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
         with self.control_lock:
@@ -831,152 +845,105 @@ class ViscometryWebInterface:
         except Exception as e:
             print(f"Error in add_measurement_point: {e}")
 
-    def calculate_predicted_viscosity(self, measurements, geometry_k=2.330):
-        """Estimate viscosity by fitting a hyperbola to rotational drag data.
+    def calculate_predicted_viscosity(self, measurements, hitpoint_z=None, torque_floor=25.0, m_hyp=2.330):
+        """Calculate predicted viscosity using hyperbola fitting.
         
-        Uses the same trim_stat_middle + hyperbola fitting logic as viscosity_pipeline_helper.
-
-        Model: (D / omega) = (eta * K) / (h + h0)
+        Matches the logic from viscosity_pipeline_helper.py
 
         Parameters:
-            measurements: iterable of measurement dicts containing at least
-                'height', 'rotational_drag', 'torque_percent', and optionally 'hit_detected' and 'timestamp'.
-            geometry_k: geometric constant K used in the model (default 2.330).
+            measurements: iterable of measurement dicts with 'height', 'rotational_drag', 'torque_percent'
+            hitpoint_z: Z-height where liquid contact is detected (if None, uses oldest measurement as reference)
+            torque_floor: Minimum torque percentage threshold for inclusion (default 25.0)
+            m_hyp: Scaling factor for converting hyperbola parameter a to viscosity (kcP) - default 2.330
 
         Returns:
-            (eta, h0, (heights_list, drags_list)) on success, or (None, None, ([], []))
-            if fitting failed or insufficient data.
+            (viscosity_kcP, offset_b, (trimmed_heights, trimmed_drags)) on success, or
+            (None, None, ([], [])) on failure
         """
         try:
             import numpy as _np
             from scipy.optimize import curve_fit as _curve_fit
-            import pandas as _pd
         except Exception:
-            # SciPy / NumPy / pandas not available
             return None, None, ([], [])
 
-        # Sort by timestamp if present, otherwise keep original order
-        try:
-            ordered = sorted(measurements, key=lambda m: float(m.get('timestamp', 0)))
-        except Exception:
-            ordered = list(measurements)
+        if not measurements or len(measurements) < 3:
+            return None, None, ([], [])
 
-        # Convert to DataFrame for easier manipulation
-        raw_list = []
-        for m in ordered:
+        # Filter: only pre-hitpoint with sufficient torque
+        filtered = []
+        for m in measurements:
             try:
-                raw_list.append({
-                    'height': float(m.get('height')),
-                    'rotational_drag': float(m.get('rotational_drag')),
-                    'torque_percent': float(m.get('torque_percent', 0))
-                })
-            except Exception:
+                z = float(m.get('height', 0))
+                drag = float(m.get('rotational_drag', 0))
+                torque = float(m.get('torque_percent', 0))
+            except (ValueError, TypeError):
                 continue
-        
-        if len(raw_list) < 4:
+
+            # Must pass torque floor
+            if torque <= torque_floor:
+                continue
+
+            # If hitpoint_z is specified, only include pre-hitpoint (z < hitpoint_z)
+            if hitpoint_z is not None and z >= hitpoint_z:
+                continue
+
+            filtered.append((z, drag))
+
+        if len(filtered) < 3:
             return None, None, ([], [])
 
-        df_raw = _pd.DataFrame(raw_list)
-        x = df_raw['height'].to_numpy(float)
-        y = df_raw['rotational_drag'].to_numpy(float)
+        heights = _np.array([f[0] for f in filtered], dtype=float)
+        drags = _np.array([f[1] for f in filtered], dtype=float)
 
-        # ===== TRIM STAT MIDDLE: Select clean middle segment =====
-        # This is the critical preprocessing step from viscosity_pipeline_helper
-        if len(x) < 6:
-            trimmed_x, trimmed_y = x, y
-        else:
-            # Calculate rolling statistics
-            n = len(x)
-            win = 5
-            ys = _pd.Series(y)
-            y_sm = ys.rolling(win, center=True, min_periods=2).mean().bfill().ffill().to_numpy()
-            sd = ys.rolling(win, center=True, min_periods=2).std().fillna(0).to_numpy()
-            dy = _np.gradient(y_sm, x)
-            d2 = _np.gradient(dy, x)
-            
-            eps = 1e-9
-            cv = _np.abs(sd / (_np.abs(y_sm) + eps))
-            d1_dev = _np.abs(dy - _np.nanmedian(dy))
-            d2_abs = _np.abs(d2)
-            
-            q = 0.65
-            t_cv = float(_np.nanquantile(cv, q))
-            t_d1 = float(_np.nanquantile(d1_dev, q))
-            t_d2 = float(_np.nanquantile(d2_abs, q))
-            neg = _np.clip(-dy, 0, None)
-            t_neg = max(float(_np.nanquantile(neg, q)), eps)
-            
-            # Quality scoring
-            raw = (
-                cv / (t_cv + eps)
-                + d1_dev / (t_d1 + eps)
-                + d2_abs / (t_d2 + eps)
-                + 2.0 * _np.clip(dy, 0, None) / t_neg
-                - 0.8 * neg / t_neg
-            )
-            
-            # Find best segment
-            min_keep_frac, max_keep_frac = 0.5, 0.8
-            min_k = max(5, int(_np.ceil(min_keep_frac * n)))
-            max_frac = 0.92 if n <= 14 else max_keep_frac
-            max_k = min(n, max(min_k, int(_np.floor(max_frac * n))))
-            mid = 0.5 * (n - 1)
-            
-            best = (_np.inf, 0, n)
-            for length in range(min_k, max_k + 1):
-                for i in range(0, n - length + 1):
-                    j = i + length
-                    dy_w = dy[i:j]
-                    pos_w = _np.clip(dy_w, 0, None)
-                    neg_strength = float(_np.nanmean(_np.clip(-dy_w, 0, None)) / (t_neg + eps))
-                    score = float(_np.nanmean(raw[i:j]))
-                    score += 1.8 * float(_np.nanmean(pos_w / (t_neg + eps)))
-                    score += 0.9 * max(0.0, float(_np.mean(dy_w > 0)) - 0.15)
-                    score += 0.35 * max(0.0, 0.55 - neg_strength)
-                    score += 0.10 * abs((i + j - 1) * 0.5 - mid) / max(n, 1)
-                    if score < best[0]:
-                        best = (score, i, j)
-            
-            score, i, j = best
-            trimmed_x = x[i:j]
-            trimmed_y = y[i:j]
+        # If hitpoint_z specified, check Z-span and potentially trim to 0.3mm window
+        if hitpoint_z is not None:
+            z_max = _np.max(heights)
+            z_min = _np.min(heights)
+            z_span = z_max - z_min
 
-        # ===== HYPERBOLA FIT on trimmed data =====
-        if len(trimmed_x) < 3 or _np.ptp(trimmed_x) == 0:
-            return None, None, (list(trimmed_x.tolist()), list(trimmed_y.tolist()))
+            if z_span > 0.3:
+                # Trim to only points within 0.3mm above hitpoint
+                cutoff_z = hitpoint_z + 0.3
+                mask = heights <= cutoff_z
+                if _np.sum(mask) >= 3:
+                    heights = heights[mask]
+                    drags = drags[mask]
 
-        def _hyperbola(xx, a, b):
-            return a / (xx - b)
+        if len(heights) < 3:
+            return None, None, ([], [])
+
+        # Fit hyperbola: y = a / (x - b) from viscosity_pipeline_helper
+        def _hyperbola(x, a, b):
+            return a / (x - b)
 
         try:
-            x_min = float(_np.min(trimmed_x))
-            x_ptp = float(_np.ptp(trimmed_x))
-            b0 = float(x_min - 0.5 * max(x_ptp, 1e-6))
-            a0 = float((trimmed_y[0] - trimmed_y[-1]) * max(x_ptp, 1e-6))
-            lower_b = float(x_min - 5.0 * max(x_ptp, 1e-6))
-            upper_b = float(x_min - 1e-6)
-        except Exception:
-            b0 = 1.0
-            a0 = float(_np.median(trimmed_y))
-            lower_b = -_np.inf
-            upper_b = _np.inf
+            # Initial guesses matching viscosity_pipeline_helper
+            x_min = float(_np.min(heights))
+            x_range = float(_np.ptp(heights))
+            b_guess = x_min - 0.5 * max(x_range, 1e-6)
+            a_guess = float((drags[0] - drags[-1]) * max(x_range, 1e-6))
 
-        try:
+            lower_b = x_min - 5.0 * max(x_range, 1e-6)
+            upper_b = x_min - 1e-6
+
             popt, pcov = _curve_fit(
                 _hyperbola,
-                trimmed_x,
-                trimmed_y,
-                p0=[a0, b0],
+                heights,
+                drags,
+                p0=[a_guess, b_guess],
                 bounds=([-_np.inf, lower_b], [_np.inf, upper_b]),
-                maxfev=20000,
+                maxfev=5000,
             )
-            A = float(popt[0])
-            B = float(popt[1])
-            # Match notebook logic: viscosity in k cP = |a| * geometry_k
-            viscosity_kcP = abs(A) * geometry_k
-            return viscosity_kcP, B, (list(trimmed_x.tolist()), list(trimmed_y.tolist()))
+
+            a, b = float(popt[0]), float(popt[1])
+            viscosity_kcP = abs(a) * m_hyp
+
+            return viscosity_kcP, b, (list(heights), list(drags))
+
+        except RuntimeError:
+            return None, None, (list(heights), list(drags))
         except Exception:
-            return None, None, (list(trimmed_x.tolist()), list(trimmed_y.tolist()))
+            return None, None, ([], [])
         
     def set_running_state(self, is_running: bool):
         """Set running state"""

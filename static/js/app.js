@@ -192,6 +192,7 @@ class ViscometryDashboard {
             cncStatus: document.getElementById("cnc-status"),
             viscometerStatus: document.getElementById("viscometer-status"),
             pumpStatus: document.getElementById("pump-status"),
+            predictedViscosityContainer: document.getElementById("predicted-viscosity-plots-container"),
             summaryCards: document.getElementById("experiment-cards"),
             summaryEmpty: document.getElementById("summary-empty"),
             summaryDetail: document.getElementById("summary-detail"),
@@ -690,6 +691,112 @@ class ViscometryDashboard {
         this.el.gaugeValue.style.strokeDasharray = `${this.gaugeArcLength} ${circumference}`;
         this.el.gaugeValue.style.strokeDashoffset = `${this.gaugeArcLength}`;
         this.updateGauge(0);
+    }
+
+    renderPredictedViscosityPlot(cellId, rpm, viscosityKcp, heights, drags, h0) {
+        /**
+         * Render hyperbolic curve fit plot for predicted viscosity.
+         * Shows raw data points and fitted hyperbola: y = a/(x-b)
+         * where y = rotational drag, x = z-height, a = viscosity * m_hyp, b = h0 offset
+         */
+        const container = this.el.predictedViscosityContainer;
+        if (!container) return;
+
+        // Create plot card for this cell/RPM
+        let plotCard = document.getElementById(`pv-plot-${cellId}-${rpm}`);
+        if (!plotCard) {
+            plotCard = document.createElement('div');
+            plotCard.id = `pv-plot-${cellId}-${rpm}`;
+            plotCard.className = 'pv-plot';
+            container.appendChild(plotCard);
+        }
+
+        // Scatter plot: raw data points
+        const scatterTrace = {
+            x: heights,
+            y: drags,
+            mode: 'markers',
+            type: 'scatter',
+            name: 'Measurements',
+            marker: {
+                size: 8,
+                color: '#3b82f6',
+                opacity: 0.7,
+                line: { color: '#1e40af', width: 1 }
+            }
+        };
+
+        // Fitted hyperbola curve: y = a/(x - b)
+        // From backend: a = viscosityKcp * m_hyp where m_hyp = 2.330
+        const m_hyp = 2.330;
+        const a = viscosityKcp * m_hyp;
+        const b = h0 || 0;
+
+        // Generate smooth curve across the height range
+        const xMin = Math.min(...heights);
+        const xMax = Math.max(...heights);
+        const xRange = xMax - xMin;
+        const xCurvePoints = [];
+        for (let i = 0; i <= 100; i++) {
+            xCurvePoints.push(xMin - xRange * 0.1 + (xRange * 1.2 * i / 100));
+        }
+
+        const yCurvePoints = xCurvePoints.map(x => {
+            const denominator = x - b;
+            if (Math.abs(denominator) < 0.001) return null; // Avoid singularity
+            return a / denominator;
+        });
+
+        const curveTrace = {
+            x: xCurvePoints,
+            y: yCurvePoints,
+            mode: 'lines',
+            type: 'scatter',
+            name: 'Fitted Hyperbola',
+            line: {
+                color: '#ef4444',
+                width: 2,
+                dash: 'solid'
+            }
+        };
+
+        const layout = {
+            title: {
+                text: `Cell ${cellId} @ ${rpm.toFixed(1)} RPM — Predicted Viscosity: η = ${viscosityKcp.toFixed(3)} kcP`,
+                font: { size: 14, color: '#C9D1D9' }
+            },
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'rgba(255,255,255,0.03)',
+            font: { family: 'DM Mono', color: '#C9D1D9', size: 11 },
+            xaxis: {
+                title: 'Z-Height (mm)',
+                gridcolor: '#21262D',
+                zeroline: false
+            },
+            yaxis: {
+                title: 'Rotational Drag (torque/RPM)',
+                gridcolor: '#21262D',
+                zeroline: false
+            },
+            margin: { t: 50, r: 16, b: 45, l: 58 },
+            legend: { 
+                bgcolor: 'rgba(0,0,0,0.3)', 
+                bordercolor: '#30363D',
+                x: 1.05,
+                y: 1
+            },
+            hovermode: 'closest'
+        };
+
+        const config = {
+            responsive: true,
+            displayModeBar: false,
+            staticPlot: false
+        };
+
+        Plotly.newPlot(plotCard, [scatterTrace, curveTrace], layout, config).catch(err => {
+            console.error('Failed to render predicted viscosity plot:', err);
+        });
     }
 
     startTimerLoop() {
@@ -1227,6 +1334,19 @@ class ViscometryDashboard {
                 if (data.predicted_viscosity_h0 != null) {
                     this.lastPredictedViscosityH0 = Number(data.predicted_viscosity_h0);
                 }
+            }
+        });
+
+        this.socket.on("predicted_viscosity_plot_data", (data) => {
+            if (data && data.heights && data.drags && data.viscosity_kcP != null) {
+                this.renderPredictedViscosityPlot(
+                    data.cell_id,
+                    data.rpm,
+                    data.viscosity_kcP,
+                    data.heights,
+                    data.drags,
+                    data.h0
+                );
             }
         });
 
@@ -2692,13 +2812,13 @@ class ViscometryDashboard {
             const pvLines = [];
             // Try to read precomputed summary from exp.predicted_viscosity_summary
             if (exp.predicted_viscosity_summary && typeof exp.predicted_viscosity_summary === 'object') {
-                pvLines.push('<strong>Predicted Viscosity (k cP):</strong>');
+                pvLines.push('<strong>Predicted Viscosity:</strong>');
                 Object.entries(exp.predicted_viscosity_summary).forEach(([cellKey, rpmMap]) => {
                     // cellKey expected like 'cell_7'
                     Object.entries(rpmMap).forEach(([rpm, vals]) => {
                         const eta = vals?.eta != null ? Number(vals.eta).toFixed(6) : '—';
                         const h0 = vals?.h0 != null ? Number(vals.h0).toFixed(6) : '—';
-                        pvLines.push(`<div>Cell ${cellKey} @ ${rpm} RPM: η=${eta} kcP, h₀=${h0} mm</div>`);
+                        pvLines.push(`<div>Cell ${cellKey} @ ${rpm} RPM: η=${eta}, h₀=${h0}</div>`);
                     });
                 });
             } else {
@@ -2726,152 +2846,33 @@ class ViscometryDashboard {
                             valid.push(point);
                         }
                     }
-                    if (valid.length >= 6) {
-                        // Match backend: trim to clean middle segment, then fit hyperbola
+                    if (valid.length >= 3) {
+                        // compute linearized fit: 1/y = a*h + b
                         const K = 2.330;
                         const xs = valid.map((v) => Number(v.height));
                         const ys = valid.map((v) => Number(v.rotational_drag));
-                        
-                        // Simple rolling statistics for segment selection
-                        const n = xs.length;
-                        const win = Math.min(5, n);
-                        
-                        // Compute rolling mean and std
-                        const ySmoothed = [];
-                        const ySds = [];
-                        for (let i = 0; i < n; i++) {
-                            const start = Math.max(0, i - Math.floor(win / 2));
-                            const end = Math.min(n, i + Math.ceil(win / 2));
-                            const window = ys.slice(start, end);
-                            const mean = window.reduce((a, b) => a + b, 0) / window.length;
-                            const variance = window.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / window.length;
-                            ySmoothed.push(mean);
-                            ySds.push(Math.sqrt(variance));
-                        }
-                        
-                        // Compute derivatives
-                        const dy = [];
-                        for (let i = 0; i < n - 1; i++) {
-                            dy.push((ySmoothed[i + 1] - ySmoothed[i]) / (xs[i + 1] - xs[i]));
-                        }
-                        dy.push(dy[n - 2] || 0);
-                        
-                        // Find best segment by quality score
-                        let bestSegment = [0, n];
-                        let bestScore = Infinity;
-                        
-                        const minLen = Math.max(6, Math.ceil(0.5 * n));
-                        const maxLen = Math.min(n, Math.floor(0.8 * n));
-                        
-                        for (let len = minLen; len <= maxLen; len++) {
-                            for (let start = 0; start <= n - len; start++) {
-                                const end = start + len;
-                                let segScore = 0;
-                                for (let i = start; i < end; i++) {
-                                    segScore += Math.abs(dy[i]) + ySds[i];
-                                }
-                                segScore /= (end - start);
-                                if (segScore < bestScore) {
-                                    bestScore = segScore;
-                                    bestSegment = [start, end];
-                                }
-                            }
-                        }
-                        
-                        const [segStart, segEnd] = bestSegment;
-                        const trimmedXs = xs.slice(segStart, segEnd);
-                        const trimmedYs = ys.slice(segStart, segEnd);
-                        
-                        // Fit hyperbola a/(x-b) to trimmed data
-                        if (trimmedXs.length >= 3) {
-                            const xMin = Math.min(...trimmedXs);
-                            const xRange = Math.max(...trimmedXs) - xMin;
-                            
-                            // Search for best b value
-                            let bestA = null, bestB = null, bestError = Infinity;
-                            
-                            for (let bOffset = -5; bOffset <= -0.01; bOffset += 0.1) {
-                                const tryB = xMin + bOffset * Math.max(xRange, 1e-6);
-                                let sumNum = 0, sumDenom = 0;
-                                
-                                for (let i = 0; i < trimmedXs.length; i++) {
-                                    const dx = trimmedXs[i] - tryB;
-                                    if (Math.abs(dx) < 1e-12) continue;
-                                    sumNum += trimmedYs[i] * dx;
-                                    sumDenom += dx * dx;
-                                }
-                                
-                                if (Math.abs(sumDenom) > 1e-12) {
-                                    const tryA = sumNum / sumDenom;
-                                    let error = 0;
-                                    for (let i = 0; i < trimmedXs.length; i++) {
-                                        const predicted = tryA / (trimmedXs[i] - tryB);
-                                        error += Math.pow(trimmedYs[i] - predicted, 2);
-                                    }
-                                    if (error < bestError) {
-                                        bestError = error;
-                                        bestA = tryA;
-                                        bestB = tryB;
-                                    }
-                                }
-                            }
-                            
-                            if (bestA != null && Number.isFinite(bestA)) {
-                                const eta = Math.abs(bestA) * K;  // viscosity in k cP
+                        const invY = ys.map((v) => (v > 0 ? 1.0 / v : NaN)).filter(Number.isFinite);
+                        if (invY.length === ys.length) {
+                            const n = xs.length;
+                            let sumX=0,sumY=0,sumXY=0,sumXX=0;
+                            for (let i=0;i<n;i++){ sumX+=xs[i]; sumY+=invY[i]; sumXY+=xs[i]*invY[i]; sumXX+=xs[i]*xs[i]; }
+                            const denom = (n*sumXX - sumX*sumX);
+                            if (Math.abs(denom) > 1e-12) {
+                                const a = (n*sumXY - sumX*sumY)/denom;
+                                const b = (sumY - a*sumX)/n;
+                                const eta = a !== 0 ? 1.0/(a*K) : null;
+                                const h0 = (a !== 0) ? (b / a) : null;
                                 const etaText = eta != null && Number.isFinite(eta) ? eta.toFixed(6) : '—';
-                                const h0Text = Number.isFinite(bestB) ? bestB.toFixed(6) : '—';
-                                pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs: trimmedXs, ys: trimmedYs});
+                                const h0Text = h0 != null && Number.isFinite(h0) ? h0.toFixed(6) : '—';
+                                pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs: xs, ys: ys});
                             }
-                        }
-                    } else if (valid.length >= 3) {
-                        // Fallback for smaller datasets: simple hyperbola fit without trimming
-                        const K = 2.330;
-                        const xs = valid.map((v) => Number(v.height));
-                        const ys = valid.map((v) => Number(v.rotational_drag));
-                        
-                        const xMin = Math.min(...xs);
-                        const xRange = Math.max(...xs) - xMin;
-                        
-                        let bestA = null, bestB = null, bestError = Infinity;
-                        
-                        for (let bOffset = -5; bOffset <= -0.01; bOffset += 0.2) {
-                            const tryB = xMin + bOffset * Math.max(xRange, 1e-6);
-                            let sumNum = 0, sumDenom = 0;
-                            
-                            for (let i = 0; i < xs.length; i++) {
-                                const dx = xs[i] - tryB;
-                                if (Math.abs(dx) < 1e-12) continue;
-                                sumNum += ys[i] * dx;
-                                sumDenom += dx * dx;
-                            }
-                            
-                            if (Math.abs(sumDenom) > 1e-12) {
-                                const tryA = sumNum / sumDenom;
-                                let error = 0;
-                                for (let i = 0; i < xs.length; i++) {
-                                    const predicted = tryA / (xs[i] - tryB);
-                                    error += Math.pow(ys[i] - predicted, 2);
-                                }
-                                if (error < bestError) {
-                                    bestError = error;
-                                    bestA = tryA;
-                                    bestB = tryB;
-                                }
-                            }
-                        }
-                        
-                        if (bestA != null && Number.isFinite(bestA)) {
-                            const eta = Math.abs(bestA) * K;
-                            const etaText = eta != null && Number.isFinite(eta) ? eta.toFixed(6) : '—';
-                            const h0Text = Number.isFinite(bestB) ? bestB.toFixed(6) : '—';
-                            pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs, ys});
                         }
                     }
                 });
                 if (pvEntries.length > 0) {
-                    pvLines.push('<strong>Predicted Viscosity (k cP):</strong>');
+                    pvLines.push('<strong>Predicted Viscosity:</strong>');
                     pvEntries.forEach((e) => {
-                        pvLines.push(`<div>Cell ${e.cellId} @ ${Number(e.rpm).toFixed(3)} RPM: η=${e.eta} kcP, h₀=${e.h0} mm</div>`);
+                        pvLines.push(`<div>Cell ${e.cellId} @ ${Number(e.rpm).toFixed(3)} RPM: η=${e.eta}, h₀=${e.h0}</div>`);
                     });
                     // Also render plots
                     this.renderPredictedViscosityPlots(pvEntries);
@@ -3078,7 +3079,8 @@ class ViscometryDashboard {
             const xSorted = pairs.map(p=>p.x);
             const ySorted = pairs.map(p=>p.y);
 
-            // Compute fitted curve using eta/h0 if numeric, else skip curve
+            // Compute fitted curve using eta/h0 if numeric
+            // Formula: y = a / (x - b) where a = eta * K, b = h0
             const K = 2.330;
             let etaNum = Number(entry.eta);
             let h0Num = Number(entry.h0);
@@ -3089,7 +3091,7 @@ class ViscometryDashboard {
                 mode: 'markers',
                 type: 'scatter',
                 name: `Cell ${entry.cellId} @ ${Number(entry.rpm).toFixed(3)} RPM - data`,
-                marker: { size: 6 }
+                marker: { size: 6, color: '#3b82f6', line: { color: '#1e40af', width: 1 } }
             });
             if (Number.isFinite(etaNum) && Number.isFinite(h0Num)) {
                 const xMin = Math.min(...xSorted);
@@ -3097,22 +3099,35 @@ class ViscometryDashboard {
                 const grid = [];
                 const N = 200;
                 for (let i=0;i<N;i++) grid.push(xMin + (xMax - xMin) * (i/(N-1)));
-                const fittedY = grid.map((h) => (etaNum * K) / (h + h0Num));
+                // y = a / (x - b), where a = eta * K, b = h0
+                const a = etaNum * K;
+                const fittedY = grid.map((h) => {
+                    const denom = h - h0Num;
+                    return Math.abs(denom) < 0.001 ? null : a / denom;
+                });
                 traces.push({
                     x: grid,
                     y: fittedY,
                     mode: 'lines',
                     type: 'scatter',
-                    name: `Fitted η=${etaNum.toFixed(6)}`,
-                    line: { width: 2 }
+                    name: `Fitted η=${etaNum.toFixed(3)} kcP`,
+                    line: { width: 2, color: '#ef4444' }
                 });
             }
 
             const layout = {
-                margin: { t: 30, r: 10, l: 50, b: 40 },
-                xaxis: { title: 'Z-Height (mm)' },
-                yaxis: { title: 'Rotational Drag' },
-                showlegend: true
+                title: {
+                    text: `Cell ${entry.cellId} @ ${Number(entry.rpm).toFixed(3)} RPM — η = ${etaNum.toFixed(3)} kcP`,
+                    font: { size: 13 }
+                },
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'rgba(255,255,255,0.03)',
+                font: { family: 'DM Mono', color: '#C9D1D9', size: 11 },
+                margin: { t: 40, r: 10, l: 50, b: 40 },
+                xaxis: { title: 'Z-Height (mm)', gridcolor: '#21262D', zeroline: false },
+                yaxis: { title: 'Rotational Drag (torque/RPM)', gridcolor: '#21262D', zeroline: false },
+                showlegend: true,
+                hovermode: 'closest'
             };
             try { Plotly.react(div, traces, layout, {responsive:true, displayModeBar:false}); } catch (e) { console.warn('Plotly plot failed', e); }
         });
