@@ -2692,13 +2692,13 @@ class ViscometryDashboard {
             const pvLines = [];
             // Try to read precomputed summary from exp.predicted_viscosity_summary
             if (exp.predicted_viscosity_summary && typeof exp.predicted_viscosity_summary === 'object') {
-                pvLines.push('<strong>Predicted Viscosity (k cP):</strong>');
+                pvLines.push('<strong>Predicted Viscosity:</strong>');
                 Object.entries(exp.predicted_viscosity_summary).forEach(([cellKey, rpmMap]) => {
                     // cellKey expected like 'cell_7'
                     Object.entries(rpmMap).forEach(([rpm, vals]) => {
                         const eta = vals?.eta != null ? Number(vals.eta).toFixed(6) : '—';
                         const h0 = vals?.h0 != null ? Number(vals.h0).toFixed(6) : '—';
-                        pvLines.push(`<div>Cell ${cellKey} @ ${rpm} RPM: η=${eta} kcP, h₀=${h0} mm</div>`);
+                        pvLines.push(`<div>Cell ${cellKey} @ ${rpm} RPM: η=${eta}, h₀=${h0}</div>`);
                     });
                 });
             } else {
@@ -2726,152 +2726,33 @@ class ViscometryDashboard {
                             valid.push(point);
                         }
                     }
-                    if (valid.length >= 6) {
-                        // Match backend: trim to clean middle segment, then fit hyperbola
+                    if (valid.length >= 3) {
+                        // compute linearized fit: 1/y = a*h + b
                         const K = 2.330;
                         const xs = valid.map((v) => Number(v.height));
                         const ys = valid.map((v) => Number(v.rotational_drag));
-                        
-                        // Simple rolling statistics for segment selection
-                        const n = xs.length;
-                        const win = Math.min(5, n);
-                        
-                        // Compute rolling mean and std
-                        const ySmoothed = [];
-                        const ySds = [];
-                        for (let i = 0; i < n; i++) {
-                            const start = Math.max(0, i - Math.floor(win / 2));
-                            const end = Math.min(n, i + Math.ceil(win / 2));
-                            const window = ys.slice(start, end);
-                            const mean = window.reduce((a, b) => a + b, 0) / window.length;
-                            const variance = window.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / window.length;
-                            ySmoothed.push(mean);
-                            ySds.push(Math.sqrt(variance));
-                        }
-                        
-                        // Compute derivatives
-                        const dy = [];
-                        for (let i = 0; i < n - 1; i++) {
-                            dy.push((ySmoothed[i + 1] - ySmoothed[i]) / (xs[i + 1] - xs[i]));
-                        }
-                        dy.push(dy[n - 2] || 0);
-                        
-                        // Find best segment by quality score
-                        let bestSegment = [0, n];
-                        let bestScore = Infinity;
-                        
-                        const minLen = Math.max(6, Math.ceil(0.5 * n));
-                        const maxLen = Math.min(n, Math.floor(0.8 * n));
-                        
-                        for (let len = minLen; len <= maxLen; len++) {
-                            for (let start = 0; start <= n - len; start++) {
-                                const end = start + len;
-                                let segScore = 0;
-                                for (let i = start; i < end; i++) {
-                                    segScore += Math.abs(dy[i]) + ySds[i];
-                                }
-                                segScore /= (end - start);
-                                if (segScore < bestScore) {
-                                    bestScore = segScore;
-                                    bestSegment = [start, end];
-                                }
-                            }
-                        }
-                        
-                        const [segStart, segEnd] = bestSegment;
-                        const trimmedXs = xs.slice(segStart, segEnd);
-                        const trimmedYs = ys.slice(segStart, segEnd);
-                        
-                        // Fit hyperbola a/(x-b) to trimmed data
-                        if (trimmedXs.length >= 3) {
-                            const xMin = Math.min(...trimmedXs);
-                            const xRange = Math.max(...trimmedXs) - xMin;
-                            
-                            // Search for best b value
-                            let bestA = null, bestB = null, bestError = Infinity;
-                            
-                            for (let bOffset = -5; bOffset <= -0.01; bOffset += 0.1) {
-                                const tryB = xMin + bOffset * Math.max(xRange, 1e-6);
-                                let sumNum = 0, sumDenom = 0;
-                                
-                                for (let i = 0; i < trimmedXs.length; i++) {
-                                    const dx = trimmedXs[i] - tryB;
-                                    if (Math.abs(dx) < 1e-12) continue;
-                                    sumNum += trimmedYs[i] * dx;
-                                    sumDenom += dx * dx;
-                                }
-                                
-                                if (Math.abs(sumDenom) > 1e-12) {
-                                    const tryA = sumNum / sumDenom;
-                                    let error = 0;
-                                    for (let i = 0; i < trimmedXs.length; i++) {
-                                        const predicted = tryA / (trimmedXs[i] - tryB);
-                                        error += Math.pow(trimmedYs[i] - predicted, 2);
-                                    }
-                                    if (error < bestError) {
-                                        bestError = error;
-                                        bestA = tryA;
-                                        bestB = tryB;
-                                    }
-                                }
-                            }
-                            
-                            if (bestA != null && Number.isFinite(bestA)) {
-                                const eta = Math.abs(bestA) * K;  // viscosity in k cP
+                        const invY = ys.map((v) => (v > 0 ? 1.0 / v : NaN)).filter(Number.isFinite);
+                        if (invY.length === ys.length) {
+                            const n = xs.length;
+                            let sumX=0,sumY=0,sumXY=0,sumXX=0;
+                            for (let i=0;i<n;i++){ sumX+=xs[i]; sumY+=invY[i]; sumXY+=xs[i]*invY[i]; sumXX+=xs[i]*xs[i]; }
+                            const denom = (n*sumXX - sumX*sumX);
+                            if (Math.abs(denom) > 1e-12) {
+                                const a = (n*sumXY - sumX*sumY)/denom;
+                                const b = (sumY - a*sumX)/n;
+                                const eta = a !== 0 ? 1.0/(a*K) : null;
+                                const h0 = (a !== 0) ? (b / a) : null;
                                 const etaText = eta != null && Number.isFinite(eta) ? eta.toFixed(6) : '—';
-                                const h0Text = Number.isFinite(bestB) ? bestB.toFixed(6) : '—';
-                                pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs: trimmedXs, ys: trimmedYs});
+                                const h0Text = h0 != null && Number.isFinite(h0) ? h0.toFixed(6) : '—';
+                                pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs: xs, ys: ys});
                             }
-                        }
-                    } else if (valid.length >= 3) {
-                        // Fallback for smaller datasets: simple hyperbola fit without trimming
-                        const K = 2.330;
-                        const xs = valid.map((v) => Number(v.height));
-                        const ys = valid.map((v) => Number(v.rotational_drag));
-                        
-                        const xMin = Math.min(...xs);
-                        const xRange = Math.max(...xs) - xMin;
-                        
-                        let bestA = null, bestB = null, bestError = Infinity;
-                        
-                        for (let bOffset = -5; bOffset <= -0.01; bOffset += 0.2) {
-                            const tryB = xMin + bOffset * Math.max(xRange, 1e-6);
-                            let sumNum = 0, sumDenom = 0;
-                            
-                            for (let i = 0; i < xs.length; i++) {
-                                const dx = xs[i] - tryB;
-                                if (Math.abs(dx) < 1e-12) continue;
-                                sumNum += ys[i] * dx;
-                                sumDenom += dx * dx;
-                            }
-                            
-                            if (Math.abs(sumDenom) > 1e-12) {
-                                const tryA = sumNum / sumDenom;
-                                let error = 0;
-                                for (let i = 0; i < xs.length; i++) {
-                                    const predicted = tryA / (xs[i] - tryB);
-                                    error += Math.pow(ys[i] - predicted, 2);
-                                }
-                                if (error < bestError) {
-                                    bestError = error;
-                                    bestA = tryA;
-                                    bestB = tryB;
-                                }
-                            }
-                        }
-                        
-                        if (bestA != null && Number.isFinite(bestA)) {
-                            const eta = Math.abs(bestA) * K;
-                            const etaText = eta != null && Number.isFinite(eta) ? eta.toFixed(6) : '—';
-                            const h0Text = Number.isFinite(bestB) ? bestB.toFixed(6) : '—';
-                            pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs, ys});
                         }
                     }
                 });
                 if (pvEntries.length > 0) {
-                    pvLines.push('<strong>Predicted Viscosity (k cP):</strong>');
+                    pvLines.push('<strong>Predicted Viscosity:</strong>');
                     pvEntries.forEach((e) => {
-                        pvLines.push(`<div>Cell ${e.cellId} @ ${Number(e.rpm).toFixed(3)} RPM: η=${e.eta} kcP, h₀=${e.h0} mm</div>`);
+                        pvLines.push(`<div>Cell ${e.cellId} @ ${Number(e.rpm).toFixed(3)} RPM: η=${e.eta}, h₀=${e.h0}</div>`);
                     });
                     // Also render plots
                     this.renderPredictedViscosityPlots(pvEntries);
