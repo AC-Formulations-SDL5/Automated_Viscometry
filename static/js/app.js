@@ -2692,13 +2692,13 @@ class ViscometryDashboard {
             const pvLines = [];
             // Try to read precomputed summary from exp.predicted_viscosity_summary
             if (exp.predicted_viscosity_summary && typeof exp.predicted_viscosity_summary === 'object') {
-                pvLines.push('<strong>Predicted Viscosity:</strong>');
+                pvLines.push('<strong>Predicted Viscosity (k cP):</strong>');
                 Object.entries(exp.predicted_viscosity_summary).forEach(([cellKey, rpmMap]) => {
                     // cellKey expected like 'cell_7'
                     Object.entries(rpmMap).forEach(([rpm, vals]) => {
                         const eta = vals?.eta != null ? Number(vals.eta).toFixed(6) : '—';
                         const h0 = vals?.h0 != null ? Number(vals.h0).toFixed(6) : '—';
-                        pvLines.push(`<div>Cell ${cellKey} @ ${rpm} RPM: η=${eta}, h₀=${h0}</div>`);
+                        pvLines.push(`<div>Cell ${cellKey} @ ${rpm} RPM: η=${eta} kcP, h₀=${h0} mm</div>`);
                     });
                 });
             } else {
@@ -2727,32 +2727,60 @@ class ViscometryDashboard {
                         }
                     }
                     if (valid.length >= 3) {
-                        // compute linearized fit: 1/y = a*h + b
+                        // Match backend: fit hyperbola a/(x-b) using direct non-linear regression
                         const K = 2.330;
                         const xs = valid.map((v) => Number(v.height));
                         const ys = valid.map((v) => Number(v.rotational_drag));
-                        const invY = ys.map((v) => (v > 0 ? 1.0 / v : NaN)).filter(Number.isFinite);
-                        if (invY.length === ys.length) {
-                            const n = xs.length;
-                            let sumX=0,sumY=0,sumXY=0,sumXX=0;
-                            for (let i=0;i<n;i++){ sumX+=xs[i]; sumY+=invY[i]; sumXY+=xs[i]*invY[i]; sumXX+=xs[i]*xs[i]; }
-                            const denom = (n*sumXX - sumX*sumX);
-                            if (Math.abs(denom) > 1e-12) {
-                                const a = (n*sumXY - sumX*sumY)/denom;
-                                const b = (sumY - a*sumX)/n;
-                                const eta = a !== 0 ? 1.0/(a*K) : null;
-                                const h0 = (a !== 0) ? (b / a) : null;
-                                const etaText = eta != null && Number.isFinite(eta) ? eta.toFixed(6) : '—';
-                                const h0Text = h0 != null && Number.isFinite(h0) ? h0.toFixed(6) : '—';
-                                pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs: xs, ys: ys});
+                        
+                        // Simple hyperbola fit using least squares (non-linear)
+                        // For display purposes, use simple linearization as approximation
+                        const xMin = Math.min(...xs);
+                        const xRange = Math.max(...xs) - xMin;
+                        
+                        // Initial guess: b slightly before minimum
+                        const b0 = xMin - 0.5 * Math.max(xRange, 1e-6);
+                        
+                        // Fit hyperbola a/(x-b) to the data
+                        // Use iterative method to find a and b that minimize sum of squares
+                        let bestError = Infinity;
+                        let bestA = null, bestB = null;
+                        
+                        // Try different b values and find best fit
+                        for (let bOffset = -5; bOffset <= -0.1; bOffset += 0.1) {
+                            const tryB = xMin + bOffset * Math.max(xRange, 1e-6);
+                            let sumNum = 0, sumDenom = 0;
+                            for (let i = 0; i < xs.length; i++) {
+                                sumNum += ys[i] * (xs[i] - tryB);
+                                sumDenom += (xs[i] - tryB) * (xs[i] - tryB);
                             }
+                            if (Math.abs(sumDenom) > 1e-12) {
+                                const tryA = sumNum / sumDenom;
+                                // Calculate error
+                                let error = 0;
+                                for (let i = 0; i < xs.length; i++) {
+                                    const predicted = tryA / (xs[i] - tryB);
+                                    error += Math.pow(ys[i] - predicted, 2);
+                                }
+                                if (error < bestError) {
+                                    bestError = error;
+                                    bestA = tryA;
+                                    bestB = tryB;
+                                }
+                            }
+                        }
+                        
+                        if (bestA != null && bestB != null && Number.isFinite(bestA)) {
+                            const eta = Math.abs(bestA) * K;  // Match backend: viscosity in k cP
+                            const etaText = eta != null && Number.isFinite(eta) ? eta.toFixed(6) : '—';
+                            const h0Text = Number.isFinite(bestB) ? bestB.toFixed(6) : '—';
+                            pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs: xs, ys: ys});
                         }
                     }
                 });
                 if (pvEntries.length > 0) {
-                    pvLines.push('<strong>Predicted Viscosity:</strong>');
+                    pvLines.push('<strong>Predicted Viscosity (k cP):</strong>');
                     pvEntries.forEach((e) => {
-                        pvLines.push(`<div>Cell ${e.cellId} @ ${Number(e.rpm).toFixed(3)} RPM: η=${e.eta}, h₀=${e.h0}</div>`);
+                        pvLines.push(`<div>Cell ${e.cellId} @ ${Number(e.rpm).toFixed(3)} RPM: η=${e.eta} kcP, h₀=${e.h0} mm</div>`);
                     });
                     // Also render plots
                     this.renderPredictedViscosityPlots(pvEntries);

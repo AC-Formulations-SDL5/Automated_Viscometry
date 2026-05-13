@@ -920,9 +920,10 @@ class ViscometryWebInterface:
             )
             A = float(popt[0])
             B = float(popt[1])
-            # Convert to centipoise (cP) using empirical scale factor
-            viscosity_cP = abs(A) * geometry_k * 1000.0
-            return viscosity_cP, B, (list(heights.tolist()), list(drags.tolist()))
+            # Match notebook logic: viscosity in k cP = |a| * geometry_k
+            # (m_hyp = 2.330 is the scaling factor used in viscosity_pipeline_helper)
+            viscosity_kcP = abs(A) * geometry_k
+            return viscosity_kcP, B, (list(heights.tolist()), list(drags.tolist()))
         except RuntimeError:
             # Fit did not converge
             return None, None, (list(heights.tolist()), list(drags.tolist()))
