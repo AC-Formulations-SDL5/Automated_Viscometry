@@ -436,7 +436,7 @@ body.running .header-sweep {
 #controls-tab {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 20px;
 }
 
 .controls-tracking-grid {
@@ -449,7 +449,7 @@ body.running .header-sweep {
 .controls-right-stack {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 20px;
     min-width: 0;
 }
 
@@ -535,7 +535,7 @@ h2 {
 .swatch.completed { background: var(--color-green); }
 
 .map-card { grid-area: map; min-height: 430px; }
-.plot-card { grid-area: plot; min-height: 430px; }
+.plot-card { grid-area: plot; min-height: 430px; margin-top: 20px; }
 .sidebar-card { grid-area: sidebar; min-height: 430px; }
 .timeline-card { grid-area: timeline; }
 .table-card { grid-area: table; }
