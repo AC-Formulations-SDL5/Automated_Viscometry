@@ -1358,8 +1358,10 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
             row_number, local_cell = global_cell_to_row_and_local(global_cell)
             cell_data = all_data[global_cell]
             
-            # Sort Z heights from highest to lowest
-            z_heights = sorted(cell_data.keys(), reverse=True)
+            # Sort Z heights from highest to lowest (filter out metadata keys like "_metrics")
+            _md_keys = {"_metrics", "_liquid_skipped_z", "_liquid_skip_torque_label"}
+            numeric_keys = [k for k in cell_data.keys() if k not in _md_keys]
+            z_heights = sorted(numeric_keys, key=lambda x: float(x) if isinstance(x, (int, float)) else 0, reverse=True)
             
             for z_height in z_heights:
                 if z_height in cell_data:
@@ -1538,8 +1540,10 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             row_number, local_cell = global_cell_to_row_and_local(global_cell)
             cell_data = all_data[global_cell]
             
-            # Sort Z heights from highest to lowest
-            z_heights = sorted(cell_data.keys(), reverse=True)
+            # Sort Z heights from highest to lowest (filter out metadata keys like "_metrics")
+            _md_keys = {"_metrics", "_liquid_skipped_z", "_liquid_skip_torque_label"}
+            numeric_keys = [k for k in cell_data.keys() if k not in _md_keys]
+            z_heights = sorted(numeric_keys, key=lambda x: float(x) if isinstance(x, (int, float)) else 0, reverse=True)
             
             for z_height in z_heights:
                 if z_height in cell_data:
