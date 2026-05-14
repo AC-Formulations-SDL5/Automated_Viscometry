@@ -404,28 +404,55 @@ class ViscometryWebInterface:
         return cells
         
     def get_status_dict(self) -> Dict:
-        """Get current status as dictionary"""
+        """Get current status as dictionary.
+
+        Returns shallow *snapshot* copies of mutable containers (measurement_data,
+        instrument_status, completed_cells, calibration_summary) so the run loop
+        can keep mutating them while SocketIO/Flask serialize this dict to JSON.
+        Without this, an occasional 'dict changed size during iteration' inside
+        the JSON serializer would silently drop the heartbeat broadcast, which is
+        what was causing the calibration pill and live-history to fail to persist
+        across refresh during an active run.
+        """
         try:
             runtime = self.get_runtime_settings()
             recalibration_cells = runtime.get('recalibration_cells') if isinstance(runtime, dict) else {}
             recalibration_target_count = len(recalibration_cells) if isinstance(recalibration_cells, dict) else 0
             recalibration_mode_active = bool(self.calibration_mode and runtime.get('recalibrate_individual_cells', False))
+
+            # Take snapshots of mutable structures under the lock where possible.
+            try:
+                instrument_status_snap = dict(self.instrument_status)
+            except Exception:
+                instrument_status_snap = {'cnc': False, 'viscometer': False, 'pump': False}
+            try:
+                with self.control_lock:
+                    measurement_snap = list(self.measurement_data)
+                    completed_cells_snap = list(self.completed_cells)
+            except Exception:
+                measurement_snap = []
+                completed_cells_snap = []
+            try:
+                calibration_summary_snap = dict(self._calibration_summary) if isinstance(self._calibration_summary, dict) else {}
+            except Exception:
+                calibration_summary_snap = {}
+
             return {
-                'position': self.current_position,
+                'position': dict(self.current_position) if isinstance(self.current_position, dict) else self.current_position,
                 'current_cell': self.current_cell,
                 'current_rpm': self.current_rpm,
                 'current_torque_percent': self.current_torque_percent,
                 'current_z_measuring': self.current_z_measuring,
-                'instrument_status': self.instrument_status,
+                'instrument_status': instrument_status_snap,
                 'is_running': self.is_running,
                 'experiment_start_ts': self.experiment_start_ts,
                 'current_cell_start_ts': self.current_cell_start_ts,
-                'completed_cells': self.completed_cells,
+                'completed_cells': completed_cells_snap,
                 'status_message': self.status_message,
-                'measurement_data': self.measurement_data,
+                'measurement_data': measurement_snap,
                 'control_settings': runtime
                 ,
-                'calibration_summary': self._calibration_summary,
+                'calibration_summary': calibration_summary_snap,
                 'calibration_mode': self.calibration_mode,
                 'recalibration_mode_active': recalibration_mode_active,
                 'recalibration_target_count': recalibration_target_count,
@@ -433,24 +460,47 @@ class ViscometryWebInterface:
             }
         except Exception as e:
             print(f"Error in get_status_dict: {e}")
-            # Return minimal safe status on error
+            # IMPORTANT: never zero-blank calibration_summary / measurement_data /
+            # instrument_status in the fallback. Doing so causes the periodic
+            # heartbeat broadcast to push a 'not calibrated, no measurements'
+            # snapshot to every client, blanking their UI state. Return cached
+            # snapshots instead so clients keep displaying real state.
+            try:
+                cached_instr = dict(self.instrument_status)
+            except Exception:
+                cached_instr = {'cnc': False, 'viscometer': False, 'pump': False}
+            try:
+                cached_cal = dict(self._calibration_summary) if isinstance(self._calibration_summary, dict) else {
+                    'is_calibrated': False, 'calibrated_at': None, 'cell_count': 0,
+                    'cell_calibrated_at': {}, 'cells': {}
+                }
+            except Exception:
+                cached_cal = {'is_calibrated': False, 'calibrated_at': None, 'cell_count': 0, 'cell_calibrated_at': {}, 'cells': {}}
+            try:
+                cached_measurements = list(self.measurement_data)
+            except Exception:
+                cached_measurements = []
+            try:
+                cached_completed = list(self.completed_cells)
+            except Exception:
+                cached_completed = []
             return {
                 'position': self.current_position,
                 'current_cell': self.current_cell,
                 'current_rpm': self.current_rpm,
                 'current_torque_percent': self.current_torque_percent,
                 'current_z_measuring': self.current_z_measuring,
-                'instrument_status': self.instrument_status,
+                'instrument_status': cached_instr,
                 'is_running': self.is_running,
                 'experiment_start_ts': self.experiment_start_ts,
                 'current_cell_start_ts': self.current_cell_start_ts,
-                'completed_cells': self.completed_cells,
+                'completed_cells': cached_completed,
                 'status_message': f"Error building status: {str(e)[:100]}",
-                'measurement_data': [],
+                'measurement_data': cached_measurements,
                 'control_settings': {}
                 ,
-                'calibration_summary': {'is_calibrated': False, 'calibrated_at': None, 'cell_count': 0, 'cell_calibrated_at': {}, 'cells': {}},
-                'calibration_mode': False,
+                'calibration_summary': cached_cal,
+                'calibration_mode': self.calibration_mode,
                 'recalibration_mode_active': False,
                 'recalibration_target_count': 0,
                 'predicted_viscosity_results': {},
