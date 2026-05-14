@@ -14,8 +14,11 @@ except ImportError:
     venv64_python = pathlib.Path(__file__).parent.parent.parent / ".venv64" / "Scripts" / "python.exe"
     if venv64_python.exists():
         print(f"Switching to 64-bit Python environment: {venv64_python}")
-        result = subprocess.run([str(venv64_python), __file__] + sys.argv[1:])
-        sys.exit(result.returncode)
+        try:
+            result = subprocess.run([str(venv64_python), __file__] + sys.argv[1:])
+            sys.exit(result.returncode)
+        except KeyboardInterrupt:
+            sys.exit(0)
     else:
         print("ERROR: Cannot find .venv64 environment")
         print(r"Please run: .\.venv64\Scripts\python.exe this_script.py")
