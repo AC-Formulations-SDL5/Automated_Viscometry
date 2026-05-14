@@ -982,19 +982,31 @@ class ViscometryDashboard {
     }
 
     fetchInitialData() {
-        Promise.all([
+        // Use allSettled so a single failed endpoint doesn't kill the whole
+        // bootstrap — we want each piece of persisted state restored
+        // independently (status, measurements, calibration, predicted viscosity).
+        Promise.allSettled([
             fetch("/api/status").then((r) => r.json()),
             fetch("/api/measurement_data").then((r) => r.json()),
             fetch("/api/calibration/status").then((r) => r.json()),
             fetch("/api/predicted_viscosity_results").then((r) => r.json())
         ])
-            .then(([status, measurementData, calSummary, predictedViscosityResults]) => {
-                this.applyStatusSnapshot(status);
-                if (Array.isArray(measurementData)) {
+            .then(([statusRes, measurementRes, calRes, predictedRes]) => {
+                const status = statusRes.status === "fulfilled" ? statusRes.value : null;
+                const measurementData = measurementRes.status === "fulfilled" ? measurementRes.value : null;
+                const calSummary = calRes.status === "fulfilled" ? calRes.value : null;
+                const predictedViscosityResults = predictedRes.status === "fulfilled" ? predictedRes.value : null;
+
+                if (status && typeof status === "object") {
+                    this.applyStatusSnapshot(status);
+                }
+                if (Array.isArray(measurementData) && this.measurements.length === 0) {
                     measurementData.forEach((m) => this.ingestMeasurement(m, true));
                     this.refreshLivePlots();
                 }
-                this.applyCalibrationStatus(calSummary);
+                if (calSummary && typeof calSummary === "object" && !calSummary.error) {
+                    this.applyCalibrationStatus(calSummary);
+                }
                 if (predictedViscosityResults && typeof predictedViscosityResults === 'object' && !predictedViscosityResults.error) {
                     this.predictedViscosityResults = this._mergePredictedViscosityResults(
                         this.predictedViscosityResults,
@@ -1004,7 +1016,12 @@ class ViscometryDashboard {
                 this.renderPredictedViscosityPlots();
                 this.refreshLivePlots();
                 this.el.body.classList.remove("loading");
-                this.pushStatusMessage(status.status_message || "Connected and ready");
+                this.pushStatusMessage((status && status.status_message) || "Connected and ready");
+
+                if (!status) {
+                    this.statusError = true;
+                    this.pushStatusMessage("Status bootstrap partially failed, waiting for live socket updates");
+                }
             })
             .catch(() => {
                 this.statusError = true;
@@ -1796,12 +1813,16 @@ class ViscometryDashboard {
             this.setInstrumentStatus("pump", Boolean(status.instrument_status.pump));
         }
 
-        if (status.is_running !== undefined) {
-            this.setRunningState(Boolean(status.is_running));
-            if (!status.is_running && this.uiState === "running") {
-                this.setUiState("idle");
-            }
+        // Apply calibration summary from the snapshot when present, so the
+        // Per-Cell Z-Height pill reflects saved calibration even if the
+        // dedicated calibration_status_update event hasn't arrived yet.
+        if (status.calibration_summary && typeof status.calibration_summary === "object") {
+            this.applyCalibrationStatus(status.calibration_summary);
         }
+
+        // Restore experiment / cell start timestamps BEFORE toggling the
+        // running state so setRunningState() can detect that we are joining
+        // an in-progress run and skip its "new run" reset block.
         if (status.experiment_start_ts) {
             const startTs = Number(status.experiment_start_ts);
             if (Number.isFinite(startTs)) {
@@ -1816,7 +1837,25 @@ class ViscometryDashboard {
             }
         }
 
-        if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0) {
+        if (status.is_running !== undefined) {
+            const nextRunning = Boolean(status.is_running);
+            // If we're picking up an already-running experiment (refresh or
+            // remote viewer joining mid-run), pretend the previous state was
+            // also "running" so setRunningState doesn't clear measuredCells,
+            // completedCells, cellStart, or the elapsed display.
+            const joiningInProgress = nextRunning && this.experimentStart != null;
+            this.setRunningState(nextRunning, joiningInProgress ? true : null);
+            if (!status.is_running && this.uiState === "running") {
+                this.setUiState("idle");
+            }
+        }
+
+        // Ingest historical measurement_data from the snapshot ONLY when the
+        // client side has none yet (fresh page load). After that, the dedicated
+        // /api/measurement_data fetch and live `new_measurement` events keep us
+        // up to date — re-ingesting here would duplicate every point.
+        if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0
+                && this.measurements.length === 0) {
             status.measurement_data.forEach((m) => this.ingestMeasurement(m, true));
             this.refreshLivePlots();
         }
