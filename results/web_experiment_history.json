@@ -1,5 +1,385 @@
 [
   {
+    "id": "exp-1778790084153",
+    "created_at": 1778790084153,
+    "measurement_count": 29,
+    "cells": [
+      16
+    ],
+    "rpms": [
+      0.8
+    ],
+    "settings": {
+      "baseline_n_calibration": 10,
+      "baseline_z_threshold": 5,
+      "calibration_mode": false,
+      "cell_content_map": {},
+      "cell_rpm_map": {},
+      "dwell_seconds": 2,
+      "experiment_name": "test_prediction",
+      "feedback_control_enabled": true,
+      "hit_point_confidence_threshold": 0.8,
+      "inter_rpm_pause": 2,
+      "low_torque_liquid_contact_skip_enabled": true,
+      "low_torque_liquid_contact_threshold_pct": 25,
+      "measurement_duration": 40,
+      "min_data_points_for_trend": 8,
+      "predicted_viscosity_enabled": true,
+      "r2_cv_min": 0.975,
+      "r2_drag_min": 0.975,
+      "r2_slope_min": 0.975,
+      "recalibrate_individual_cells": false,
+      "recalibration_cells": {},
+      "sample_interval": 5,
+      "selected_cells": [
+        16
+      ],
+      "selected_rows": [
+        2
+      ],
+      "smart_cv_threshold": 0.005,
+      "smart_early_exit_enabled": true,
+      "smart_window_size": 3,
+      "test_rpms": [
+        0.8
+      ],
+      "testing_mode": "custom",
+      "torque_break_threshold": 100,
+      "weight_2nd_deriv_cv": 0.2,
+      "weight_2nd_deriv_drag": 0.2,
+      "weight_2nd_deriv_slope": 0.2,
+      "weight_r2_cv": 0.2,
+      "weight_r2_drag": 0.2,
+      "weight_r2_slope": 0.2,
+      "z_step_size": -0.02
+    },
+    "latestPerZ": [
+      {
+        "timestamp": 1778790083.660763,
+        "height": -64.68,
+        "rotational_drag": 36.637499999999996,
+        "torque_percent": 29.31,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.661568,
+        "height": -64.7,
+        "rotational_drag": 37.6125,
+        "torque_percent": 30.09,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6623538,
+        "height": -64.72,
+        "rotational_drag": 38.62499999999999,
+        "torque_percent": 30.899999999999995,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6631558,
+        "height": -64.74,
+        "rotational_drag": 39.512499999999996,
+        "torque_percent": 31.61,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6642988,
+        "height": -64.76,
+        "rotational_drag": 40.5875,
+        "torque_percent": 32.47,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6651971,
+        "height": -64.78,
+        "rotational_drag": 41.537499999999994,
+        "torque_percent": 33.23,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6660864,
+        "height": -64.8,
+        "rotational_drag": 42.64999999999999,
+        "torque_percent": 34.12,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6669986,
+        "height": -64.82,
+        "rotational_drag": 43.6875,
+        "torque_percent": 34.95,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.667869,
+        "height": -64.84,
+        "rotational_drag": 44.83749999999999,
+        "torque_percent": 35.87,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6695242,
+        "height": -64.86,
+        "rotational_drag": 46.025,
+        "torque_percent": 36.82,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6709151,
+        "height": -64.88,
+        "rotational_drag": 47.324999999999996,
+        "torque_percent": 37.86,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6719358,
+        "height": -64.9,
+        "rotational_drag": 48.550000000000004,
+        "torque_percent": 38.84,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6726732,
+        "height": -64.92,
+        "rotational_drag": 49.9875,
+        "torque_percent": 39.99,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6735156,
+        "height": -64.94,
+        "rotational_drag": 51.449999999999996,
+        "torque_percent": 41.16,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6743264,
+        "height": -64.96,
+        "rotational_drag": 52.9875,
+        "torque_percent": 42.39,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6755295,
+        "height": -64.98,
+        "rotational_drag": 54.474999999999994,
+        "torque_percent": 43.58,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.676447,
+        "height": -65,
+        "rotational_drag": 56.375,
+        "torque_percent": 45.1,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6771903,
+        "height": -65.02,
+        "rotational_drag": 58.1125,
+        "torque_percent": 46.49,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6779804,
+        "height": -65.04,
+        "rotational_drag": 60.324999999999996,
+        "torque_percent": 48.26,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6786602,
+        "height": -65.06,
+        "rotational_drag": 62.387499999999996,
+        "torque_percent": 49.91,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6792636,
+        "height": -65.08,
+        "rotational_drag": 64.83749999999999,
+        "torque_percent": 51.87,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6800292,
+        "height": -65.1,
+        "rotational_drag": 67.24999999999999,
+        "torque_percent": 53.79999999999999,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.680892,
+        "height": -65.12,
+        "rotational_drag": 70.13749999999999,
+        "torque_percent": 56.10999999999999,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6816473,
+        "height": -65.14,
+        "rotational_drag": 73.1,
+        "torque_percent": 58.48,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6823418,
+        "height": -65.16,
+        "rotational_drag": 76.69999999999999,
+        "torque_percent": 61.35999999999999,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6829443,
+        "height": -65.18,
+        "rotational_drag": 80.4125,
+        "torque_percent": 64.33,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": false,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6835444,
+        "height": -65.2,
+        "rotational_drag": 85.625,
+        "torque_percent": 68.5,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": true,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6842985,
+        "height": -65.22,
+        "rotational_drag": 89.0375,
+        "torque_percent": 71.23,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": true,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790083.6860106,
+        "height": -65.24,
+        "rotational_drag": 88.05,
+        "torque_percent": 70.44,
+        "rpm": 0.8,
+        "cell_id": 16,
+        "is_final_save": true,
+        "hit_detected": true,
+        "sample_count": 1
+      }
+    ],
+    "cellDurations": {},
+    "runStartTsSec": 1778788802.3243673,
+    "runEndTsSec": 1778790083.6860106,
+    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n2026-05-14T20:21:23.660Z,16,-64.68,29.31,36.637499999999996,0.8\n2026-05-14T20:21:23.661Z,16,-64.7,30.09,37.6125,0.8\n2026-05-14T20:21:23.662Z,16,-64.72,30.899999999999995,38.62499999999999,0.8\n2026-05-14T20:21:23.663Z,16,-64.74,31.61,39.512499999999996,0.8\n2026-05-14T20:21:23.664Z,16,-64.76,32.47,40.5875,0.8\n2026-05-14T20:21:23.665Z,16,-64.78,33.23,41.537499999999994,0.8\n2026-05-14T20:21:23.666Z,16,-64.8,34.12,42.64999999999999,0.8\n2026-05-14T20:21:23.666Z,16,-64.82,34.95,43.6875,0.8\n2026-05-14T20:21:23.667Z,16,-64.84,35.87,44.83749999999999,0.8\n2026-05-14T20:21:23.669Z,16,-64.86,36.82,46.025,0.8\n2026-05-14T20:21:23.670Z,16,-64.88,37.86,47.324999999999996,0.8\n2026-05-14T20:21:23.671Z,16,-64.9,38.84,48.550000000000004,0.8\n2026-05-14T20:21:23.672Z,16,-64.92,39.99,49.9875,0.8\n2026-05-14T20:21:23.673Z,16,-64.94,41.16,51.449999999999996,0.8\n2026-05-14T20:21:23.674Z,16,-64.96,42.39,52.9875,0.8\n2026-05-14T20:21:23.675Z,16,-64.98,43.58,54.474999999999994,0.8\n2026-05-14T20:21:23.676Z,16,-65,45.1,56.375,0.8\n2026-05-14T20:21:23.677Z,16,-65.02,46.49,58.1125,0.8\n2026-05-14T20:21:23.677Z,16,-65.04,48.26,60.324999999999996,0.8\n2026-05-14T20:21:23.678Z,16,-65.06,49.91,62.387499999999996,0.8\n2026-05-14T20:21:23.679Z,16,-65.08,51.87,64.83749999999999,0.8\n2026-05-14T20:21:23.680Z,16,-65.1,53.79999999999999,67.24999999999999,0.8\n2026-05-14T20:21:23.680Z,16,-65.12,56.10999999999999,70.13749999999999,0.8\n2026-05-14T20:21:23.681Z,16,-65.14,58.48,73.1,0.8\n2026-05-14T20:21:23.682Z,16,-65.16,61.35999999999999,76.69999999999999,0.8\n2026-05-14T20:21:23.682Z,16,-65.18,64.33,80.4125,0.8\n2026-05-14T20:21:23.683Z,16,-65.2,68.5,85.625,0.8\n2026-05-14T20:21:23.684Z,16,-65.22,71.23,89.0375,0.8\n2026-05-14T20:21:23.686Z,16,-65.24,70.44,88.05,0.8"
+  },
+  {
     "id": "exp-1778701603623",
     "created_at": 1778701603623,
     "measurement_count": 195,
