@@ -111,6 +111,36 @@ class ViscometryDashboard {
                 })
                 .catch(() => { /* silent \u2014 websocket will keep us synced */ })
                 .finally(() => { this._stateResyncInflight = false; });
+
+            // If the per-cell live history is empty (bootstrap fetch failed under
+            // load, or this is a remote viewer that joined mid-run), recover the
+            // full historical measurements buffer from the server.
+            if (this.measurements.length === 0) {
+                fetch("/api/measurement_data")
+                    .then((r) => r.json())
+                    .then((data) => {
+                        if (Array.isArray(data) && data.length > 0 && this.measurements.length === 0) {
+                            data.forEach((m) => this.ingestMeasurement(m, true));
+                            this.refreshLivePlots();
+                        }
+                    })
+                    .catch(() => { /* silent */ });
+            }
+
+            // Same belt-and-suspenders for calibration: if the pill is somehow
+            // stuck on "not calibrated" but the server has calibration data,
+            // recover from the dedicated endpoint.
+            if (!this.calibrationSummary || !this.calibrationSummary.is_calibrated) {
+                fetch("/api/calibration/status")
+                    .then((r) => r.json())
+                    .then((summary) => {
+                        if (summary && typeof summary === "object" && !summary.error
+                                && summary.is_calibrated) {
+                            this.applyCalibrationStatus(summary);
+                        }
+                    })
+                    .catch(() => { /* silent */ });
+            }
         }, 5000);
     }
 
