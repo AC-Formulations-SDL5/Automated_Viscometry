@@ -124,7 +124,7 @@ def main():
         print("\nTo start the viscometry platform with web interface:")
         print("1. Navigate to: src/python_64/")
         print("2. Run: python all_cells_with_rotational_drag_feedback.py")
-        print("3. Open browser to: http://localhost:5000")
+        print("3. Open browser to: http://localhost:5001")
         print("\nThe web interface will start automatically when you run the main script.")
     else:
         print("✗ SETUP FAILED!")

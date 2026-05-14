@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Web browser opener for the simulation
-Automatically opens http://localhost:5000 in your default browser
+Automatically opens http://localhost:5001 in your default browser
 """
 
 import webbrowser
@@ -11,7 +11,7 @@ import subprocess
 import sys
 import os
 
-def open_browser_after_delay(url="http://localhost:5000", delay=8):
+def open_browser_after_delay(url="http://localhost:5001", delay=8):
     """Open browser after a delay to allow server to start"""
     time.sleep(delay)
     print(f"\n🌐 Opening browser to {url}")
