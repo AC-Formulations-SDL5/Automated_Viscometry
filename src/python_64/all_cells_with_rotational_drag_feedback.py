@@ -1,10 +1,31 @@
-import time
+#!/usr/bin/env python3
+"""
+Automatic environment switcher - ensures script runs with 64-bit Python
+"""
+import sys
+import subprocess
 import pathlib
+
+# Check if we're running with the correct 64-bit Python that has numpy/scipy
+try:
+    import numpy as np  # Test import
+except ImportError:
+    # Not in 64-bit environment, try to switch
+    venv64_python = pathlib.Path(__file__).parent.parent.parent / ".venv64" / "Scripts" / "python.exe"
+    if venv64_python.exists():
+        print(f"Switching to 64-bit Python environment: {venv64_python}")
+        result = subprocess.run([str(venv64_python), __file__] + sys.argv[1:])
+        sys.exit(result.returncode)
+    else:
+        print("ERROR: Cannot find .venv64 environment")
+        print(r"Please run: .\.venv64\Scripts\python.exe this_script.py")
+        sys.exit(1)
+
+import time
 import csv
 import json
 import glob
 import os
-import sys
 import datetime
 import traceback
 import threading
@@ -19,6 +40,9 @@ from calibration_store import (
     is_calibrated, load_calibration, save_calibration,
     update_calibration_for_cells, get_safe_z_for_cell, get_calibration_summary, clear_calibration
 )
+
+import numpy as np
+from scipy.optimize import curve_fit
 
 # Ensure progress prints appear in real time even when launched in buffered contexts.
 if hasattr(sys.stdout, "reconfigure"):
@@ -284,12 +308,6 @@ def calculate_predicted_viscosity(
         (viscosity_kcP, offset_b, (trimmed_heights, trimmed_drags)) or
         (None, None, ([], [])) on failure
     """
-    try:
-        import numpy as np
-        from scipy.optimize import curve_fit
-    except ImportError:
-        return None, None, ([], [])
-    
     if not measurements or len(measurements) < 3:
         return None, None, ([], [])
     

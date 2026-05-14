@@ -2,12 +2,14 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Current File (64-bit)",
+            "name": "Python: Run Current File (64-bit)",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "pythonPath": "${workspaceFolder}/.venv64/Scripts/python.exe"
+            "pythonPath": "${workspaceFolder}/.venv64/Scripts/python.exe",
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

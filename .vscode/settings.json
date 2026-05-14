@@ -1,4 +1,13 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:venv",
-    "python.defaultInterpreterPath": "${workspaceFolder}/.venv64/Scripts/python.exe"
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv64/Scripts/python.exe",
+    "python.linting.enabled": false,
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/.venv64/Lib/site-packages"
+    ],
+    "pylance.analysis.typeCheckingMode": "off",
+    "[python]": {
+        "editor.formatOnSave": false
+    }
 }

@@ -1,0 +1,8 @@
+{
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Windows",
+  "venvPath": ".",
+  "venv": ".venv64",
+  "typeCheckingMode": "off",
+  "include": ["src"]
+}
