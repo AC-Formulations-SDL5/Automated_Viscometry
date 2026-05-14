@@ -48,13 +48,13 @@ def main():
     
     print("\nStarting simulation...")
     print("This will:")
-    print("1. Start the web interface on http://localhost:5000")
+    print("1. Start the web interface on http://localhost:5001")
     print("2. Simulate testing 3 cells (one from each row)")
     print("3. Show real-time viscometer movement and data collection")
     print("4. Demonstrate washing sequences")
     
     print("\n" + "="*60)
-    print("OPEN YOUR BROWSER TO: http://localhost:5000")
+    print("OPEN YOUR BROWSER TO: http://localhost:5001")
     print("Press Ctrl+C to stop the simulation")
     print("="*60)
     
