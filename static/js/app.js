@@ -93,6 +93,25 @@ class ViscometryDashboard {
         const activeTab = localStorage.getItem("activeTab") || "layout-tab";
         this.switchTab(activeTab);
         this.connectSocket();
+
+        // Defensive periodic re-sync from /api/status. The websocket heartbeat
+        // already pushes full state every ~2s, but if the websocket buffer
+        // is briefly stalled under heavy run-time emit load, this guarantees
+        // the UI cannot stay desynchronized for more than ~5 seconds.
+        this._stateResyncIntervalId = setInterval(() => {
+            // Skip if a previous resync is still inflight to avoid pile-up.
+            if (this._stateResyncInflight) return;
+            this._stateResyncInflight = true;
+            fetch("/api/status")
+                .then((r) => r.json())
+                .then((status) => {
+                    if (status && typeof status === "object") {
+                        this.applyStatusSnapshot(status);
+                    }
+                })
+                .catch(() => { /* silent \u2014 websocket will keep us synced */ })
+                .finally(() => { this._stateResyncInflight = false; });
+        }, 5000);
     }
 
     initElements() {

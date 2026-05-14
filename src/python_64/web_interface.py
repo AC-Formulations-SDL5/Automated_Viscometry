@@ -112,6 +112,18 @@ class ViscometryWebInterface:
         self.calibration_mode = False         # True when a calibration run is active
         self._calibration_summary = {}        # Cached summary from last calibration check
         self._refresh_calibration_summary()   # Populate on startup
+
+        # ========== State heartbeat ==========
+        # Periodically broadcast the FULL status dict to all connected clients.
+        # During an active run, the server emits many incremental events
+        # (new_measurement, torque_update, rpm_update, position_update, etc.)
+        # but no single periodic full-state snapshot — so a client that misses
+        # an event (refresh mid-run, remote viewer joining late, transient
+        # websocket buffer drop under GIL pressure) could drift out of sync.
+        # This heartbeat guarantees every client reconverges within ~2 seconds.
+        self._heartbeat_interval_s = 2.0
+        self._heartbeat_stop = threading.Event()
+        self._heartbeat_thread: Optional[threading.Thread] = None
         
         # Platform configuration from your code
         self.X_LOW_BOUND = 0
@@ -1077,9 +1089,47 @@ class ViscometryWebInterface:
             except Exception:
                 pass
         
+    def _status_heartbeat_loop(self):
+        """Background thread: broadcast full status snapshot every N seconds.
+
+        This is intentionally robust: any exception is swallowed so a single
+        bad snapshot can't kill the heartbeat. Clients re-converge to the
+        authoritative server state on the next tick.
+        """
+        while not self._heartbeat_stop.is_set():
+            try:
+                snapshot = self.get_status_dict()
+                # Also refresh and include calibration summary so the per-cell
+                # Z-height pill never drifts to red on a connected client.
+                try:
+                    self._refresh_calibration_summary()
+                    snapshot['calibration_summary'] = self._calibration_summary
+                except Exception:
+                    pass
+                self.socketio.emit('status_update', snapshot)
+                # Also re-broadcast instrument status so pills stay accurate
+                # even if the original instrument_status_update was lost.
+                try:
+                    self.socketio.emit('instrument_status_update', self.instrument_status)
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"Warning: status heartbeat failed: {e}")
+            # Sleep on the Event so shutdown is responsive
+            self._heartbeat_stop.wait(self._heartbeat_interval_s)
+
     def start_server(self, debug=False):
         """Start the web server"""
         print(f"Starting Viscometry Web Interface on http://localhost:{self.port}")
+        # Launch state heartbeat once, before the server starts blocking.
+        if self._heartbeat_thread is None or not self._heartbeat_thread.is_alive():
+            self._heartbeat_stop.clear()
+            self._heartbeat_thread = threading.Thread(
+                target=self._status_heartbeat_loop,
+                daemon=True,
+                name="status-heartbeat",
+            )
+            self._heartbeat_thread.start()
         self.socketio.run(self.app, host='0.0.0.0', port=self.port, debug=debug, allow_unsafe_werkzeug=True)
         
     def start_in_thread(self, debug=False):
