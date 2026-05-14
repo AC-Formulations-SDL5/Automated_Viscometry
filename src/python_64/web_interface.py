@@ -29,8 +29,8 @@ class ViscometryWebInterface:
             async_mode="threading",
             ping_timeout=60,
             ping_interval=25,
-            logger=False,
-            engineio_logger=False,
+            logger=True,
+            engineio_logger=True,
         )
         self.port = port
         
