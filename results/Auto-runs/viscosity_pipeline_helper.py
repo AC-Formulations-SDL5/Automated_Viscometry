@@ -23,7 +23,7 @@ def load_rotational_drag_csv(
     y_col: str = "Rotational_Drag",
 ) -> pd.DataFrame:
     """Load a rotational-drag dataset and validate required columns."""
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, comment='#')
     required = {cell_col, x_col, y_col}
     missing = sorted(required.difference(df.columns))
     if missing:
