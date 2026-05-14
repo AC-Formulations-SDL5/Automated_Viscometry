@@ -23,6 +23,18 @@ class ViscometryWebInterface:
         
         self.app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
         self.app.config['SECRET_KEY'] = 'viscometry_secret_key'
+        # Disable static-file caching in this dev/lab server so refreshes always
+        # pull the latest app.js / style.css. Browsers were holding onto stale
+        # JS that prevented persisted state from being restored after refresh.
+        self.app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+        # Compute a per-process asset version (mtime of app.js) so templates can
+        # append ?v=<version> for cache-busting in case a proxy still caches.
+        try:
+            _js_path = os.path.join(static_folder, 'js', 'app.js')
+            self._asset_version = str(int(os.path.getmtime(_js_path)))
+        except Exception:
+            self._asset_version = str(int(time.time()))
         self.socketio = SocketIO(
             self.app,
             cors_allowed_origins="*",
@@ -139,7 +151,20 @@ class ViscometryWebInterface:
         
         @self.app.route('/')
         def index():
-            return render_template('index.html')
+            return render_template('index.html', asset_version=self._asset_version)
+
+        @self.app.after_request
+        def _no_cache_static(response):
+            # Force-revalidate all /static/* responses so refreshes can never
+            # render with a stale app.js or style.css.
+            try:
+                if request.path.startswith('/static/'):
+                    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+                    response.headers['Pragma'] = 'no-cache'
+                    response.headers['Expires'] = '0'
+            except Exception:
+                pass
+            return response
             
         @self.app.route('/api/status')
         def get_status():
