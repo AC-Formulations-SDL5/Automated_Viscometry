@@ -1348,6 +1348,16 @@ class ViscometryDashboard {
     }
 
     connectSocket() {
+        if (typeof io !== "function") {
+            this.isConnected = false;
+            this.el.connectionDot.classList.remove("connected");
+            this.el.connectionDot.classList.add("disconnected");
+            this.showDisconnectedBanner(true);
+            this.pushStatusMessage("Socket.IO client script not loaded yet; retrying...");
+            setTimeout(() => this.connectSocket(), 2000);
+            return;
+        }
+
         // No reconnectionAttempts cap — keep retrying until the server is ready.
         // The server starts in a background thread and may take a moment to accept
         // connections, especially when relaunched under .venv64 on the lab computer.
