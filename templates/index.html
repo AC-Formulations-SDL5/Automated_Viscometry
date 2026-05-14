@@ -614,20 +614,12 @@
 
             <!-- Tab 3: Data Management -->
             <div id="data-tab" class="tab-panel">
-                <section class="card table-card skeleton-host">
+                <section class="card table-card">
                     <div class="card-title-row">
-                        <h2>Recent Measurements</h2>
-                        <div class="data-actions">
-                            <button id="table-export" class="btn">Export All CSV</button>
-                            <button id="clear-data" class="btn subtle">Clear Data</button>
-                        </div>
+                        <h2>Data Export</h2>
                     </div>
-                    <!-- Recent measurements table removed per redesign; Export button retained -->
-                    <div class="skeleton-lines">
-                        <div class="skeleton-line"></div>
-                        <div class="skeleton-line"></div>
-                        <div class="skeleton-line short"></div>
-                    </div>
+                    <p>Download all data for the current run as a CSV identical to the file saved on the host machine.</p>
+                    <button id="table-export" class="btn">Download CSV</button>
                 </section>
 
                 <section class="card model-card">
@@ -635,14 +627,37 @@
                         <h2>Viscosity Prediction Model</h2>
                     </div>
                     <div class="model-body">
-                        <p>
-                            The viscosity prediction model fits a hyperbolic curve to rotational drag data
-                            across Z-gap measurements. The fitted equation is:
-                            <strong>(D/ω) = η·K / (h + h₀)</strong>
-                            where D is torque, ω is spindle speed (so D/ω represents rotational drag), η is the
-                            viscosity, K is a geometry constant, h is the gap height, and h₀ is an offset parameter.
-                            Results are visualized below.
-                        </p>
+                        <div class="model-summary-grid">
+                            <div class="model-summary-box">
+                                <h3>Physics</h3>
+                                <p>
+                                    As the spindle descends toward the liquid surface, the rotational drag D increases.
+                                    The drag at a given gap height h follows <strong>(D/ω) = η·K / (h + h₀)</strong>,
+                                    where ω is spindle speed (RPM), η is dynamic viscosity, K is a geometry constant,
+                                    and h₀ is an offset that accounts for the extrapolated contact point. Only valid
+                                    points are fitted: measurements taken before the hit point is detected and above
+                                    the torque floor threshold, so air measurements are excluded. The fitted hyperbola
+                                    parameter a maps to viscosity via <strong>η ≈ |a| × 2.330 kcP</strong>.
+                                </p>
+                            </div>
+                            <div class="model-summary-box">
+                                <h3>Curve Fitting</h3>
+                                <svg width="120" height="80" viewBox="0 0 120 80" aria-label="Hyperbola illustration" role="img">
+                                    <defs>
+                                        <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                                            <path d="M0,0 L6,3 L0,6 Z" fill="#C9D1D9"></path>
+                                        </marker>
+                                    </defs>
+                                    <line x1="14" y1="66" x2="108" y2="66" stroke="#C9D1D9" stroke-width="1" marker-end="url(#arrowhead)" />
+                                    <line x1="18" y1="70" x2="18" y2="10" stroke="#C9D1D9" stroke-width="1" marker-end="url(#arrowhead)" />
+                                    <line x1="44" y1="14" x2="44" y2="66" stroke="#8B949E" stroke-width="1" stroke-dasharray="4 3" />
+                                    <path d="M24 20 C42 20, 54 32, 64 42 S88 60, 102 62" fill="none" stroke="#8B949E" stroke-width="1.75" stroke-dasharray="5 4" />
+                                    <text x="55" y="76" font-size="8" fill="#C9D1D9" text-anchor="middle">Gap height h (mm)</text>
+                                    <text x="8" y="38" font-size="8" fill="#C9D1D9" text-anchor="middle" transform="rotate(-90 8 38)">Rotational Drag</text>
+                                    <text x="44" y="11" font-size="8" fill="#C9D1D9" text-anchor="middle">h₀</text>
+                                </svg>
+                            </div>
+                        </div>
                         <div id="predicted-viscosity-plots-container" class="plots-container"></div>
                     </div>
                 </section>

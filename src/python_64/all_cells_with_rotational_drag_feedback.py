@@ -1286,7 +1286,7 @@ def test_cell_dynamic_z_series(
     print(f"Cell {global_cell} dynamic analysis completed: {len(cell_z_rpm_data)} Z-positions tested")
     # If enabled, compute predicted viscosity per RPM for the completed cell and emit immediately
     try:
-        if FEEDBACK_CONTROL_ENABLED and PREDICTED_VISCOSITY_ENABLED:
+        if PREDICTED_VISCOSITY_ENABLED:
             predicted_map = {}
             
             # Extract hitpoint Z if available
@@ -1470,7 +1470,70 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                 f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
             ])
         csv_writer.writerow([f"# WARNING: Experiment was terminated early - these are partial results"])
-        csv_writer.writerow([])
+        # Optionally include predicted viscosity summary as a nested table for partial results
+        if PREDICTED_VISCOSITY_ENABLED:
+            try:
+                csv_writer.writerow(["Predicted Viscosity Summary"])
+                csv_writer.writerow(["Cell", "RPM", "Predicted_Viscosity_kcP", "h0_mm", "Status"])
+
+                for global_cell in sorted(all_data.keys()):
+                    cell_data = all_data[global_cell]
+                    try:
+                        hitpoint_z = extract_rough_hitpoint(cell_data)
+                    except Exception:
+                        hitpoint_z = None
+
+                    rpm_set = set()
+                    for z, rpm_block in cell_data.items():
+                        if isinstance(rpm_block, dict):
+                            for k in rpm_block.keys():
+                                if k in ("_metrics", "_liquid_skipped_z", "_liquid_skip_torque_label"):
+                                    continue
+                                rpm_set.add(k)
+                    if not rpm_set:
+                        continue
+
+                    for rpm in sorted(rpm_set):
+                        all_measurements = []
+                        z_keys = sorted([k for k in cell_data.keys() if k != '_metrics'], reverse=True)
+                        for z in z_keys:
+                            rpm_block = cell_data.get(z, {})
+                            meas_list = rpm_block.get(rpm)
+                            if meas_list:
+                                for m in meas_list:
+                                    m_copy = dict(m)
+                                    m_copy['height'] = float(z)
+                                    if 'rotational_drag' not in m_copy:
+                                        try:
+                                            torque_pct = float(m_copy.get('torque_percent', 0.0))
+                                            m_copy['rotational_drag'] = abs(torque_pct) / float(rpm) if rpm else float('nan')
+                                        except Exception:
+                                            m_copy['rotational_drag'] = float('nan')
+                                    all_measurements.append(m_copy)
+
+                        if len(all_measurements) < 3:
+                            csv_writer.writerow([str(global_cell), f"{rpm}", "", "", "N/A"])
+                            continue
+
+                        try:
+                            eta, h0, (_heights, _drags) = web_interface.calculate_predicted_viscosity(
+                                all_measurements,
+                                hitpoint_z=hitpoint_z,
+                                torque_floor=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT
+                            )
+                            if eta is None:
+                                csv_writer.writerow([str(global_cell), f"{rpm}", "", "", "N/A"])
+                            else:
+                                csv_writer.writerow([str(global_cell), f"{rpm}", f"{eta:.6f}", f"{h0:.6f}", "OK"])
+                        except Exception:
+                            csv_writer.writerow([str(global_cell), f"{rpm}", "", "", "N/A"])
+
+                csv_writer.writerow([])
+            except Exception:
+                csv_writer.writerow(["# Predicted Viscosity: failed to compute summary"])
+                csv_writer.writerow([])
+        else:
+            csv_writer.writerow([])
         
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
@@ -1604,13 +1667,23 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                 f"{SAMPLE_INTERVAL:.1f}s is < {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
                 f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
             ])
-        # Optionally include predicted viscosity summary in header comments
+        # Optionally include predicted viscosity summary as a nested table
         if PREDICTED_VISCOSITY_ENABLED:
             try:
-                csv_writer.writerow(["# Predicted Viscosity Summary:"])
+                # Title row for nested table
+                csv_writer.writerow(["Predicted Viscosity Summary"])
+                # Nested table headers
+                csv_writer.writerow(["Cell", "RPM", "Predicted_Viscosity_kcP", "h0_mm", "Status"])
+
                 # For each cell and RPM, compute predicted viscosity using collected measurements
                 for global_cell in sorted(all_data.keys()):
                     cell_data = all_data[global_cell]
+                    # Try to extract a rough hitpoint from the cell's data
+                    try:
+                        hitpoint_z = extract_rough_hitpoint(cell_data)
+                    except Exception:
+                        hitpoint_z = None
+
                     # Determine RPMs observed in this cell
                     rpm_set = set()
                     for z, rpm_block in cell_data.items():
@@ -1621,6 +1694,7 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 rpm_set.add(k)
                     if not rpm_set:
                         continue
+
                     for rpm in sorted(rpm_set):
                         # Collect measurements across Z for this RPM
                         all_measurements = []
@@ -1635,24 +1709,33 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                     if 'rotational_drag' not in m_copy:
                                         try:
                                             torque_pct = float(m_copy.get('torque_percent', 0.0))
-                                            m_copy['rotational_drag'] = abs(torque_pct) / float(rpm) if rpm else float('inf')
+                                            m_copy['rotational_drag'] = abs(torque_pct) / float(rpm) if rpm else float('nan')
                                         except Exception:
                                             m_copy['rotational_drag'] = float('nan')
                                     all_measurements.append(m_copy)
+
                         if len(all_measurements) < 3:
-                            csv_writer.writerow([f"# Cell {global_cell} | RPM {rpm}: Insufficient data for prediction"])
+                            csv_writer.writerow([str(global_cell), f"{rpm}", "", "", "N/A"])
                             continue
+
                         try:
-                            eta, h0, (_heights, _drags) = web_interface.calculate_predicted_viscosity(all_measurements)
+                            eta, h0, (_heights, _drags) = web_interface.calculate_predicted_viscosity(
+                                all_measurements,
+                                hitpoint_z=hitpoint_z,
+                                torque_floor=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT
+                            )
                             if eta is None:
-                                csv_writer.writerow([f"# Cell {global_cell} | RPM {rpm}: Prediction failed"])
+                                csv_writer.writerow([str(global_cell), f"{rpm}", "", "", "N/A"])
                             else:
-                                csv_writer.writerow([f"# Cell {global_cell} | RPM {rpm}: Predicted_Viscosity={eta:.6f}, h0={h0:.6f}"])
-                        except Exception as e:
-                            csv_writer.writerow([f"# Cell {global_cell} | RPM {rpm}: Prediction error: {e}"])
+                                csv_writer.writerow([str(global_cell), f"{rpm}", f"{eta:.6f}", f"{h0:.6f}", "OK"])
+                        except Exception:
+                            csv_writer.writerow([str(global_cell), f"{rpm}", "", "", "N/A"])
+
+                # Final separator row
+                csv_writer.writerow([])
             except Exception:
                 csv_writer.writerow(["# Predicted Viscosity: failed to compute summary"])
-        csv_writer.writerow([])
+                csv_writer.writerow([])
         
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
