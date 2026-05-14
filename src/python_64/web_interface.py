@@ -45,6 +45,9 @@ class ViscometryWebInterface:
         self.experiment_history_path = os.path.join(self.project_root, 'results', 'web_experiment_history.json')
         self.experiment_history = []
         self._load_experiment_history()
+        # Predicted viscosity results for current run (persisted in-memory so clients see them on refresh)
+        # Structure: { cell_id (int): { rpm (float): { 'viscosity_kcP': float|None, 'h0': float|None, 'heights': list, 'drags': list } } }
+        self.predicted_viscosity_results: Dict[int, Dict[float, Dict]] = {}
         self.runtime_settings = {
             'experiment_name': '',
             'testing_mode': 'custom',
@@ -163,6 +166,14 @@ class ViscometryWebInterface:
                 print(f"Error in get_measurement_data: {e}")
                 return jsonify({'error': str(e)}), 500
 
+        @self.app.route('/api/predicted_viscosity_results', methods=['GET'])
+        def api_predicted_viscosity_results():
+            try:
+                return jsonify(self._serialize_viscosity_results())
+            except Exception as e:
+                print(f"Error in api_predicted_viscosity_results: {e}")
+                return jsonify({'error': str(e)}), 500
+
         @self.app.route('/api/control_settings', methods=['GET', 'POST'])
         def control_settings():
             try:
@@ -274,6 +285,11 @@ class ViscometryWebInterface:
             try:
                 emit('status_update', self.get_status_dict())
                 emit('control_settings_update', self.get_runtime_settings())
+                # Send current predicted viscosity snapshot so clients can populate persisted plots
+                try:
+                    emit('predicted_viscosity_results_snapshot', self._serialize_viscosity_results())
+                except Exception:
+                    pass
                 # Send current calibration status
                 try:
                     self._refresh_calibration_summary()
@@ -368,6 +384,7 @@ class ViscometryWebInterface:
                 'calibration_mode': self.calibration_mode,
                 'recalibration_mode_active': recalibration_mode_active,
                 'recalibration_target_count': recalibration_target_count,
+                'predicted_viscosity_results': self._serialize_viscosity_results(),
             }
         except Exception as e:
             print(f"Error in get_status_dict: {e}")
@@ -391,7 +408,37 @@ class ViscometryWebInterface:
                 'calibration_mode': False,
                 'recalibration_mode_active': False,
                 'recalibration_target_count': 0,
+                'predicted_viscosity_results': {},
             }
+
+    def _serialize_viscosity_results(self) -> Dict:
+        """Return a JSON-safe copy of predicted viscosity results with string keys.
+
+        Converts int cell ids and float RPM keys to strings so they serialize cleanly.
+        """
+        try:
+            with self.control_lock:
+                out = {}
+                for cell_id, rpm_map in (self.predicted_viscosity_results or {}).items():
+                    try:
+                        cell_key = str(int(cell_id))
+                    except Exception:
+                        cell_key = str(cell_id)
+                    out[cell_key] = {}
+                    for rpm_key, vals in (rpm_map or {}).items():
+                        try:
+                            rpm_str = str(float(rpm_key))
+                        except Exception:
+                            rpm_str = str(rpm_key)
+                        out[cell_key][rpm_str] = {
+                            'viscosity_kcP': None if vals.get('viscosity_kcP') is None else float(vals.get('viscosity_kcP')),
+                            'h0': None if vals.get('h0') is None else float(vals.get('h0')),
+                            'heights': list(vals.get('heights') or []),
+                            'drags': list(vals.get('drags') or []),
+                        }
+                return out
+        except Exception:
+            return {}
 
     def get_runtime_settings(self) -> Dict:
         """Get a copy of the current runtime settings."""
@@ -729,6 +776,31 @@ class ViscometryWebInterface:
             'heights': heights,
             'drags': drags,
         })
+        # Store result in in-memory state so it survives page refresh and is available to all clients
+        try:
+            cell_key = int(cell_id)
+        except Exception:
+            try:
+                cell_key = int(float(cell_id))
+            except Exception:
+                return
+        try:
+            rpm_key = float(rpm)
+        except Exception:
+            try:
+                rpm_key = float(str(rpm))
+            except Exception:
+                rpm_key = rpm
+
+        with self.control_lock:
+            if cell_key not in self.predicted_viscosity_results:
+                self.predicted_viscosity_results[cell_key] = {}
+            self.predicted_viscosity_results[cell_key][rpm_key] = {
+                'viscosity_kcP': None if viscosity_kcP is None else float(viscosity_kcP),
+                'h0': None if h0 is None else float(h0),
+                'heights': list(heights) if heights is not None else [],
+                'drags': list(drags) if drags is not None else [],
+            }
 
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
@@ -740,7 +812,14 @@ class ViscometryWebInterface:
             self.current_z_measuring = None
             self.current_cell_start_ts = None
             self.completed_cells = []
+            # Clear predicted viscosity state for the run
+            self.predicted_viscosity_results = {}
         self.socketio.emit('clear_dashboard')
+        # Notify clients that predicted viscosity results have been cleared
+        try:
+            self.socketio.emit('clear_predicted_viscosity')
+        except Exception:
+            pass
 
     def _load_experiment_history(self):
         """Load shared experiment history from disk if available."""
