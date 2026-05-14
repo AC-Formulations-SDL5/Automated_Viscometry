@@ -1348,7 +1348,14 @@ class ViscometryDashboard {
     }
 
     connectSocket() {
-        this.socket = io({ reconnectionAttempts: 5 });
+        // No reconnectionAttempts cap — keep retrying until the server is ready.
+        // The server starts in a background thread and may take a moment to accept
+        // connections, especially when relaunched under .venv64 on the lab computer.
+        this.socket = io({
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 10000,
+        });
 
         this.socket.on("connect", () => {
             this.isConnected = true;
@@ -1363,6 +1370,15 @@ class ViscometryDashboard {
             this.el.connectionDot.classList.remove("connected");
             this.el.connectionDot.classList.add("disconnected");
             this.showDisconnectedBanner(true);
+        });
+
+        this.socket.on("connect_error", () => {
+            // Server not yet ready or unreachable — client will keep retrying automatically.
+            if (!this.isConnected) {
+                this.el.connectionDot.classList.remove("connected");
+                this.el.connectionDot.classList.add("disconnected");
+                this.showDisconnectedBanner(true);
+            }
         });
 
         this.socket.on("status_update", (data) => {
