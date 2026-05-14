@@ -26,7 +26,7 @@ def install_dependencies():
         try:
             subprocess.check_call([
                 sys.executable, "-m", "pip", "install",
-                "flask==2.3.3", "flask-socketio==5.3.6", "eventlet==0.33.3"
+                "flask==2.3.3", "flask-socketio==5.3.6"
             ])
             print("✓ Dependencies installed successfully")
             return True
@@ -43,7 +43,7 @@ def main():
     # Install dependencies if needed
     if not install_dependencies():
         print("\nFailed to install dependencies. Please install manually:")
-        print("pip install flask==2.3.3 flask-socketio==5.3.6 eventlet==0.33.3")
+        print("pip install flask==2.3.3 flask-socketio==5.3.6")
         return
     
     print("\nStarting simulation...")

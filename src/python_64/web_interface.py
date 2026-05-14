@@ -23,7 +23,7 @@ class ViscometryWebInterface:
         
         self.app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
         self.app.config['SECRET_KEY'] = 'viscometry_secret_key'
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode="threading")
         self.port = port
         
         # Current state

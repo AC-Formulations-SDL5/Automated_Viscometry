@@ -13,8 +13,7 @@ itsdangerous==2.1.2
 click==8.1.7
 
 # For real-time web communication
-eventlet==0.33.3
-greenlet==2.0.2
+# Use Flask-SocketIO threading mode for Python 3.13 compatibility.
 
 # Optional: for better performance
 gunicorn==21.2.0

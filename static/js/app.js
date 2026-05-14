@@ -720,128 +720,172 @@ class ViscometryDashboard {
         const cellKey = String(Number(cellId));
         const rpmKey = String(Number(rpm));
         if (!this.predictedViscosityResults[cellKey]) {
-            renderPredictedViscosityPlots() {
+            this.predictedViscosityResults[cellKey] = {};
+        }
         this.predictedViscosityResults[cellKey][rpmKey] = {
-                if (!container) return;
-            h0,
-                const cellEntries = Object.entries(this.predictedViscosityResults || {});
-                if (!cellEntries.length) {
-                    const emptyState = document.createElement('p');
-                    emptyState.className = 'muted';
-                    emptyState.textContent = 'Predicted viscosity plots will appear here after a fit completes.';
-                    container.appendChild(emptyState);
+            viscosity_kcP: Number.isFinite(Number(viscosityKcP)) ? Number(viscosityKcP) : null,
+            h0: Number.isFinite(Number(h0)) ? Number(h0) : null,
+            heights: Array.isArray(heights) ? heights : [],
+            drags: Array.isArray(drags) ? drags : [],
+        };
+        this.renderPredictedViscosityPlots();
+    }
+
+    renderPredictedViscosityPlots() {
+        const container = this.el.predictedViscosityContainer;
+        if (!container) return;
+
+        container.innerHTML = "";
+        const cellEntries = Object.entries(this.predictedViscosityResults || {});
+        if (!cellEntries.length) {
+            const emptyState = document.createElement("p");
+            emptyState.className = "muted";
+            emptyState.textContent = "Predicted viscosity plots will appear here after a fit completes.";
+            container.appendChild(emptyState);
+            return;
+        }
+
+        cellEntries.forEach(([cellKey, rpmMap]) => {
+            if (!rpmMap || typeof rpmMap !== "object") {
+                return;
+            }
+
+            Object.entries(rpmMap).forEach(([rpmKey, values]) => {
+                const heights = Array.isArray(values?.heights)
+                    ? values.heights.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+                    : [];
+                const drags = Array.isArray(values?.drags)
+                    ? values.drags.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+                    : [];
+                if (heights.length < 2 || drags.length < 2) {
                     return;
                 }
 
-                cellEntries.forEach(([cellKey, rpmMap]) => {
-                    if (!rpmMap || typeof rpmMap !== 'object') {
-                        return;
-                    }
+                const pairs = heights
+                    .map((height, index) => ({ height, drag: drags[index] }))
+                    .filter((pair) => Number.isFinite(pair.height) && Number.isFinite(pair.drag))
+                    .sort((left, right) => left.height - right.height);
 
-                    Object.entries(rpmMap).forEach(([rpmKey, values]) => {
-                        const heights = Array.isArray(values?.heights) ? values.heights.map((value) => Number(value)).filter((value) => Number.isFinite(value)) : [];
-                        const drags = Array.isArray(values?.drags) ? values.drags.map((value) => Number(value)).filter((value) => Number.isFinite(value)) : [];
-                        if (heights.length < 2 || drags.length < 2) {
-                            return;
+                if (pairs.length < 2) {
+                    return;
+                }
+
+                const card = document.createElement("div");
+                card.className = "pv-plot";
+                card.style.display = "flex";
+                card.style.width = "100%";
+                card.style.height = "250px";
+                container.appendChild(card);
+
+                const xValues = pairs.map((pair) => pair.height);
+                const yValues = pairs.map((pair) => pair.drag);
+                const numericViscosity = Number(values?.viscosity_kcP ?? values?.eta);
+                const numericH0 = Number(values?.h0);
+                const traces = [{
+                    x: xValues,
+                    y: yValues,
+                    mode: "markers",
+                    type: "scatter",
+                    name: "Measured data",
+                    marker: { size: 7, color: "#5B8DEF", line: { color: "#1F3B73", width: 1 } },
+                    hovertemplate: "h=%{x:.3f} mm<br>drag=%{y:.3f}<extra></extra>",
+                }];
+
+                if (Number.isFinite(numericViscosity) && Number.isFinite(numericH0)) {
+                    const xMin = Math.min(...xValues);
+                    const xMax = Math.max(...xValues);
+                    const span = xMax - xMin || 1;
+                    const grid = Array.from({ length: 120 }, (_, index) => xMin + (span * index) / 119);
+                    const a = numericViscosity / 2.330;
+                    const fittedY = grid.map((height) => {
+                        const denominator = height - numericH0;
+                        if (Math.abs(denominator) < 1e-6) {
+                            return null;
                         }
-
-                        const pairs = heights
-                            .map((height, index) => ({ height, drag: drags[index] }))
-                            .filter((pair) => Number.isFinite(pair.height) && Number.isFinite(pair.drag))
-                            .sort((left, right) => left.height - right.height);
-
-                        if (pairs.length < 2) {
-                            return;
-                        }
-
-                        const card = document.createElement('div');
-                        card.className = 'pv-plot';
-                        card.style.display = 'flex';
-                        card.style.width = '100%';
-                        card.style.height = '250px';
-                        container.appendChild(card);
-
-                        const xValues = pairs.map((pair) => pair.height);
-                        const yValues = pairs.map((pair) => pair.drag);
-                        const numericViscosity = Number(values?.viscosity_kcP ?? values?.eta);
-                        const numericH0 = Number(values?.h0);
-                        const traces = [{
-                            x: xValues,
-                            y: yValues,
-                            mode: 'markers',
-                            type: 'scatter',
-                            name: 'Measured data',
-                            marker: { size: 7, color: '#5B8DEF', line: { color: '#1F3B73', width: 1 } },
-                            hovertemplate: 'h=%{x:.3f} mm<br>drag=%{y:.3f}<extra></extra>',
-                        }];
-
-                        if (Number.isFinite(numericViscosity) && Number.isFinite(numericH0)) {
-                            const xMin = Math.min(...xValues);
-                            const xMax = Math.max(...xValues);
-                            const span = xMax - xMin || 1;
-                            const grid = Array.from({ length: 120 }, (_, index) => xMin + (span * index) / 119);
-                            const a = numericViscosity / 2.330;
-                            const fittedY = grid.map((height) => {
-                                const denominator = height - numericH0;
-                                if (Math.abs(denominator) < 1e-6) {
-                                    return null;
-                                }
-                                return a / denominator;
-                            });
-                            traces.push({
-                                x: grid,
-                                y: fittedY,
-                                mode: 'lines',
-                                type: 'scatter',
-                                name: 'Hyperbolic fit',
-                                line: { width: 2, color: '#F5A623', dash: 'dash' },
-                                hoverinfo: 'skip',
-                            });
-                        }
-
-                        const layout = {
-                            title: {
-                                text: `Cell ${cellKey} | RPM ${Number(rpmKey).toFixed(3)} | η ≈ ${Number.isFinite(numericViscosity) ? numericViscosity.toFixed(2) : 'N/A'} kcP`,
-                                font: { size: 13 },
-                            },
-                            paper_bgcolor: 'transparent',
-                            plot_bgcolor: 'rgba(255,255,255,0.03)',
-                            font: { color: '#C9D1D9', size: 11 },
-                            margin: { t: 40, r: 14, b: 42, l: 52 },
-                            xaxis: { title: 'Z Height (mm)', gridcolor: '#21262D', zeroline: false },
-                            yaxis: { title: 'Rotational Drag', gridcolor: '#21262D', zeroline: false },
-                            showlegend: false,
-                        };
-
-                        Plotly.newPlot(card, traces, layout, { responsive: true, displayModeBar: false }).catch((err) => {
-                            console.warn('Failed to render predicted viscosity mini chart:', err);
-                        });
+                        return a / denominator;
                     });
+                    traces.push({
+                        x: grid,
+                        y: fittedY,
+                        mode: "lines",
+                        type: "scatter",
+                        name: "Hyperbolic fit",
+                        line: { width: 2, color: "#F5A623", dash: "dash" },
+                        hoverinfo: "skip",
+                    });
+                }
+
+                const layout = {
+                    title: {
+                        text: `Cell ${cellKey} | RPM ${Number(rpmKey).toFixed(3)} | η ≈ ${Number.isFinite(numericViscosity) ? numericViscosity.toFixed(2) : "N/A"} kcP`,
+                        font: { size: 13 },
+                    },
+                    paper_bgcolor: "transparent",
+                    plot_bgcolor: "rgba(255,255,255,0.03)",
+                    font: { color: "#C9D1D9", size: 11 },
+                    margin: { t: 40, r: 14, b: 42, l: 52 },
+                    xaxis: { title: "Z Height (mm)", gridcolor: "#21262D", zeroline: false },
+                    yaxis: { title: "Rotational Drag", gridcolor: "#21262D", zeroline: false },
+                    showlegend: false,
+                };
+
+                Plotly.newPlot(card, traces, layout, { responsive: true, displayModeBar: false }).catch((err) => {
+                    console.warn("Failed to render predicted viscosity mini chart:", err);
                 });
+            });
+        });
+    }
+
+    _buildPredictedViscosityOverlayTrace(cellId, rpm, viscosityKcP, heights, h0) {
+        const numericViscosity = Number(viscosityKcP);
+        const numericH0 = Number(h0);
+        if (!Number.isFinite(numericViscosity) || !Number.isFinite(numericH0) || !Array.isArray(heights)) {
+            return null;
+        }
+
+        const xValues = heights
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value))
+            .sort((left, right) => left - right);
+        if (xValues.length < 2) {
+            return null;
+        }
+
+        const xMin = Math.min(...xValues);
+        const xMax = Math.max(...xValues);
+        const xRange = xMax - xMin || 1;
+        const grid = Array.from({ length: 120 }, (_, index) => xMin + (xRange * index) / 119);
+        const a = numericViscosity / 2.330;
+        const yValues = grid.map((height) => {
+            const denominator = height - numericH0;
+            if (Math.abs(denominator) < 1e-6) {
+                return null;
             }
+            return a / denominator;
+        });
 
         const finiteY = yValues.filter((value) => Number.isFinite(value));
         return {
             trace: [{
-                x: xValues,
+                x: grid,
                 y: yValues,
-                mode: 'lines',
-                type: 'scatter',
+                mode: "lines",
+                type: "scatter",
                 name: `η ≈ ${numericViscosity.toFixed(1)} kcP`,
-                line: { dash: 'dash', color: '#F5A623', width: 2 },
-                hoverinfo: 'skip',
+                line: { dash: "dash", color: "#F5A623", width: 2 },
+                hoverinfo: "skip",
                 showlegend: true,
             }],
             annotations: finiteY.length ? [{
                 text: `η ≈ ${numericViscosity.toFixed(2)} kcP`,
                 x: xMin + (xRange / 2),
                 y: Math.max(...finiteY),
-                xref: 'x',
-                yref: 'y',
+                xref: "x",
+                yref: "y",
                 showarrow: false,
                 yshift: 16,
-                font: { color: '#F5A623', size: 12 },
-                bgcolor: 'rgba(0,0,0,0.35)',
+                font: { color: "#F5A623", size: 12 },
+                bgcolor: "rgba(0,0,0,0.35)",
             }] : []
         };
     }
