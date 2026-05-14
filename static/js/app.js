@@ -1845,9 +1845,18 @@ class ViscometryDashboard {
             // completedCells, cellStart, or the elapsed display.
             const joiningInProgress = nextRunning && this.experimentStart != null;
             this.setRunningState(nextRunning, joiningInProgress ? true : null);
-            if (!status.is_running && this.uiState === "running") {
+            // Force-sync the Apply / Start / Stop button states to the
+            // authoritative server flag. setRunningState only flips uiState
+            // when it isn't already "running"; this guarantees a refresh or
+            // a remote viewer always sees the correct enabled/disabled set.
+            if (nextRunning) {
+                this.setUiState("running");
+            } else if (this.uiState === "running") {
                 this.setUiState("idle");
             }
+            // Render elapsed/cell timers immediately so the display doesn't
+            // sit at "00:00:00" until the next 1Hz tick after a refresh.
+            this.updateTimers();
         }
 
         // Ingest historical measurement_data from the snapshot ONLY when the
