@@ -1362,6 +1362,7 @@ class ViscometryDashboard {
         // The server starts in a background thread and may take a moment to accept
         // connections, especially when relaunched under .venv64 on the lab computer.
         this.socket = io({
+            autoConnect: false,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
             timeout: 10000,
@@ -1392,6 +1393,14 @@ class ViscometryDashboard {
         });
 
         this.socket.on("status_update", (data) => {
+            // If we are receiving live status packets, the socket is connected even
+            // if an early connect event was missed during fast local handshakes.
+            if (!this.isConnected) {
+                this.isConnected = true;
+                this.el.connectionDot.classList.remove("disconnected");
+                this.el.connectionDot.classList.add("connected");
+                this.showDisconnectedBanner(false);
+            }
             if (data && typeof data === "object") {
                 if (data.position || data.current_cell !== undefined || data.current_rpm !== undefined || data.is_running !== undefined) {
                     this.applyStatusSnapshot(data);
@@ -1598,6 +1607,9 @@ class ViscometryDashboard {
             }
             this.isCalibrationRun = false;
         });
+
+        // Connect only after all event handlers are attached.
+        this.socket.connect();
 
     }
 
