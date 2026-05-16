@@ -9,5 +9,6 @@
     "pylance.analysis.typeCheckingMode": "off",
     "[python]": {
         "editor.formatOnSave": false
-    }
+    },
+    "svg.preview.background": "transparent"
 }
