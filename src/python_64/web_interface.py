@@ -41,8 +41,8 @@ class ViscometryWebInterface:
             async_mode="threading",
             ping_timeout=60,
             ping_interval=25,
-            logger=True,
-            engineio_logger=True,
+            logger=False,
+            engineio_logger=False,
         )
         self.port = port
         
@@ -69,6 +69,11 @@ class ViscometryWebInterface:
         # Predicted viscosity results for current run (persisted in-memory so clients see them on refresh)
         # Structure: { cell_id (int): { rpm (float): { 'viscosity_kcP': float|None, 'h0': float|None, 'heights': list, 'drags': list } } }
         self.predicted_viscosity_results: Dict[int, Dict[float, Dict]] = {}
+        # Debounced persistence - avoid writing to disk on every measurement point.
+        self._persist_dirty = False
+        self._persist_lock = threading.Lock()
+        self._persist_timer: Optional[threading.Timer] = None
+        self._persist_interval_s = 4.0
         self.runtime_settings = {
             'experiment_name': '',
             'testing_mode': 'custom',
@@ -123,9 +128,16 @@ class ViscometryWebInterface:
         # an event (refresh mid-run, remote viewer joining late, transient
         # websocket buffer drop under GIL pressure) could drift out of sync.
         # This heartbeat guarantees every client reconverges within ~2 seconds.
-        self._heartbeat_interval_s = 2.0
+        self._heartbeat_interval_s = 3.0
+        self._heartbeat_state_hash: Optional[str] = None
+        self._calibration_refresh_counter = 0
+        self._CALIBRATION_REFRESH_EVERY = 15
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread: Optional[threading.Thread] = None
+        self._last_position_emit_time: float = 0.0
+        self._last_torque_emit_time: float = 0.0
+        self._POSITION_EMIT_MIN_INTERVAL_S = 0.25
+        self._TORQUE_EMIT_MIN_INTERVAL_S = 0.5
         
         # Platform configuration from your code
         self.X_LOW_BOUND = 0
@@ -332,6 +344,13 @@ class ViscometryWebInterface:
             try:
                 emit('status_update', self.get_status_dict())
                 emit('control_settings_update', self.get_runtime_settings())
+                try:
+                    with self.control_lock:
+                        history = list(self.measurement_data)
+                    if history:
+                        emit('measurement_history', {'measurements': history})
+                except Exception as mh_err:
+                    print(f"Warning: failed to emit measurement history on connect: {mh_err}")
                 # Send current predicted viscosity snapshot so clients can populate persisted plots
                 try:
                     emit('predicted_viscosity_results_snapshot', self._serialize_viscosity_results())
@@ -773,9 +792,11 @@ class ViscometryWebInterface:
             self.current_position['y'] = y
         if z is not None:
             self.current_position['z'] = z
-            
-        # Emit update to connected clients
-        self.socketio.emit('position_update', self.current_position)
+
+        now = time.monotonic()
+        if now - self._last_position_emit_time >= self._POSITION_EMIT_MIN_INTERVAL_S:
+            self._last_position_emit_time = now
+            self.socketio.emit('position_update', self.current_position)
         
     def update_status(self, message: str):
         """Update status message"""
@@ -823,11 +844,14 @@ class ViscometryWebInterface:
     def update_live_torque(self, torque_percent: float, rpm: float, elapsed: float):
         """Broadcast the most recent raw torque reading to connected clients."""
         self.current_torque_percent = torque_percent
-        self.socketio.emit('torque_update', {
-            'torque_percent': torque_percent,
-            'rpm': rpm,
-            'elapsed': elapsed,
-        })
+        now = time.monotonic()
+        if now - self._last_torque_emit_time >= self._TORQUE_EMIT_MIN_INTERVAL_S:
+            self._last_torque_emit_time = now
+            self.socketio.emit('torque_update', {
+                'torque_percent': torque_percent,
+                'rpm': rpm,
+                'elapsed': elapsed,
+            })
 
     def set_current_z(self, z: float):
         """Broadcast the Z-height currently under active measurement."""
@@ -899,7 +923,29 @@ class ViscometryWebInterface:
                 'heights': list(heights) if heights is not None else [],
                 'drags': list(drags) if drags is not None else [],
             }
-        self._persist_live_run_state()
+        self._schedule_persist()
+
+    def _schedule_persist(self):
+        """Mark state dirty and schedule a debounced disk write."""
+        with self._persist_lock:
+            self._persist_dirty = True
+            if self._persist_timer is not None and self._persist_timer.is_alive():
+                return
+
+            def _do_write():
+                with self._persist_lock:
+                    if not self._persist_dirty:
+                        return
+                    self._persist_dirty = False
+                    self._persist_timer = None
+                try:
+                    self._persist_live_run_state()
+                except Exception as e:
+                    print(f"Warning: debounced persist failed: {e}")
+
+            self._persist_timer = threading.Timer(self._persist_interval_s, _do_write)
+            self._persist_timer.daemon = True
+            self._persist_timer.start()
 
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
@@ -1274,7 +1320,7 @@ class ViscometryWebInterface:
                 'sample_count': sc,
             }
             self.measurement_data.append(measurement)
-            self._persist_live_run_state()
+            self._schedule_persist()
             
             # Emit to connected clients
             try:
@@ -1403,35 +1449,58 @@ class ViscometryWebInterface:
                 self.socketio.emit('calibration_status_update', self._calibration_summary)
             except Exception:
                 pass
+        if not is_running:
+            self._persist_live_run_state()
         
     def _status_heartbeat_loop(self):
-        """Background thread: broadcast full status snapshot every N seconds.
-
-        This is intentionally robust: any exception is swallowed so a single
-        bad snapshot can't kill the heartbeat. Clients re-converge to the
-        authoritative server state on the next tick.
-        """
+        """Background thread: broadcast full status snapshot only when state changes."""
         while not self._heartbeat_stop.is_set():
             try:
-                snapshot = self.get_status_dict()
-                # Also refresh and include calibration summary so the per-cell
-                # Z-height pill never drifts to red on a connected client.
-                try:
-                    self._refresh_calibration_summary()
-                    snapshot['calibration_summary'] = self._calibration_summary
-                except Exception:
-                    pass
-                self.socketio.emit('status_update', snapshot)
-                # Also re-broadcast instrument status so pills stay accurate
-                # even if the original instrument_status_update was lost.
-                try:
-                    self.socketio.emit('instrument_status_update', self.instrument_status)
-                except Exception:
-                    pass
+                self._heartbeat_state_hash, _ = self._heartbeat_tick(self._heartbeat_state_hash)
             except Exception as e:
                 print(f"Warning: status heartbeat failed: {e}")
             # Sleep on the Event so shutdown is responsive
             self._heartbeat_stop.wait(self._heartbeat_interval_s)
+
+    def _heartbeat_tick(self, prev_hash: Optional[str]):
+        """One heartbeat iteration. Returns (new_hash, did_broadcast)."""
+        import hashlib
+        import json as _json
+
+        self._calibration_refresh_counter += 1
+        if self._calibration_refresh_counter >= self._CALIBRATION_REFRESH_EVERY:
+            self._calibration_refresh_counter = 0
+            try:
+                self._refresh_calibration_summary()
+            except Exception:
+                pass
+
+        snapshot = self.get_status_dict()
+        snapshot['calibration_summary'] = self._calibration_summary
+
+        fingerprint_fields = {
+            'is_running': snapshot.get('is_running'),
+            'current_cell': snapshot.get('current_cell'),
+            'current_rpm': snapshot.get('current_rpm'),
+            'status_message': snapshot.get('status_message'),
+            'completed_cells': snapshot.get('completed_cells'),
+            'instrument_status': snapshot.get('instrument_status'),
+            'calibration_mode': snapshot.get('calibration_mode'),
+        }
+        state_hash = hashlib.md5(_json.dumps(fingerprint_fields, sort_keys=True, default=str).encode()).hexdigest()
+
+        if state_hash != prev_hash:
+            try:
+                self.socketio.emit('status_update', snapshot)
+            except Exception as e:
+                print(f"Warning: heartbeat emit failed: {e}")
+            try:
+                self.socketio.emit('instrument_status_update', self.instrument_status)
+            except Exception:
+                pass
+            return state_hash, True
+
+        return prev_hash, False
 
     def start_server(self, debug=False):
         """Start the web server"""

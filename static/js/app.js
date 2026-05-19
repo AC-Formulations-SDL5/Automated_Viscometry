@@ -121,6 +121,10 @@ class ViscometryDashboard {
                     .then((data) => {
                         if (Array.isArray(data) && data.length > 0 && this.measurements.length === 0) {
                             data.forEach((m) => this.ingestMeasurement(m, true));
+                            if (this.selectedGraphCell === null && this.measurementsByCell.size > 0) {
+                                this.selectedGraphCell = this.measurementsByCell.keys().next().value;
+                                this.updateGraphCellTabs();
+                            }
                             this.refreshLivePlots();
                         }
                     })
@@ -1056,6 +1060,10 @@ class ViscometryDashboard {
                 }
                 if (Array.isArray(measurementData) && this.measurements.length === 0) {
                     measurementData.forEach((m) => this.ingestMeasurement(m, true));
+                    if (this.selectedGraphCell === null && this.measurementsByCell.size > 0) {
+                        this.selectedGraphCell = this.measurementsByCell.keys().next().value;
+                        this.updateGraphCellTabs();
+                    }
                     this.refreshLivePlots();
                 }
                 if (calSummary && typeof calSummary === "object" && !calSummary.error) {
@@ -1485,6 +1493,27 @@ class ViscometryDashboard {
 
         this.socket.on("control_settings_update", (settings) => {
             this.populateControlSettings(settings);
+        });
+
+        this.socket.on("measurement_history", (data) => {
+            if (!data || !Array.isArray(data.measurements)) {
+                return;
+            }
+
+            if (data.measurements.length > this.measurements.length) {
+                this.measurements = [];
+                this.measurementsByCell.clear();
+                this.latestTorqueByCell.clear();
+                this.hitPoints.clear();
+
+                data.measurements.forEach((m) => this.ingestMeasurement(m, true));
+
+                if (this.selectedGraphCell === null && this.measurementsByCell.size > 0) {
+                    this.selectedGraphCell = this.measurementsByCell.keys().next().value;
+                }
+                this.updateGraphCellTabs();
+                this.refreshLivePlots();
+            }
         });
 
         this.socket.on("position_update", (data) => {
