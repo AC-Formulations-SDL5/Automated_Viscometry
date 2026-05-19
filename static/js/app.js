@@ -777,15 +777,20 @@ class ViscometryDashboard {
             heights: Array.isArray(heights) ? heights : [],
             drags: Array.isArray(drags) ? drags : [],
         };
-        this.renderPredictedViscosityPlots();
+        if (!this.selectedExperimentId) {
+            this.renderPredictedViscosityPlots();
+        }
     }
 
-    renderPredictedViscosityPlots() {
+    renderPredictedViscosityPlots(sourceResults = null) {
         const container = this.el.predictedViscosityContainer;
         if (!container) return;
 
         container.innerHTML = "";
-        const cellEntries = Object.entries(this.predictedViscosityResults || {});
+        const results = sourceResults && typeof sourceResults === 'object'
+            ? sourceResults
+            : this.predictedViscosityResults;
+        const cellEntries = Object.entries(results || {});
         if (!cellEntries.length) {
             const emptyState = document.createElement("p");
             emptyState.className = "muted";
@@ -3012,6 +3017,7 @@ class ViscometryDashboard {
             cellDurations,
             runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
             runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
+            predicted_viscosity_summary: JSON.parse(JSON.stringify(this.predictedViscosityResults || {})),
             csv: csvHeader + csvBody
         };
 
@@ -3158,6 +3164,8 @@ class ViscometryDashboard {
         if (rightEl) {
             rightEl.innerHTML = rightLines.map((line) => `<div>${line}</div>`).concat([predictedViscositySection]).join("");
         }
+
+        this.renderPredictedViscosityPlots(exp.predicted_viscosity_summary || {});
 
         this.syncCustomHitpointControlsForExperiment(exp);
 
