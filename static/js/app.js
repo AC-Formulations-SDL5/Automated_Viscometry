@@ -1821,6 +1821,10 @@ class ViscometryDashboard {
             this.updateCompletionBar();
             this.updateCellVisuals();
         }
+        if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0 && this.measurements.length === 0) {
+            status.measurement_data.forEach((m) => this.ingestMeasurement(m, true));
+            this.refreshLivePlots();
+        }
         if (status.recalibration_mode_active !== undefined) {
             this.recalibrationModeActive = Boolean(status.recalibration_mode_active);
         }
