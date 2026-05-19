@@ -5,6 +5,7 @@ Automatic environment switcher - ensures script runs with 64-bit Python
 import sys
 import subprocess
 import pathlib
+import webbrowser
 
 # Check if we're running with the correct 64-bit Python that has numpy/scipy
 try:
@@ -38,6 +39,17 @@ from cnc_controller import CNC_Machine
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 from feedback_helper_function import RotationalDragFeedbackController
+
+
+def open_browser_after_delay(url="http://localhost:5001", delay=8):
+    """Open the web UI after giving the server time to start."""
+    time.sleep(delay)
+    print(f"\nOpening browser to {url}")
+    try:
+        webbrowser.open(url)
+    except Exception as e:
+        print(f"Could not auto-open browser: {e}")
+        print(f"Please manually open: {url}")
 from web_interface import web_interface
 from calibration_store import (
     is_calibrated, load_calibration, save_calibration,
@@ -1880,6 +1892,8 @@ def main():
     # Start web interface in background thread
     print("\nStarting web interface...")
     try:
+        browser_thread = threading.Thread(target=open_browser_after_delay, daemon=True)
+        browser_thread.start()
         web_interface.start_in_thread(debug=False)
         print(f"Web interface started at http://localhost:{web_interface.port}")
         web_interface.update_status("Configure the run in the web interface, then press Start")
