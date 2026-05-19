@@ -1,5 +1,90 @@
 [
   {
+    "id": "exp-1778790320121",
+    "created_at": 1778790320121,
+    "measurement_count": 6,
+    "cells": [
+      1
+    ],
+    "rpms": [
+      43
+    ],
+    "settings": {
+      "baseline_n_calibration": 10,
+      "baseline_z_threshold": 5,
+      "calibration_mode": false,
+      "cell_content_map": {},
+      "cell_rpm_map": {},
+      "dwell_seconds": 2,
+      "experiment_name": "test_prediction",
+      "feedback_control_enabled": true,
+      "hit_point_confidence_threshold": 0.8,
+      "inter_rpm_pause": 2,
+      "low_torque_liquid_contact_skip_enabled": true,
+      "low_torque_liquid_contact_threshold_pct": 25,
+      "measurement_duration": 40,
+      "min_data_points_for_trend": 8,
+      "predicted_viscosity_enabled": true,
+      "r2_cv_min": 0.975,
+      "r2_drag_min": 0.975,
+      "r2_slope_min": 0.975,
+      "recalibrate_individual_cells": false,
+      "recalibration_cells": {},
+      "sample_interval": 5,
+      "selected_cells": [
+        16
+      ],
+      "selected_rows": [
+        2
+      ],
+      "smart_cv_threshold": 0.005,
+      "smart_early_exit_enabled": true,
+      "smart_window_size": 3,
+      "test_rpms": [
+        0.8
+      ],
+      "testing_mode": "custom",
+      "torque_break_threshold": 100,
+      "weight_2nd_deriv_cv": 0.2,
+      "weight_2nd_deriv_drag": 0.2,
+      "weight_2nd_deriv_slope": 0.2,
+      "weight_r2_cv": 0.2,
+      "weight_r2_drag": 0.2,
+      "weight_r2_slope": 0.2,
+      "z_step_size": -0.02
+    },
+    "latestPerZ": [
+      {
+        "timestamp": 1778790300.7772806,
+        "height": -65.74,
+        "rotational_drag": 0.6309302325581395,
+        "torque_percent": 27.13,
+        "rpm": 43,
+        "cell_id": 1,
+        "is_final_save": false,
+        "hit_detected": null,
+        "sample_count": 1
+      },
+      {
+        "timestamp": 1778790317.2077928,
+        "height": -65.76,
+        "rotational_drag": 0.656046511627907,
+        "torque_percent": 28.209999999999997,
+        "rpm": 43,
+        "cell_id": 1,
+        "is_final_save": false,
+        "hit_detected": null,
+        "sample_count": 1
+      }
+    ],
+    "cellDurations": {
+      "1": 31503.05676460266
+    },
+    "runStartTsSec": 1778790258.1850977,
+    "runEndTsSec": 1778790317.2077928,
+    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n2026-05-14T20:24:45.704Z,1,-65.74,26.35,0.6127906976744186,43\n2026-05-14T20:24:50.764Z,1,-65.74,26.81,0.6234883720930232,43\n2026-05-14T20:24:55.719Z,1,-65.74,26.99,0.6276744186046511,43\n2026-05-14T20:25:00.777Z,1,-65.74,27.13,0.6309302325581395,43\n2026-05-14T20:25:12.151Z,1,-65.76,28.180000000000003,0.6553488372093024,43\n2026-05-14T20:25:17.207Z,1,-65.76,28.209999999999997,0.656046511627907,43"
+  },
+  {
     "id": "exp-1778790084153",
     "created_at": 1778790084153,
     "measurement_count": 29,
