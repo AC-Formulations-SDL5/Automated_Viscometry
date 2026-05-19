@@ -63,6 +63,7 @@ class ViscometryWebInterface:
         self.start_requested_event = threading.Event()
         self.stop_requested_event = threading.Event()
         self.experiment_history_path = os.path.join(self.project_root, 'results', 'web_experiment_history.json')
+        self.live_run_state_path = os.path.join(self.project_root, 'results', 'web_live_run_state.json')
         self.experiment_history = []
         self._load_experiment_history()
         # Predicted viscosity results for current run (persisted in-memory so clients see them on refresh)
@@ -112,6 +113,7 @@ class ViscometryWebInterface:
         self.calibration_mode = False         # True when a calibration run is active
         self._calibration_summary = {}        # Cached summary from last calibration check
         self._refresh_calibration_summary()   # Populate on startup
+        self._load_live_run_state()
 
         # ========== State heartbeat ==========
         # Periodically broadcast the FULL status dict to all connected clients.
@@ -721,6 +723,7 @@ class ViscometryWebInterface:
         self.start_requested_event.set()
         self.socketio.emit('experiment_start', {'start_ts': self.experiment_start_ts})
         self.broadcast_calibration_mode()
+        self._persist_live_run_state()
 
     def broadcast_calibration_mode(self):
         """Broadcast current calibration mode to all connected clients."""
@@ -896,6 +899,7 @@ class ViscometryWebInterface:
                 'heights': list(heights) if heights is not None else [],
                 'drags': list(drags) if drags is not None else [],
             }
+        self._persist_live_run_state()
 
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
@@ -909,6 +913,7 @@ class ViscometryWebInterface:
             self.completed_cells = []
             # Clear predicted viscosity state for the run
             self.predicted_viscosity_results = {}
+        self._delete_live_run_state()
         self.socketio.emit('clear_dashboard')
         # Notify clients that predicted viscosity results have been cleared
         try:
@@ -926,6 +931,19 @@ class ViscometryWebInterface:
                     self.experiment_history = data if isinstance(data, list) else []
             else:
                 self.experiment_history = []
+
+            backfilled = False
+            for history_entry in self.experiment_history:
+                if not isinstance(history_entry, dict):
+                    continue
+                if history_entry.get('predicted_viscosity_summary'):
+                    continue
+                summary = self._build_predicted_viscosity_summary_for_entry(history_entry)
+                if summary:
+                    history_entry['predicted_viscosity_summary'] = summary
+                    backfilled = True
+            if backfilled:
+                self._persist_experiment_history()
         except Exception as e:
             print(f"Warning: Failed to load experiment history: {e}")
             self.experiment_history = []
@@ -951,6 +969,252 @@ class ViscometryWebInterface:
         exp_id = str(entry.get('id') or '').strip()
         if not exp_id:
             return
+
+        if not entry.get('predicted_viscosity_summary'):
+            summary = self._build_predicted_viscosity_summary_for_entry(entry)
+            if summary:
+                entry['predicted_viscosity_summary'] = summary
+
+        with self.control_lock:
+            self.experiment_history = [e for e in self.experiment_history if str(e.get('id')) != exp_id]
+            self.experiment_history.insert(0, entry)
+            self.experiment_history = self.experiment_history[:200]
+            self._persist_experiment_history()
+
+    def _load_live_run_state(self):
+        """Load the active run snapshot so live measurements survive refreshes."""
+        try:
+            if not os.path.exists(self.live_run_state_path):
+                return
+
+            with open(self.live_run_state_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                return
+
+            with self.control_lock:
+                self.measurement_data = list(data.get('measurement_data') or [])
+
+                current_position = data.get('current_position')
+                if isinstance(current_position, dict):
+                    self.current_position = dict(current_position)
+
+                self.current_cell = data.get('current_cell', self.current_cell)
+                self.current_rpm = data.get('current_rpm', self.current_rpm)
+                self.current_torque_percent = data.get('current_torque_percent', self.current_torque_percent)
+                self.current_z_measuring = data.get('current_z_measuring', self.current_z_measuring)
+
+                completed_cells = data.get('completed_cells')
+                if isinstance(completed_cells, list):
+                    self.completed_cells = [int(c) for c in completed_cells if str(c).strip()]
+
+                experiment_start_ts = data.get('experiment_start_ts')
+                if experiment_start_ts not in (None, ''):
+                    try:
+                        self.experiment_start_ts = float(experiment_start_ts)
+                    except Exception:
+                        pass
+
+                current_cell_start_ts = data.get('current_cell_start_ts')
+                if current_cell_start_ts not in (None, ''):
+                    try:
+                        self.current_cell_start_ts = float(current_cell_start_ts)
+                    except Exception:
+                        pass
+
+                status_message = data.get('status_message')
+                if isinstance(status_message, str) and status_message.strip():
+                    self.status_message = status_message
+
+                runtime_settings = data.get('runtime_settings')
+                if isinstance(runtime_settings, dict):
+                    merged_settings = self.get_runtime_settings()
+                    merged_settings.update(runtime_settings)
+                    self.runtime_settings = merged_settings
+
+                predicted_results = data.get('predicted_viscosity_results')
+                if isinstance(predicted_results, dict):
+                    normalized_results = {}
+                    for cell_key, rpm_map in predicted_results.items():
+                        try:
+                            cell_id = int(cell_key)
+                        except Exception:
+                            continue
+                        if not isinstance(rpm_map, dict):
+                            continue
+                        normalized_results[cell_id] = {}
+                        for rpm_key, values in rpm_map.items():
+                            try:
+                                rpm_value = float(rpm_key)
+                            except Exception:
+                                continue
+                            if not isinstance(values, dict):
+                                continue
+                            normalized_results[cell_id][rpm_value] = {
+                                'viscosity_kcP': None if values.get('viscosity_kcP') is None else float(values.get('viscosity_kcP')),
+                                'h0': None if values.get('h0') is None else float(values.get('h0')),
+                                'heights': list(values.get('heights') or []),
+                                'drags': list(values.get('drags') or []),
+                            }
+                    self.predicted_viscosity_results = normalized_results
+
+                is_running = data.get('is_running')
+                if is_running is not None:
+                    self.is_running = bool(is_running)
+        except Exception as e:
+            print(f"Warning: Failed to load live run state: {e}")
+
+    def _persist_live_run_state(self):
+        """Persist the current live run snapshot for refresh/reconnect recovery."""
+        try:
+            os.makedirs(os.path.dirname(self.live_run_state_path), exist_ok=True)
+            payload = {
+                'measurement_data': list(self.measurement_data),
+                'current_position': dict(self.current_position) if isinstance(self.current_position, dict) else self.current_position,
+                'current_cell': self.current_cell,
+                'current_rpm': self.current_rpm,
+                'current_torque_percent': self.current_torque_percent,
+                'current_z_measuring': self.current_z_measuring,
+                'completed_cells': list(self.completed_cells),
+                'experiment_start_ts': self.experiment_start_ts,
+                'current_cell_start_ts': self.current_cell_start_ts,
+                'is_running': self.is_running,
+                'status_message': self.status_message,
+                'runtime_settings': self.get_runtime_settings(),
+                'predicted_viscosity_results': self._serialize_viscosity_results(),
+            }
+            tmp_path = f"{self.live_run_state_path}.tmp"
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, ensure_ascii=True, indent=2)
+            os.replace(tmp_path, self.live_run_state_path)
+        except Exception as e:
+            print(f"Warning: Failed to persist live run state: {e}")
+
+    def _delete_live_run_state(self):
+        """Remove any persisted active-run snapshot."""
+        try:
+            if os.path.exists(self.live_run_state_path):
+                os.remove(self.live_run_state_path)
+        except Exception as e:
+            print(f"Warning: Failed to delete live run state: {e}")
+
+    def _build_predicted_viscosity_summary_for_entry(self, entry: Dict):
+        """Recompute predicted viscosity summaries from a saved experiment entry."""
+        if not isinstance(entry, dict):
+            return {}
+
+        settings = entry.get('settings') if isinstance(entry.get('settings'), dict) else {}
+        if not bool(settings.get('predicted_viscosity_enabled')):
+            return {}
+
+        measurements = entry.get('latestPerZ')
+        if not isinstance(measurements, list) or not measurements:
+            return {}
+
+        try:
+            return self._build_predicted_viscosity_summary_from_measurements(measurements, settings)
+        except Exception:
+            return {}
+
+    def _build_predicted_viscosity_summary_from_measurements(self, measurements, settings=None):
+        """Build a nested predicted viscosity summary from flat measurement rows."""
+        if isinstance(settings, dict):
+            settings = dict(settings)
+        else:
+            settings = {
+                'predicted_viscosity_enabled': False,
+                'low_torque_liquid_contact_threshold_pct': 25.0,
+            }
+            try:
+                settings.update(self.get_runtime_settings())
+            except Exception:
+                pass
+        if not bool(settings.get('predicted_viscosity_enabled')):
+            return {}
+
+        try:
+            torque_floor = float(settings.get('low_torque_liquid_contact_threshold_pct', 25.0))
+        except Exception:
+            torque_floor = 25.0
+
+        cell_data_map = {}
+        for measurement in measurements or []:
+            if not isinstance(measurement, dict):
+                continue
+            try:
+                cell_id = int(measurement.get('cell_id'))
+                rpm = float(measurement.get('rpm'))
+                height = float(measurement.get('height'))
+            except Exception:
+                continue
+
+            try:
+                drag = float(measurement.get('rotational_drag'))
+            except Exception:
+                torque = measurement.get('torque_percent')
+                try:
+                    drag = abs(float(torque)) / rpm if rpm else float('nan')
+                except Exception:
+                    drag = float('nan')
+
+            cell_data = cell_data_map.setdefault(cell_id, {})
+            z_block = cell_data.setdefault(height, {})
+            measurement_copy = dict(measurement)
+            measurement_copy['height'] = height
+            measurement_copy['rotational_drag'] = drag
+            z_block.setdefault(rpm, []).append(measurement_copy)
+
+        predicted_summary = {}
+        for cell_id, cell_data in cell_data_map.items():
+            try:
+                hitpoint_z = extract_rough_hitpoint(cell_data)
+            except Exception:
+                hitpoint_z = None
+
+            rpm_values = set()
+            for z_key, rpm_block in cell_data.items():
+                if not isinstance(rpm_block, dict):
+                    continue
+                for rpm_key in rpm_block.keys():
+                    rpm_values.add(rpm_key)
+
+            for rpm in sorted(rpm_values):
+                all_measurements = []
+                z_keys = sorted([k for k in cell_data.keys() if k != '_metrics'], reverse=True)
+                for z in z_keys:
+                    rpm_block = cell_data.get(z, {})
+                    meas_list = rpm_block.get(rpm)
+                    if meas_list:
+                        for measurement in meas_list:
+                            m_copy = dict(measurement)
+                            m_copy['height'] = float(z)
+                            if 'rotational_drag' not in m_copy:
+                                try:
+                                    torque_pct = float(m_copy.get('torque_percent', 0.0))
+                                    m_copy['rotational_drag'] = abs(torque_pct) / float(rpm) if rpm else float('nan')
+                                except Exception:
+                                    m_copy['rotational_drag'] = float('nan')
+                            all_measurements.append(m_copy)
+
+                if len(all_measurements) < 3:
+                    continue
+
+                eta, h0, (heights, drags) = self.calculate_predicted_viscosity(
+                    all_measurements,
+                    hitpoint_z=hitpoint_z,
+                    torque_floor=torque_floor,
+                )
+                if eta is None or not heights or not drags:
+                    continue
+
+                predicted_summary.setdefault(str(cell_id), {})[str(rpm)] = {
+                    'viscosity_kcP': float(eta),
+                    'h0': float(h0) if h0 is not None else None,
+                    'heights': list(heights),
+                    'drags': list(drags),
+                }
+
+        return predicted_summary
 
         with self.control_lock:
             self.experiment_history = [e for e in self.experiment_history if str(e.get('id')) != exp_id]
@@ -1010,6 +1274,7 @@ class ViscometryWebInterface:
                 'sample_count': sc,
             }
             self.measurement_data.append(measurement)
+            self._persist_live_run_state()
             
             # Emit to connected clients
             try:
