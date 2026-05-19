@@ -327,6 +327,21 @@ def _plot_prediction_accuracy(df_pred: pd.DataFrame, m_hyp: float, m_pol2: float
         y_real_max = float(np.nanmax(finite_real)) if finite_real.size else 0.0
         y_pred_max = float(np.nanmax(pred_vals)) if pred_vals.size else 0.0
         y_max = max(y_real_max, y_pred_max, 1e-9)
+
+        # Label each real-viscosity bar using k cP units for readability.
+        for i in range(len(cell_ids)):
+            if not has_real[i]:
+                continue
+            ax.text(
+                x_vals[i] - bar_w / 2,
+                real_vals[i] + y_max * 0.02,
+                f"{real_vals[i]:.2f} k cP",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                rotation=90,
+            )
+
         for i, p in enumerate(providers):
             if p:
                 ax.text(x_vals[i] + 0.06, y_max * 1.05, p, ha="center", va="bottom", fontsize=10, rotation=90)
