@@ -1,3 +1,12 @@
+const HAS_NATIVE_PLOTLY = typeof window !== "undefined" && typeof window.Plotly !== "undefined";
+const Plotly = HAS_NATIVE_PLOTLY ? window.Plotly : {
+    Icons: { disk: null },
+    newPlot: () => Promise.resolve(),
+    addTraces: () => Promise.resolve(),
+    relayout: () => Promise.resolve(),
+    react: () => Promise.resolve(),
+};
+
 class ViscometryDashboard {
     constructor() {
         this.platform = {
@@ -64,6 +73,7 @@ class ViscometryDashboard {
         this.calibrationPanelOpen = false;
         this.calChecksComplete = false;
         this.isCalibrationRun = false;
+        this.plotlyAvailable = HAS_NATIVE_PLOTLY;
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -673,6 +683,11 @@ class ViscometryDashboard {
     }
 
     initPlot() {
+        if (!this.plotlyAvailable) {
+            console.warn("Plotly is unavailable; skipping chart initialization and continuing with the rest of the dashboard.");
+            return;
+        }
+
         const zLayout = {
             paper_bgcolor: "transparent",
             plot_bgcolor: "rgba(255,255,255,0.03)",
@@ -2951,6 +2966,9 @@ class ViscometryDashboard {
         if (!this.el.summaryPlot) {
             return;
         }
+        if (!this.plotlyAvailable) {
+            return;
+        }
         this.summaryPlotLayout = {
             xaxis: {
                 title: "Z-Height (mm) - descent ->",
@@ -3761,5 +3779,17 @@ class ViscometryDashboard {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    window.viscometryDashboard = new ViscometryDashboard();
+    try {
+        window.viscometryDashboard = new ViscometryDashboard();
+    } catch (err) {
+        console.error("Failed to initialize viscometry dashboard:", err);
+        const banner = document.getElementById("disconnect-banner");
+        if (banner) {
+            banner.classList.remove("hidden");
+            const messageNode = banner.querySelector("span:last-child");
+            if (messageNode) {
+                messageNode.textContent = "Dashboard failed to initialize; check browser console for details.";
+            }
+        }
+    }
 });
