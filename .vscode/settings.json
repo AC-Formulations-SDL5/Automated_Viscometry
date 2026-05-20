@@ -1,5 +1,5 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:venv",
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv64/Scripts/python.exe",
     "python.linting.enabled": false,
     "python.analysis.typeCheckingMode": "off",
@@ -10,5 +10,6 @@
     "[python]": {
         "editor.formatOnSave": false
     },
-    "svg.preview.background": "transparent"
+    "svg.preview.background": "transparent",
+    "python-envs.defaultPackageManager": "ms-python.python:conda"
 }
