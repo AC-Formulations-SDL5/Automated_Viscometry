@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,12 +33,6 @@ def load_rotational_drag_csv(
     out[cell_col] = pd.to_numeric(out[cell_col], errors="coerce")
     out[x_col] = pd.to_numeric(out[x_col], errors="coerce")
     out[y_col] = pd.to_numeric(out[y_col], errors="coerce")
-    if "Torque_%" in out.columns:
-        out["Torque_%"] = pd.to_numeric(out["Torque_%"], errors="coerce")
-    if "Hit_Detected" in out.columns:
-        out["Hit_Detected"] = (
-            out["Hit_Detected"].astype(str).str.strip().str.lower().isin({"true", "1", "yes", "y", "t"})
-        )
     out = out.dropna(subset=[cell_col, x_col, y_col]).copy()
     out[cell_col] = out[cell_col].astype(int)
     out = out.sort_values([cell_col, x_col]).reset_index(drop=True)
@@ -56,75 +50,83 @@ def normalize_height_by_cell(
     return out
 
 
-def _extract_rough_hitpoint_from_frame(
-    cell_df: pd.DataFrame,
-    x_col: str = "Z_Height_mm",
-    hit_col: str = "Hit_Detected",
-) -> Optional[float]:
-    """Mirror the runtime rough-hitpoint heuristic using per-row hit detections."""
-    if hit_col not in cell_df.columns:
-        return None
-
-    ordered = cell_df.sort_values(x_col, ascending=False).reset_index(drop=True)
-    hit_sequence = [(float(row[x_col]), bool(row.get(hit_col, False))) for _, row in ordered.iterrows()]
-
-    rough_hitpoint = None
-    n = len(hit_sequence)
-    for i in range(max(0, n - 3)):
-        z_val, is_hit = hit_sequence[i]
-        if not is_hit and all(hit_sequence[j][1] for j in range(i + 1, min(i + 4, n))):
-            rough_hitpoint = z_val
-
-    return rough_hitpoint
-
-
 def trim_stat_middle(
     df: pd.DataFrame,
     cell_col: str = "cell",
     x_col: str = "Z_Height_mm",
     y_col: str = "Rotational_Drag",
-    torque_col: str = "Torque_%",
-    hit_col: str = "Hit_Detected",
-    torque_floor: float = 25.0,
-    max_window_mm: float = 0.3,
+    q: float = 0.65,
+    win: int = 5,
+    min_keep_frac: float = 0.5,
+    max_keep_frac: float = 0.8,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Trim each cell using the backend hitpoint and torque-floor rules."""
-    out, rep = [], []
+    """Trim before-hit and after-contact zones by keeping the smooth middle segment."""
+    out, rep, eps = [], [], 1e-9
 
     for cid, g in df.groupby(cell_col, sort=True):
         g = g.sort_values(x_col).reset_index(drop=True)
-        if g.empty:
+        x, y, n = g[x_col].to_numpy(float), g[y_col].to_numpy(float), len(g)
+
+        if n < 6:
+            sel = g.copy()
+            sel[x_col] -= sel[x_col].min()
+            out.append(sel)
+            rep.append({"cell": cid, "start": 0, "end": n - 1, "kept": n, "quality": np.nan})
             continue
 
-        torque_values = pd.to_numeric(g[torque_col], errors="coerce") if torque_col in g.columns else pd.to_numeric(g[y_col], errors="coerce")
-        hitpoint_z = _extract_rough_hitpoint_from_frame(g, x_col=x_col, hit_col=hit_col)
+        ys = pd.Series(y)
+        y_sm = ys.rolling(win, center=True, min_periods=2).mean().bfill().ffill().to_numpy()
+        sd = ys.rolling(win, center=True, min_periods=2).std().fillna(0).to_numpy()
+        dy = np.gradient(y_sm, x)
+        d2 = np.gradient(dy, x)
 
-        if hitpoint_z is None:
-            selected = g[torque_values > torque_floor].copy()
-            trim_mode = "torque-floor-only"
-        else:
-            selected = g[(torque_values > torque_floor) & (g[x_col] >= hitpoint_z)].copy()
-            trim_mode = "hitpoint+torque"
-            if not selected.empty and float(selected[x_col].max() - selected[x_col].min()) > max_window_mm:
-                selected = selected[selected[x_col] <= hitpoint_z + max_window_mm].copy()
-                trim_mode = "hitpoint+torque+window"
+        cv = np.abs(sd / (np.abs(y_sm) + eps))
+        d1_dev = np.abs(dy - np.nanmedian(dy))
+        d2_abs = np.abs(d2)
+        t_cv, t_d1, t_d2 = [np.nanquantile(v, q) for v in (cv, d1_dev, d2_abs)]
+        neg = np.clip(-dy, 0, None)
+        t_neg = max(np.nanquantile(neg, q), eps)
 
-        if selected.empty:
-            selected = g.tail(min(3, len(g))).copy()
-            trim_mode = f"fallback-{trim_mode}"
+        raw = (
+            cv / (t_cv + eps)
+            + d1_dev / (t_d1 + eps)
+            + d2_abs / (t_d2 + eps)
+            + 2.0 * np.clip(dy, 0, None) / t_neg
+            - 0.8 * neg / t_neg
+        )
 
-        selected = selected.sort_values(x_col).reset_index(drop=True)
-        selected[x_col] = selected[x_col] - selected[x_col].min()
-        out.append(selected)
+        min_k = max(5, int(np.ceil(min_keep_frac * n)))
+        max_frac = 0.92 if n <= 14 else max_keep_frac
+        max_k = min(n, max(min_k, int(np.floor(max_frac * n))))
+        mid = 0.5 * (n - 1)
+
+        best = (np.inf, 0, n)
+        for length in range(min_k, max_k + 1):
+            for i in range(0, n - length + 1):
+                j = i + length
+                dy_w = dy[i:j]
+                pos_w = np.clip(dy_w, 0, None)
+                neg_strength = float(np.nanmean(np.clip(-dy_w, 0, None)) / (t_neg + eps))
+                score = float(np.nanmean(raw[i:j]))
+                score += 1.8 * float(np.nanmean(pos_w / (t_neg + eps)))
+                score += 0.9 * max(0.0, float(np.mean(dy_w > 0)) - 0.15)
+                score += 0.35 * max(0.0, 0.55 - neg_strength)
+                score += 0.10 * abs((i + j - 1) * 0.5 - mid) / max(n, 1)
+                if score < best[0]:
+                    best = (score, i, j)
+
+        score, i, j = best
+        sel = g.iloc[i:j].copy()
+        sel[x_col] -= sel[x_col].min()
+
+        out.append(sel)
         rep.append(
             {
                 "cell": int(cid),
-                "start": 0,
-                "end": int(len(selected) - 1),
-                "kept": int(len(selected)),
-                "quality": np.nan,
-                "hitpoint_z": float(hitpoint_z) if hitpoint_z is not None else None,
-                "trim_mode": trim_mode,
+                "start": int(i),
+                "end": int(j - 1),
+                "kept": int(j - i),
+                "quality": float(score),
             }
         )
 
