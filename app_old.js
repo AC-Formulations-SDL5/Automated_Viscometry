@@ -1,5 +1,3 @@
-const Plotly = window.Plotly;
-
 class ViscometryDashboard {
     constructor() {
         this.platform = {
@@ -52,7 +50,6 @@ class ViscometryDashboard {
         this.summaryPlotInitialized = false;
         this._summaryHistoryPollIntervalId = null;
         this._summaryHistoryPollMs = 8000;
-        this.predictedViscosityResults = {};
         /** Debounce heavy Plotly / table DOM work during streaming measurements (remote viewers). */
         this._plotRefreshTimer = null;
         this._tableRefreshTimer = null;
@@ -95,59 +92,6 @@ class ViscometryDashboard {
         const activeTab = localStorage.getItem("activeTab") || "layout-tab";
         this.switchTab(activeTab);
         this.connectSocket();
-
-        // Defensive periodic re-sync from /api/status. The websocket heartbeat
-        // already pushes full state every ~2s, but if the websocket buffer
-        // is briefly stalled under heavy run-time emit load, this guarantees
-        // the UI cannot stay desynchronized for more than ~5 seconds.
-        this._stateResyncIntervalId = setInterval(() => {
-            // Skip if a previous resync is still inflight to avoid pile-up.
-            if (this._stateResyncInflight) return;
-            this._stateResyncInflight = true;
-            fetch("/api/status")
-                .then((r) => r.json())
-                .then((status) => {
-                    if (status && typeof status === "object") {
-                        this.applyStatusSnapshot(status);
-                    }
-                })
-                .catch(() => { /* silent \u2014 websocket will keep us synced */ })
-                .finally(() => { this._stateResyncInflight = false; });
-
-            // If the per-cell live history is empty (bootstrap fetch failed under
-            // load, or this is a remote viewer that joined mid-run), recover the
-            // full historical measurements buffer from the server.
-            if (this.measurements.length === 0) {
-                fetch("/api/measurement_data")
-                    .then((r) => r.json())
-                    .then((data) => {
-                        if (Array.isArray(data) && data.length > 0 && this.measurements.length === 0) {
-                            data.forEach((m) => this.ingestMeasurement(m, true));
-                            if (this.selectedGraphCell === null && this.measurementsByCell.size > 0) {
-                                this.selectedGraphCell = this.measurementsByCell.keys().next().value;
-                                this.updateGraphCellTabs();
-                            }
-                            this.refreshLivePlots();
-                        }
-                    })
-                    .catch(() => { /* silent */ });
-            }
-
-            // Same belt-and-suspenders for calibration: if the pill is somehow
-            // stuck on "not calibrated" but the server has calibration data,
-            // recover from the dedicated endpoint.
-            if (!this.calibrationSummary || !this.calibrationSummary.is_calibrated) {
-                fetch("/api/calibration/status")
-                    .then((r) => r.json())
-                    .then((summary) => {
-                        if (summary && typeof summary === "object" && !summary.error
-                                && summary.is_calibrated) {
-                            this.applyCalibrationStatus(summary);
-                        }
-                    })
-                    .catch(() => { /* silent */ });
-            }
-        }, 5000);
     }
 
     initElements() {
@@ -248,7 +192,6 @@ class ViscometryDashboard {
             cncStatus: document.getElementById("cnc-status"),
             viscometerStatus: document.getElementById("viscometer-status"),
             pumpStatus: document.getElementById("pump-status"),
-            predictedViscosityContainer: document.getElementById("predicted-viscosity-plots-container"),
             summaryCards: document.getElementById("experiment-cards"),
             summaryEmpty: document.getElementById("summary-empty"),
             summaryDetail: document.getElementById("summary-detail"),
@@ -749,292 +692,6 @@ class ViscometryDashboard {
         this.updateGauge(0);
     }
 
-    renderPredictedViscosityPlot(cellId, rpm, viscosityKcp, heights, drags, h0) {
-        if (viscosityKcp == null || !Array.isArray(heights) || !Array.isArray(drags)) {
-            return;
-        }
-
-        const activeCell = this.getActiveGraphCellId();
-        if (activeCell == null || Number(activeCell) !== Number(cellId) || !this.el.zSparklinePlot) {
-            return;
-        }
-
-        const overlay = this._buildPredictedViscosityOverlayTrace(cellId, rpm, viscosityKcp, heights, h0);
-        if (!overlay) {
-            return;
-        }
-
-        Plotly.addTraces(this.el.zSparklinePlot, overlay.trace).then(() => {
-            Plotly.relayout(this.el.zSparklinePlot, { annotations: overlay.annotations }).catch(() => {});
-        }).catch((err) => {
-            console.error('Failed to add predicted viscosity overlay:', err);
-        });
-    }
-
-    _storePredictedViscosityResult(cellId, rpm, viscosityKcP, h0, heights, drags) {
-        const cellKey = String(Number(cellId));
-        const rpmKey = String(Number(rpm));
-        if (!this.predictedViscosityResults[cellKey]) {
-            this.predictedViscosityResults[cellKey] = {};
-        }
-        this.predictedViscosityResults[cellKey][rpmKey] = {
-            viscosity_kcP: Number.isFinite(Number(viscosityKcP)) ? Number(viscosityKcP) : null,
-            h0: Number.isFinite(Number(h0)) ? Number(h0) : null,
-            heights: Array.isArray(heights) ? heights : [],
-            drags: Array.isArray(drags) ? drags : [],
-        };
-        if (!this.selectedExperimentId) {
-            this.renderPredictedViscosityPlots();
-        }
-    }
-
-    renderPredictedViscosityPlots(sourceResults = null) {
-        const container = this.el.predictedViscosityContainer;
-        if (!container) return;
-
-        container.innerHTML = "";
-        const results = sourceResults && typeof sourceResults === 'object'
-            ? sourceResults
-            : this.predictedViscosityResults;
-        const cellEntries = Object.entries(results || {});
-        if (!cellEntries.length) {
-            const emptyState = document.createElement("p");
-            emptyState.className = "muted";
-            emptyState.textContent = "Predicted viscosity plots will appear here after a fit completes.";
-            container.appendChild(emptyState);
-            return;
-        }
-
-        cellEntries.forEach(([cellKey, rpmMap]) => {
-            if (!rpmMap || typeof rpmMap !== "object") {
-                return;
-            }
-
-            Object.entries(rpmMap).forEach(([rpmKey, values]) => {
-                const heights = Array.isArray(values?.heights)
-                    ? values.heights.map((value) => Number(value)).filter((value) => Number.isFinite(value))
-                    : [];
-                const drags = Array.isArray(values?.drags)
-                    ? values.drags.map((value) => Number(value)).filter((value) => Number.isFinite(value))
-                    : [];
-                if (heights.length < 2 || drags.length < 2) {
-                    return;
-                }
-
-                const pairs = heights
-                    .map((height, index) => ({ height, drag: drags[index] }))
-                    .filter((pair) => Number.isFinite(pair.height) && Number.isFinite(pair.drag))
-                    .sort((left, right) => left.height - right.height);
-
-                if (pairs.length < 2) {
-                    return;
-                }
-
-                const card = document.createElement("div");
-                card.className = "pv-plot";
-                card.style.display = "flex";
-                card.style.width = "100%";
-                card.style.height = "250px";
-                container.appendChild(card);
-
-                const xValues = pairs.map((pair) => pair.height);
-                const yValues = pairs.map((pair) => pair.drag);
-                const numericViscosity = Number(values?.viscosity_kcP ?? values?.eta);
-                const numericH0 = Number(values?.h0);
-                const traces = [{
-                    x: xValues,
-                    y: yValues,
-                    mode: "markers",
-                    type: "scatter",
-                    name: "Measured data",
-                    marker: { size: 7, color: "#5B8DEF", line: { color: "#1F3B73", width: 1 } },
-                    hovertemplate: "h=%{x:.3f} mm<br>drag=%{y:.3f}<extra></extra>",
-                }];
-
-                if (Number.isFinite(numericViscosity) && Number.isFinite(numericH0)) {
-                    const xMin = Math.min(...xValues);
-                    const xMax = Math.max(...xValues);
-                    const span = xMax - xMin || 1;
-                    const grid = Array.from({ length: 120 }, (_, index) => xMin + (span * index) / 119);
-                    const a = numericViscosity / 2.330;
-                    const fittedY = grid.map((height) => {
-                        const denominator = height - numericH0;
-                        if (Math.abs(denominator) < 1e-6) {
-                            return null;
-                        }
-                        return a / denominator;
-                    });
-                    traces.push({
-                        x: grid,
-                        y: fittedY,
-                        mode: "lines",
-                        type: "scatter",
-                        name: "Hyperbolic fit",
-                        line: { width: 2, color: "#F5A623", dash: "dash" },
-                        hoverinfo: "skip",
-                    });
-                }
-
-                const layout = {
-                    title: {
-                        text: `Cell ${cellKey} | RPM ${Number(rpmKey).toFixed(3)} | η ≈ ${Number.isFinite(numericViscosity) ? numericViscosity.toFixed(2) : "N/A"} kcP`,
-                        font: { size: 13 },
-                    },
-                    paper_bgcolor: "transparent",
-                    plot_bgcolor: "rgba(255,255,255,0.03)",
-                    font: { color: "#C9D1D9", size: 11 },
-                    margin: { t: 40, r: 14, b: 42, l: 52 },
-                    xaxis: { title: "Z Height (mm)", gridcolor: "#21262D", zeroline: false },
-                    yaxis: { title: "Rotational Drag", gridcolor: "#21262D", zeroline: false },
-                    showlegend: false,
-                };
-
-                Plotly.newPlot(card, traces, layout, { responsive: true, displayModeBar: false }).catch((err) => {
-                    console.warn("Failed to render predicted viscosity mini chart:", err);
-                });
-            });
-        });
-    }
-
-    _buildPredictedViscosityOverlayTrace(cellId, rpm, viscosityKcP, heights, h0) {
-        const numericViscosity = Number(viscosityKcP);
-        const numericH0 = Number(h0);
-        if (!Number.isFinite(numericViscosity) || !Number.isFinite(numericH0) || !Array.isArray(heights)) {
-            return null;
-        }
-
-        const xValues = heights
-            .map((value) => Number(value))
-            .filter((value) => Number.isFinite(value))
-            .sort((left, right) => left - right);
-        if (xValues.length < 2) {
-            return null;
-        }
-
-        const xMin = Math.min(...xValues);
-        const xMax = Math.max(...xValues);
-        const xRange = xMax - xMin || 1;
-        const grid = Array.from({ length: 120 }, (_, index) => xMin + (xRange * index) / 119);
-        const a = numericViscosity / 2.330;
-        const yValues = grid.map((height) => {
-            const denominator = height - numericH0;
-            if (Math.abs(denominator) < 1e-6) {
-                return null;
-            }
-            return a / denominator;
-        });
-
-        const finiteY = yValues.filter((value) => Number.isFinite(value));
-        return {
-            trace: [{
-                x: grid,
-                y: yValues,
-                mode: "lines",
-                type: "scatter",
-                name: `η ≈ ${numericViscosity.toFixed(1)} kcP`,
-                line: { dash: "dash", color: "#F5A623", width: 2 },
-                hoverinfo: "skip",
-                showlegend: true,
-            }],
-            annotations: finiteY.length ? [{
-                text: `η ≈ ${numericViscosity.toFixed(2)} kcP`,
-                x: xMin + (xRange / 2),
-                y: Math.max(...finiteY),
-                xref: "x",
-                yref: "y",
-                showarrow: false,
-                yshift: 16,
-                font: { color: "#F5A623", size: 12 },
-                bgcolor: "rgba(0,0,0,0.35)",
-            }] : []
-        };
-    }
-
-    _applyPredictedViscosityOverlaysToLivePlot(activeCell = null) {
-        if (!this.el.zSparklinePlot || !this.predictedViscosityResults) {
-            return;
-        }
-
-        const targetCell = activeCell != null ? Number(activeCell) : Number(this.getActiveGraphCellId());
-        if (!Number.isFinite(targetCell)) {
-            Plotly.relayout(this.el.zSparklinePlot, { annotations: [] }).catch(() => {});
-            return;
-        }
-
-        const cellResults = this.predictedViscosityResults[String(targetCell)];
-        if (!cellResults || typeof cellResults !== 'object') {
-            Plotly.relayout(this.el.zSparklinePlot, { annotations: [] }).catch(() => {});
-            return;
-        }
-
-        const overlays = [];
-        const annotations = [];
-        Object.entries(cellResults).forEach(([rpmKey, values]) => {
-            const overlay = this._buildPredictedViscosityOverlayTrace(
-                targetCell,
-                rpmKey,
-                values?.viscosity_kcP,
-                values?.heights || [],
-                values?.h0
-            );
-            if (overlay) {
-                overlays.push(...overlay.trace);
-                annotations.push(...overlay.annotations);
-            }
-        });
-
-        if (overlays.length > 0) {
-            Plotly.addTraces(this.el.zSparklinePlot, overlays).catch((err) => {
-                console.error('Failed to restore predicted viscosity overlays:', err);
-            });
-            Plotly.relayout(this.el.zSparklinePlot, { annotations }).catch(() => {});
-        } else {
-            Plotly.relayout(this.el.zSparklinePlot, { annotations: [] }).catch(() => {});
-        }
-    }
-
-    _predictedViscositySummarySection(exp) {
-        const s = exp?.settings || {};
-        if (!s.predicted_viscosity_enabled) {
-            return `
-                <div class="summary-section">
-                    <h3>Predicted Viscosity</h3>
-                    <p>Predicted Viscosity: OFF</p>
-                </div>`;
-        }
-
-        const summary = exp?.predicted_viscosity_summary;
-        const rows = [];
-        if (summary && typeof summary === 'object') {
-            Object.entries(summary).forEach(([cellKey, rpmMap]) => {
-                if (!rpmMap || typeof rpmMap !== 'object') {
-                    return;
-                }
-                Object.entries(rpmMap).forEach(([rpm, values]) => {
-                    const eta = values?.viscosity_kcP ?? values?.eta;
-                    const h0 = values?.h0;
-                    rows.push(`
-                        <tr>
-                            <td>${cellKey}</td>
-                            <td>${rpm}</td>
-                            <td>${eta != null && Number.isFinite(Number(eta)) ? Number(eta).toFixed(3) : 'N/A'}</td>
-                            <td>${h0 != null && Number.isFinite(Number(h0)) ? Number(h0).toFixed(3) : 'N/A'}</td>
-                        </tr>`);
-                });
-            });
-        }
-
-        return `
-            <div class="summary-section">
-                <h3>Predicted Viscosity</h3>
-                <p>Status: <strong>ON</strong></p>
-                <table class="summary-viscosity-table">
-                    <thead><tr><th>Cell</th><th>RPM</th><th>η (kcP)</th><th>h₀ (mm)</th></tr></thead>
-                    <tbody>${rows.length ? rows.join("") : '<tr><td colspan="4">No predicted viscosity results available</td></tr>'}</tbody>
-                </table>
-            </div>`;
-    }
-
     startTimerLoop() {
         this.timerInterval = window.setInterval(() => {
             this.updateTimers();
@@ -1042,50 +699,20 @@ class ViscometryDashboard {
     }
 
     fetchInitialData() {
-        // Use allSettled so a single failed endpoint doesn't kill the whole
-        // bootstrap — we want each piece of persisted state restored
-        // independently (status, measurements, calibration, predicted viscosity).
-        Promise.allSettled([
+        Promise.all([
             fetch("/api/status").then((r) => r.json()),
             fetch("/api/measurement_data").then((r) => r.json()),
-            fetch("/api/calibration/status").then((r) => r.json()),
-            fetch("/api/predicted_viscosity_results").then((r) => r.json())
+            fetch("/api/calibration/status").then((r) => r.json())
         ])
-            .then(([statusRes, measurementRes, calRes, predictedRes]) => {
-                const status = statusRes.status === "fulfilled" ? statusRes.value : null;
-                const measurementData = measurementRes.status === "fulfilled" ? measurementRes.value : null;
-                const calSummary = calRes.status === "fulfilled" ? calRes.value : null;
-                const predictedViscosityResults = predictedRes.status === "fulfilled" ? predictedRes.value : null;
-
-                if (status && typeof status === "object") {
-                    this.applyStatusSnapshot(status);
-                }
-                if (Array.isArray(measurementData) && this.measurements.length === 0) {
+            .then(([status, measurementData, calSummary]) => {
+                this.applyStatusSnapshot(status);
+                if (Array.isArray(measurementData)) {
                     measurementData.forEach((m) => this.ingestMeasurement(m, true));
-                    if (this.selectedGraphCell === null && this.measurementsByCell.size > 0) {
-                        this.selectedGraphCell = this.measurementsByCell.keys().next().value;
-                        this.updateGraphCellTabs();
-                    }
                     this.refreshLivePlots();
                 }
-                if (calSummary && typeof calSummary === "object" && !calSummary.error) {
-                    this.applyCalibrationStatus(calSummary);
-                }
-                if (predictedViscosityResults && typeof predictedViscosityResults === 'object' && !predictedViscosityResults.error) {
-                    this.predictedViscosityResults = this._mergePredictedViscosityResults(
-                        this.predictedViscosityResults,
-                        predictedViscosityResults
-                    );
-                }
-                this.renderPredictedViscosityPlots();
-                this.refreshLivePlots();
+                this.applyCalibrationStatus(calSummary);
                 this.el.body.classList.remove("loading");
-                this.pushStatusMessage((status && status.status_message) || "Connected and ready");
-
-                if (!status) {
-                    this.statusError = true;
-                    this.pushStatusMessage("Status bootstrap partially failed, waiting for live socket updates");
-                }
+                this.pushStatusMessage(status.status_message || "Connected and ready");
             })
             .catch(() => {
                 this.statusError = true;
@@ -1429,25 +1056,7 @@ class ViscometryDashboard {
     }
 
     connectSocket() {
-        if (typeof io !== "function") {
-            this.isConnected = false;
-            this.el.connectionDot.classList.remove("connected");
-            this.el.connectionDot.classList.add("disconnected");
-            this.showDisconnectedBanner(true);
-            this.pushStatusMessage("Socket.IO client script not loaded yet; retrying...");
-            setTimeout(() => this.connectSocket(), 2000);
-            return;
-        }
-
-        // No reconnectionAttempts cap — keep retrying until the server is ready.
-        // The server starts in a background thread and may take a moment to accept
-        // connections, especially when relaunched under .venv64 on the lab computer.
-        this.socket = io({
-            autoConnect: false,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            timeout: 10000,
-        });
+        this.socket = io({ reconnectionAttempts: 5 });
 
         this.socket.on("connect", () => {
             this.isConnected = true;
@@ -1464,24 +1073,7 @@ class ViscometryDashboard {
             this.showDisconnectedBanner(true);
         });
 
-        this.socket.on("connect_error", () => {
-            // Server not yet ready or unreachable — client will keep retrying automatically.
-            if (!this.isConnected) {
-                this.el.connectionDot.classList.remove("connected");
-                this.el.connectionDot.classList.add("disconnected");
-                this.showDisconnectedBanner(true);
-            }
-        });
-
         this.socket.on("status_update", (data) => {
-            // If we are receiving live status packets, the socket is connected even
-            // if an early connect event was missed during fast local handshakes.
-            if (!this.isConnected) {
-                this.isConnected = true;
-                this.el.connectionDot.classList.remove("disconnected");
-                this.el.connectionDot.classList.add("connected");
-                this.showDisconnectedBanner(false);
-            }
             if (data && typeof data === "object") {
                 if (data.position || data.current_cell !== undefined || data.current_rpm !== undefined || data.is_running !== undefined) {
                     this.applyStatusSnapshot(data);
@@ -1495,27 +1087,6 @@ class ViscometryDashboard {
 
         this.socket.on("control_settings_update", (settings) => {
             this.populateControlSettings(settings);
-        });
-
-        this.socket.on("measurement_history", (data) => {
-            if (!data || !Array.isArray(data.measurements)) {
-                return;
-            }
-
-            if (data.measurements.length > this.measurements.length) {
-                this.measurements = [];
-                this.measurementsByCell.clear();
-                this.latestTorqueByCell.clear();
-                this.hitPoints.clear();
-
-                data.measurements.forEach((m) => this.ingestMeasurement(m, true));
-
-                if (this.selectedGraphCell === null && this.measurementsByCell.size > 0) {
-                    this.selectedGraphCell = this.measurementsByCell.keys().next().value;
-                }
-                this.updateGraphCellTabs();
-                this.refreshLivePlots();
-            }
         });
 
         this.socket.on("position_update", (data) => {
@@ -1659,39 +1230,6 @@ class ViscometryDashboard {
             }
         });
 
-        this.socket.on("predicted_viscosity_plot_data", (data) => {
-            if (data && data.heights && data.drags && data.viscosity_kcP != null) {
-                this._storePredictedViscosityResult(data.cell_id, data.rpm, data.viscosity_kcP, data.h0, data.heights, data.drags);
-                this.renderPredictedViscosityPlot(
-                    data.cell_id,
-                    data.rpm,
-                    data.viscosity_kcP,
-                    data.heights,
-                    data.drags,
-                    data.h0
-                );
-            }
-        });
-
-        this.socket.on("predicted_viscosity_results_snapshot", (data) => {
-            if (data && typeof data === 'object' && !data.error) {
-                this.predictedViscosityResults = this._normalizePredictedViscosityResults(data);
-            }
-            this.renderPredictedViscosityPlots();
-            this.refreshLivePlots();
-        });
-
-        this.socket.on("clear_predicted_viscosity", () => {
-            this.predictedViscosityResults = {};
-            if (this.el.predictedViscosityContainer) {
-                this.el.predictedViscosityContainer.innerHTML = '';
-            }
-            if (this.el.zSparklinePlot) {
-                Plotly.relayout(this.el.zSparklinePlot, { annotations: [] }).catch(() => {});
-            }
-            this.refreshLivePlots();
-        });
-
         this.socket.on("clear_dashboard", () => {
             this.clearDashboard();
         });
@@ -1710,9 +1248,6 @@ class ViscometryDashboard {
             this.isCalibrationRun = false;
         });
 
-        // Connect only after all event handlers are attached.
-        this.socket.connect();
-
     }
 
     clearDashboard() {
@@ -1727,7 +1262,6 @@ class ViscometryDashboard {
         this._pendingCompletedCell = null;
         this.selectedGraphCell = null;
         this.sparklineData = [];
-        this.predictedViscosityResults = {};
         this.position = { x: 0, y: 0, z: 0 };
         this.currentCell = null;
         this.currentRPM = 0;
@@ -1852,19 +1386,11 @@ class ViscometryDashboard {
             this.updateCompletionBar();
             this.updateCellVisuals();
         }
-        if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0 && this.measurements.length === 0) {
-            status.measurement_data.forEach((m) => this.ingestMeasurement(m, true));
-            this.refreshLivePlots();
-        }
         if (status.recalibration_mode_active !== undefined) {
             this.recalibrationModeActive = Boolean(status.recalibration_mode_active);
         }
         if (status.recalibration_target_count !== undefined) {
             this.recalibrationTargetCount = Number(status.recalibration_target_count) || 0;
-        }
-        if (status.predicted_viscosity_results && !status.predicted_viscosity_results.error) {
-            this.predictedViscosityResults = this._normalizePredictedViscosityResults(status.predicted_viscosity_results);
-            this.renderPredictedViscosityPlots();
         }
 
         if (status.calibration_mode !== undefined) {
@@ -1902,16 +1428,12 @@ class ViscometryDashboard {
             this.setInstrumentStatus("pump", Boolean(status.instrument_status.pump));
         }
 
-        // Apply calibration summary from the snapshot when present, so the
-        // Per-Cell Z-Height pill reflects saved calibration even if the
-        // dedicated calibration_status_update event hasn't arrived yet.
-        if (status.calibration_summary && typeof status.calibration_summary === "object") {
-            this.applyCalibrationStatus(status.calibration_summary);
+        if (status.is_running !== undefined) {
+            this.setRunningState(Boolean(status.is_running));
+            if (!status.is_running && this.uiState === "running") {
+                this.setUiState("idle");
+            }
         }
-
-        // Restore experiment / cell start timestamps BEFORE toggling the
-        // running state so setRunningState() can detect that we are joining
-        // an in-progress run and skip its "new run" reset block.
         if (status.experiment_start_ts) {
             const startTs = Number(status.experiment_start_ts);
             if (Number.isFinite(startTs)) {
@@ -1926,34 +1448,7 @@ class ViscometryDashboard {
             }
         }
 
-        if (status.is_running !== undefined) {
-            const nextRunning = Boolean(status.is_running);
-            // If we're picking up an already-running experiment (refresh or
-            // remote viewer joining mid-run), pretend the previous state was
-            // also "running" so setRunningState doesn't clear measuredCells,
-            // completedCells, cellStart, or the elapsed display.
-            const joiningInProgress = nextRunning && this.experimentStart != null;
-            this.setRunningState(nextRunning, joiningInProgress ? true : null);
-            // Force-sync the Apply / Start / Stop button states to the
-            // authoritative server flag. setRunningState only flips uiState
-            // when it isn't already "running"; this guarantees a refresh or
-            // a remote viewer always sees the correct enabled/disabled set.
-            if (nextRunning) {
-                this.setUiState("running");
-            } else if (this.uiState === "running") {
-                this.setUiState("idle");
-            }
-            // Render elapsed/cell timers immediately so the display doesn't
-            // sit at "00:00:00" until the next 1Hz tick after a refresh.
-            this.updateTimers();
-        }
-
-        // Ingest historical measurement_data from the snapshot ONLY when the
-        // client side has none yet (fresh page load). After that, the dedicated
-        // /api/measurement_data fetch and live `new_measurement` events keep us
-        // up to date — re-ingesting here would duplicate every point.
-        if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0
-                && this.measurements.length === 0) {
+        if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0) {
             status.measurement_data.forEach((m) => this.ingestMeasurement(m, true));
             this.refreshLivePlots();
         }
@@ -2421,8 +1916,6 @@ class ViscometryDashboard {
                 this.el.torqueZEmpty.classList.toggle("hidden", torqueTrace.length > 0);
             }
         }
-
-        this._applyPredictedViscosityOverlaysToLivePlot(activeCell);
     }
 
     updateGauge(targetRPM) {
@@ -3052,7 +2545,6 @@ class ViscometryDashboard {
             cellDurations,
             runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
             runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
-            predicted_viscosity_summary: JSON.parse(JSON.stringify(this.predictedViscosityResults || {})),
             csv: csvHeader + csvBody
         };
 
@@ -3190,17 +2682,85 @@ class ViscometryDashboard {
             `<strong>Smart CV threshold:</strong> ${s.smart_cv_threshold ?? "-"}`,
             `<strong>Smart window size:</strong> ${s.smart_window_size ?? "-"}`,
         ];
-        const predictedViscositySection = this._predictedViscositySummarySection(exp);
         const leftEl = this.el.summaryMetaLeft;
         const rightEl = this.el.summaryMetaRight;
         if (leftEl) {
             leftEl.innerHTML = leftLines.map((line) => line.startsWith("<table") ? line : `<div>${line}</div>`).join("");
         }
         if (rightEl) {
-            rightEl.innerHTML = rightLines.map((line) => `<div>${line}</div>`).concat([predictedViscositySection]).join("");
-        }
+            // Inject predicted-viscosity summary into rightLines if available in experiment
+            const pvLines = [];
+            // Try to read precomputed summary from exp.predicted_viscosity_summary
+            if (exp.predicted_viscosity_summary && typeof exp.predicted_viscosity_summary === 'object') {
+                pvLines.push('<strong>Predicted Viscosity:</strong>');
+                Object.entries(exp.predicted_viscosity_summary).forEach(([cellKey, rpmMap]) => {
+                    // cellKey expected like 'cell_7'
+                    Object.entries(rpmMap).forEach(([rpm, vals]) => {
+                        const eta = vals?.eta != null ? Number(vals.eta).toFixed(6) : '—';
+                        const h0 = vals?.h0 != null ? Number(vals.h0).toFixed(6) : '—';
+                        pvLines.push(`<div>Cell ${cellKey} @ ${rpm} RPM: η=${eta}, h₀=${h0}</div>`);
+                    });
+                });
+            } else {
+                // Attempt to compute summary from exp.latestPerZ if present
+                const byCellRpmForPred = {};
+                (exp.latestPerZ || []).forEach((p) => {
+                    const cellId = Number(p.cell_id);
+                    const rpm = Number(p.rpm);
+                    if (!Number.isFinite(cellId) || !Number.isFinite(rpm)) return;
+                    const key = `${cellId}|${rpm.toFixed(3)}`;
+                    if (!byCellRpmForPred[key]) byCellRpmForPred[key] = [];
+                    byCellRpmForPred[key].push(p);
+                });
+                const pvEntries = [];
+                Object.entries(byCellRpmForPred).forEach(([key, pts]) => {
+                    const [cellStr, rpmStr] = key.split('|');
+                    const cellId = Number(cellStr);
+                    const rpm = Number(rpmStr);
+                    // Filter valid points: before first hit_detected and torque above threshold
+                    // Include all points (pre-hit and post-hit) that pass torque floor threshold
+                    const valid = [];
+                    for (const point of pts.sort((a,b) => Number(a.timestamp) - Number(b.timestamp))) {
+                        const torque = Number(point.torque_percent ?? 0);
+                        if (Number.isFinite(torque) && torque > (s.low_torque_liquid_contact_threshold_pct ?? 20)) {
+                            valid.push(point);
+                        }
+                    }
+                    if (valid.length >= 3) {
+                        // compute linearized fit: 1/y = a*h + b
+                        const K = 2.330;
+                        const xs = valid.map((v) => Number(v.height));
+                        const ys = valid.map((v) => Number(v.rotational_drag));
+                        const invY = ys.map((v) => (v > 0 ? 1.0 / v : NaN)).filter(Number.isFinite);
+                        if (invY.length === ys.length) {
+                            const n = xs.length;
+                            let sumX=0,sumY=0,sumXY=0,sumXX=0;
+                            for (let i=0;i<n;i++){ sumX+=xs[i]; sumY+=invY[i]; sumXY+=xs[i]*invY[i]; sumXX+=xs[i]*xs[i]; }
+                            const denom = (n*sumXX - sumX*sumX);
+                            if (Math.abs(denom) > 1e-12) {
+                                const a = (n*sumXY - sumX*sumY)/denom;
+                                const b = (sumY - a*sumX)/n;
+                                const eta = a !== 0 ? 1.0/(a*K) : null;
+                                const h0 = (a !== 0) ? (b / a) : null;
+                                const etaText = eta != null && Number.isFinite(eta) ? eta.toFixed(6) : '—';
+                                const h0Text = h0 != null && Number.isFinite(h0) ? h0.toFixed(6) : '—';
+                                pvEntries.push({cellId, rpm, eta: etaText, h0: h0Text, xs: xs, ys: ys});
+                            }
+                        }
+                    }
+                });
+                if (pvEntries.length > 0) {
+                    pvLines.push('<strong>Predicted Viscosity:</strong>');
+                    pvEntries.forEach((e) => {
+                        pvLines.push(`<div>Cell ${e.cellId} @ ${Number(e.rpm).toFixed(3)} RPM: η=${e.eta}, h₀=${e.h0}</div>`);
+                    });
+                    // Also render plots
+                    this.renderPredictedViscosityPlots(pvEntries);
+                }
+            }
 
-        this.renderPredictedViscosityPlots(exp.predicted_viscosity_summary || {});
+            rightEl.innerHTML = rightLines.map((line) => `<div>${line}</div>`).concat(pvLines.map((line) => `<div>${line}</div>`)).join("");
+        }
 
         this.syncCustomHitpointControlsForExperiment(exp);
 
@@ -3377,6 +2937,66 @@ class ViscometryDashboard {
             ? raw
             : (raw && typeof raw === "object" ? Number(raw.hit_z) : Number(raw));
         return Number.isFinite(num) ? num : null;
+    }
+
+    renderPredictedViscosityPlots(pvEntries) {
+        // pvEntries: array of {cellId, rpm, eta, h0, xs, ys}
+        const container = document.getElementById('predicted-viscosity-plots-container');
+        if (!container) return;
+        container.innerHTML = '';
+        pvEntries.forEach((entry, idx) => {
+            const div = document.createElement('div');
+            div.className = 'pv-plot';
+            div.style.width = '100%';
+            div.style.height = '320px';
+            div.style.marginBottom = '12px';
+            container.appendChild(div);
+
+            const xs = entry.xs.slice();
+            const ys = entry.ys.slice();
+            // sort by x ascending for plot
+            const pairs = xs.map((x,i) => ({x: Number(x), y: Number(ys[i])})).sort((a,b)=>a.x-b.x);
+            const xSorted = pairs.map(p=>p.x);
+            const ySorted = pairs.map(p=>p.y);
+
+            // Compute fitted curve using eta/h0 if numeric, else skip curve
+            const K = 2.330;
+            let etaNum = Number(entry.eta);
+            let h0Num = Number(entry.h0);
+            const traces = [];
+            traces.push({
+                x: xSorted,
+                y: ySorted,
+                mode: 'markers',
+                type: 'scatter',
+                name: `Cell ${entry.cellId} @ ${Number(entry.rpm).toFixed(3)} RPM - data`,
+                marker: { size: 6 }
+            });
+            if (Number.isFinite(etaNum) && Number.isFinite(h0Num)) {
+                const xMin = Math.min(...xSorted);
+                const xMax = Math.max(...xSorted);
+                const grid = [];
+                const N = 200;
+                for (let i=0;i<N;i++) grid.push(xMin + (xMax - xMin) * (i/(N-1)));
+                const fittedY = grid.map((h) => (etaNum * K) / (h + h0Num));
+                traces.push({
+                    x: grid,
+                    y: fittedY,
+                    mode: 'lines',
+                    type: 'scatter',
+                    name: `Fitted η=${etaNum.toFixed(6)}`,
+                    line: { width: 2 }
+                });
+            }
+
+            const layout = {
+                margin: { t: 30, r: 10, l: 50, b: 40 },
+                xaxis: { title: 'Z-Height (mm)' },
+                yaxis: { title: 'Rotational Drag' },
+                showlegend: true
+            };
+            try { Plotly.react(div, traces, layout, {responsive:true, displayModeBar:false}); } catch (e) { console.warn('Plotly plot failed', e); }
+        });
     }
 
     syncCustomHitpointControlsForExperiment(exp) {
@@ -3763,17 +3383,5 @@ class ViscometryDashboard {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    try {
-        window.viscometryDashboard = new ViscometryDashboard();
-    } catch (err) {
-        console.error("Failed to initialize viscometry dashboard:", err);
-        const banner = document.getElementById("disconnect-banner");
-        if (banner) {
-            banner.classList.remove("hidden");
-            const messageNode = banner.querySelector("span:last-child");
-            if (messageNode) {
-                messageNode.textContent = "Dashboard failed to initialize; check browser console for details.";
-            }
-        }
-    }
+    window.viscometryDashboard = new ViscometryDashboard();
 });
