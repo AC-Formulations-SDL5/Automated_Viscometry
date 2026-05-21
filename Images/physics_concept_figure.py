@@ -59,17 +59,19 @@ G_GREY_900 = "#202124"
 G_GREY_700 = "#5F6368"
 G_GREY_300 = "#DADCE0"
 G_GREY_100 = "#F1F3F4"
+G_GREEN    = "#34A853"  # Google Material green
+G_ORANGE   = "#FFA500"  # Google Material orange
 
 ARROW_C = G_GREY_700
 TEXT_C  = G_GREY_900
 AXIS_C  = G_GREY_700
 
 # Font sizes (centralized so easy to bump)
-FS_TITLE  = 25
-FS_EQ     = 20
-FS_LABEL  = 20
-FS_AXIS   = 20
-FS_NOTE   = 16
+FS_TITLE  = 32
+FS_EQ     = 26
+FS_LABEL  = 26
+FS_AXIS   = 26
+FS_NOTE   = 22
 
 HERE = Path(__file__).parent
 PHYSICS_PNG = HERE / "physics_overview.png"
@@ -124,7 +126,15 @@ def axis_arrow(ax, xy_from, xy_to):
 # --------------------------------------------------------------------------- #
 # Panel 1 - Physics Overview                                                  #
 # --------------------------------------------------------------------------- #
-def draw_overview(ax):
+def draw_overview(
+    ax,
+    *,
+    show_title: bool = True,
+    show_caption: bool = True,
+    cone_label_position: str = "left",      # "left" or "top"
+    plate_label_offset_below: float = 0.04,  # extra distance below plate bottom
+    h_dimension_style: str = "inline",       # "inline" or "left_extension"
+):
     """Pseudo-3-D perspective schematic of the cone-and-plate viscometer.
 
     A small-angle cone (apex pointing down) rotates about the vertical
@@ -133,6 +143,22 @@ def draw_overview(ax):
     liquid.  Cone angle is exaggerated for visual clarity; tangential
     velocity vectors at the rim indicate the rotation direction, and
     the cone half-angle alpha and disk radius R are annotated.
+
+    Parameters
+    ----------
+    show_title, show_caption : bool
+        Toggle the "Physics Overview" title and the equation caption.
+    cone_label_position : {"left", "top"}
+        Place the "Cone" label to the left of the body or on top of the
+        visible top cap disk.
+    plate_label_offset_below : float
+        Extra vertical offset below the plate's lowest visible edge for
+        the "Stationary plate" label.
+    h_dimension_style : {"inline", "left_extension"}
+        "inline" draws the h double-arrow at the axis with the label
+        beside it; "left_extension" draws horizontal extension lines
+        leftward from the cone tip and the plate centre and places the
+        arrow and label between them (engineering-drawing style).
     """
     clean(ax)
     # Match the axes window used by panels 2 & 3 so all sub-figures
@@ -148,13 +174,13 @@ def draw_overview(ax):
     plate_rx     = 0.50
     plate_ry     = 0.10            # perspective squash of circular plate
 
-    apex_y       = plate_top_y + 0.022   # cone apex sits just above plate
+    apex_y       = plate_top_y + 0.075  # cone apex raised to expose the gap
     cone_top_y   = 0.40
     cone_rx      = 0.38
     cone_ry      = 0.080           # perspective squash of cone top disk
 
-    shaft_rx     = 0.060
-    shaft_ry     = 0.014
+    shaft_rx     = 0.120  # was 0.060
+    shaft_ry     = 0.028  # was 0.014
     shaft_h      = 0.13
 
     # ------- Stationary plate (disk in perspective) -------
@@ -173,9 +199,27 @@ def draw_overview(ax):
         plate_side, closed=True,
         facecolor=G_GREY_300, edgecolor=G_GREY_700, lw=1.2, zorder=1,
     ))
+    # Plate top: radial gradient darkening toward the axis of rotation
+    # (light grey at the rim -> dark grey at r = 0).
+    n_grad = 32
+    c_outer = np.array([241, 243, 244]) / 255.0   # G_GREY_100
+    c_inner = np.array([ 80,  83,  88]) / 255.0   # slightly darker than G_GREY_700
+    for i in range(n_grad):
+        frac  = i / (n_grad - 1)        # 0 = outermost, 1 = centre
+        scale = 1.0 - frac * 0.97       # keep a tiny non-zero core
+        rx_i  = plate_rx * scale
+        ry_i  = plate_ry * scale
+        t     = frac ** 0.85            # mild nonlinear darkening
+        color = tuple(c_outer + (c_inner - c_outer) * t)
+        ax.add_patch(Ellipse(
+            (xc, plate_top_y), 2 * rx_i, 2 * ry_i,
+            facecolor=color, edgecolor="none",
+            zorder=2.0 + i * 0.001,
+        ))
+    # Outer rim outline of the plate top
     ax.add_patch(Ellipse(
         (xc, plate_top_y), 2 * plate_rx, 2 * plate_ry,
-        facecolor=G_GREY_100, edgecolor=G_GREY_700, lw=1.2, zorder=2,
+        facecolor="none", edgecolor=G_GREY_700, lw=1.2, zorder=2.4,
     ))
 
     # ------- Liquid domain: transparent cylinder enclosing the cone -------
@@ -316,7 +360,6 @@ def draw_overview(ax):
         phi = np.deg2rad(phi_deg)
         px = xc + cone_rx * np.cos(phi)
         py = cone_top_y + cone_ry * np.sin(phi)
-        # Tangent direction for CCW rotation about +z
         tx = -cone_rx * np.sin(phi)
         ty =  cone_ry * np.cos(phi)
         n = np.hypot(tx, ty)
@@ -324,64 +367,104 @@ def draw_overview(ax):
         ax.annotate(
             "",
             xy=(px + tx, py + ty), xytext=(px, py),
-            arrowprops=dict(arrowstyle="-|>", color=G_RED,
-                            lw=1.6, mutation_scale=12),
+            arrowprops=dict(arrowstyle="-|>", color=G_ORANGE,
+                            lw=3.0, mutation_scale=20),
             zorder=8.0,
         )
-    ax.text(xc + cone_rx + 0.03, cone_top_y - cone_ry - 0.025,
-            r"$v=\omega r$", fontsize=FS_NOTE + 2, color=G_RED,
-            ha="left", va="top")
 
     # ------- Velocity profile vs z at the front rim (phi = -90) -------
-    # Linear shear profile in the gap: v(z) = (omega * r) * (z / H), zero at
-    # the stationary plate and maximum at the cone surface.
     prof_x      = xc
-    prof_y_top  = cone_top_y - cone_ry           # cone surface at front rim
-    prof_y_bot  = plate_top_y                    # stationary plate
-    n_profile   = 5                              # arrows between top and bottom
+    prof_y_top  = cone_top_y - cone_ry
+    prof_y_bot  = plate_top_y
+    n_profile   = 5
     for i in range(1, n_profile):
-        frac = i / n_profile                     # 0 < frac < 1
+        frac = i / n_profile
         py_i = prof_y_bot + frac * (prof_y_top - prof_y_bot)
         L_i  = frac * rim_arrow_len
         ax.annotate(
             "",
             xy=(prof_x + L_i, py_i), xytext=(prof_x, py_i),
-            arrowprops=dict(arrowstyle="-|>", color=G_RED,
-                            lw=1.4, mutation_scale=10, alpha=0.95),
+            arrowprops=dict(arrowstyle="-|>", color=G_ORANGE,
+                            lw=2.2, mutation_scale=14, alpha=0.95),
             zorder=8.0,
         )
-    # Dashed envelope showing the linear profile
-    ax.plot([prof_x, prof_x + rim_arrow_len],
+        ax.plot([prof_x, prof_x + rim_arrow_len],
             [prof_y_bot, prof_y_top],
-            color=G_RED, lw=1.0, ls="--", alpha=0.9, zorder=8.0)
-    # Tiny z-axis indicator on the left of the profile column
-    z_axis_x = prof_x - 0.055
-    ax.annotate(
-        "",
-        xy=(z_axis_x, prof_y_top + 0.020),
-        xytext=(z_axis_x, prof_y_bot - 0.005),
-        arrowprops=dict(arrowstyle="-|>", color=G_GREY_700,
-                        lw=1.1, mutation_scale=10),
-        zorder=8.0,
-    )
-    ax.text(z_axis_x - 0.012, prof_y_top + 0.022, r"$z$",
-            fontsize=FS_NOTE + 2, color=G_GREY_700,
-            ha="right", va="top")
-    ax.text(prof_x + rim_arrow_len + 0.015,
-            prof_y_top - 0.005, r"$v(z)$",
-            fontsize=FS_NOTE + 2, color=G_RED,
-            ha="left", va="center")
-
+            color=G_ORANGE, lw=1.2, ls="--", alpha=0.9, zorder=8.0)
+        # Add tangential velocity profile label in orange, shifted right and up
+        ax.text(prof_x + rim_arrow_len + 0.325,
+            (prof_y_top + prof_y_bot) / 2 + 0.225,
+            r"$u_\theta = r\,\omega$",
+            fontsize=FS_LABEL + 6, color=G_ORANGE,
+            ha="left", va="center", fontweight="bold")
     # ------- Cone half-angle alpha at the apex -------
     ang_deg = float(np.degrees(np.arctan2(cone_top_y - apex_y, cone_rx)))
     arc_r = 0.11
+    ax.plot([apex[0], apex[0] + arc_r], [apex[1], apex[1]],
+            color=G_GREEN, lw=2.0, ls="-", zorder=11)
     ax.add_patch(Arc(
         apex, 2 * arc_r, 2 * arc_r,
         theta1=0, theta2=ang_deg,
-        color=G_RED, lw=1.6, zorder=11,
+        color=G_GREEN, lw=2.6, zorder=11,
     ))
-    ax.text(apex[0] + arc_r * 0.72, apex_y + arc_r * 0.28,
-            r"$\alpha$", fontsize=FS_LABEL + 2, color=G_RED, va="center")
+    ax.text(apex[0] + arc_r * 1.05, apex_y + arc_r * 0.5,
+            r"$\alpha$", fontsize=FS_LABEL + 4, color=G_GREEN, va="center")
+
+    # ------- Plate centre marker + gap h between cone tip and plate -------
+    # Vertical centre line (dashed) from plate centre up through cone apex.
+    ax.plot([xc, xc], [plate_top_y, apex_y],
+            color=G_RED, lw=1.0, ls=(0, (2, 2)), alpha=0.85, zorder=11.4)
+
+    if h_dimension_style == "left_extension":
+        # Engineering-style dimension: horizontal extension lines from the
+        # cone tip and plate centre running leftward, with the double-arrow
+        # and label placed between them at the extension end.
+        h_dim_x = xc - 0.22
+        ext_inner = xc - 0.010      # small gap so lines don't touch the axis
+        ext_outer = h_dim_x - 0.025
+        for y_h in (apex_y, plate_top_y):
+            ax.plot([ext_inner, ext_outer], [y_h, y_h],
+                    color=G_RED, lw=2.2, alpha=0.9, zorder=11.5)
+        ax.annotate(
+            "",
+            xy=(h_dim_x, apex_y), xytext=(h_dim_x, plate_top_y),
+            arrowprops=dict(arrowstyle="<->", color=G_RED,
+                            lw=3.2, mutation_scale=22),
+            zorder=11.6,
+        )
+        ax.text(h_dim_x - 0.020, (apex_y + plate_top_y) / 2,
+                r"$h$", color=G_RED, fontsize=FS_LABEL + 4,
+                ha="right", va="center", zorder=11.7)
+    else:
+        # Inline double-arrow at the axis with the label placed beside it.
+        ax.annotate(
+            "",
+            xy=(xc, apex_y), xytext=(xc, plate_top_y),
+            arrowprops=dict(arrowstyle="<->", color=G_RED,
+                            lw=3.2, mutation_scale=22),
+            zorder=11.6,
+        )
+        ax.text(xc + 0.022, (apex_y + plate_top_y) / 2,
+                r"$h$", color=G_RED, fontsize=FS_LABEL + 4,
+                ha="left", va="center", zorder=11.7)
+
+    # ------- Total gap H(r) dimension at the rim (r = R) -------
+    H_x = xc + cyl_rx + 0.05
+    # Thin dotted extension lines from cylinder edge out to the dimension
+    ax.plot([xc + cyl_rx, H_x + 0.005], [plate_top_y, plate_top_y],
+            color=G_BLUE_DK, lw=1.8, ls=":", alpha=0.8, zorder=10.8)
+    ax.plot([xc + cyl_rx, H_x + 0.005], [cone_top_y, cone_top_y],
+            color=G_BLUE_DK, lw=1.8, ls=":", alpha=0.8, zorder=10.8)
+    ax.annotate(
+        "",
+        xy=(H_x, cone_top_y), xytext=(H_x, plate_top_y),
+        arrowprops=dict(arrowstyle="<->", color=G_BLUE_DK,
+                        lw=3.2, mutation_scale=22),
+        zorder=11,
+    )
+    ax.text(H_x + 0.015, (cone_top_y + plate_top_y) / 2,
+            r"$H(r)$", color=G_BLUE_DK, fontsize=FS_LABEL + 4,
+            ha="left", va="center")
 
     # ------- Radius dimension R across top of cone -------
     dim_y = cone_top_y + cone_ry + 0.045
@@ -397,25 +480,34 @@ def draw_overview(ax):
             ha="center", va="bottom")
 
     # ------- Labels -------
-    ax.text(xc - cone_rx - 0.04, (cone_top_y + apex_y) / 2 + 0.02,
-            "Cone", fontsize=FS_NOTE + 4, color=TEXT_C,
+    if cone_label_position == "top":
+        # On the visible front portion of the top cap, below the shaft so
+        # the drive-shaft cylinder does not hide the label.
+        ax.text(xc-0.2, cone_top_y+0.05 - cone_ry * 0.55, "Cone",
+                fontsize=FS_NOTE + 4, color=TEXT_C,
+                ha="center", va="center", zorder=9)
+    else:
+        ax.text(xc - cone_rx - 0.04, (cone_top_y + apex_y) / 2 + 0.02,
+                "Cone", fontsize=FS_NOTE + 4, color=TEXT_C,
+                ha="right", va="center")
+    # Place 'Liquid Domain' left of blue cylinder, no line
+    ax.text(xc - cyl_rx, (cyl_top_y + cyl_bot_y) / 2,
+            "Fluid \n Domain", fontsize=FS_LABEL + 6, color=G_BLUE_DK,
             ha="right", va="center")
-    ax.annotate(
-        "Liquid Domain",
-        xy=(xc - cyl_rx, (cyl_top_y + cyl_bot_y) / 2),
-        xytext=(xc - cyl_rx - 0.05, cyl_bot_y - 0.06),
-        fontsize=FS_NOTE + 2, color=G_BLUE_DK,
-        ha="right", va="center",
-        arrowprops=dict(arrowstyle="-", color=G_BLUE_DK, lw=1.0),
-    )
-    ax.text(xc, plate_bot_y - 0.04, "Stationary plate",
+    # Stationary plate label, anchored a configurable distance below the
+    # plate's bottom-back edge.  The default reproduces the original layout
+    # used by the multi-panel figure.
+    plate_label_y = plate_bot_y - plate_label_offset_below
+    ax.text(xc, plate_label_y+0.06, "Stationary plate",
             ha="center", va="top",
-            fontsize=FS_NOTE + 4, color=G_GREY_700)
+            fontsize=FS_NOTE + 8, color=G_GREY_700)
 
-    panel_title(ax, "Physics Overview")
-    caption(ax,
-            "Cone-and-plate geometry\n"
-            r"rotation rate $\omega$, half-angle $\alpha$")
+    if show_title:
+        panel_title(ax, "Physics Overview")
+    if show_caption:
+        caption(ax,
+                "Cone-and-plate geometry\n"
+                r"rotation rate $\omega$, half-angle $\alpha$")
 
 
 # --------------------------------------------------------------------------- #
