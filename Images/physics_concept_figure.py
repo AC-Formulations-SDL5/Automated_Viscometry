@@ -22,6 +22,7 @@ import numpy as np
 from matplotlib.patches import (
     Arc,
     Circle,
+    Ellipse,
     FancyArrowPatch,
     Polygon,
     Rectangle,
@@ -34,9 +35,10 @@ from matplotlib.patches import (
 plt.rcParams.update(
     {
         "font.family": "sans-serif",
-        "font.sans-serif": ["Roboto", "Google Sans", "Product Sans",
-                            "Arial", "Helvetica", "DejaVu Sans"],
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
         "font.size": 16,
+        # Keep formulas (mathtext) in Computer Modern italic — only regular
+        # text uses Arial.
         "mathtext.fontset": "cm",
         "mathtext.default": "it",
         "axes.linewidth": 1.0,
@@ -123,122 +125,297 @@ def axis_arrow(ax, xy_from, xy_to):
 # Panel 1 - Physics Overview                                                  #
 # --------------------------------------------------------------------------- #
 def draw_overview(ax):
-    """2-D side-view schematic of the cone-and-plate apparatus.
+    """Pseudo-3-D perspective schematic of the cone-and-plate viscometer.
 
-    A small-angle cone (apex pointing down) rotates above a stationary
-    flat plate; the wedge-shaped gap between the cone bottom and the
-    plate is filled with the test liquid.  Drawn in Google Material style.
+    A small-angle cone (apex pointing down) rotates about the vertical
+    z-axis above a stationary circular plate.  The wedge-shaped gap
+    between the cone underside and the plate is filled with the test
+    liquid.  Cone angle is exaggerated for visual clarity; tangential
+    velocity vectors at the rim indicate the rotation direction, and
+    the cone half-angle alpha and disk radius R are annotated.
     """
     clean(ax)
-    # Same axes window as panels 2 & 3 so all diagrams sit at a consistent
-    # height (top-aligned, horizontally centered).
+    # Match the axes window used by panels 2 & 3 so all sub-figures
+    # sit at a consistent height.
     ax.set_xlim(-0.13, 1.13)
     ax.set_ylim(-0.18, 0.72)
 
-    # ------- Geometry (schematic; angle exaggerated for clarity) -------
-    plate_y = 0.00
-    h       = 0.05            # central gap (apex - plate)
-    R       = 0.42            # cone radius (half-width)
-    xc      = 0.50            # horizontal centre
-    alpha   = np.deg2rad(16)  # cone half-angle (exaggerated)
-    H_R     = h + R * np.tan(alpha)   # gap at edge
-    body_h  = 0.16            # cone tool body thickness
-    cone_top = plate_y + H_R + body_h
+    xc = 0.50
 
-    # ------- Stationary bottom plate (hatched) -------
-    plate_h = 0.05
-    ax.add_patch(Rectangle(
-        (xc - R - 0.18, plate_y - plate_h),
-        2 * R + 0.36, plate_h,
-        facecolor=G_GREY_300, edgecolor=G_GREY_700,
-        lw=1.0, hatch="///", zorder=1,
-    ))
+    # ------- Geometry (perspective; angle exaggerated) -------
+    plate_top_y  = 0.07
+    plate_thick  = 0.035
+    plate_rx     = 0.50
+    plate_ry     = 0.10            # perspective squash of circular plate
 
-    # ------- Liquid domain (wedge-shaped gap) -------
-    liquid_poly = [
-        [xc - R, plate_y + H_R],
-        [xc - R, plate_y],
-        [xc + R, plate_y],
-        [xc + R, plate_y + H_R],
-        [xc,     plate_y + h],
-    ]
+    apex_y       = plate_top_y + 0.022   # cone apex sits just above plate
+    cone_top_y   = 0.40
+    cone_rx      = 0.38
+    cone_ry      = 0.080           # perspective squash of cone top disk
+
+    shaft_rx     = 0.060
+    shaft_ry     = 0.014
+    shaft_h      = 0.13
+
+    # ------- Stationary plate (disk in perspective) -------
+    plate_bot_y = plate_top_y - plate_thick
+    theta_front = np.linspace(0.0, -np.pi, 80)   # front (lower) arc
+    top_arc = np.array([
+        (xc + plate_rx * np.cos(t), plate_top_y + plate_ry * np.sin(t))
+        for t in theta_front
+    ])
+    bot_arc = np.array([
+        (xc + plate_rx * np.cos(t), plate_bot_y + plate_ry * np.sin(t))
+        for t in theta_front
+    ])
+    plate_side = np.vstack([top_arc, bot_arc[::-1]])
     ax.add_patch(Polygon(
-        liquid_poly, closed=True,
-        facecolor=G_BLUE_LT, edgecolor=G_BLUE, lw=1.4,
-        alpha=0.85, zorder=2,
+        plate_side, closed=True,
+        facecolor=G_GREY_300, edgecolor=G_GREY_700, lw=1.2, zorder=1,
+    ))
+    ax.add_patch(Ellipse(
+        (xc, plate_top_y), 2 * plate_rx, 2 * plate_ry,
+        facecolor=G_GREY_100, edgecolor=G_GREY_700, lw=1.2, zorder=2,
     ))
 
-    # ------- Cone tool body (V-shaped underside) -------
-    cone_poly = [
-        [xc - R, cone_top],
-        [xc + R, cone_top],
-        [xc + R, plate_y + H_R],
-        [xc,     plate_y + h],
-        [xc - R, plate_y + H_R],
-    ]
+    # ------- Liquid domain: transparent cylinder enclosing the cone -------
+    # Bounding cylindrical region from the plate up to the cone's top disk.
+    # Drawn in two halves so the back wall sits behind the cone and the
+    # front wall sits in front of it, giving a glass-cylinder appearance.
+    cyl_rx = cone_rx + 0.010
+    cyl_ry = cone_ry + 0.006
+    cyl_top_y = cone_top_y
+    cyl_bot_y = plate_top_y
+
+    # Back half (theta in [0, pi])
+    back_t = np.linspace(0.0, np.pi, 80)
+    back_top = np.array([
+        (xc + cyl_rx * np.cos(t), cyl_top_y + cyl_ry * np.sin(t)) for t in back_t
+    ])
+    back_bot = np.array([
+        (xc + cyl_rx * np.cos(t), cyl_bot_y + cyl_ry * np.sin(t)) for t in back_t
+    ])
+    ax.add_patch(Polygon(
+        np.vstack([back_top, back_bot[::-1]]), closed=True,
+        facecolor=G_BLUE_LT, edgecolor="none", alpha=0.22, zorder=2.5,
+    ))
+    # Back edges (dashed = hidden in 3-D)
+    ax.add_patch(Arc(
+        (xc, cyl_top_y), 2 * cyl_rx, 2 * cyl_ry,
+        theta1=0, theta2=180, color=G_BLUE, lw=0.9, ls="--",
+        alpha=0.7, zorder=2.6,
+    ))
+    ax.add_patch(Arc(
+        (xc, cyl_bot_y), 2 * cyl_rx, 2 * cyl_ry,
+        theta1=0, theta2=180, color=G_BLUE, lw=0.9, ls="--",
+        alpha=0.7, zorder=2.6,
+    ))
+
+    # Front half (theta in [-pi, 0]) — drawn ABOVE the cone in z-order
+    front_t = np.linspace(0.0, -np.pi, 80)
+    front_top = np.array([
+        (xc + cyl_rx * np.cos(t), cyl_top_y + cyl_ry * np.sin(t)) for t in front_t
+    ])
+    front_bot = np.array([
+        (xc + cyl_rx * np.cos(t), cyl_bot_y + cyl_ry * np.sin(t)) for t in front_t
+    ])
+    ax.add_patch(Polygon(
+        np.vstack([front_top, front_bot[::-1]]), closed=True,
+        facecolor=G_BLUE_LT, edgecolor="none", alpha=0.28, zorder=6.4,
+    ))
+    # Front edges (solid)
+    ax.add_patch(Arc(
+        (xc, cyl_top_y), 2 * cyl_rx, 2 * cyl_ry,
+        theta1=180, theta2=360, color=G_BLUE, lw=1.2,
+        alpha=0.85, zorder=6.5,
+    ))
+    ax.add_patch(Arc(
+        (xc, cyl_bot_y), 2 * cyl_rx, 2 * cyl_ry,
+        theta1=180, theta2=360, color=G_BLUE, lw=1.2,
+        alpha=0.85, zorder=6.5,
+    ))
+    # Vertical side generators at the rim (left and right silhouette)
+    for sx in (xc - cyl_rx, xc + cyl_rx):
+        ax.plot([sx, sx], [cyl_bot_y, cyl_top_y],
+                color=G_BLUE, lw=1.2, alpha=0.85, zorder=6.5)
+
+    # ------- Cone body (apex down) -------
+    apex  = (xc, apex_y)
+    left  = (xc - cone_rx, cone_top_y)
+    right = (xc + cone_rx, cone_top_y)
+    cone_front_arc = np.array([
+        (xc + cone_rx * np.cos(t), cone_top_y + cone_ry * np.sin(t))
+        for t in np.linspace(-np.pi, 0.0, 80)
+    ])
+    cone_poly = np.vstack([[right], [apex], [left], cone_front_arc])
     ax.add_patch(Polygon(
         cone_poly, closed=True,
-        facecolor=G_GREY_300, edgecolor=G_GREY_900, lw=2.0,
-        zorder=3,
+        facecolor="#C9CCD1", edgecolor=G_GREY_900, lw=1.8, zorder=5,
+    ))
+    # Soft shadow on the left half for 3-D illusion
+    shadow_poly = np.vstack([[apex], [left], cone_front_arc[: len(cone_front_arc) // 2 + 1]])
+    ax.add_patch(Polygon(
+        shadow_poly, closed=True,
+        facecolor=G_GREY_700, edgecolor="none", alpha=0.32, zorder=5.5,
+    ))
+    # Specular highlight on the right half
+    highlight_poly = np.vstack([[apex], [right], cone_front_arc[len(cone_front_arc) // 2 :][::-1]])
+    ax.add_patch(Polygon(
+        highlight_poly, closed=True,
+        facecolor="white", edgecolor="none", alpha=0.20, zorder=5.6,
+    ))
+    # Cone top cap (visible disk)
+    ax.add_patch(Ellipse(
+        (xc, cone_top_y), 2 * cone_rx, 2 * cone_ry,
+        facecolor=G_GREY_300, edgecolor=G_GREY_900, lw=1.5, zorder=6,
     ))
 
-    # ------- Drive shaft -------
-    shaft_w = 0.07
-    shaft_h = 0.10
-    ax.add_patch(Rectangle(
-        (xc - shaft_w / 2, cone_top),
-        shaft_w, shaft_h,
-        facecolor=G_GREY_300, edgecolor=G_GREY_900, lw=1.6,
-        zorder=4,
+    # ------- Drive shaft (short cylinder above cone) -------
+    shaft_top_y = cone_top_y + shaft_h
+    sh_top_arc = np.array([
+        (xc + shaft_rx * np.cos(t), shaft_top_y + shaft_ry * np.sin(t))
+        for t in np.linspace(0.0, -np.pi, 40)
+    ])
+    sh_bot_arc = np.array([
+        (xc + shaft_rx * np.cos(t), cone_top_y + shaft_ry * np.sin(t))
+        for t in np.linspace(0.0, -np.pi, 40)
+    ])
+    ax.add_patch(Polygon(
+        np.vstack([sh_top_arc, sh_bot_arc[::-1]]), closed=True,
+        facecolor=G_GREY_300, edgecolor=G_GREY_900, lw=1.3, zorder=7,
+    ))
+    ax.add_patch(Ellipse(
+        (xc, shaft_top_y), 2 * shaft_rx, 2 * shaft_ry,
+        facecolor=G_GREY_100, edgecolor=G_GREY_900, lw=1.3, zorder=8,
     ))
 
-    # ------- Rotation arrow (omega) above the shaft -------
-    # Ellipse (flattened circle) suggests rotation about the vertical
-    # z-axis viewed in perspective.
-    arc_cy = cone_top + shaft_h + 0.05
-    arc_a  = 0.095          # horizontal semi-axis (wider)
-    arc_b  = 0.038          # vertical semi-axis (squashed)
+    # ------- Rotation indicator above the shaft (omega) -------
+    arc_cy = shaft_top_y + 0.075
+    arc_a, arc_b = 0.105, 0.038
     ax.add_patch(Arc(
         (xc, arc_cy), 2 * arc_a, 2 * arc_b,
-        theta1=20, theta2=320,
-        color=G_BLUE_DK, lw=2.2, zorder=5,
+        theta1=20, theta2=340, color=G_BLUE_DK, lw=2.4, zorder=9,
     ))
-    # arrow-head at the open end of the arc (theta = 20 deg)
-    a_tip  = np.deg2rad(15)
-    a_tail = np.deg2rad(35)
+    a_tip  = np.deg2rad(18)
+    a_tail = np.deg2rad(38)
     ax.annotate(
         "",
         xy=(xc + arc_a * np.cos(a_tip),  arc_cy + arc_b * np.sin(a_tip)),
         xytext=(xc + arc_a * np.cos(a_tail), arc_cy + arc_b * np.sin(a_tail)),
         arrowprops=dict(arrowstyle="-|>", color=G_BLUE_DK,
-                        lw=2.0, mutation_scale=18),
-        zorder=6,
+                        lw=2.0, mutation_scale=20),
+        zorder=10,
     )
     ax.text(xc + arc_a + 0.04, arc_cy, r"$\omega$",
-            fontsize=FS_LABEL + 4, color=G_BLUE_DK,
+            fontsize=FS_LABEL + 6, color=G_BLUE_DK,
             va="center", fontweight="bold")
 
-    # ------- Labels with leader lines -------
+    # ------- Tangential velocity vectors around cone rim -------
+    rim_arrow_len = 0.075
+    for phi_deg in (-155, -115, -90, -65, -25):
+        phi = np.deg2rad(phi_deg)
+        px = xc + cone_rx * np.cos(phi)
+        py = cone_top_y + cone_ry * np.sin(phi)
+        # Tangent direction for CCW rotation about +z
+        tx = -cone_rx * np.sin(phi)
+        ty =  cone_ry * np.cos(phi)
+        n = np.hypot(tx, ty)
+        tx, ty = (tx / n) * rim_arrow_len, (ty / n) * rim_arrow_len
+        ax.annotate(
+            "",
+            xy=(px + tx, py + ty), xytext=(px, py),
+            arrowprops=dict(arrowstyle="-|>", color=G_RED,
+                            lw=1.6, mutation_scale=12),
+            zorder=8.0,
+        )
+    ax.text(xc + cone_rx + 0.03, cone_top_y - cone_ry - 0.025,
+            r"$v=\omega r$", fontsize=FS_NOTE + 2, color=G_RED,
+            ha="left", va="top")
+
+    # ------- Velocity profile vs z at the front rim (phi = -90) -------
+    # Linear shear profile in the gap: v(z) = (omega * r) * (z / H), zero at
+    # the stationary plate and maximum at the cone surface.
+    prof_x      = xc
+    prof_y_top  = cone_top_y - cone_ry           # cone surface at front rim
+    prof_y_bot  = plate_top_y                    # stationary plate
+    n_profile   = 5                              # arrows between top and bottom
+    for i in range(1, n_profile):
+        frac = i / n_profile                     # 0 < frac < 1
+        py_i = prof_y_bot + frac * (prof_y_top - prof_y_bot)
+        L_i  = frac * rim_arrow_len
+        ax.annotate(
+            "",
+            xy=(prof_x + L_i, py_i), xytext=(prof_x, py_i),
+            arrowprops=dict(arrowstyle="-|>", color=G_RED,
+                            lw=1.4, mutation_scale=10, alpha=0.95),
+            zorder=8.0,
+        )
+    # Dashed envelope showing the linear profile
+    ax.plot([prof_x, prof_x + rim_arrow_len],
+            [prof_y_bot, prof_y_top],
+            color=G_RED, lw=1.0, ls="--", alpha=0.9, zorder=8.0)
+    # Tiny z-axis indicator on the left of the profile column
+    z_axis_x = prof_x - 0.055
     ax.annotate(
-        "Cone",
-        xy=(xc + R * 0.55, cone_top - body_h * 0.5),
-        xytext=(xc -0.075, cone_top - body_h * 0.4),
-        fontsize=FS_NOTE+4, color=TEXT_C, va="center",
+        "",
+        xy=(z_axis_x, prof_y_top + 0.020),
+        xytext=(z_axis_x, prof_y_bot - 0.005),
+        arrowprops=dict(arrowstyle="-|>", color=G_GREY_700,
+                        lw=1.1, mutation_scale=10),
+        zorder=8.0,
     )
+    ax.text(z_axis_x - 0.012, prof_y_top + 0.022, r"$z$",
+            fontsize=FS_NOTE + 2, color=G_GREY_700,
+            ha="right", va="top")
+    ax.text(prof_x + rim_arrow_len + 0.015,
+            prof_y_top - 0.005, r"$v(z)$",
+            fontsize=FS_NOTE + 2, color=G_RED,
+            ha="left", va="center")
+
+    # ------- Cone half-angle alpha at the apex -------
+    ang_deg = float(np.degrees(np.arctan2(cone_top_y - apex_y, cone_rx)))
+    arc_r = 0.11
+    ax.add_patch(Arc(
+        apex, 2 * arc_r, 2 * arc_r,
+        theta1=0, theta2=ang_deg,
+        color=G_RED, lw=1.6, zorder=11,
+    ))
+    ax.text(apex[0] + arc_r * 0.72, apex_y + arc_r * 0.28,
+            r"$\alpha$", fontsize=FS_LABEL + 2, color=G_RED, va="center")
+
+    # ------- Radius dimension R across top of cone -------
+    dim_y = cone_top_y + cone_ry + 0.045
     ax.annotate(
-        "Liquid sample",
-        xy=(xc - R * 0.45, plate_y + h * 0.55),
-        xytext=(xc - R - 0.20, plate_y + 0.08),
-        fontsize=FS_NOTE+4, color=G_BLUE_DK, va="center"
+        "",
+        xy=(xc + cone_rx, dim_y), xytext=(xc, dim_y),
+        arrowprops=dict(arrowstyle="<|-|>", color=G_GREY_700,
+                        lw=1.2, mutation_scale=12),
+        zorder=11,
     )
-    ax.text(xc, plate_y - plate_h - 0.04, "Stationary plate",
+    ax.text(xc + cone_rx / 2, dim_y + 0.012, r"$R$",
+            fontsize=FS_LABEL, color=G_GREY_900,
+            ha="center", va="bottom")
+
+    # ------- Labels -------
+    ax.text(xc - cone_rx - 0.04, (cone_top_y + apex_y) / 2 + 0.02,
+            "Cone", fontsize=FS_NOTE + 4, color=TEXT_C,
+            ha="right", va="center")
+    ax.annotate(
+        "Liquid Domain",
+        xy=(xc - cyl_rx, (cyl_top_y + cyl_bot_y) / 2),
+        xytext=(xc - cyl_rx - 0.05, cyl_bot_y - 0.06),
+        fontsize=FS_NOTE + 2, color=G_BLUE_DK,
+        ha="right", va="center",
+        arrowprops=dict(arrowstyle="-", color=G_BLUE_DK, lw=1.0),
+    )
+    ax.text(xc, plate_bot_y - 0.04, "Stationary plate",
             ha="center", va="top",
-            fontsize=FS_NOTE+4, color=G_GREY_700)
+            fontsize=FS_NOTE + 4, color=G_GREY_700)
 
     panel_title(ax, "Physics Overview")
     caption(ax,
             "Cone-and-plate geometry\n"
-            r"with rotation rate $\omega$")
+            r"rotation rate $\omega$, half-angle $\alpha$")
 
 
 # --------------------------------------------------------------------------- #
