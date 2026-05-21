@@ -65,7 +65,6 @@ class ViscometryWebInterface:
         self.experiment_history_path = os.path.join(self.project_root, 'results', 'web_experiment_history.json')
         self.live_run_state_path = os.path.join(self.project_root, 'results', 'web_live_run_state.json')
         self.experiment_history = []
-        self._experiment_history_backfill_thread: Optional[threading.Thread] = None
         self._load_experiment_history()
         # Predicted viscosity results for current run (persisted in-memory so clients see them on refresh)
         # Structure: { cell_id (int): { rpm (float): { 'viscosity_kcP': float|None, 'h0': float|None, 'heights': list, 'drags': list } } }
@@ -979,79 +978,22 @@ class ViscometryWebInterface:
             else:
                 self.experiment_history = []
 
-            self._start_experiment_history_backfill_thread()
-        except Exception as e:
-            print(f"Warning: Failed to load experiment history: {e}")
-            self.experiment_history = []
-
-    def _start_experiment_history_backfill_thread(self):
-        """Kick off a daemon thread to backfill historical predicted viscosity summaries."""
-        try:
-            if self._experiment_history_backfill_thread and self._experiment_history_backfill_thread.is_alive():
-                return
-
-            backfill_candidates = []
-            for history_entry in list(self.experiment_history):
+            backfilled = False
+            for history_entry in self.experiment_history:
                 if not isinstance(history_entry, dict):
                     continue
                 if history_entry.get('predicted_viscosity_summary'):
                     continue
-                exp_id = str(history_entry.get('id') or '').strip()
-                if not exp_id:
-                    continue
-                backfill_candidates.append((exp_id, history_entry))
-
-            if not backfill_candidates:
-                return
-
-            def _worker():
-                updated_summaries = {}
-
-                for exp_id, history_entry in backfill_candidates:
-                    try:
-                        summary = self._build_predicted_viscosity_summary_for_entry(history_entry)
-                    except Exception:
-                        summary = {}
-                    if summary:
-                        updated_summaries[exp_id] = summary
-
-                if not updated_summaries:
-                    return
-
-                try:
-                    with self.control_lock:
-                        merged_history = []
-                        changed = False
-
-                        for entry in self.experiment_history:
-                            if not isinstance(entry, dict):
-                                merged_history.append(entry)
-                                continue
-
-                            exp_id = str(entry.get('id') or '').strip()
-                            summary = updated_summaries.get(exp_id)
-                            if summary and not entry.get('predicted_viscosity_summary'):
-                                updated_entry = dict(entry)
-                                updated_entry['predicted_viscosity_summary'] = summary
-                                merged_history.append(updated_entry)
-                                changed = True
-                            else:
-                                merged_history.append(entry)
-
-                        if changed:
-                            self.experiment_history = merged_history
-                            self._persist_experiment_history()
-                except Exception as e:
-                    print(f"Warning: Failed to backfill experiment history: {e}")
-
-            self._experiment_history_backfill_thread = threading.Thread(
-                target=_worker,
-                name='experiment-history-backfill',
-                daemon=True,
-            )
-            self._experiment_history_backfill_thread.start()
+                summary = self._build_predicted_viscosity_summary_for_entry(history_entry)
+                if summary:
+                    history_entry['predicted_viscosity_summary'] = summary
+                    backfilled = True
+            if backfilled:
+                self._persist_experiment_history()
         except Exception as e:
-            print(f"Warning: Failed to start experiment history backfill: {e}")
+            print(f"Warning: Failed to load experiment history: {e}")
+            self.experiment_history = []
+    
 
     def _persist_experiment_history(self):
         """Persist shared experiment history to disk."""
