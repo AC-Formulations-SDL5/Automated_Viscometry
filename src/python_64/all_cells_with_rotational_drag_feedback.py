@@ -15,6 +15,7 @@ from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 from feedback_helper_function import RotationalDragFeedbackController
 from web_interface import web_interface
+from predicted_viscosity import predict_viscosity
 from calibration_store import (
     is_calibrated, load_calibration, save_calibration,
     update_calibration_for_cells, get_safe_z_for_cell, get_calibration_summary, clear_calibration
@@ -104,6 +105,8 @@ SMART_WINDOW_SIZE = 3
 # regular runs only; see web toggle).
 LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = True
 LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 25.0
+PREDICTED_VISCOSITY_ENABLED = False
+CELL_VISCOSITY_RESULTS: Dict[int, Dict[float, dict]] = {}
 
 # ========== CALIBRATION MODE CONFIGURATION ==========
 CALIBRATION_MODE = False          # Set to True when a calibration run is requested
@@ -148,6 +151,7 @@ def apply_runtime_settings_from_web():
     global BASELINE_N_CALIBRATION, BASELINE_Z_THRESHOLD
     global CALIBRATION_MODE, RECALIBRATE_INDIVIDUAL_CELLS, RECALIBRATION_CELLS
     global LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED, LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT
+    global PREDICTED_VISCOSITY_ENABLED
 
     settings = web_interface.get_runtime_settings()
 
@@ -194,6 +198,9 @@ def apply_runtime_settings_from_web():
     )
     LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = float(
         settings.get('low_torque_liquid_contact_threshold_pct', LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)
+    )
+    PREDICTED_VISCOSITY_ENABLED = bool(
+        settings.get('predicted_viscosity_enabled', PREDICTED_VISCOSITY_ENABLED)
     )
     # Parse recalibration cells: expect dict {cell_id: optional_starting_z}
     # JSON object keys arrive as strings; normalize to int keys for runtime lookup.
@@ -1179,7 +1186,60 @@ def test_cell_dynamic_z_series(
         print(f"    RPMs tested: {len(cell_rpms)}")
     
     print(f"Cell {global_cell} dynamic analysis completed: {len(cell_z_rpm_data)} Z-positions tested")
-    return cell_z_rpm_data, _fill_thread
+    if FEEDBACK_CONTROL_ENABLED:
+        feedback_summary = feedback_controller.get_summary()
+    else:
+        feedback_summary = {
+            'hit_point_detected': False,
+            'hit_point_z': None,
+            'hit_point_confidence': None,
+            'total_z_levels': len(cell_z_rpm_data),
+            'feedback_enabled': False,
+        }
+    return cell_z_rpm_data, _fill_thread, feedback_summary
+
+
+def run_predicted_viscosity_for_cell(
+    cell_id: int,
+    rpms: List[float],
+    feedback_summary: Dict,
+) -> None:
+    """Fit hyperbolic viscosity per RPM after a cell completes; emit to dashboard."""
+    global CELL_VISCOSITY_RESULTS
+
+    hit_z = feedback_summary.get('hit_point_z')
+    if hit_z is not None:
+        try:
+            hit_z = float(hit_z)
+        except (TypeError, ValueError):
+            hit_z = None
+
+    if cell_id not in CELL_VISCOSITY_RESULTS:
+        CELL_VISCOSITY_RESULTS[cell_id] = {}
+
+    for rpm in rpms:
+        try:
+            result = predict_viscosity(
+                cell_id,
+                float(rpm),
+                web_interface.measurement_data,
+                torque_floor_pct=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT,
+                hit_point_z=hit_z,
+            )
+            CELL_VISCOSITY_RESULTS[cell_id][float(rpm)] = result
+            web_interface.emit_predicted_viscosity(cell_id, float(rpm), result)
+            if result.get('success'):
+                print(
+                    f"  Predicted viscosity Cell {cell_id} @ {rpm} RPM: "
+                    f"{result.get('viscosity_kcp'):.4f} kCp (n={result.get('n_points_used')})"
+                )
+            else:
+                print(
+                    f"  Predicted viscosity Cell {cell_id} @ {rpm} RPM: failed — "
+                    f"{result.get('error')}"
+                )
+        except Exception as e:
+            print(f"  Warning: predicted viscosity failed for Cell {cell_id} RPM {rpm}: {e}")
 
 
 def extract_rough_hitpoint(cell_z_rpm_data: dict) -> Optional[float]:
@@ -1226,6 +1286,35 @@ def extract_rough_hitpoint(cell_z_rpm_data: dict) -> Optional[float]:
 
     return rough_hitpoint
 
+def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
+    """Write predicted viscosity summary rows into CSV metadata comments."""
+    if not PREDICTED_VISCOSITY_ENABLED or not CELL_VISCOSITY_RESULTS:
+        return
+    csv_writer.writerow(["# Predicted Viscosity Results"])
+    csv_writer.writerow([
+        "# Cell,Cell_Label,RPM,Viscosity_kCp,a,b,n_points_used,fit_success"
+    ])
+    for global_cell in sorted(CELL_VISCOSITY_RESULTS.keys()):
+        rpm_map = CELL_VISCOSITY_RESULTS[global_cell]
+        label = CELL_CONTENT_MAP.get(global_cell, "")
+        for rpm in sorted(rpm_map.keys()):
+            result = rpm_map[rpm]
+            if not isinstance(result, dict):
+                continue
+            visc = result.get("viscosity_kcp")
+            a_val = result.get("a")
+            b_val = result.get("b")
+            csv_writer.writerow([
+                f"# {global_cell},{label},{rpm},"
+                f"{'' if visc is None else visc},"
+                f"{'' if a_val is None else a_val},"
+                f"{'' if b_val is None else b_val},"
+                f"{result.get('n_points_used', 0)},"
+                f"{bool(result.get('success'))}",
+            ])
+    csv_writer.writerow([])
+
+
 def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
                      timestamp: str, mode: str, completed_cells: List[int], experiment_name: str) -> str:
     """Save partial results when experiment is terminated early"""
@@ -1264,7 +1353,7 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                 f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
             ])
         csv_writer.writerow([f"# WARNING: Experiment was terminated early - these are partial results"])
-        csv_writer.writerow([])
+        _append_predicted_viscosity_csv_metadata(csv_writer)
         
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
@@ -1396,7 +1485,7 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                 f"{SAMPLE_INTERVAL:.1f}s is < {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
                 f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
             ])
-        csv_writer.writerow([])
+        _append_predicted_viscosity_csv_metadata(csv_writer)
         
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
@@ -1662,6 +1751,8 @@ def main():
         all_data = {}
         completed_cells = []  # Track completed cells for partial saving
         active_threads: List[threading.Thread] = []
+        global CELL_VISCOSITY_RESULTS
+        CELL_VISCOSITY_RESULTS = {}
         
         try:
             print(f"\nStarting dynamic analysis...")
@@ -1734,9 +1825,16 @@ def main():
                         pump=None if is_calibration_like_run else pump,   # No pump in calibration/recalibration mode
                         custom_starting_z=custom_z,  # Pass custom starting Z if in recalibration mode
                     )
-                    try:
-                        cell_data, _fill_thread = result
-                    except ValueError:
+                    feedback_summary = {}
+                    if isinstance(result, tuple):
+                        if len(result) >= 3:
+                            cell_data, _fill_thread, feedback_summary = result[0], result[1], result[2]
+                        elif len(result) >= 2:
+                            cell_data, _fill_thread = result[0], result[1]
+                        else:
+                            cell_data = result[0]
+                            _fill_thread = None
+                    else:
                         cell_data = result
                         _fill_thread = None
                     if _fill_thread is not None:
@@ -1761,6 +1859,10 @@ def main():
                             web_interface.update_status(f"Recalibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                         # NO washing in calibration/recalibration mode — move directly to next cell
                     else:
+                        if PREDICTED_VISCOSITY_ENABLED:
+                            run_predicted_viscosity_for_cell(
+                                global_cell, cell_rpms, feedback_summary
+                            )
                         # Normal run: perform washing as before
                         if pump:
                             perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)

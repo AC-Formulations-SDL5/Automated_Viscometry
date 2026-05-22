@@ -61,7 +61,7 @@
         <nav class="tab-nav">
             <button class="tab-button active" data-tab="layout-tab">Layout & Timeline</button>
             <button class="tab-button" data-tab="controls-tab">Parameters & Tracking</button>
-            <button class="tab-button" data-tab="data-tab">Data Management</button>
+            <button class="tab-button" data-tab="data-processing-tab">Data and Processing</button>
             <button class="tab-button" data-tab="summary-tab">Experimental Summary</button>
         </nav>
 
@@ -220,6 +220,10 @@
                             <label class="checkbox-row">
                                 <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox" checked>
                                 <span>Skip Z-levels until liquid contact (regular runs only; not calibration / recalibration)</span>
+                            </label>
+                            <label class="checkbox-row">
+                                <input id="predicted-viscosity-enabled" name="predicted_viscosity_enabled" type="checkbox">
+                                <span>Enable predicted viscosity (hyperbola fit)</span>
                             </label>
                             <label>
                                 <span>First-sample torque floor (%)</span>
@@ -610,41 +614,40 @@
                 </div>
             </div>
 
-            <!-- Tab 3: Data Management -->
-            <div id="data-tab" class="tab-panel">
-                <section class="card table-card skeleton-host">
+            <!-- Tab 3: Data and Processing -->
+            <div id="data-processing-tab" class="tab-panel">
+                <section class="card predicted-viscosity-info-card">
                     <div class="card-title-row">
-                        <h2>Recent Measurements</h2>
-                        <div class="data-actions">
-                            <button id="table-export" class="btn">Export All CSV</button>
-                            <button id="clear-data" class="btn subtle">Clear Data</button>
-                        </div>
+                        <h2>Predicted Viscosity</h2>
+                        <label class="checkbox-row predicted-viscosity-toggle-row">
+                            <input id="predicted-viscosity-enabled-data" name="predicted_viscosity_enabled_data" type="checkbox">
+                            <span>Enable predicted viscosity</span>
+                        </label>
                     </div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Cell</th>
-                                    <th>Z (mm)</th>
-                                    <th>Torque (%)</th>
-                                    <th>RPM</th>
-                                    <th>Time</th>
-                                </tr>
-                            </thead>
-                            <tbody id="measurement-table"></tbody>
-                        </table>
+                    <div class="predicted-viscosity-explainer">
+                        <p>Rotational drag <em>D</em> (torque % divided by spindle speed ω) follows a hyperbolic relationship with gap height <em>h</em>:</p>
+                        <p class="predicted-viscosity-formula">(D/ω) = η·K / (h + h₀)</p>
+                        <p>Equivalently, <em>D(h) = a / (h − b)</em> with <em>a = η·K</em>. As the probe approaches the surface, drag rises sharply—the curve asymptotes because fluid is squeezed in a vanishing gap.</p>
+                        <p>The geometry constant <em>K</em> (scale factor <strong>M<sub>HYP</sub> = 2.330</strong> in this platform) maps the fitted coefficient <em>a</em> to viscosity: <em>η (kCp) = |a| × M<sub>HYP</sub></em>.</p>
+                        <p>Points below the torque floor and at/after the detected hit point are excluded before a statistical middle-segment trim and <code>curve_fit</code> hyperbola fit.</p>
                     </div>
-                    <div class="skeleton-lines">
-                        <div class="skeleton-line"></div>
-                        <div class="skeleton-line"></div>
-                        <div class="skeleton-line short"></div>
+                </section>
+
+                <section id="predicted-viscosity-charts-card" class="card predicted-viscosity-charts-card hidden">
+                    <div class="card-title-row">
+                        <h2>Predicted Viscosity Curves</h2>
                     </div>
+                    <div id="predicted-viscosity-charts" class="predicted-viscosity-charts-grid"></div>
+                    <p id="predicted-viscosity-charts-empty" class="plot-empty">Complete a cell with predicted viscosity enabled to see fits here.</p>
                 </section>
 
                 <section class="card status-log-card">
                     <div class="card-title-row">
                         <h2>Status Log</h2>
-                        <button id="clear-log" class="btn subtle">Clear Log</button>
+                        <div class="data-actions">
+                            <button id="table-export" class="btn">Export All CSV</button>
+                            <button id="clear-log" class="btn subtle">Clear Log</button>
+                        </div>
                     </div>
                     <ul id="status-log" class="status-log"></ul>
                 </section>
