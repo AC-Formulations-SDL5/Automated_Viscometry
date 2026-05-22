@@ -56,6 +56,7 @@
     --radius-sm: 6px;
     --radius-card: 8px;
     --radius-pill: 999px;
+    --controls-block-gap: 16px;
 }
 
 body.theme-light {
@@ -436,21 +437,27 @@ body.running .header-sweep {
 #controls-tab {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--controls-block-gap);
 }
 
 .controls-tracking-grid {
     display: grid;
     grid-template-columns: 1.15fr 0.85fr;
-    gap: 16px;
+    gap: var(--controls-block-gap);
     align-items: start;
 }
 
 .controls-right-stack {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--controls-block-gap);
     min-width: 0;
+}
+
+.controls-charts-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--controls-block-gap);
 }
 
 .tracking-grid {
@@ -459,11 +466,58 @@ body.running .header-sweep {
     gap: 16px;
 }
 
-/* Data Tab */
-#data-tab {
+/* Data and Processing Tab */
+#data-processing-tab {
     display: flex;
     flex-direction: column;
     gap: 20px;
+}
+
+.predicted-viscosity-info-card .predicted-viscosity-explainer {
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: var(--text-secondary, #4a5568);
+}
+
+.predicted-viscosity-info-card .predicted-viscosity-explainer p {
+    margin: 0 0 10px;
+}
+
+.predicted-viscosity-formula {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 1rem;
+    padding: 8px 12px;
+    background: var(--bg-subtle, #f4f6f8);
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
+}
+
+.predicted-viscosity-toggle-row {
+    margin: 0;
+}
+
+.predicted-viscosity-charts-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.predicted-viscosity-plot-wrap {
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 12px;
+    background: var(--bg-subtle, #fafbfc);
+}
+
+.predicted-viscosity-plot-title {
+    font-size: 0.85rem;
+    color: var(--text-secondary, #4a5568);
+    margin-bottom: 8px;
+}
+
+.predicted-viscosity-plot {
+    width: 100%;
+    min-height: 280px;
 }
 
 

@@ -55,11 +55,11 @@ class ViscometryWebInterface:
             'cell_content_map': {},
             'z_step_size': -0.02,
             'measurement_duration': 40.0,
-            'sample_interval': 4.0,
+            'sample_interval': 5.0,
             'dwell_seconds': 2.0,
             'inter_rpm_pause': 2.0,
             'feedback_control_enabled': True,
-            'smart_early_exit_enabled': False,
+            'smart_early_exit_enabled': True,
             'smart_cv_threshold': 0.005,
             'smart_window_size': 3,
             'min_data_points_for_trend': 8,
@@ -74,15 +74,17 @@ class ViscometryWebInterface:
             'weight_r2_cv': 0.2,
             'weight_r2_slope': 0.2,
             'baseline_n_calibration': 10,
-            'baseline_z_threshold': 10.0,
+            'baseline_z_threshold': 5.0,
             'torque_break_threshold': 100.0,
             'calibration_mode': False,
             'recalibrate_individual_cells': False,
             'recalibration_cells': {},
             # Regular runs only: skip Z-levels when torque (first sample at elapsed >= SAMPLE_INTERVAL) is below threshold.
-            'low_torque_liquid_contact_skip_enabled': False,
-            'low_torque_liquid_contact_threshold_pct': 20.0,
+            'low_torque_liquid_contact_skip_enabled': True,
+            'low_torque_liquid_contact_threshold_pct': 25.0,
+            'predicted_viscosity_enabled': False,
         }
+        self.predicted_viscosity_results: Dict = {}
         # ========== Calibration state ==========
         self.calibration_mode = False         # True when a calibration run is active
         self._calibration_summary = {}        # Cached summary from last calibration check
@@ -159,6 +161,15 @@ class ViscometryWebInterface:
                 return jsonify(self.measurement_data)
             except Exception as e:
                 print(f"Error in get_measurement_data: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/predicted_viscosity')
+        def get_predicted_viscosity():
+            try:
+                with self.control_lock:
+                    return jsonify(self.predicted_viscosity_results)
+            except Exception as e:
+                print(f"Error in get_predicted_viscosity: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/control_settings', methods=['GET', 'POST'])
@@ -366,6 +377,7 @@ class ViscometryWebInterface:
                 'calibration_mode': self.calibration_mode,
                 'recalibration_mode_active': recalibration_mode_active,
                 'recalibration_target_count': recalibration_target_count,
+                'predicted_viscosity_results': self._copy_predicted_viscosity_results(),
             }
         except Exception as e:
             print(f"Error in get_status_dict: {e}")
@@ -389,6 +401,7 @@ class ViscometryWebInterface:
                 'calibration_mode': False,
                 'recalibration_mode_active': False,
                 'recalibration_target_count': 0,
+                'predicted_viscosity_results': {},
             }
 
     def get_runtime_settings(self) -> Dict:
@@ -503,6 +516,8 @@ class ViscometryWebInterface:
                 normalized['feedback_control_enabled'] = bool(settings['feedback_control_enabled'])
             if 'smart_early_exit_enabled' in settings:
                 normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
+            if 'predicted_viscosity_enabled' in settings:
+                normalized['predicted_viscosity_enabled'] = bool(settings['predicted_viscosity_enabled'])
             if 'low_torque_liquid_contact_skip_enabled' in settings:
                 normalized['low_torque_liquid_contact_skip_enabled'] = bool(
                     settings['low_torque_liquid_contact_skip_enabled']
@@ -709,6 +724,10 @@ class ViscometryWebInterface:
             'slope_sd2_calibrated': slope_sd2_calibrated,
         })
 
+    def _copy_predicted_viscosity_results(self) -> Dict:
+        with self.control_lock:
+            return json.loads(json.dumps(self.predicted_viscosity_results))
+
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
         with self.control_lock:
@@ -719,7 +738,24 @@ class ViscometryWebInterface:
             self.current_z_measuring = None
             self.current_cell_start_ts = None
             self.completed_cells = []
+            self.predicted_viscosity_results = {}
         self.socketio.emit('clear_dashboard')
+
+    def emit_predicted_viscosity(self, cell_id: int, rpm: float, result: Dict):
+        """Store and broadcast predicted viscosity for one cell/RPM."""
+        try:
+            cell_key = str(int(cell_id))
+            rpm_key = str(float(rpm))
+            payload = dict(result) if isinstance(result, dict) else {}
+            payload['cell_id'] = int(cell_id)
+            payload['rpm'] = float(rpm)
+            with self.control_lock:
+                if cell_key not in self.predicted_viscosity_results:
+                    self.predicted_viscosity_results[cell_key] = {}
+                self.predicted_viscosity_results[cell_key][rpm_key] = payload
+            self.socketio.emit('predicted_viscosity_update', payload)
+        except Exception as e:
+            print(f"Warning: Failed to emit predicted viscosity: {e}")
 
     def _load_experiment_history(self):
         """Load shared experiment history from disk if available."""
