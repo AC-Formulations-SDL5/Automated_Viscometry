@@ -470,15 +470,15 @@ def draw_panel_E(ax: plt.Axes) -> None:
     if all_errs.size >= 2 and np.nanstd(all_errs) > 0:
         kde = gaussian_kde(all_errs)
         x_curve = np.linspace(0, 25, 400)
-        y_curve = kde(x_curve) * 100.0
+        y_curve = kde(x_curve)
         ax.fill_between(x_curve, 0, y_curve, color=GOOGLE_BLUE, alpha=0.35, linewidth=0)
         ax.plot(x_curve, y_curve, color=GOOGLE_BLUE, lw=2.0)
         ax.set_ylim(0, float(np.nanmax(y_curve)) * 1.15)
-        ax.yaxis.set_major_formatter(PercentFormatter(decimals=0, symbol=""))
+        ax.yaxis.set_major_formatter(PercentFormatter(decimals=2, symbol=""))
 
     ax.set_xlim(0, 25)
     ax.set_xlabel("Relative Error (%)", fontsize=LABEL_FS)
-    ax.set_ylabel("Frequency (%)", fontsize=LABEL_FS)
+    ax.set_ylabel("Probability Density", fontsize=LABEL_FS)
 
 
 # ---------------------------------------------------------------------------
