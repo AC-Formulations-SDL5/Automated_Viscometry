@@ -55,11 +55,11 @@ class ViscometryWebInterface:
             'cell_content_map': {},
             'z_step_size': -0.02,
             'measurement_duration': 40.0,
-            'sample_interval': 4.0,
+            'sample_interval': 5.0,
             'dwell_seconds': 2.0,
             'inter_rpm_pause': 2.0,
             'feedback_control_enabled': True,
-            'smart_early_exit_enabled': False,
+            'smart_early_exit_enabled': True,
             'smart_cv_threshold': 0.005,
             'smart_window_size': 3,
             'min_data_points_for_trend': 8,
@@ -74,14 +74,14 @@ class ViscometryWebInterface:
             'weight_r2_cv': 0.2,
             'weight_r2_slope': 0.2,
             'baseline_n_calibration': 10,
-            'baseline_z_threshold': 10.0,
+            'baseline_z_threshold': 5.0,
             'torque_break_threshold': 100.0,
             'calibration_mode': False,
             'recalibrate_individual_cells': False,
             'recalibration_cells': {},
             # Regular runs only: skip Z-levels when torque (first sample at elapsed >= SAMPLE_INTERVAL) is below threshold.
-            'low_torque_liquid_contact_skip_enabled': False,
-            'low_torque_liquid_contact_threshold_pct': 20.0,
+            'low_torque_liquid_contact_skip_enabled': True,
+            'low_torque_liquid_contact_threshold_pct': 25.0,
         }
         # ========== Calibration state ==========
         self.calibration_mode = False         # True when a calibration run is active

@@ -45,7 +45,7 @@ WEIGHT_R2_DRAG = 0.2
 WEIGHT_R2_CV = 0.2
 WEIGHT_R2_SLOPE = 0.2
 BASELINE_N_CALIBRATION = 10
-BASELINE_Z_THRESHOLD = 10.0
+BASELINE_Z_THRESHOLD = 5.0
 
 # ===============================================
 SETTLE_TIME = 1.0                   # Time to wait after moving before taking measurements
@@ -96,14 +96,14 @@ DWELL_SECONDS = 2.0
 INTER_RPM_PAUSE = 2.0
 MEASUREMENT_DURATION = 40.0
 SAMPLE_INTERVAL = 5.0
-SMART_EARLY_EXIT_ENABLED = False
+SMART_EARLY_EXIT_ENABLED = True
 SMART_CV_THRESHOLD = 0.005
 SMART_WINDOW_SIZE = 3
 
 # Skip Z-levels until post-interval torque ≥ threshold (first sample at elapsed ≥ SAMPLE_INTERVAL;
 # regular runs only; see web toggle).
-LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = False
-LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 20.0
+LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = True
+LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 25.0
 
 # ========== CALIBRATION MODE CONFIGURATION ==========
 CALIBRATION_MODE = False          # Set to True when a calibration run is requested
@@ -1269,11 +1269,11 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
             "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
-            "CV", "R2", "Trend_Slope", "Second_derivative",
+            "CV", "R_2", "Trend_Slope", "Second_derivative",
             "Second_derivative_drag", "Second_derivative_cv", "Second_derivative_slope",
-            "R2_drag", "R2_cv", "R2_slope",
+            "R_2_drag", "R_2_cv", "R_2_slope",
             "Hit_2nd_Deriv_Drag", "Hit_2nd_Deriv_CV", "Hit_2nd_Deriv_Slope",
-            "Hit_R2_Drag", "Hit_R2_CV", "Hit_R2_Slope",
+            "Hit_R_2_Drag", "Hit_R_2_CV", "Hit_R_2_Slope",
             "Samples_Collected_At_Z",
             "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
         ]
@@ -1401,11 +1401,11 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
             "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
-            "CV", "R2", "Trend_Slope", "Second_derivative",
+            "CV", "R_2", "Trend_Slope", "Second_derivative",
             "Second_derivative_drag", "Second_derivative_cv", "Second_derivative_slope",
-            "R2_drag", "R2_cv", "R2_slope",
+            "R_2_drag", "R_2_cv", "R_2_slope",
             "Hit_2nd_Deriv_Drag", "Hit_2nd_Deriv_CV", "Hit_2nd_Deriv_Slope",
-            "Hit_R2_Drag", "Hit_R2_CV", "Hit_R2_Slope",
+            "Hit_R_2_Drag", "Hit_R_2_CV", "Hit_R_2_Slope",
             "Samples_Collected_At_Z",
             "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
         ]

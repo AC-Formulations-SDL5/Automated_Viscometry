@@ -751,14 +751,16 @@ class ViscometryDashboard {
         this.el.interRpmPause.value = settings.inter_rpm_pause ?? 2;
         this.el.torqueBreakThreshold.value = settings.torque_break_threshold ?? 100;
         this.el.feedbackEnabled.checked = Boolean(settings.feedback_control_enabled);
-        if (this.el.smartEarlyExitEnabled) this.el.smartEarlyExitEnabled.checked = Boolean(settings.smart_early_exit_enabled);
+        if (this.el.smartEarlyExitEnabled) {
+            this.el.smartEarlyExitEnabled.checked = settings.smart_early_exit_enabled !== false;
+        }
         if (this.el.smartCvThreshold) this.el.smartCvThreshold.value = settings.smart_cv_threshold ?? 0.005;
         if (this.el.smartWindowSize) this.el.smartWindowSize.value = settings.smart_window_size ?? 3;
         if (this.el.lowTorqueLiquidContactSkipEnabled) {
-            this.el.lowTorqueLiquidContactSkipEnabled.checked = Boolean(settings.low_torque_liquid_contact_skip_enabled);
+            this.el.lowTorqueLiquidContactSkipEnabled.checked = settings.low_torque_liquid_contact_skip_enabled !== false;
         }
         if (this.el.lowTorqueLiquidContactThresholdPct) {
-            this.el.lowTorqueLiquidContactThresholdPct.value = settings.low_torque_liquid_contact_threshold_pct ?? 20;
+            this.el.lowTorqueLiquidContactThresholdPct.value = settings.low_torque_liquid_contact_threshold_pct ?? 25;
         }
         if (this.el.r2DragMin) this.el.r2DragMin.value = settings.r2_drag_min ?? 0.975;
         if (this.el.r2CvMin) this.el.r2CvMin.value = settings.r2_cv_min ?? 0.975;
@@ -771,7 +773,7 @@ class ViscometryDashboard {
         if (this.el.weightR2Cv) this.el.weightR2Cv.value = settings.weight_r2_cv ?? 0.2;
         if (this.el.weightR2Slope) this.el.weightR2Slope.value = settings.weight_r2_slope ?? 0.2;
         if (this.el.baselineNCalibration) this.el.baselineNCalibration.value = settings.baseline_n_calibration ?? 10;
-        if (this.el.baselineZThreshold) this.el.baselineZThreshold.value = settings.baseline_z_threshold ?? 10.0;
+        if (this.el.baselineZThreshold) this.el.baselineZThreshold.value = settings.baseline_z_threshold ?? 5;
 
         // Restore per-cell RPM map
         if (settings.cell_rpm_map && typeof settings.cell_rpm_map === "object") {
@@ -964,7 +966,7 @@ class ViscometryDashboard {
             smart_cv_threshold: Number(this.el.smartCvThreshold?.value ?? 0.005),
             smart_window_size: Number(this.el.smartWindowSize?.value ?? 3),
             low_torque_liquid_contact_skip_enabled: Boolean(this.el.lowTorqueLiquidContactSkipEnabled?.checked),
-            low_torque_liquid_contact_threshold_pct: Number(this.el.lowTorqueLiquidContactThresholdPct?.value ?? 20),
+            low_torque_liquid_contact_threshold_pct: Number(this.el.lowTorqueLiquidContactThresholdPct?.value ?? 25),
             r2_drag_min: Number(this.el.r2DragMin?.value ?? 0.975),
             r2_cv_min: Number(this.el.r2CvMin?.value ?? 0.975),
             r2_slope_min: Number(this.el.r2SlopeMin?.value ?? 0.975),
@@ -976,7 +978,7 @@ class ViscometryDashboard {
             weight_r2_cv: Number(this.el.weightR2Cv?.value ?? 0.2),
             weight_r2_slope: Number(this.el.weightR2Slope?.value ?? 0.2),
             baseline_n_calibration: Number(this.el.baselineNCalibration?.value ?? 10),
-            baseline_z_threshold: Number(this.el.baselineZThreshold?.value ?? 10.0),
+            baseline_z_threshold: Number(this.el.baselineZThreshold?.value ?? 5),
             feedback_control_enabled: this.el.feedbackEnabled.checked,
             cell_rpm_map: this.buildCellRpmMapPayload(),
             cell_content_map: this.buildCellContentMapPayload(),
@@ -2491,42 +2493,9 @@ class ViscometryDashboard {
         }
 
         const latestByKey = new Map();
-        const sampleCountByCellZ = new Map();
         runData.forEach((m) => {
             const k = `${m.cell_id}|${Number(m.height).toFixed(3)}|${m.rpm}`;
             latestByKey.set(k, m);
-            if (m.is_final_save) {
-                return;
-            }
-            const zKey = `${m.cell_id}|${Number(m.height).toFixed(3)}`;
-            const add = Number.isFinite(Number(m.sample_count)) && Number(m.sample_count) >= 1
-                ? Math.floor(Number(m.sample_count))
-                : 1;
-            sampleCountByCellZ.set(zKey, (sampleCountByCellZ.get(zKey) || 0) + add);
-        });
-        const samplesPerZ = [...sampleCountByCellZ.values()].sort((a, b) => a - b);
-        let medianSamplesPerZ = null;
-        if (samplesPerZ.length > 0) {
-            const mid = Math.floor(samplesPerZ.length / 2);
-            medianSamplesPerZ = samplesPerZ.length % 2 === 0
-                ? (samplesPerZ[mid - 1] + samplesPerZ[mid]) / 2
-                : samplesPerZ[mid];
-        }
-        const sampleCountsByCell = new Map();
-        sampleCountByCellZ.forEach((count, key) => {
-            const cellId = Number(String(key).split("|")[0]);
-            if (!Number.isFinite(cellId)) return;
-            if (!sampleCountsByCell.has(cellId)) sampleCountsByCell.set(cellId, []);
-            sampleCountsByCell.get(cellId).push(count);
-        });
-        const cellMedianSamplesPerZ = {};
-        sampleCountsByCell.forEach((counts, cellId) => {
-            const ordered = [...counts].sort((a, b) => a - b);
-            const mid = Math.floor(ordered.length / 2);
-            const median = ordered.length % 2 === 0
-                ? (ordered[mid - 1] + ordered[mid]) / 2
-                : ordered[mid];
-            cellMedianSamplesPerZ[cellId] = median;
         });
 
         const cells = [...new Set(runData.map((m) => m.cell_id))].sort((a, b) => a - b);
@@ -2561,8 +2530,6 @@ class ViscometryDashboard {
                 ? this.latestControlSettings
                 : (this.readControlSettings ? this.readControlSettings() : {}),
             latestPerZ: [...latestByKey.values()],
-            median_samples_per_z: medianSamplesPerZ,
-            cell_median_samples_per_z: cellMedianSamplesPerZ,
             cellDurations,
             runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
             runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
@@ -2598,7 +2565,6 @@ class ViscometryDashboard {
             card.innerHTML = `
             <div class="experiment-card-row">
                 <strong>${new Date(exp.created_at).toLocaleString()}</strong>
-                <span>${exp.measurement_count} pts</span>
             </div>
             <div class="experiment-card-row">
                 <span>Name</span><span>${experimentName}</span>
@@ -2642,21 +2608,19 @@ class ViscometryDashboard {
             : "";
         const feedbackRows = s.feedback_control_enabled ? [
             `<strong>Feedback enabled:</strong> Yes`,
-            `<strong>R² Drag threshold:</strong> ${s.r2_drag_min ?? "-"}`,
-            `<strong>R² CV threshold:</strong> ${s.r2_cv_min ?? "-"}`,
-            `<strong>R² Slope threshold:</strong> ${s.r2_slope_min ?? "-"}`,
+            `<strong>R_2 Drag threshold:</strong> ${s.r2_drag_min ?? "-"}`,
+            `<strong>R_2 CV threshold:</strong> ${s.r2_cv_min ?? "-"}`,
+            `<strong>R_2 Slope threshold:</strong> ${s.r2_slope_min ?? "-"}`,
             `<strong>Hit Confidence threshold:</strong> ${s.hit_point_confidence_threshold ?? "-"}`,
             `<strong>w (2nd Deriv Drag/CV/Slope):</strong> ${s.weight_2nd_deriv_drag ?? "-"}/${s.weight_2nd_deriv_cv ?? "-"}/${s.weight_2nd_deriv_slope ?? "-"}`,
-            `<strong>w (R² Drag/CV/Slope):</strong> ${s.weight_r2_drag ?? "-"}/${s.weight_r2_cv ?? "-"}/${s.weight_r2_slope ?? "-"}`,
+            `<strong>w (R_2 Drag/CV/Slope):</strong> ${s.weight_r2_drag ?? "-"}/${s.weight_r2_cv ?? "-"}/${s.weight_r2_slope ?? "-"}`,
         ] : ["<strong>Feedback enabled:</strong> No"];
 
         const durationRows = exp.cells.map((cellId) => {
             const dur = exp.cellDurations?.[cellId];
-            const medianSamples = exp.cell_median_samples_per_z?.[cellId];
             const label = s.cell_content_map?.[cellId] ? ` (${s.cell_content_map[cellId]})` : "";
             const timeStr = dur != null ? this.formatDuration(dur) : "—";
-            const medianStr = Number.isFinite(medianSamples) ? String(medianSamples) : "—";
-            return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td><td>${medianStr}</td></tr>`;
+            return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td></tr>`;
         }).join("");
         const allTimestamps = (exp.latestPerZ || [])
             .map((p) => Number(p.timestamp))
@@ -2674,7 +2638,7 @@ class ViscometryDashboard {
             : null;
         const durationTable = `
 <table class="duration-table">
-  <thead><tr><th>Cell</th><th>Duration</th><th>Median Samples / Z</th></tr></thead>
+  <thead><tr><th>Cell</th><th>Duration</th></tr></thead>
   <tbody>${durationRows}</tbody>
 </table>
 <div><strong>Total Time:</strong> ${totalDurationMs != null ? this.formatDuration(totalDurationMs) : "—"}</div>`;
@@ -2687,10 +2651,6 @@ class ViscometryDashboard {
             `<strong>Z step:</strong> ${s.z_step_size ?? "-"} mm`,
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
             `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
-            `<strong>Median samples per Z height:</strong> ${
-                Number.isFinite(exp.median_samples_per_z) ? exp.median_samples_per_z : "-"
-            }`,
-            `<strong>Points collected:</strong> ${exp.measurement_count}`,
             durationTable,
         ];
         const rightLines = [
