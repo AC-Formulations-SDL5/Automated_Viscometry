@@ -435,9 +435,13 @@ body.running .header-sweep {
 
 /* Controls Tab */
 #controls-tab {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto auto;
     gap: var(--controls-block-gap);
+}
+
+.controls-charts-stack > .plot-card:first-child {
+    margin-top: 0;
 }
 
 .controls-tracking-grid {
@@ -452,6 +456,13 @@ body.running .header-sweep {
     flex-direction: column;
     gap: var(--controls-block-gap);
     min-width: 0;
+}
+
+.controls-right-stack .calibration-card,
+.controls-right-stack .tracking-card,
+.controls-right-stack .live-viscosity-card {
+    width: 100%;
+    align-self: stretch;
 }
 
 .controls-charts-stack {
@@ -470,7 +481,15 @@ body.running .header-sweep {
 #data-processing-tab {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: var(--controls-block-gap);
+}
+
+.live-viscosity-table {
+    margin-top: 0;
+}
+
+.live-viscosity-card .plot-empty {
+    margin: 8px 0 0;
 }
 
 .predicted-viscosity-info-card .predicted-viscosity-explainer {
@@ -1984,7 +2003,6 @@ body.loading .skeleton-lines {
     border-color: var(--border-subtle);
     box-shadow: var(--shadow-1);
     transition: border-color 0.4s ease, box-shadow 0.4s ease;
-    align-self: start;
 }
 
 .calibration-card.cal-ok {

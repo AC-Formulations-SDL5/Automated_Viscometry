@@ -1231,7 +1231,7 @@ def run_predicted_viscosity_for_cell(
             if result.get('success'):
                 print(
                     f"  Predicted viscosity Cell {cell_id} @ {rpm} RPM: "
-                    f"{result.get('viscosity_kcp'):.4f} kCp (n={result.get('n_points_used')})"
+                    f"{result.get('viscosity_kcp'):.3f} kCp (n={result.get('n_points_used')})"
                 )
             else:
                 print(

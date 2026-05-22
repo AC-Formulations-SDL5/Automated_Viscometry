@@ -527,6 +527,25 @@
                             </div>
                         </div>
                     </section>
+
+                    <section class="card live-viscosity-card">
+                        <div class="card-title-row">
+                            <h2>Live Viscosity Predictions</h2>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="duration-table live-viscosity-table">
+                                <thead>
+                                    <tr>
+                                        <th>Cell No.</th>
+                                        <th>Cell Label</th>
+                                        <th>Predicted Viscosity (kCp)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="live-viscosity-table-body"></tbody>
+                            </table>
+                            <p id="live-viscosity-empty" class="plot-empty">No predictions yet.</p>
+                        </div>
+                    </section>
                     </div>
                 </div>
 
@@ -619,10 +638,6 @@
                 <section class="card predicted-viscosity-info-card">
                     <div class="card-title-row">
                         <h2>Predicted Viscosity</h2>
-                        <label class="checkbox-row predicted-viscosity-toggle-row">
-                            <input id="predicted-viscosity-enabled-data" name="predicted_viscosity_enabled_data" type="checkbox">
-                            <span>Enable predicted viscosity</span>
-                        </label>
                     </div>
                     <div class="predicted-viscosity-explainer">
                         <p>Rotational drag <em>D</em> (torque % divided by spindle speed ω) follows a hyperbolic relationship with gap height <em>h</em>:</p>

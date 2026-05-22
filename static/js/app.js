@@ -60,7 +60,6 @@ class ViscometryDashboard {
         this.cellContentMap = {}; // { cellId (number): "sample label" }
         this.latestControlSettings = {};
         this.predictedViscosityData = {};
-        this._syncingPredictedViscosityToggle = false;
         this.calibrationSummary = { is_calibrated: false, cell_count: 0, cells: {}, calibrated_at: null };
         this.calibrationPanelOpen = false;
         this.calChecksComplete = false;
@@ -141,8 +140,9 @@ class ViscometryDashboard {
             lowTorqueLiquidContactSkipEnabled: document.getElementById("low-torque-liquid-contact-skip-enabled"),
             lowTorqueLiquidContactThresholdPct: document.getElementById("low-torque-liquid-contact-threshold-pct"),
             predictedViscosityEnabled: document.getElementById("predicted-viscosity-enabled"),
-            predictedViscosityEnabledData: document.getElementById("predicted-viscosity-enabled-data"),
             predictedViscosityChartsCard: document.getElementById("predicted-viscosity-charts-card"),
+            liveViscosityTableBody: document.getElementById("live-viscosity-table-body"),
+            liveViscosityEmpty: document.getElementById("live-viscosity-empty"),
             predictedViscosityCharts: document.getElementById("predicted-viscosity-charts"),
             predictedViscosityChartsEmpty: document.getElementById("predicted-viscosity-charts-empty"),
             r2DragMin: document.getElementById("r2-drag-min"),
@@ -248,22 +248,12 @@ class ViscometryDashboard {
             this.el.exportTable.addEventListener("click", () => this.exportCSV());
         }
         const onPredictedViscosityToggleChange = () => {
-            if (this._syncingPredictedViscosityToggle) {
-                return;
-            }
-            const checked = Boolean(
-                this.el.predictedViscosityEnabled?.checked
-                ?? this.el.predictedViscosityEnabledData?.checked
-            );
-            this._syncPredictedViscosityToggles(checked);
+            const checked = Boolean(this.el.predictedViscosityEnabled?.checked);
             this._updatePredictedViscosityChartsCardVisibility(checked);
             this.applyControlSettings(true);
         };
         if (this.el.predictedViscosityEnabled) {
             this.el.predictedViscosityEnabled.addEventListener("change", onPredictedViscosityToggleChange);
-        }
-        if (this.el.predictedViscosityEnabledData) {
-            this.el.predictedViscosityEnabledData.addEventListener("change", onPredictedViscosityToggleChange);
         }
         this.el.applySettings.addEventListener("click", () => this.applyControlSettings());
         this.el.startRun.addEventListener("click", () => this.startRunFromUI());
@@ -797,7 +787,9 @@ class ViscometryDashboard {
             this.el.lowTorqueLiquidContactThresholdPct.value = settings.low_torque_liquid_contact_threshold_pct ?? 25;
         }
         const predEnabled = Boolean(settings.predicted_viscosity_enabled);
-        this._syncPredictedViscosityToggles(predEnabled);
+        if (this.el.predictedViscosityEnabled) {
+            this.el.predictedViscosityEnabled.checked = predEnabled;
+        }
         this._updatePredictedViscosityChartsCardVisibility(predEnabled);
         if (this.el.r2DragMin) this.el.r2DragMin.value = settings.r2_drag_min ?? 0.975;
         if (this.el.r2CvMin) this.el.r2CvMin.value = settings.r2_cv_min ?? 0.975;
@@ -1017,10 +1009,7 @@ class ViscometryDashboard {
             baseline_n_calibration: Number(this.el.baselineNCalibration?.value ?? 10),
             baseline_z_threshold: Number(this.el.baselineZThreshold?.value ?? 5),
             feedback_control_enabled: this.el.feedbackEnabled.checked,
-            predicted_viscosity_enabled: Boolean(
-                this.el.predictedViscosityEnabled?.checked
-                ?? this.el.predictedViscosityEnabledData?.checked
-            ),
+            predicted_viscosity_enabled: Boolean(this.el.predictedViscosityEnabled?.checked),
             cell_rpm_map: this.buildCellRpmMapPayload(),
             cell_content_map: this.buildCellContentMapPayload(),
         };
@@ -1293,6 +1282,7 @@ class ViscometryDashboard {
         if (this.el.predictedViscosityCharts) {
             this.el.predictedViscosityCharts.innerHTML = "";
         }
+        this.renderLiveViscosityPredictionsTable();
         this.measurementsByCell.clear();
         this.latestTorqueByCell.clear();
         this.hitPoints.clear();
@@ -2740,7 +2730,7 @@ class ViscometryDashboard {
                     const result = rpmMap[rpmKey];
                     const label = s.cell_content_map?.[cellId] ?? s.cell_content_map?.[String(cellId)] ?? "";
                     const visc = result?.success && result?.viscosity_kcp != null
-                        ? Number(result.viscosity_kcp).toFixed(4)
+                        ? Number(result.viscosity_kcp).toFixed(3)
                         : "—";
                     rows.push(
                         `<tr><td>${cellId}</td><td>${label || "—"}</td><td>${rpmKey}</td><td>${visc}</td></tr>`
@@ -3193,17 +3183,6 @@ class ViscometryDashboard {
         }
     }
 
-    _syncPredictedViscosityToggles(checked) {
-        this._syncingPredictedViscosityToggle = true;
-        if (this.el.predictedViscosityEnabled) {
-            this.el.predictedViscosityEnabled.checked = checked;
-        }
-        if (this.el.predictedViscosityEnabledData) {
-            this.el.predictedViscosityEnabledData.checked = checked;
-        }
-        this._syncingPredictedViscosityToggle = false;
-    }
-
     _updatePredictedViscosityChartsCardVisibility(enabled) {
         if (!this.el.predictedViscosityChartsCard) {
             return;
@@ -3236,6 +3215,7 @@ class ViscometryDashboard {
             }
         });
         this.renderPredictedViscosityCharts();
+        this.renderLiveViscosityPredictionsTable();
     }
 
     _ingestPredictedViscosityUpdate(payload) {
@@ -3252,12 +3232,65 @@ class ViscometryDashboard {
         }
         this.predictedViscosityData[cellId][rpm] = payload;
         this.renderPredictedViscosityCharts();
+        this.renderLiveViscosityPredictionsTable();
+    }
+
+    _fmtPredictedViscosity3(value) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n.toFixed(3) : "—";
+    }
+
+    renderLiveViscosityPredictionsTable() {
+        const tbody = this.el.liveViscosityTableBody;
+        if (!tbody) {
+            return;
+        }
+
+        const contentMap = this.latestControlSettings?.cell_content_map
+            || this.readControlSettings().cell_content_map
+            || {};
+        const rows = [];
+
+        Object.keys(this.predictedViscosityData)
+            .map((k) => Number(k))
+            .filter((id) => Number.isFinite(id))
+            .sort((a, b) => a - b)
+            .forEach((cellId) => {
+                const rpmMap = this.predictedViscosityData[cellId];
+                if (!rpmMap || typeof rpmMap !== "object") {
+                    return;
+                }
+                Object.keys(rpmMap)
+                    .map((k) => Number(k))
+                    .filter((r) => Number.isFinite(r))
+                    .sort((a, b) => a - b)
+                    .forEach((rpm) => {
+                        const result = rpmMap[rpm];
+                        const label = contentMap[cellId]
+                            ?? contentMap[String(cellId)]
+                            ?? "";
+                        const visc = result?.success && result?.viscosity_kcp != null
+                            ? this._fmtPredictedViscosity3(result.viscosity_kcp)
+                            : "—";
+                        rows.push(
+                            `<tr><td>${cellId}</td><td>${label || "—"}</td><td class="mono">${visc}</td></tr>`
+                        );
+                    });
+            });
+
+        tbody.innerHTML = rows.join("");
+        if (this.el.liveViscosityEmpty) {
+            this.el.liveViscosityEmpty.classList.toggle("hidden", rows.length > 0);
+        }
+        const table = tbody.closest(".live-viscosity-table");
+        if (table) {
+            table.classList.toggle("hidden", rows.length === 0);
+        }
     }
 
     renderPredictedViscosityCharts() {
         const enabled = Boolean(
             this.el.predictedViscosityEnabled?.checked
-            ?? this.el.predictedViscosityEnabledData?.checked
             ?? this.latestControlSettings?.predicted_viscosity_enabled
         );
         if (!enabled || !this.el.predictedViscosityCharts) {
@@ -3365,10 +3398,10 @@ class ViscometryDashboard {
                 }
 
                 const eta = result.success && result.viscosity_kcp != null
-                    ? Number(result.viscosity_kcp).toFixed(3)
+                    ? this._fmtPredictedViscosity3(result.viscosity_kcp)
                     : "—";
                 subtitles.push(
-                    `RPM ${rpm} | η = ${eta} kCp | a = ${result.a ?? "—"} | b = ${result.b ?? "—"} | n = ${result.n_points_used ?? 0}`
+                    `RPM ${rpm} | η = ${eta} kCp | a = ${this._fmtPredictedViscosity3(result.a)} | b = ${this._fmtPredictedViscosity3(result.b)} | n = ${result.n_points_used ?? 0}`
                 );
             });
 
