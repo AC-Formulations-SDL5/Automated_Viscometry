@@ -420,7 +420,28 @@ body.running .header-sweep {
     display: none !important;
 }
 
-.tab-panel.active {
+/* Preserve each tab's layout when active (.tab-panel.active { display:block } broke grid/flex gap) */
+#layout-tab.tab-panel.active {
+    display: grid !important;
+    grid-template-columns: 1.2fr 0.8fr;
+    grid-template-rows: auto;
+    grid-template-areas: "map timeline";
+    gap: var(--controls-block-gap);
+}
+
+#controls-tab.tab-panel.active {
+    display: grid !important;
+    grid-template-rows: auto auto;
+    gap: var(--controls-block-gap);
+}
+
+#data-processing-tab.tab-panel.active {
+    display: flex !important;
+    flex-direction: column;
+    gap: var(--controls-block-gap);
+}
+
+#summary-tab.tab-panel.active {
     display: block !important;
 }
 
@@ -430,7 +451,7 @@ body.running .header-sweep {
     grid-template-columns: 1.2fr 0.8fr;
     grid-template-rows: auto;
     grid-template-areas: "map timeline";
-    gap: 20px;
+    gap: var(--controls-block-gap);
 }
 
 /* Controls Tab */
@@ -518,7 +539,7 @@ body.running .header-sweep {
 .predicted-viscosity-charts-grid {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: var(--controls-block-gap);
 }
 
 .predicted-viscosity-plot-wrap {
@@ -1944,7 +1965,7 @@ body.loading .skeleton-lines {
     }
 
     .controls-right-stack {
-        gap: 12px;
+        gap: var(--controls-block-gap);
     }
 
     .tracking-grid {
@@ -1979,7 +2000,7 @@ body.loading .skeleton-lines {
     }
 
     .controls-right-stack {
-        gap: 10px;
+        gap: var(--controls-block-gap);
     }
 
     .platform-map {
