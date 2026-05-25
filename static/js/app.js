@@ -135,6 +135,7 @@ class ViscometryDashboard {
             torqueBreakThreshold: document.getElementById("torque-break-threshold"),
             feedbackEnabled: document.getElementById("feedback-control-enabled"),
             smartEarlyExitEnabled: document.getElementById("smart-early-exit-enabled"),
+            failSafeEnabled: document.getElementById("fail-safe-enabled"),
             smartCvThreshold: document.getElementById("smart-cv-threshold"),
             smartWindowSize: document.getElementById("smart-window-size"),
             lowTorqueLiquidContactSkipEnabled: document.getElementById("low-torque-liquid-contact-skip-enabled"),
@@ -778,6 +779,9 @@ class ViscometryDashboard {
         if (this.el.smartEarlyExitEnabled) {
             this.el.smartEarlyExitEnabled.checked = settings.smart_early_exit_enabled !== false;
         }
+        if (this.el.failSafeEnabled) {
+            this.el.failSafeEnabled.checked = settings.fail_safe_enabled !== false;
+        }
         if (this.el.smartCvThreshold) this.el.smartCvThreshold.value = settings.smart_cv_threshold ?? 0.005;
         if (this.el.smartWindowSize) this.el.smartWindowSize.value = settings.smart_window_size ?? 3;
         if (this.el.lowTorqueLiquidContactSkipEnabled) {
@@ -992,6 +996,7 @@ class ViscometryDashboard {
             inter_rpm_pause: Number(this.el.interRpmPause.value),
             torque_break_threshold: Number(this.el.torqueBreakThreshold.value),
             smart_early_exit_enabled: Boolean(this.el.smartEarlyExitEnabled?.checked),
+            fail_safe_enabled: this.el.failSafeEnabled?.checked ?? true,
             smart_cv_threshold: Number(this.el.smartCvThreshold?.value ?? 0.005),
             smart_window_size: Number(this.el.smartWindowSize?.value ?? 3),
             low_torque_liquid_contact_skip_enabled: Boolean(this.el.lowTorqueLiquidContactSkipEnabled?.checked),

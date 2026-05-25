@@ -100,6 +100,8 @@ SAMPLE_INTERVAL = 5.0
 SMART_EARLY_EXIT_ENABLED = True
 SMART_CV_THRESHOLD = 0.005
 SMART_WINDOW_SIZE = 3
+FAIL_SAFE_ENABLED = True
+FAIL_SAFE_CONSECUTIVE_STEPS = 5
 
 # Skip Z-levels until post-interval torque ≥ threshold (first sample at elapsed ≥ SAMPLE_INTERVAL;
 # regular runs only; see web toggle).
@@ -143,7 +145,7 @@ def apply_runtime_settings_from_web():
     global TESTING_MODE, SELECTED_ROWS, SELECTED_CELLS, TEST_RPMS, CELL_RPM_MAP, CELL_CONTENT_MAP
     global EXPERIMENT_NAME
     global Z_STEP_SIZE, DWELL_SECONDS, INTER_RPM_PAUSE, MEASUREMENT_DURATION, SAMPLE_INTERVAL
-    global SMART_EARLY_EXIT_ENABLED, SMART_CV_THRESHOLD, SMART_WINDOW_SIZE
+    global SMART_EARLY_EXIT_ENABLED, SMART_CV_THRESHOLD, SMART_WINDOW_SIZE, FAIL_SAFE_ENABLED
     global FEEDBACK_CONTROL_ENABLED, MIN_DATA_POINTS_FOR_TREND, HIT_POINT_CONFIDENCE_THRESHOLD, TORQUE_BREAK_THRESHOLD
     global R2_DRAG_MIN, R2_CV_MIN, R2_SLOPE_MIN
     global WEIGHT_2ND_DERIV_DRAG, WEIGHT_2ND_DERIV_CV, WEIGHT_2ND_DERIV_SLOPE
@@ -174,6 +176,7 @@ def apply_runtime_settings_from_web():
     MEASUREMENT_DURATION = float(settings.get('measurement_duration', MEASUREMENT_DURATION))
     SAMPLE_INTERVAL = float(settings.get('sample_interval', SAMPLE_INTERVAL))
     SMART_EARLY_EXIT_ENABLED = bool(settings.get('smart_early_exit_enabled', SMART_EARLY_EXIT_ENABLED))
+    FAIL_SAFE_ENABLED = bool(settings.get('fail_safe_enabled', FAIL_SAFE_ENABLED))
     SMART_CV_THRESHOLD = float(settings.get('smart_cv_threshold', SMART_CV_THRESHOLD))
     SMART_WINDOW_SIZE = max(2, int(settings.get('smart_window_size', SMART_WINDOW_SIZE)))
     FEEDBACK_CONTROL_ENABLED = bool(settings.get('feedback_control_enabled', FEEDBACK_CONTROL_ENABLED))
@@ -854,6 +857,7 @@ def test_cell_dynamic_z_series(
     hit_confidence_threshold = 0.80
     required_consecutive_hit_steps = 3
     consecutive_high_confidence_steps = 0
+    consecutive_fail_safe_steps = 0
     _fill_thread: Optional[threading.Thread] = None
     
     step_count = 0
@@ -1081,9 +1085,43 @@ def test_cell_dynamic_z_series(
                         # Store metrics before breaking
                         cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
                         break
+
+                    # Fail-safe: sub-threshold confidence streak (requires feedback metrics above).
+                    if FAIL_SAFE_ENABLED:
+                        fail_safe_threshold = HIT_POINT_CONFIDENCE_THRESHOLD * 0.75
+                        if z_level_max_confidence >= fail_safe_threshold:
+                            consecutive_fail_safe_steps += 1
+                            print(
+                                f"  Fail-safe streak: {consecutive_fail_safe_steps}/{FAIL_SAFE_CONSECUTIVE_STEPS} "
+                                f"(max confidence={z_level_max_confidence:.2f}, threshold={fail_safe_threshold:.2f})"
+                            )
+                        else:
+                            if consecutive_fail_safe_steps > 0:
+                                print(
+                                    f"  Fail-safe streak reset at Z={z_rounded:.3f} "
+                                    f"(max confidence={z_level_max_confidence:.2f})"
+                                )
+                            consecutive_fail_safe_steps = 0
+
+                        if consecutive_fail_safe_steps >= FAIL_SAFE_CONSECUTIVE_STEPS:
+                            for rpm in metrics_data:
+                                metrics_data[rpm]['Hit_Detected'] = False
+                                metrics_data[rpm]['Hit_Reasons'] = 'fail safe, experiment terminated'
+                            cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
+                            web_interface.update_status(
+                                f"Cell {global_cell}: fail-safe activated after "
+                                f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive sub-threshold confidence readings"
+                            )
+                            print(
+                                f"  *** FAIL-SAFE: terminating Cell {global_cell} after "
+                                f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive sub-threshold Z-steps ***"
+                            )
+                            break
                 else:
-                    # Feedback control disabled or no data - store default metrics
+                    # Feedback control disabled or no data - store default metrics.
+                    # Fail-safe never fires here (Hit_Point_Confidence is 0.0).
                     consecutive_high_confidence_steps = 0
+                    consecutive_fail_safe_steps = 0
                     for rpm in cell_rpms:
                         metrics_data[rpm] = {
                             'CV': 0.0,

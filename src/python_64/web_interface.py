@@ -60,6 +60,7 @@ class ViscometryWebInterface:
             'inter_rpm_pause': 2.0,
             'feedback_control_enabled': True,
             'smart_early_exit_enabled': True,
+            'fail_safe_enabled': True,
             'smart_cv_threshold': 0.005,
             'smart_window_size': 3,
             'min_data_points_for_trend': 8,
@@ -516,6 +517,8 @@ class ViscometryWebInterface:
                 normalized['feedback_control_enabled'] = bool(settings['feedback_control_enabled'])
             if 'smart_early_exit_enabled' in settings:
                 normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
+            if 'fail_safe_enabled' in settings:
+                normalized['fail_safe_enabled'] = bool(settings['fail_safe_enabled'])
             if 'predicted_viscosity_enabled' in settings:
                 normalized['predicted_viscosity_enabled'] = bool(settings['predicted_viscosity_enabled'])
             if 'low_torque_liquid_contact_skip_enabled' in settings:
