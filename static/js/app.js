@@ -1,3 +1,13 @@
+/** Pastel RPM colors for live rotational-drag plot only (summary/history keep this.palette). */
+const LIVE_RPM_PASTEL_PALETTE = [
+    "#8ab4f8", "#fdd663", "#81c995", "#f6aea9",
+    "#c58af9", "#78d9ec", "#aecbfa", "#ceead6",
+    "#ffe082", "#b39ddb", "#80cbc4", "#efa17c",
+];
+
+const LIVE_PLOT_BELOW_FILL = "#f6aea9";
+const LIVE_PLOT_BELOW_LINE = "#e57373";
+
 class ViscometryDashboard {
     constructor() {
         this.platform = {
@@ -643,45 +653,68 @@ class ViscometryDashboard {
         }
     }
 
-    initPlot() {
-        const zLayout = {
-            paper_bgcolor: "transparent",
-            plot_bgcolor: "rgba(255,255,255,0.03)",
-            font: { family: "DM Mono", color: "#C9D1D9", size: 12 },
+    _buildLivePlotLayout({ yTitle, xReversed = false, showLegend = false }) {
+        const plotFont = "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+        const axisTitleFont = { family: plotFont, size: 12, color: "#5f6368" };
+        const axisTickFont = { family: plotFont, size: 11, color: "#5f6368" };
+        const axisStyle = {
+            gridcolor: "#e8eaed",
+            linecolor: "#dadce0",
+            tickcolor: "#9aa0a6",
+            zeroline: false,
+            tickfont: axisTickFont,
+        };
+        const layout = {
+            paper_bgcolor: "rgba(0,0,0,0)",
+            plot_bgcolor: "rgba(0,0,0,0)",
+            font: { family: plotFont, color: "#5f6368", size: 12 },
             xaxis: {
-                title: "Z-Height (mm)",
-                gridcolor: "#21262D",
-                zeroline: false,
-                autorange: true
+                ...axisStyle,
+                title: { text: "Z-Height (mm)", standoff: 8, font: axisTitleFont },
+                autorange: xReversed ? "reversed" : true,
             },
             yaxis: {
-                title: "Rotational Drag (torque / RPM)",
-                gridcolor: "#21262D",
-                zeroline: false
+                ...axisStyle,
+                title: { text: yTitle, standoff: 10, font: axisTitleFont },
             },
-            margin: { t: 16, r: 16, b: 45, l: 58 },
+            margin: { t: 16, r: 16, b: 48, l: 62 },
             showlegend: false,
         };
-        this.zSparklineLayout = zLayout;
+        if (showLegend) {
+            layout.legend = {
+                bgcolor: "rgba(0,0,0,0)",
+                bordercolor: "#dadce0",
+                font: { family: plotFont, size: 11, color: "#5f6368" },
+            };
+        }
+        return layout;
+    }
 
-        const torqueLayout = {
-            paper_bgcolor: "transparent",
-            plot_bgcolor: "rgba(255,255,255,0.03)",
-            font: { family: "DM Mono", color: "#C9D1D9", size: 12 },
-            xaxis: {
-                title: "Z-Height (mm)",
-                gridcolor: "#21262D",
-                zeroline: false,
-                autorange: "reversed"
-            },
-            yaxis: {
-                title: "Torque (%)",
-                gridcolor: "#21262D",
-                zeroline: false
-            },
-            margin: { t: 16, r: 16, b: 45, l: 58 },
-            legend: { bgcolor: "transparent", bordercolor: "#30363D" }
-        };
+    _shadeHexColor(hex, factor = 0.82) {
+        if (!hex || typeof hex !== "string" || !hex.startsWith("#")) {
+            return hex;
+        }
+        const raw = hex.slice(1);
+        const full = raw.length === 3
+            ? raw.split("").map((c) => c + c).join("")
+            : raw.slice(0, 6);
+        const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+        const r = clamp(parseInt(full.slice(0, 2), 16) * factor);
+        const g = clamp(parseInt(full.slice(2, 4), 16) * factor);
+        const b = clamp(parseInt(full.slice(4, 6), 16) * factor);
+        return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+    }
+
+    initPlot() {
+        this.zSparklineLayout = this._buildLivePlotLayout({
+            yTitle: "Rotational Drag (torque / RPM)",
+            xReversed: false,
+        });
+        this.torqueZLayout = this._buildLivePlotLayout({
+            yTitle: "Torque (%)",
+            xReversed: true,
+            showLegend: true,
+        });
 
         const config = {
             responsive: true,
@@ -697,14 +730,14 @@ class ViscometryDashboard {
         };
 
         if (this.el.zSparklinePlot) {
-            Plotly.newPlot(this.el.zSparklinePlot, [], zLayout, config).then(() => {
+            Plotly.newPlot(this.el.zSparklinePlot, [], this.zSparklineLayout, config).then(() => {
                 this.zPlotInitialized = true;
                 this.refreshLivePlots();
             });
         }
 
         if (this.el.torqueZPlot) {
-            Plotly.newPlot(this.el.torqueZPlot, [], torqueLayout, config).then(() => {
+            Plotly.newPlot(this.el.torqueZPlot, [], this.torqueZLayout, config).then(() => {
                 this.torquePlotInitialized = true;
                 this.refreshLivePlots();
             });
@@ -1886,8 +1919,8 @@ class ViscometryDashboard {
     }
 
     _markerColorsForTorqueFloor(measurements, floorPct) {
-        const belowFill = "#f85149";
-        const belowLine = "#ffb4a6";
+        const belowFill = LIVE_PLOT_BELOW_FILL;
+        const belowLine = LIVE_PLOT_BELOW_LINE;
         return measurements.map((m) => {
             const tp = Number(m.torque_percent);
             const below = Number.isFinite(tp) && tp < floorPct;
@@ -1948,6 +1981,13 @@ class ViscometryDashboard {
         return this.palette[paletteIdx % this.palette.length];
     }
 
+    getLiveRpmColor(rpm, orderedRpms) {
+        const key = Number(rpm).toFixed(3);
+        const idx = orderedRpms.findIndex((r) => Number(r).toFixed(3) === key);
+        const paletteIdx = idx >= 0 ? idx : 0;
+        return LIVE_RPM_PASTEL_PALETTE[paletteIdx % LIVE_RPM_PASTEL_PALETTE.length];
+    }
+
     partitionMeasurementsByRpm(source, orderedRpms) {
         const buckets = new Map();
         orderedRpms.forEach((rpm) => {
@@ -1968,21 +2008,17 @@ class ViscometryDashboard {
     }
 
     _markerColorsForRpmTrace(measurements, floorPct, rpmColor) {
-        const belowFill = "#f85149";
-        const belowLine = "#ffb4a6";
         return measurements.map((m) => {
             const tp = Number(m.torque_percent);
             const below = Number.isFinite(tp) && tp < floorPct;
-            return {
-                fill: below ? belowFill : rpmColor,
-                line: below ? belowLine : rpmColor,
-                below,
-            };
+            const fill = below ? LIVE_PLOT_BELOW_FILL : rpmColor;
+            const line = below ? LIVE_PLOT_BELOW_LINE : this._shadeHexColor(rpmColor, 0.82);
+            return { fill, line, below };
         });
     }
 
     _buildDragTraceForRpm(rpm, points, torqueFloor, orderedRpms) {
-        const rpmColor = this.getRpmColor(rpm, orderedRpms);
+        const rpmColor = this.getLiveRpmColor(rpm, orderedRpms);
         const sorted = [...points].sort((a, b) => Number(a.height) - Number(b.height));
         const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor);
         const rpmLabel = Number(rpm).toFixed(3);
@@ -1993,10 +2029,10 @@ class ViscometryDashboard {
             type: "scatter",
             name: `RPM ${rpmLabel}`,
             marker: {
-                size: 8,
+                size: 7,
                 color: markerPalette.map((p) => p.fill),
                 line: {
-                    width: 1,
+                    width: 0.75,
                     color: markerPalette.map((p) => p.line),
                 },
             },
@@ -2004,7 +2040,7 @@ class ViscometryDashboard {
             customdata: sorted.map((m) => Number(m.torque_percent)),
         };
         if (this.zConnectDots) {
-            trace.line = { color: rpmColor, width: 2 };
+            trace.line = { color: rpmColor, width: 1.5, opacity: 0.85 };
         }
         return trace;
     }
@@ -2024,7 +2060,7 @@ class ViscometryDashboard {
             return;
         }
         listEl.innerHTML = orderedRpms.map((rpm) => {
-            const color = this.getRpmColor(rpm, orderedRpms);
+            const color = this.getLiveRpmColor(rpm, orderedRpms);
             const label = Number(rpm).toFixed(3);
             return (
                 `<div class="rpm-legend-row">`
@@ -2088,17 +2124,22 @@ class ViscometryDashboard {
                 type: "scatter",
                 name: activeCell ? `Cell ${activeCell}` : "No Cell",
                 marker: {
-                    size: 8,
+                    size: 7,
                     color: tPalette.map((p) => p.fill || torqueDefault),
                     line: {
-                        width: 1,
+                        width: 0.75,
                         color: tPalette.map((p) => p.line || torqueLineDefault),
                     },
                 },
                 hovertemplate: "Z %{x:.3f} mm<br>Torque %{y:.3f}%<extra></extra>"
             }] : [];
 
-            Plotly.react(this.el.torqueZPlot, torqueTrace, undefined, { responsive: true, displayModeBar: false });
+            Plotly.react(
+                this.el.torqueZPlot,
+                torqueTrace,
+                this.torqueZLayout || undefined,
+                { responsive: true, displayModeBar: false }
+            );
             if (this.el.torqueZEmpty) {
                 this.el.torqueZEmpty.classList.toggle("hidden", torqueTrace.length > 0);
             }
