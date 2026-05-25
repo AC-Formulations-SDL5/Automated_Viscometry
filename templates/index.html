@@ -225,12 +225,15 @@
                                 <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox" checked>
                                 <span>Skip Z-levels until liquid contact (regular runs only; not calibration / recalibration)</span>
                             </label>
-                            <div class="viscosity-predictions-panel">
-                                <span class="form-label">Viscosity predictions</span>
-                                <div class="viscosity-predictions-buttons" role="group" aria-label="Viscosity predictions">
-                                    <button type="button" class="btn viscosity-mode-btn viscosity-mode-newtonian" data-mode="Newtonian">Newtonian fluid</button>
-                                    <button type="button" class="btn viscosity-mode-btn viscosity-mode-nonnewtonian" data-mode="Non-Newtonian">Non-Newtonian</button>
-                                    <button type="button" class="btn viscosity-mode-btn viscosity-mode-off active" data-mode="off">off</button>
+                            <div id="viscosity-predictions-panel" class="viscosity-predictions-panel" data-mode="off">
+                                <div class="viscosity-predictions-header">
+                                    <span class="form-label">Viscosity predictions</span>
+                                    <span class="viscosity-predictions-hint">Hyperbola fit after each cell</span>
+                                </div>
+                                <div class="viscosity-predictions-buttons segmented viscosity-predictions-segmented" role="group" aria-label="Viscosity predictions">
+                                    <button type="button" class="btn viscosity-mode-btn viscosity-mode-newtonian" data-mode="Newtonian" aria-pressed="false">Newtonian fluid</button>
+                                    <button type="button" class="btn viscosity-mode-btn viscosity-mode-nonnewtonian" data-mode="Non-Newtonian" aria-pressed="false">Non-Newtonian</button>
+                                    <button type="button" class="btn viscosity-mode-btn viscosity-mode-off active" data-mode="off" aria-pressed="true">off</button>
                                 </div>
                             </div>
                             <label>

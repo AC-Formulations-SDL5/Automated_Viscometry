@@ -143,6 +143,7 @@ class ViscometryDashboard {
             smartWindowSize: document.getElementById("smart-window-size"),
             lowTorqueLiquidContactSkipEnabled: document.getElementById("low-torque-liquid-contact-skip-enabled"),
             lowTorqueLiquidContactThresholdPct: document.getElementById("low-torque-liquid-contact-threshold-pct"),
+            viscosityPredictionsPanel: document.getElementById("viscosity-predictions-panel"),
             viscosityModeButtons: document.querySelectorAll(".viscosity-mode-btn"),
             predictedViscosityChartsCard: document.getElementById("predicted-viscosity-charts-card"),
             liveViscosityTableBody: document.getElementById("live-viscosity-table-body"),
@@ -3509,9 +3510,13 @@ class ViscometryDashboard {
     _setViscosityPredictionModeUI(mode) {
         const normalized = this._normalizeViscosityPredictionMode(mode);
         this.viscosityPredictionMode = normalized;
+        if (this.el.viscosityPredictionsPanel) {
+            this.el.viscosityPredictionsPanel.dataset.mode = normalized;
+        }
         this.el.viscosityModeButtons.forEach((btn) => {
             const active = (btn.dataset.mode || "off") === normalized;
             btn.classList.toggle("active", active);
+            btn.setAttribute("aria-pressed", active ? "true" : "false");
         });
     }
 
