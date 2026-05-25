@@ -11,12 +11,12 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
-from scipy.optimize import curve_fit
-
 _HELPER_DIR = Path(__file__).resolve().parent
 _SRC_DIR = _HELPER_DIR.parent.parent / "src" / "python_64"
 if _SRC_DIR.is_dir() and str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
+
+from viscosity_hyperbola_fit import _hyperbola_powerlaw, fit_hyperbola_powerlaw
 
 try:
     from csv_text_utils import (
@@ -47,11 +47,6 @@ except ImportError:
             if candidate.is_file():
                 return candidate.resolve()
         return (Path.cwd() / raw).resolve()
-
-
-def _hyperbola_2param(x: np.ndarray, a: float, b: float) -> np.ndarray:
-    """2-parameter hyperbola: a / (x - b)"""
-    return a / (x - b)
 
 
 def _normalize_object_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -199,10 +194,10 @@ def fit_cell_models(
     cell_col: str = "cell",
     x_col: str = "Z_Height_mm",
     y_col: str = "Rotational_Drag",
+    viscosity_prediction_mode: str = "Non-Newtonian",
 ) -> pd.DataFrame:
-    """Fit per-cell 2nd-order polynomial and hyperbola and return coefficients."""
-    def hyperbola(x, a, b):
-        return a / (x - b)
+    """Fit per-cell 2nd-order polynomial and power-law hyperbola; return coefficients."""
+    fix_n = 1.0 if viscosity_prediction_mode == "Newtonian" else None
 
     rows = []
     for cid, g in df.groupby(cell_col, sort=True):
@@ -212,31 +207,26 @@ def fit_cell_models(
 
         poly_a = np.nan
         hyp_a = np.nan
+        hyp_b = np.nan
+        hyp_n = np.nan
 
         if len(g) >= 3:
             poly_a = float(np.polyfit(x, y, 2)[0])
 
         if len(g) >= 4 and np.ptp(x) > 0:
-            # Initialize b away from x domain to avoid singularity during fitting.
-            b0 = float(np.min(x) - 0.5 * max(np.ptp(x), 1e-6))
-            a0 = float((y[0] - y[-1]) * max(np.ptp(x), 1e-6))
-            lower_b = float(np.min(x) - 5.0 * max(np.ptp(x), 1e-6))
-            upper_b = float(np.min(x) - 1e-6)
+            a_fit, b_fit, n_fit, _err = fit_hyperbola_powerlaw(x, y, fix_n=fix_n)
+            if a_fit is not None:
+                hyp_a = float(a_fit)
+                hyp_b = float(b_fit)
+                hyp_n = float(n_fit)
 
-            try:
-                p, _ = curve_fit(
-                    hyperbola,
-                    x,
-                    y,
-                    p0=[a0, b0],
-                    bounds=([-np.inf, lower_b], [np.inf, upper_b]),
-                    maxfev=20000,
-                )
-                hyp_a = float(p[0])
-            except Exception:
-                hyp_a = np.nan
-
-        rows.append({"cell": int(cid), "a_poly2": poly_a, "a_hyperbola": hyp_a})
+        rows.append({
+            "cell": int(cid),
+            "a_poly2": poly_a,
+            "a_hyperbola": hyp_a,
+            "b_hyperbola": hyp_b,
+            "n_hyperbola": hyp_n,
+        })
 
     return pd.DataFrame(rows).sort_values("cell").reset_index(drop=True)
 
@@ -283,14 +273,11 @@ def _plot_trimmed_with_fits(
     x_col: str,
     y_col: str,
     title: str,
+    viscosity_prediction_mode: str = "Non-Newtonian",
 ) -> None:
     """Plot trimmed data with polynomial and hyperbola fits overlaid."""
-    from scipy.optimize import curve_fit
-
+    fix_n = 1.0 if viscosity_prediction_mode == "Newtonian" else None
     cc, xc, yc = cell_col, x_col, y_col
-
-    def hyperbola(x, a, b):
-        return a / (x - b)
 
     n_cells = int(max(trimmed_df[cc].max(), 1))
     n_cols = 3
@@ -317,26 +304,13 @@ def _plot_trimmed_with_fits(
             y_poly = np.polyval(p_poly, x_line)
             ax.plot(x_line, y_poly, color="#4285F4", lw=2, linestyle="--", label="Poly2", zorder=2)
 
-        # Fit and plot hyperbola
+        # Fit and plot power-law hyperbola
         if len(g) >= 4 and np.ptp(x) > 0:
-            b0 = float(np.min(x) - 0.5 * max(np.ptp(x), 1e-6))
-            a0 = float((y[0] - y[-1]) * max(np.ptp(x), 1e-6))
-            lower_b = float(np.min(x) - 5.0 * max(np.ptp(x), 1e-6))
-            upper_b = float(np.min(x) - 1e-6)
-            try:
-                p, _ = curve_fit(
-                    hyperbola,
-                    x,
-                    y,
-                    p0=[a0, b0],
-                    bounds=([-np.inf, lower_b], [np.inf, upper_b]),
-                    maxfev=20000,
-                )
+            a_fit, b_fit, n_fit, _err = fit_hyperbola_powerlaw(x, y, fix_n=fix_n)
+            if a_fit is not None and b_fit is not None and n_fit is not None:
                 x_line = np.linspace(x.min(), x.max(), 100)
-                y_hyp = hyperbola(x_line, *p)
+                y_hyp = _hyperbola_powerlaw(x_line, a_fit, b_fit, n_fit)
                 ax.plot(x_line, y_hyp, color="#EA4335", lw=2, linestyle=":", label="Hyperbola", zorder=2)
-            except Exception:
-                pass
 
         ax.set_title(f"Cell {i}", fontsize=12, fontweight="bold")
         ax.grid(alpha=0.25)
@@ -453,6 +427,7 @@ def run_viscosity_pipeline(
     m_poly: float = 0.592,
     m_hyp: float = 2.330,
     visualize: bool = True,
+    viscosity_prediction_mode: str = "Non-Newtonian",
 ) -> Dict[str, object]:
     """
     End-to-end pipeline for rotational-drag vs height datasets.
@@ -479,7 +454,13 @@ def run_viscosity_pipeline(
     )
     df_norm = normalize_height_by_cell(df_raw, cell_col=cell_col, x_col=x_col)
     df_trimmed, trim_report = trim_stat_middle(df_norm, cell_col=cell_col, x_col=x_col, y_col=y_col)
-    fit_df = fit_cell_models(df_trimmed, cell_col=cell_col, x_col=x_col, y_col=y_col)
+    fit_df = fit_cell_models(
+        df_trimmed,
+        cell_col=cell_col,
+        x_col=x_col,
+        y_col=y_col,
+        viscosity_prediction_mode=viscosity_prediction_mode,
+    )
 
     fit_df["real_viscosity"] = fit_df["cell"].map(real_viscosity_map)
     fit_df["real_viscosity_kcp"] = fit_df["real_viscosity"] / 1000.0
@@ -514,6 +495,7 @@ def run_viscosity_pipeline(
             x_col=x_col,
             y_col=y_col,
             title=f"{data_path.name}: Selected Raw Segment + Fits",
+            viscosity_prediction_mode=viscosity_prediction_mode,
         )
         _plot_prediction_accuracy(fit_df, m_hyp=m_hyp, m_pol2=m_poly)
 

@@ -83,7 +83,7 @@ class ViscometryWebInterface:
             # Regular runs only: skip Z-levels when torque (first sample at elapsed >= SAMPLE_INTERVAL) is below threshold.
             'low_torque_liquid_contact_skip_enabled': True,
             'low_torque_liquid_contact_threshold_pct': 25.0,
-            'predicted_viscosity_enabled': False,
+            'viscosity_prediction_mode': 'off',
         }
         self.predicted_viscosity_results: Dict = {}
         # ========== Calibration state ==========
@@ -519,8 +519,15 @@ class ViscometryWebInterface:
                 normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
             if 'fail_safe_enabled' in settings:
                 normalized['fail_safe_enabled'] = bool(settings['fail_safe_enabled'])
-            if 'predicted_viscosity_enabled' in settings:
-                normalized['predicted_viscosity_enabled'] = bool(settings['predicted_viscosity_enabled'])
+            if 'viscosity_prediction_mode' in settings:
+                mode = str(settings.get('viscosity_prediction_mode', 'off') or 'off').strip()
+                normalized['viscosity_prediction_mode'] = (
+                    mode if mode in ('off', 'Newtonian', 'Non-Newtonian') else 'off'
+                )
+            elif 'predicted_viscosity_enabled' in settings:
+                normalized['viscosity_prediction_mode'] = (
+                    'Newtonian' if bool(settings['predicted_viscosity_enabled']) else 'off'
+                )
             if 'low_torque_liquid_contact_skip_enabled' in settings:
                 normalized['low_torque_liquid_contact_skip_enabled'] = bool(
                     settings['low_torque_liquid_contact_skip_enabled']

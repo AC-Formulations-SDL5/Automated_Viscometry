@@ -225,10 +225,14 @@
                                 <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox" checked>
                                 <span>Skip Z-levels until liquid contact (regular runs only; not calibration / recalibration)</span>
                             </label>
-                            <label class="checkbox-row">
-                                <input id="predicted-viscosity-enabled" name="predicted_viscosity_enabled" type="checkbox">
-                                <span>Enable predicted viscosity (hyperbola fit)</span>
-                            </label>
+                            <div class="viscosity-predictions-panel">
+                                <span class="form-label">Viscosity predictions</span>
+                                <div class="viscosity-predictions-buttons" role="group" aria-label="Viscosity predictions">
+                                    <button type="button" class="btn viscosity-mode-btn viscosity-mode-newtonian" data-mode="Newtonian">Newtonian fluid</button>
+                                    <button type="button" class="btn viscosity-mode-btn viscosity-mode-nonnewtonian" data-mode="Non-Newtonian">Non-Newtonian</button>
+                                    <button type="button" class="btn viscosity-mode-btn viscosity-mode-off active" data-mode="off">off</button>
+                                </div>
+                            </div>
                             <label>
                                 <span>First-sample torque floor (%)</span>
                                 <input id="low-torque-liquid-contact-threshold-pct" name="low_torque_liquid_contact_threshold_pct" type="number" step="0.1" min="0" max="100" value="25" title="Z-levels are skipped when the first torque sample at elapsed ≥ Sample interval (s) is below this value. Earlier samples are ignored for this gate. Skipped rows use torque label &lt;x% and SKIPPED metrics.">
@@ -651,9 +655,10 @@
                     <div class="predicted-viscosity-explainer">
                         <p>Rotational drag <em>D</em> (torque % divided by spindle speed ω) follows a hyperbolic relationship with gap height <em>h</em>:</p>
                         <p class="predicted-viscosity-formula">(D/ω) = η·K / (h + h₀)</p>
-                        <p>Equivalently, <em>D(h) = a / (h − b)</em> with <em>a = η·K</em>. As the probe approaches the surface, drag rises sharply—the curve asymptotes because fluid is squeezed in a vanishing gap.</p>
-                        <p>The geometry constant <em>K</em> (scale factor <strong>M<sub>HYP</sub> = 2.330</strong> in this platform) maps the fitted coefficient <em>a</em> to viscosity: <em>η (kCp) = |a| × M<sub>HYP</sub></em>.</p>
-                        <p>Points below the torque floor and at/after the detected hit point are excluded before a statistical middle-segment trim and <code>curve_fit</code> hyperbola fit.</p>
+                        <p><strong>Newtonian:</strong> <em>D(h) = a / (h − b)</em> (flow index <em>n = 1</em>).</p>
+                        <p><strong>Non-Newtonian (shear-thinning):</strong> <em>D(h) = a / |h − b|<sup>n</sup></em> with <em>n &lt; 1</em>. The absolute value prevents complex results when <em>n</em> is fractional.</p>
+                        <p>The geometry constant <em>K</em> (scale factor <strong>M<sub>HYP</sub> = 2.330</strong>) maps the fitted coefficient <em>a</em> to viscosity: <em>η (kCp) = |a| × M<sub>HYP</sub></em>.</p>
+                        <p>Points below the torque floor and at/after the detected hit point are excluded before a statistical middle-segment trim and <code>curve_fit</code>. Choose the mode under Design Experiment → Viscosity predictions.</p>
                     </div>
                 </section>
 
@@ -662,7 +667,7 @@
                         <h2>Predicted Viscosity Curves</h2>
                     </div>
                     <div id="predicted-viscosity-charts" class="predicted-viscosity-charts-grid"></div>
-                    <p id="predicted-viscosity-charts-empty" class="plot-empty">Complete a cell with predicted viscosity enabled to see fits here.</p>
+                    <p id="predicted-viscosity-charts-empty" class="plot-empty">Complete a cell with viscosity predictions enabled to see fits here.</p>
                 </section>
 
                 <section class="card status-log-card">
