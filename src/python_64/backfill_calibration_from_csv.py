@@ -22,24 +22,19 @@ def _parse_rows(csv_path: Path) -> List[dict]:
     """
     Parse CSV rows while ignoring metadata lines before the true header row.
     """
-    text = ""
-    for enc in ("utf-8", "latin-1"):
-        try:
-            text = csv_path.read_text(encoding=enc)
-            break
-        except UnicodeDecodeError:
-            continue
+    from csv_text_utils import read_text_lines_with_fallback
+
+    lines, _enc = read_text_lines_with_fallback(csv_path)
+    text = "\n".join(lines)
     if not text:
         raise ValueError(f"Could not decode CSV file: {csv_path}")
 
-    lines = text.splitlines()
-    header_idx = None
-    for idx, line in enumerate(lines):
-        if line.lower().startswith("row,cell,"):
-            header_idx = idx
-            break
-    if header_idx is None:
-        raise ValueError("CSV header not found (expected line starting with 'row,cell,').")
+    from csv_text_utils import find_row_cell_header_index
+
+    try:
+        header_idx = find_row_cell_header_index(lines)
+    except ValueError as exc:
+        raise ValueError("CSV header not found (expected line starting with 'row,cell,').") from exc
 
     reader = csv.DictReader(lines[header_idx:])
     rows = list(reader)

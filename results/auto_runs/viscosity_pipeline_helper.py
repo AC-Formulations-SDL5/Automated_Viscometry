@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import sys
+import unicodedata
+from io import StringIO
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,10 +13,55 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from scipy.optimize import curve_fit
 
+_HELPER_DIR = Path(__file__).resolve().parent
+_SRC_DIR = _HELPER_DIR.parent.parent / "src" / "python_64"
+if _SRC_DIR.is_dir() and str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from csv_text_utils import (
+        find_row_cell_header_index,
+        read_text_lines_with_fallback,
+        resolve_existing_csv_path,
+    )
+except ImportError:
+    def read_text_lines_with_fallback(path):  # type: ignore
+        raw = Path(path).read_bytes()
+        for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                return raw.decode(encoding).splitlines(), encoding
+            except UnicodeDecodeError:
+                continue
+        return raw.decode("utf-8", errors="replace").splitlines(), "utf-8-replace"
+
+    def find_row_cell_header_index(lines):  # type: ignore
+        for index, line in enumerate(lines):
+            stripped = line.strip().strip('"').lstrip("#").strip()
+            if stripped.lower().startswith("row,cell"):
+                return index
+        raise ValueError("No 'row,cell' header row found in CSV")
+
+    def resolve_existing_csv_path(csv_path, *, search_dirs=None):  # type: ignore
+        raw = Path(csv_path)
+        for candidate in (raw, Path.cwd() / raw, _HELPER_DIR / raw.name):
+            if candidate.is_file():
+                return candidate.resolve()
+        return (Path.cwd() / raw).resolve()
+
 
 def _hyperbola_2param(x: np.ndarray, a: float, b: float) -> np.ndarray:
     """2-parameter hyperbola: a / (x - b)"""
     return a / (x - b)
+
+
+def _normalize_object_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """NFKC-normalize string columns so legacy R² bytes decode consistently."""
+    out = df.copy()
+    for col in out.select_dtypes(include=["object"]).columns:
+        out[col] = out[col].map(
+            lambda v: unicodedata.normalize("NFKC", str(v)) if pd.notna(v) else v
+        )
+    return out
 
 
 def load_rotational_drag_csv(
@@ -23,13 +71,26 @@ def load_rotational_drag_csv(
     y_col: str = "Rotational_Drag",
 ) -> pd.DataFrame:
     """Load a rotational-drag dataset and validate required columns."""
-    df = pd.read_csv(csv_path)
+    resolved = resolve_existing_csv_path(csv_path, search_dirs=[_HELPER_DIR])
+    if not resolved.is_file():
+        raise FileNotFoundError(f"CSV file not found: {csv_path} (resolved: {resolved})")
+
+    lines, _encoding = read_text_lines_with_fallback(resolved)
+    try:
+        header_row = find_row_cell_header_index(lines)
+    except ValueError as exc:
+        raise ValueError(f"Could not load rotational-drag CSV {resolved!r}") from exc
+
+    df = pd.read_csv(StringIO("\n".join(lines[header_row:])))
+    df = _normalize_object_columns(df)
     required = {cell_col, x_col, y_col}
     missing = sorted(required.difference(df.columns))
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
     out = df.copy()
+    if y_col in out.columns:
+        out = out[out[y_col].astype(str).str.upper() != "SKIPPED"].copy()
     out[cell_col] = pd.to_numeric(out[cell_col], errors="coerce")
     out[x_col] = pd.to_numeric(out[x_col], errors="coerce")
     out[y_col] = pd.to_numeric(out[y_col], errors="coerce")
@@ -180,6 +241,41 @@ def fit_cell_models(
     return pd.DataFrame(rows).sort_values("cell").reset_index(drop=True)
 
 
+def _plot_raw_overview(
+    raw_df: pd.DataFrame,
+    cell_col: str,
+    x_col: str,
+    y_col: str,
+    title: str,
+) -> None:
+    """Plot all cells' raw rotational-drag vs height curves on a single axes."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    cells = sorted(raw_df[cell_col].dropna().unique())
+    cmap = plt.get_cmap("tab10")
+    for idx, c in enumerate(cells):
+        g = raw_df[raw_df[cell_col].eq(c)].sort_values(x_col)
+        if g.empty:
+            continue
+        color = cmap(idx % cmap.N)
+        ax.plot(
+            g[x_col].to_numpy(float),
+            g[y_col].to_numpy(float),
+            marker="o",
+            ms=3,
+            lw=1.2,
+            alpha=0.85,
+            color=color,
+            label=f"Cell {int(c)}",
+        )
+    ax.set_xlabel("Height (mm)", fontsize=12)
+    ax.set_ylabel("Rotational Drag", fontsize=12)
+    ax.set_title(f"{title}: Raw Rotational Drag vs Height (all cells)", fontsize=13, fontweight="bold")
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=9, loc="best", ncol=2)
+    plt.tight_layout()
+    plt.show()
+
+
 def _plot_trimmed_with_fits(
     trimmed_df: pd.DataFrame,
     fit_df: pd.DataFrame,
@@ -292,6 +388,21 @@ def _plot_prediction_accuracy(df_pred: pd.DataFrame, m_hyp: float, m_pol2: float
         y_real_max = float(np.nanmax(finite_real)) if finite_real.size else 0.0
         y_pred_max = float(np.nanmax(pred_vals)) if pred_vals.size else 0.0
         y_max = max(y_real_max, y_pred_max, 1e-9)
+
+        # Label each real-viscosity bar using k cP units for readability.
+        for i in range(len(cell_ids)):
+            if not has_real[i]:
+                continue
+            ax.text(
+                x_vals[i] - bar_w / 2,
+                real_vals[i] + y_max * 0.02,
+                f"{real_vals[i]:.2f} k cP",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                rotation=90,
+            )
+
         for i, p in enumerate(providers):
             if p:
                 ax.text(x_vals[i] + 0.06, y_max * 1.05, p, ha="center", va="bottom", fontsize=10, rotation=90)
@@ -356,9 +467,9 @@ def run_viscosity_pipeline(
     7) Extrapolate viscosity for unknown cells
     8) Plot fitting overlays and prediction accuracy for both methods
     """
-    data_path = Path(csv_path)
-    if not data_path.exists():
-        raise FileNotFoundError(f"CSV file not found: {csv_path}")
+    data_path = resolve_existing_csv_path(csv_path, search_dirs=[_HELPER_DIR])
+    if not data_path.is_file():
+        raise FileNotFoundError(f"CSV file not found: {csv_path} (resolved: {data_path})")
 
     df_raw = load_rotational_drag_csv(
         csv_path=str(data_path),
@@ -389,6 +500,13 @@ def run_viscosity_pipeline(
     )
 
     if visualize:
+        _plot_raw_overview(
+            raw_df=df_raw,
+            cell_col=cell_col,
+            x_col=x_col,
+            y_col=y_col,
+            title=data_path.name,
+        )
         _plot_trimmed_with_fits(
             trimmed_df=df_trimmed,
             fit_df=fit_df,

@@ -337,13 +337,13 @@ class RotationalDragFeedbackController:
             hit_reasons.append(f"hit_2nd_deriv_slope ({latest_slope_second_deriv:.4f})")
         if hit_r2_drag:
             hit_confidence += self.weight_r2_drag
-            hit_reasons.append(f"hit_r2_drag (R²={trend_r_squared:.4f})")
+            hit_reasons.append(f"hit_r2_drag (R^2={trend_r_squared:.4f})")
         if hit_r2_cv:
             hit_confidence += self.weight_r2_cv
-            hit_reasons.append(f"hit_r2_cv (R²={latest_cv_r2:.4f})")
+            hit_reasons.append(f"hit_r2_cv (R^2={latest_cv_r2:.4f})")
         if hit_r2_slope:
             hit_confidence += self.weight_r2_slope
-            hit_reasons.append(f"hit_r2_slope (R²={latest_slope_r2:.4f})")
+            hit_reasons.append(f"hit_r2_slope (R^2={latest_slope_r2:.4f})")
 
         hit_confidence = min(hit_confidence, 1.0)
         hit_detected = hit_confidence >= self.hit_point_confidence_threshold

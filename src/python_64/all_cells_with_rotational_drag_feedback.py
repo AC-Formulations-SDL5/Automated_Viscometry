@@ -1366,7 +1366,7 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
     # Create partial CSV filename with timestamp
     csv_filename = f"dynamic_analysis_{_sanitize_experiment_slug(experiment_name)}_{mode}_PARTIAL_{timestamp}.csv"
     
-    with open(csv_filename, 'w', newline='') as csvfile:
+    with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
         csv_writer = csv.writer(csvfile)
         
         # Write metadata header
@@ -1500,9 +1500,9 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
     # Create single CSV filename
     csv_filename = f"dynamic_analysis_{_sanitize_experiment_slug(experiment_name)}_{mode}_{timestamp}.csv"
     
-    with open(csv_filename, 'w', newline='') as csvfile:
+    with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
         csv_writer = csv.writer(csvfile)
-        
+
         # Write metadata header
         csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()}"])
         csv_writer.writerow([f"# Experiment Name: {experiment_name}"])
