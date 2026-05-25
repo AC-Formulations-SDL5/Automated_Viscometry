@@ -59,7 +59,10 @@ class ViscometryDashboard {
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
         this.latestControlSettings = {};
+        /** Settings frozen at run start for experiment history (avoids stale latestControlSettings). */
+        this.runSettingsSnapshot = null;
         this.predictedViscosityData = {};
+        this.viscosityPredictionMode = "off";
         this.calibrationSummary = { is_calibrated: false, cell_count: 0, cells: {}, calibrated_at: null };
         this.calibrationPanelOpen = false;
         this.calChecksComplete = false;
@@ -140,7 +143,7 @@ class ViscometryDashboard {
             smartWindowSize: document.getElementById("smart-window-size"),
             lowTorqueLiquidContactSkipEnabled: document.getElementById("low-torque-liquid-contact-skip-enabled"),
             lowTorqueLiquidContactThresholdPct: document.getElementById("low-torque-liquid-contact-threshold-pct"),
-            predictedViscosityEnabled: document.getElementById("predicted-viscosity-enabled"),
+            viscosityModeButtons: document.querySelectorAll(".viscosity-mode-btn"),
             predictedViscosityChartsCard: document.getElementById("predicted-viscosity-charts-card"),
             liveViscosityTableBody: document.getElementById("live-viscosity-table-body"),
             liveViscosityEmpty: document.getElementById("live-viscosity-empty"),
@@ -250,14 +253,14 @@ class ViscometryDashboard {
         if (this.el.exportTable) {
             this.el.exportTable.addEventListener("click", () => this.exportCSV());
         }
-        const onPredictedViscosityToggleChange = () => {
-            const checked = Boolean(this.el.predictedViscosityEnabled?.checked);
-            this._updatePredictedViscosityChartsCardVisibility(checked);
-            this.applyControlSettings(true);
-        };
-        if (this.el.predictedViscosityEnabled) {
-            this.el.predictedViscosityEnabled.addEventListener("change", onPredictedViscosityToggleChange);
-        }
+        this.el.viscosityModeButtons.forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const mode = btn.dataset.mode || "off";
+                this._setViscosityPredictionModeUI(mode);
+                this._updatePredictedViscosityChartsCardVisibility(mode !== "off");
+                this.applyControlSettings(true);
+            });
+        });
         this.el.applySettings.addEventListener("click", () => this.applyControlSettings());
         this.el.startRun.addEventListener("click", () => this.startRunFromUI());
         this.el.stopRun.addEventListener("click", () => this.stopRunFromUI());
@@ -793,11 +796,12 @@ class ViscometryDashboard {
         if (this.el.lowTorqueLiquidContactThresholdPct) {
             this.el.lowTorqueLiquidContactThresholdPct.value = settings.low_torque_liquid_contact_threshold_pct ?? 25;
         }
-        const predEnabled = Boolean(settings.predicted_viscosity_enabled);
-        if (this.el.predictedViscosityEnabled) {
-            this.el.predictedViscosityEnabled.checked = predEnabled;
-        }
-        this._updatePredictedViscosityChartsCardVisibility(predEnabled);
+        const mode = this._normalizeViscosityPredictionMode(
+            settings.viscosity_prediction_mode,
+            settings.predicted_viscosity_enabled
+        );
+        this._setViscosityPredictionModeUI(mode);
+        this._updatePredictedViscosityChartsCardVisibility(mode !== "off");
         if (this.el.r2DragMin) this.el.r2DragMin.value = settings.r2_drag_min ?? 0.975;
         if (this.el.r2CvMin) this.el.r2CvMin.value = settings.r2_cv_min ?? 0.975;
         if (this.el.r2SlopeMin) this.el.r2SlopeMin.value = settings.r2_slope_min ?? 0.975;
@@ -1018,7 +1022,7 @@ class ViscometryDashboard {
             baseline_n_calibration: Number(this.el.baselineNCalibration?.value ?? 10),
             baseline_z_threshold: Number(this.el.baselineZThreshold?.value ?? 5),
             feedback_control_enabled: this.el.feedbackEnabled.checked,
-            predicted_viscosity_enabled: Boolean(this.el.predictedViscosityEnabled?.checked),
+            viscosity_prediction_mode: this._getViscosityPredictionMode(),
             cell_rpm_map: this.buildCellRpmMapPayload(),
             cell_content_map: this.buildCellContentMapPayload(),
         };
@@ -1060,6 +1064,7 @@ class ViscometryDashboard {
         this.setUiState("running");
         this.applyControlSettings(true)
             .then((settings) => {
+                this._captureRunSettingsSnapshot();
                 this._syncPlannedCells(this.readControlSettings());
                 return fetch("/api/run/start", {
                 method: "POST",
@@ -1186,6 +1191,7 @@ class ViscometryDashboard {
             if (data.is_running && !this.isRunning) {
                 this.runMeasurementStartIndex = this.measurements.length;
                 this.completedSaveLock = false;
+                this._captureRunSettingsSnapshot();
             }
             if (!data.is_running && wasRunning) {
                 this.isRunning = false;
@@ -1198,6 +1204,7 @@ class ViscometryDashboard {
             const startTs = Number(data?.start_ts);
             this.experimentStart = Number.isFinite(startTs) ? startTs * 1000 : Date.now();
             this.lastRunStartTsSec = Number.isFinite(startTs) ? startTs : (this.experimentStart / 1000);
+            this._captureRunSettingsSnapshot();
             this.cellStart = Date.now();
             this._hideExperimentCompleteMessage();
             if (this.el.elapsed) {
@@ -1311,6 +1318,7 @@ class ViscometryDashboard {
         this.cellStart = null;
         this.isSavingFinalResults = false;
         this.runMeasurementStartIndex = 0;
+        this.runSettingsSnapshot = null;
         this.currentPhase = 0;
         this._graphTabIdsKey = "";
         if (this._plotRefreshTimer) {
@@ -2660,6 +2668,44 @@ class ViscometryDashboard {
         });
     }
 
+    _captureRunSettingsSnapshot() {
+        if (!this.readControlSettings) {
+            return;
+        }
+        try {
+            this.runSettingsSnapshot = JSON.parse(JSON.stringify(this.readControlSettings()));
+        } catch {
+            this.runSettingsSnapshot = this.readControlSettings();
+        }
+    }
+
+    _getRunSettingsForHistorySave() {
+        if (this.runSettingsSnapshot && typeof this.runSettingsSnapshot === "object") {
+            try {
+                return JSON.parse(JSON.stringify(this.runSettingsSnapshot));
+            } catch {
+                return this.runSettingsSnapshot;
+            }
+        }
+        if (this.latestControlSettings && Object.keys(this.latestControlSettings).length > 0) {
+            try {
+                return JSON.parse(JSON.stringify(this.latestControlSettings));
+            } catch {
+                return this.latestControlSettings;
+            }
+        }
+        return this.readControlSettings ? this.readControlSettings() : {};
+    }
+
+    _predictedViscosityEntryHasData(predData) {
+        if (!predData || typeof predData !== "object") {
+            return false;
+        }
+        return Object.values(predData).some(
+            (rpmMap) => rpmMap && typeof rpmMap === "object" && Object.keys(rpmMap).length > 0
+        );
+    }
+
     saveCompletedExperiment() {
         if (this.completedSaveLock) {
             return;
@@ -2706,9 +2752,9 @@ class ViscometryDashboard {
             return `${iso},${m.cell_id},${m.height},${m.torque_percent},${m.rotational_drag},${m.rpm}`;
         }).join("\n");
 
-        const settingsSnapshot = this.latestControlSettings && Object.keys(this.latestControlSettings).length > 0
-            ? this.latestControlSettings
-            : (this.readControlSettings ? this.readControlSettings() : {});
+        const settingsSnapshot = this._getRunSettingsForHistorySave();
+        const predictedViscosity = JSON.parse(JSON.stringify(this.predictedViscosityData || {}));
+        const hasPredictedViscosityData = this._predictedViscosityEntryHasData(predictedViscosity);
 
         const exp = {
             id: `exp-${Date.now()}`,
@@ -2722,10 +2768,13 @@ class ViscometryDashboard {
             runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
             runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
             csv: csvHeader + csvBody,
-            predicted_viscosity_enabled: Boolean(settingsSnapshot.predicted_viscosity_enabled),
-            predicted_viscosity: JSON.parse(JSON.stringify(this.predictedViscosityData || {})),
+            viscosity_prediction_mode:
+                settingsSnapshot.viscosity_prediction_mode
+                || (hasPredictedViscosityData ? "Newtonian" : "off"),
+            predicted_viscosity: predictedViscosity,
         };
 
+        this.runSettingsSnapshot = null;
         this.experimentHistory.unshift(exp);
         this.experimentHistory = this.experimentHistory.slice(0, 40);
         this.saveExperimentHistoryEntry(exp).catch(() => {
@@ -2841,6 +2890,12 @@ class ViscometryDashboard {
             `<strong>Z step:</strong> ${s.z_step_size ?? "-"} mm`,
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
             `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
+            `<strong>Viscosity predictions:</strong> ${
+                this._normalizeViscosityPredictionMode(
+                    exp.viscosity_prediction_mode ?? s.viscosity_prediction_mode,
+                    exp.predicted_viscosity_enabled ?? s.predicted_viscosity_enabled
+                )
+            }`,
             durationTable,
         ];
         const rightLines = [
@@ -2855,13 +2910,15 @@ class ViscometryDashboard {
         ];
 
         let predictedViscosityBlock;
-        const predEnabled = Boolean(
+        const predData = exp.predicted_viscosity || {};
+        const hasPredData = this._predictedViscosityEntryHasData(predData);
+        const predMode = this._normalizeViscosityPredictionMode(
+            exp.viscosity_prediction_mode ?? s.viscosity_prediction_mode,
             exp.predicted_viscosity_enabled ?? s.predicted_viscosity_enabled
         );
-        if (!predEnabled) {
-            predictedViscosityBlock = "<p><em>Predicted viscosity was not enabled for this run.</em></p>";
+        if (predMode === "off" && !hasPredData) {
+            predictedViscosityBlock = "<p><em>Viscosity predictions were off for this run.</em></p>";
         } else {
-            const predData = exp.predicted_viscosity || {};
             const rows = [];
             Object.keys(predData).forEach((cellKey) => {
                 const cellId = Number(cellKey);
@@ -2875,8 +2932,11 @@ class ViscometryDashboard {
                     const visc = result?.success && result?.viscosity_kcp != null
                         ? Number(result.viscosity_kcp).toFixed(3)
                         : "—";
+                    const flowIdx = result?.flow_index != null
+                        ? Number(result.flow_index).toFixed(3)
+                        : "—";
                     rows.push(
-                        `<tr><td>${cellId}</td><td>${label || "—"}</td><td>${rpmKey}</td><td>${visc}</td></tr>`
+                        `<tr><td>${cellId}</td><td>${label || "—"}</td><td>${rpmKey}</td><td>${visc}</td><td>${flowIdx}</td></tr>`
                     );
                 });
             });
@@ -2885,7 +2945,7 @@ class ViscometryDashboard {
             } else {
                 predictedViscosityBlock = `
 <table class="duration-table predicted-viscosity-summary-table">
-  <thead><tr><th>Cell No.</th><th>Cell Label</th><th>RPM</th><th>Predicted Viscosity (kCp)</th></tr></thead>
+  <thead><tr><th>Cell No.</th><th>Cell Label</th><th>RPM</th><th>Predicted Viscosity (kCp)</th><th>Flow index (n)</th></tr></thead>
   <tbody>${rows.join("")}</tbody>
 </table>`;
             }
@@ -2899,6 +2959,7 @@ class ViscometryDashboard {
         if (rightEl) {
             rightEl.innerHTML = [
                 ...rightLines.map((line) => `<div>${line}</div>`),
+                `<div><strong>Viscosity predictions:</strong> ${predMode}</div>`,
                 "<div><strong>Predicted viscosity</strong></div>",
                 predictedViscosityBlock,
             ].join("");
@@ -3431,12 +3492,32 @@ class ViscometryDashboard {
         }
     }
 
+    _normalizeViscosityPredictionMode(mode, legacyEnabled) {
+        if (mode === "Newtonian" || mode === "Non-Newtonian" || mode === "off") {
+            return mode;
+        }
+        if (legacyEnabled === true || legacyEnabled === "true") {
+            return "Newtonian";
+        }
+        return "off";
+    }
+
+    _getViscosityPredictionMode() {
+        return this._normalizeViscosityPredictionMode(this.viscosityPredictionMode);
+    }
+
+    _setViscosityPredictionModeUI(mode) {
+        const normalized = this._normalizeViscosityPredictionMode(mode);
+        this.viscosityPredictionMode = normalized;
+        this.el.viscosityModeButtons.forEach((btn) => {
+            const active = (btn.dataset.mode || "off") === normalized;
+            btn.classList.toggle("active", active);
+        });
+    }
+
     renderPredictedViscosityCharts() {
-        const enabled = Boolean(
-            this.el.predictedViscosityEnabled?.checked
-            ?? this.latestControlSettings?.predicted_viscosity_enabled
-        );
-        if (!enabled || !this.el.predictedViscosityCharts) {
+        const mode = this._getViscosityPredictionMode();
+        if (mode === "off" || !this.el.predictedViscosityCharts) {
             return;
         }
 
@@ -3543,8 +3624,11 @@ class ViscometryDashboard {
                 const eta = result.success && result.viscosity_kcp != null
                     ? this._fmtPredictedViscosity3(result.viscosity_kcp)
                     : "—";
+                const flowIdx = result.flow_index != null
+                    ? this._fmtPredictedViscosity3(result.flow_index)
+                    : "—";
                 subtitles.push(
-                    `RPM ${rpm} | η = ${eta} kCp | a = ${this._fmtPredictedViscosity3(result.a)} | b = ${this._fmtPredictedViscosity3(result.b)} | n = ${result.n_points_used ?? 0}`
+                    `RPM ${rpm} | η = ${eta} kCp | a = ${this._fmtPredictedViscosity3(result.a)} | b = ${this._fmtPredictedViscosity3(result.b)} | n = ${flowIdx} | pts = ${result.n_points_used ?? 0}`
                 );
             });
 

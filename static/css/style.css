@@ -536,6 +536,66 @@ body.running .header-sweep {
     margin: 0;
 }
 
+.viscosity-predictions-panel {
+    margin: 12px 0;
+    padding: 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--bg-subtle, #f8f9fa);
+}
+
+.viscosity-predictions-panel .form-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.viscosity-predictions-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.viscosity-mode-btn {
+    flex: 1 1 auto;
+    min-width: 120px;
+    font-size: 0.85rem;
+    padding: 8px 12px;
+    border: 2px solid transparent;
+    color: #fff;
+}
+
+.viscosity-mode-btn.viscosity-mode-newtonian {
+    background: #2e7d32;
+}
+
+.viscosity-mode-btn.viscosity-mode-newtonian:hover {
+    background: #1b5e20;
+}
+
+.viscosity-mode-btn.viscosity-mode-nonnewtonian {
+    background: #43a047;
+}
+
+.viscosity-mode-btn.viscosity-mode-nonnewtonian:hover {
+    background: #2e7d32;
+}
+
+.viscosity-mode-btn.viscosity-mode-off {
+    background: #9e9e9e;
+    color: #212121;
+}
+
+.viscosity-mode-btn.viscosity-mode-off:hover {
+    background: #757575;
+    color: #fff;
+}
+
+.viscosity-mode-btn.active {
+    border-color: var(--accent, #1565c0);
+    box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.25);
+}
+
 .predicted-viscosity-charts-grid {
     display: flex;
     flex-direction: column;

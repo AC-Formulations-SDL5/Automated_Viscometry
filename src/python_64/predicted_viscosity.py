@@ -1,7 +1,9 @@
 """
 Live hyperbolic viscosity prediction from rotational-drag vs Z-height data.
 
-Model: D(h) = a / (h - b), with viscosity_kcp = abs(a) * M_HYP.
+Newtonian: D(h) = a / (h - b)  (n = 1)
+Non-Newtonian: D(h) = a / |h - b|^n
+Viscosity: eta (kCp) = |a| * M_HYP
 """
 
 from __future__ import annotations
@@ -10,15 +12,14 @@ import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
-from scipy.optimize import curve_fit
+
+from viscosity_hyperbola_fit import _hyperbola_powerlaw, fit_hyperbola_powerlaw
 
 M_HYP = 2.330
 
 _RPM_TOL = 1e-6
 
-
-def _hyperbola_2param(x: np.ndarray, a: float, b: float) -> np.ndarray:
-    return a / (x - b)
+VISCOSITY_PREDICTION_MODES = frozenset({"off", "Newtonian", "Non-Newtonian"})
 
 
 def _rpm_match(a: float, b: float) -> bool:
@@ -212,29 +213,6 @@ def _apply_pretrims(
     return raw_h, raw_d, pre_h, pre_d
 
 
-def _fit_hyperbola(x: np.ndarray, y: np.ndarray) -> Tuple[Optional[float], Optional[float], Optional[str]]:
-    if len(x) < 4 or np.ptp(x) <= 0:
-        return None, None, "Need at least 4 distinct Z points after trimming"
-
-    b0 = float(np.min(x) - 0.5 * max(np.ptp(x), 1e-6))
-    a0 = float((y[0] - y[-1]) * max(np.ptp(x), 1e-6))
-    lower_b = float(np.min(x) - 5.0 * max(np.ptp(x), 1e-6))
-    upper_b = float(np.min(x) - 1e-6)
-
-    try:
-        popt, _ = curve_fit(
-            _hyperbola_2param,
-            x,
-            y,
-            p0=[a0, b0],
-            bounds=([-np.inf, lower_b], [np.inf, upper_b]),
-            maxfev=20000,
-        )
-        return float(popt[0]), float(popt[1]), None
-    except Exception as exc:
-        return None, None, str(exc)
-
-
 def _lists_from_arrays(
     heights: np.ndarray,
     drags: np.ndarray,
@@ -245,6 +223,14 @@ def _lists_from_arrays(
     return z_out, d_out
 
 
+def _fix_n_for_mode(viscosity_prediction_mode: str) -> Optional[float]:
+    if viscosity_prediction_mode == "Newtonian":
+        return 1.0
+    if viscosity_prediction_mode == "Non-Newtonian":
+        return None
+    return None
+
+
 def predict_viscosity(
     cell_id: int,
     rpm: float,
@@ -252,12 +238,13 @@ def predict_viscosity(
     *,
     torque_floor_pct: float,
     hit_point_z: Optional[float] = None,
+    viscosity_prediction_mode: str = "off",
 ) -> Dict[str, Any]:
     """
     Predict viscosity (kCp) for one cell at one RPM from live measurement_data.
 
-    Result includes pretrim_z/pretrim_drag (after dedupe + torque/hit filters, before stat trim)
-    for dashboard scatter plots.
+    viscosity_prediction_mode: "off", "Newtonian", or "Non-Newtonian".
+    Result includes pretrim_z/pretrim_drag for dashboard scatter plots.
     """
     base: Dict[str, Any] = {
         "cell_id": int(cell_id),
@@ -265,6 +252,7 @@ def predict_viscosity(
         "viscosity_kcp": None,
         "a": None,
         "b": None,
+        "flow_index": None,
         "n_points_used": 0,
         "trimmed_z": [],
         "trimmed_drag": [],
@@ -274,7 +262,16 @@ def predict_viscosity(
         "pretrim_drag": [],
         "success": False,
         "error": None,
+        "viscosity_prediction_mode": viscosity_prediction_mode,
     }
+
+    if viscosity_prediction_mode == "off":
+        base["error"] = "Viscosity prediction is off"
+        return base
+
+    if viscosity_prediction_mode not in VISCOSITY_PREDICTION_MODES:
+        base["error"] = f"Unknown viscosity prediction mode: {viscosity_prediction_mode}"
+        return base
 
     points = filter_measurement_points(measurement_data, cell_id, rpm)
     if not points:
@@ -300,18 +297,20 @@ def predict_viscosity(
         base["error"] = "Insufficient distinct points after statistical trim"
         return base
 
-    a, b, fit_err = _fit_hyperbola(x_trim, y_trim)
-    if fit_err is not None or a is None or b is None:
+    fix_n = _fix_n_for_mode(viscosity_prediction_mode)
+    a, b, flow_index, fit_err = fit_hyperbola_powerlaw(x_trim, y_trim, fix_n=fix_n)
+    if fit_err is not None or a is None or b is None or flow_index is None:
         base["error"] = fit_err or "Hyperbola fit failed"
         return base
 
     base["a"] = a
     base["b"] = b
+    base["flow_index"] = flow_index
     base["viscosity_kcp"] = float(abs(a) * M_HYP)
     base["success"] = True
 
     x_line = np.linspace(float(np.min(x_trim)), float(np.max(x_trim)), 80)
-    y_line = _hyperbola_2param(x_line, a, b)
+    y_line = _hyperbola_powerlaw(x_line, a, b, flow_index)
     base["fit_curve_z"], base["fit_curve_drag"] = _lists_from_arrays(x_line, y_line, norm_offset)
 
     return base

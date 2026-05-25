@@ -107,7 +107,7 @@ FAIL_SAFE_CONSECUTIVE_STEPS = 5
 # regular runs only; see web toggle).
 LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = True
 LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 25.0
-PREDICTED_VISCOSITY_ENABLED = False
+VISCOSITY_PREDICTION_MODE = "off"
 CELL_VISCOSITY_RESULTS: Dict[int, Dict[float, dict]] = {}
 
 # ========== CALIBRATION MODE CONFIGURATION ==========
@@ -153,7 +153,7 @@ def apply_runtime_settings_from_web():
     global BASELINE_N_CALIBRATION, BASELINE_Z_THRESHOLD
     global CALIBRATION_MODE, RECALIBRATE_INDIVIDUAL_CELLS, RECALIBRATION_CELLS
     global LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED, LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT
-    global PREDICTED_VISCOSITY_ENABLED
+    global VISCOSITY_PREDICTION_MODE
 
     settings = web_interface.get_runtime_settings()
 
@@ -202,9 +202,15 @@ def apply_runtime_settings_from_web():
     LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = float(
         settings.get('low_torque_liquid_contact_threshold_pct', LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)
     )
-    PREDICTED_VISCOSITY_ENABLED = bool(
-        settings.get('predicted_viscosity_enabled', PREDICTED_VISCOSITY_ENABLED)
-    )
+    if 'viscosity_prediction_mode' in settings:
+        mode = str(settings.get('viscosity_prediction_mode', 'off') or 'off').strip()
+        VISCOSITY_PREDICTION_MODE = mode if mode in ('off', 'Newtonian', 'Non-Newtonian') else 'off'
+    elif 'predicted_viscosity_enabled' in settings:
+        VISCOSITY_PREDICTION_MODE = (
+            'Newtonian' if bool(settings.get('predicted_viscosity_enabled')) else 'off'
+        )
+    else:
+        VISCOSITY_PREDICTION_MODE = VISCOSITY_PREDICTION_MODE
     # Parse recalibration cells: expect dict {cell_id: optional_starting_z}
     # JSON object keys arrive as strings; normalize to int keys for runtime lookup.
     raw_recalibration_cells = settings.get('recalibration_cells', {})
@@ -1263,13 +1269,15 @@ def run_predicted_viscosity_for_cell(
                 web_interface.measurement_data,
                 torque_floor_pct=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT,
                 hit_point_z=hit_z,
+                viscosity_prediction_mode=VISCOSITY_PREDICTION_MODE,
             )
             CELL_VISCOSITY_RESULTS[cell_id][float(rpm)] = result
             web_interface.emit_predicted_viscosity(cell_id, float(rpm), result)
             if result.get('success'):
                 print(
                     f"  Predicted viscosity Cell {cell_id} @ {rpm} RPM: "
-                    f"{result.get('viscosity_kcp'):.3f} kCp (n={result.get('n_points_used')})"
+                    f"{result.get('viscosity_kcp'):.3f} kCp "
+                    f"(flow_index={result.get('flow_index')}, pts={result.get('n_points_used')})"
                 )
             else:
                 print(
@@ -1326,11 +1334,13 @@ def extract_rough_hitpoint(cell_z_rpm_data: dict) -> Optional[float]:
 
 def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
     """Write predicted viscosity summary rows into CSV metadata comments."""
-    if not PREDICTED_VISCOSITY_ENABLED or not CELL_VISCOSITY_RESULTS:
+    csv_writer.writerow([f"# Viscosity prediction mode: {VISCOSITY_PREDICTION_MODE}"])
+    if VISCOSITY_PREDICTION_MODE == "off" or not CELL_VISCOSITY_RESULTS:
+        csv_writer.writerow([])
         return
     csv_writer.writerow(["# Predicted Viscosity Results"])
     csv_writer.writerow([
-        "# Cell,Cell_Label,RPM,Viscosity_kCp,a,b,n_points_used,fit_success"
+        "# Cell,Cell_Label,RPM,Viscosity_kCp,a,b,flow_index,n_points_used,fit_success"
     ])
     for global_cell in sorted(CELL_VISCOSITY_RESULTS.keys()):
         rpm_map = CELL_VISCOSITY_RESULTS[global_cell]
@@ -1342,11 +1352,13 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
             visc = result.get("viscosity_kcp")
             a_val = result.get("a")
             b_val = result.get("b")
+            flow_index = result.get("flow_index")
             csv_writer.writerow([
                 f"# {global_cell},{label},{rpm},"
                 f"{'' if visc is None else visc},"
                 f"{'' if a_val is None else a_val},"
                 f"{'' if b_val is None else b_val},"
+                f"{'' if flow_index is None else flow_index},"
                 f"{result.get('n_points_used', 0)},"
                 f"{bool(result.get('success'))}",
             ])
@@ -1897,7 +1909,7 @@ def main():
                             web_interface.update_status(f"Recalibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                         # NO washing in calibration/recalibration mode — move directly to next cell
                     else:
-                        if PREDICTED_VISCOSITY_ENABLED:
+                        if VISCOSITY_PREDICTION_MODE != "off":
                             run_predicted_viscosity_for_cell(
                                 global_cell, cell_rpms, feedback_summary
                             )
