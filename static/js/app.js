@@ -191,6 +191,8 @@ class ViscometryDashboard {
             sidebarMethodR2Slope: document.getElementById("sidebar-method-r2-slope"),
             sidebarConfidence: document.getElementById("sidebar-confidence"),
             sidebarHit: document.getElementById("sidebar-hit"),
+            dragZRpmLegend: document.getElementById("drag-z-rpm-legend"),
+            dragZRpmLegendNote: document.getElementById("drag-z-rpm-legend-note"),
             elapsed: document.getElementById("elapsed"),
             elapsedCell: document.getElementById("elapsed-cell"),
             tableBody: document.getElementById("measurement-table"),
@@ -654,8 +656,9 @@ class ViscometryDashboard {
                 zeroline: false
             },
             margin: { t: 16, r: 16, b: 45, l: 58 },
-            legend: { bgcolor: "transparent", bordercolor: "#30363D" }
+            showlegend: false,
         };
+        this.zSparklineLayout = zLayout;
 
         const torqueLayout = {
             paper_bgcolor: "transparent",
@@ -835,6 +838,7 @@ class ViscometryDashboard {
 
         this.setControlStatus("Settings loaded");
         this.updateCompletionBar();
+        this.refreshLivePlots();
     }
 
     rebuildCellRpmTable() {
@@ -1358,6 +1362,7 @@ class ViscometryDashboard {
             this.el.sidebarHit.textContent = "No";
             this.el.sidebarHit.className = "sidebar-value mono hit-no";
         }
+        this.renderDragZRpmLegend(null, []);
 
         this.platform.cells.forEach((cell) => this.cellStates.set(cell.id, "pending"));
         this.renderMap();
@@ -1881,6 +1886,146 @@ class ViscometryDashboard {
         });
     }
 
+    getRpmsForCell(cellId) {
+        if (!Number.isFinite(cellId)) {
+            return [];
+        }
+        const fromMap = this.cellRpmMap[cellId];
+        if (Array.isArray(fromMap) && fromMap.length > 0) {
+            return [...fromMap]
+                .map((n) => Number(n))
+                .filter((n) => Number.isFinite(n) && n > 0)
+                .sort((a, b) => a - b);
+        }
+        const fromSettings = this.latestControlSettings?.test_rpms;
+        if (Array.isArray(fromSettings) && fromSettings.length > 0) {
+            return [...fromSettings]
+                .map((n) => Number(n))
+                .filter((n) => Number.isFinite(n) && n > 0)
+                .sort((a, b) => a - b);
+        }
+        const measurements = this.measurementsByCell.get(cellId) || [];
+        const seen = new Set();
+        const rpms = [];
+        measurements.forEach((m) => {
+            const r = Number(m.rpm);
+            const key = r.toFixed(3);
+            if (Number.isFinite(r) && r > 0 && !seen.has(key)) {
+                seen.add(key);
+                rpms.push(r);
+            }
+        });
+        return rpms.sort((a, b) => a - b);
+    }
+
+    expandRpmsWithObserved(orderedRpms, source) {
+        const list = [...orderedRpms];
+        const seen = new Set(list.map((r) => Number(r).toFixed(3)));
+        source.forEach((m) => {
+            const r = Number(m.rpm);
+            const key = r.toFixed(3);
+            if (Number.isFinite(r) && r > 0 && !seen.has(key)) {
+                seen.add(key);
+                list.push(r);
+            }
+        });
+        return list.sort((a, b) => a - b);
+    }
+
+    getRpmColor(rpm, orderedRpms) {
+        const key = Number(rpm).toFixed(3);
+        const idx = orderedRpms.findIndex((r) => Number(r).toFixed(3) === key);
+        const paletteIdx = idx >= 0 ? idx : 0;
+        return this.palette[paletteIdx % this.palette.length];
+    }
+
+    partitionMeasurementsByRpm(source, orderedRpms) {
+        const buckets = new Map();
+        orderedRpms.forEach((rpm) => {
+            buckets.set(Number(rpm).toFixed(3), []);
+        });
+        source.forEach((m) => {
+            const r = Number(m.rpm);
+            if (!Number.isFinite(r) || r <= 0) {
+                return;
+            }
+            const key = r.toFixed(3);
+            if (!buckets.has(key)) {
+                buckets.set(key, []);
+            }
+            buckets.get(key).push(m);
+        });
+        return buckets;
+    }
+
+    _markerColorsForRpmTrace(measurements, floorPct, rpmColor) {
+        const belowFill = "#f85149";
+        const belowLine = "#ffb4a6";
+        return measurements.map((m) => {
+            const tp = Number(m.torque_percent);
+            const below = Number.isFinite(tp) && tp < floorPct;
+            return {
+                fill: below ? belowFill : rpmColor,
+                line: below ? belowLine : rpmColor,
+                below,
+            };
+        });
+    }
+
+    _buildDragTraceForRpm(rpm, points, torqueFloor, orderedRpms) {
+        const rpmColor = this.getRpmColor(rpm, orderedRpms);
+        const sorted = [...points].sort((a, b) => Number(a.height) - Number(b.height));
+        const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor);
+        const rpmLabel = Number(rpm).toFixed(3);
+        const trace = {
+            x: sorted.map((m) => m.height),
+            y: sorted.map((m) => m.rotational_drag),
+            mode: this.zConnectDots ? "lines+markers" : "markers",
+            type: "scatter",
+            name: `RPM ${rpmLabel}`,
+            marker: {
+                size: 8,
+                color: markerPalette.map((p) => p.fill),
+                line: {
+                    width: 1,
+                    color: markerPalette.map((p) => p.line),
+                },
+            },
+            hovertemplate: `RPM ${rpmLabel}<br>Z %{x:.3f} mm<br>Drag %{y:.4f}<br>Torque %{customdata:.2f}%<extra></extra>`,
+            customdata: sorted.map((m) => Number(m.torque_percent)),
+        };
+        if (this.zConnectDots) {
+            trace.line = { color: rpmColor, width: 2 };
+        }
+        return trace;
+    }
+
+    renderDragZRpmLegend(cellId, orderedRpms) {
+        const listEl = this.el.dragZRpmLegend;
+        if (!listEl) {
+            return;
+        }
+        const floor = this._torqueFloorPctForLivePlots();
+        if (this.el.dragZRpmLegendNote) {
+            this.el.dragZRpmLegendNote.textContent =
+                `Below torque floor (${floor}%): red (all RPMs)`;
+        }
+        if (!Number.isFinite(cellId) || !orderedRpms.length) {
+            listEl.innerHTML = '<div class="rpm-legend-note">No RPMs configured</div>';
+            return;
+        }
+        listEl.innerHTML = orderedRpms.map((rpm) => {
+            const color = this.getRpmColor(rpm, orderedRpms);
+            const label = Number(rpm).toFixed(3);
+            return (
+                `<div class="rpm-legend-row">`
+                + `<span class="rpm-legend-swatch" style="background:${color}"></span>`
+                + `<span class="rpm-legend-label">RPM ${label}</span>`
+                + `</div>`
+            );
+        }).join("");
+    }
+
     refreshLivePlots() {
         const activeCell = this.getActiveGraphCellId();
         const source = activeCell ? (this.measurementsByCell.get(activeCell) || []) : [];
@@ -1888,45 +2033,38 @@ class ViscometryDashboard {
 
         let zData = source;
         if (this.zLatestOnly && source.length > 0) {
-            const latestByHeight = new Map();
+            const latestByHeightRpm = new Map();
             source.forEach((m) => {
-                const key = Number(m.height).toFixed(3);
-                const prev = latestByHeight.get(key);
+                const key = `${Number(m.height).toFixed(3)}|${Number(m.rpm).toFixed(3)}`;
+                const prev = latestByHeightRpm.get(key);
                 if (!prev || (Number(m.timestamp) || 0) >= (Number(prev.timestamp) || 0)) {
-                    latestByHeight.set(key, m);
+                    latestByHeightRpm.set(key, m);
                 }
             });
-            zData = [...latestByHeight.values()];
+            zData = [...latestByHeightRpm.values()];
         }
-        zData = [...zData].sort((a, b) => a.height - b.height);
+
+        let orderedRpms = activeCell ? this.expandRpmsWithObserved(this.getRpmsForCell(activeCell), zData) : [];
+        const buckets = this.partitionMeasurementsByRpm(zData, orderedRpms);
 
         if (this.zPlotInitialized && this.el.zSparklinePlot) {
-            const dragDefault = "#39C5BB";
-            const dragLineDefault = "#8ff5ee";
-            const zPalette = zData.length ? this._markerColorsForTorqueFloor(zData, torqueFloor) : [];
-            const zTrace = zData.length ? [{
-                x: zData.map((m) => m.height),
-                y: zData.map((m) => m.rotational_drag),
-                mode: this.zConnectDots ? "lines+markers" : "markers",
-                type: "scatter",
-                name: activeCell ? `Cell ${activeCell}` : "No Cell",
-                marker: {
-                    size: 8,
-                    color: zPalette.map((p) => p.fill || dragDefault),
-                    line: {
-                        width: 1,
-                        color: zPalette.map((p) => p.line || dragLineDefault),
-                    },
-                },
-                line: { color: "#39C5BB", width: 2 },
-                hovertemplate: "Z %{x:.3f} mm<br>Drag %{y:.4f}<br>Torque %{customdata:.2f}%<extra></extra>",
-                customdata: zData.map((m) => Number(m.torque_percent)),
-            }] : [];
+            const zTraces = orderedRpms
+                .map((rpm) => {
+                    const key = Number(rpm).toFixed(3);
+                    const points = buckets.get(key) || [];
+                    if (points.length === 0) {
+                        return null;
+                    }
+                    return this._buildDragTraceForRpm(rpm, points, torqueFloor, orderedRpms);
+                })
+                .filter(Boolean);
 
-            Plotly.react(this.el.zSparklinePlot, zTrace, undefined, { responsive: true, displayModeBar: false });
+            const layout = this.zSparklineLayout || undefined;
+            Plotly.react(this.el.zSparklinePlot, zTraces, layout, { responsive: true, displayModeBar: false });
             if (this.el.zSparklineEmpty) {
-                this.el.zSparklineEmpty.classList.toggle("hidden", zTrace.length > 0);
+                this.el.zSparklineEmpty.classList.toggle("hidden", zTraces.length > 0);
             }
+            this.renderDragZRpmLegend(activeCell, orderedRpms);
         }
 
         const torqueData = [...source].sort((a, b) => a.height - b.height);

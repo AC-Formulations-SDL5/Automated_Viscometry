@@ -1117,6 +1117,41 @@ h2 {
     color: var(--color-green-text);
 }
 
+.rpm-legend-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.rpm-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+}
+
+.rpm-legend-swatch {
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.rpm-legend-label {
+    font-family: var(--font-mono, "DM Mono", monospace);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.rpm-legend-note {
+    font-size: 0.66rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    line-height: 1.35;
+}
+
 .graph-cell-tabs {
     display: flex;
     flex-wrap: wrap;
