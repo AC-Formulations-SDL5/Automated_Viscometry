@@ -59,6 +59,8 @@ class ViscometryDashboard {
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
         this.latestControlSettings = {};
+        /** Settings frozen at run start for experiment history (avoids stale latestControlSettings). */
+        this.runSettingsSnapshot = null;
         this.predictedViscosityData = {};
         this.calibrationSummary = { is_calibrated: false, cell_count: 0, cells: {}, calibrated_at: null };
         this.calibrationPanelOpen = false;
@@ -1060,6 +1062,7 @@ class ViscometryDashboard {
         this.setUiState("running");
         this.applyControlSettings(true)
             .then((settings) => {
+                this._captureRunSettingsSnapshot();
                 this._syncPlannedCells(this.readControlSettings());
                 return fetch("/api/run/start", {
                 method: "POST",
@@ -1186,6 +1189,7 @@ class ViscometryDashboard {
             if (data.is_running && !this.isRunning) {
                 this.runMeasurementStartIndex = this.measurements.length;
                 this.completedSaveLock = false;
+                this._captureRunSettingsSnapshot();
             }
             if (!data.is_running && wasRunning) {
                 this.isRunning = false;
@@ -1198,6 +1202,7 @@ class ViscometryDashboard {
             const startTs = Number(data?.start_ts);
             this.experimentStart = Number.isFinite(startTs) ? startTs * 1000 : Date.now();
             this.lastRunStartTsSec = Number.isFinite(startTs) ? startTs : (this.experimentStart / 1000);
+            this._captureRunSettingsSnapshot();
             this.cellStart = Date.now();
             this._hideExperimentCompleteMessage();
             if (this.el.elapsed) {
@@ -1311,6 +1316,7 @@ class ViscometryDashboard {
         this.cellStart = null;
         this.isSavingFinalResults = false;
         this.runMeasurementStartIndex = 0;
+        this.runSettingsSnapshot = null;
         this.currentPhase = 0;
         this._graphTabIdsKey = "";
         if (this._plotRefreshTimer) {
@@ -2660,6 +2666,44 @@ class ViscometryDashboard {
         });
     }
 
+    _captureRunSettingsSnapshot() {
+        if (!this.readControlSettings) {
+            return;
+        }
+        try {
+            this.runSettingsSnapshot = JSON.parse(JSON.stringify(this.readControlSettings()));
+        } catch {
+            this.runSettingsSnapshot = this.readControlSettings();
+        }
+    }
+
+    _getRunSettingsForHistorySave() {
+        if (this.runSettingsSnapshot && typeof this.runSettingsSnapshot === "object") {
+            try {
+                return JSON.parse(JSON.stringify(this.runSettingsSnapshot));
+            } catch {
+                return this.runSettingsSnapshot;
+            }
+        }
+        if (this.latestControlSettings && Object.keys(this.latestControlSettings).length > 0) {
+            try {
+                return JSON.parse(JSON.stringify(this.latestControlSettings));
+            } catch {
+                return this.latestControlSettings;
+            }
+        }
+        return this.readControlSettings ? this.readControlSettings() : {};
+    }
+
+    _predictedViscosityEntryHasData(predData) {
+        if (!predData || typeof predData !== "object") {
+            return false;
+        }
+        return Object.values(predData).some(
+            (rpmMap) => rpmMap && typeof rpmMap === "object" && Object.keys(rpmMap).length > 0
+        );
+    }
+
     saveCompletedExperiment() {
         if (this.completedSaveLock) {
             return;
@@ -2706,9 +2750,9 @@ class ViscometryDashboard {
             return `${iso},${m.cell_id},${m.height},${m.torque_percent},${m.rotational_drag},${m.rpm}`;
         }).join("\n");
 
-        const settingsSnapshot = this.latestControlSettings && Object.keys(this.latestControlSettings).length > 0
-            ? this.latestControlSettings
-            : (this.readControlSettings ? this.readControlSettings() : {});
+        const settingsSnapshot = this._getRunSettingsForHistorySave();
+        const predictedViscosity = JSON.parse(JSON.stringify(this.predictedViscosityData || {}));
+        const hasPredictedViscosityData = this._predictedViscosityEntryHasData(predictedViscosity);
 
         const exp = {
             id: `exp-${Date.now()}`,
@@ -2722,10 +2766,12 @@ class ViscometryDashboard {
             runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
             runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
             csv: csvHeader + csvBody,
-            predicted_viscosity_enabled: Boolean(settingsSnapshot.predicted_viscosity_enabled),
-            predicted_viscosity: JSON.parse(JSON.stringify(this.predictedViscosityData || {})),
+            predicted_viscosity_enabled:
+                Boolean(settingsSnapshot.predicted_viscosity_enabled) || hasPredictedViscosityData,
+            predicted_viscosity: predictedViscosity,
         };
 
+        this.runSettingsSnapshot = null;
         this.experimentHistory.unshift(exp);
         this.experimentHistory = this.experimentHistory.slice(0, 40);
         this.saveExperimentHistoryEntry(exp).catch(() => {
@@ -2855,13 +2901,14 @@ class ViscometryDashboard {
         ];
 
         let predictedViscosityBlock;
+        const predData = exp.predicted_viscosity || {};
+        const hasPredData = this._predictedViscosityEntryHasData(predData);
         const predEnabled = Boolean(
             exp.predicted_viscosity_enabled ?? s.predicted_viscosity_enabled
         );
-        if (!predEnabled) {
+        if (!predEnabled && !hasPredData) {
             predictedViscosityBlock = "<p><em>Predicted viscosity was not enabled for this run.</em></p>";
         } else {
-            const predData = exp.predicted_viscosity || {};
             const rows = [];
             Object.keys(predData).forEach((cellKey) => {
                 const cellId = Number(cellKey);
