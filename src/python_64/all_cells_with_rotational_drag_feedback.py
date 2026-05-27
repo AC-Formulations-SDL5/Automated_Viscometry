@@ -2100,13 +2100,22 @@ def main():
                 pass
             try:
                 if cnc:
-                    try:
-                        cnc.move_to_point_safe(0, 0, 0, speed=3000)
-                        web_interface.update_position(0, 0, 0)
-                    except (CNCMotionError, KeyboardInterrupt) as e:
-                        print(f"Cleanup: safe move to origin failed ({e}), trying home()...")
-                        cnc.home()
-                        web_interface.update_position(0, 0, 0)
+                    if web_interface.should_stop():
+                        print("Cleanup: stop requested; skipping CNC home/origin move.")
+                    else:
+                        try:
+                            cnc.move_to_point_safe(0, 0, 0, speed=3000)
+                            web_interface.update_position(0, 0, 0)
+                        except CNCMotionError as e:
+                            print(f"Cleanup: safe move to origin failed ({e}), trying home()...")
+                            try:
+                                cnc.home()
+                                web_interface.update_position(0, 0, 0)
+                            except (CNCMotionError, KeyboardInterrupt) as home_error:
+                                print(f"Cleanup: CNC home fallback skipped/failed ({home_error})")
+                        except KeyboardInterrupt:
+                            # User stop is still active; do not retry homing in this state.
+                            print("Cleanup: CNC move interrupted by stop request; skipping home fallback.")
             except Exception as e:
                 print(f"Cleanup: CNC shutdown error: {e}")
         print("Hardware cleanup completed")
