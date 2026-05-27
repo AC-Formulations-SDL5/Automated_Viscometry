@@ -580,7 +580,14 @@ def _finish_cell_measurement(
     web_interface.update_status(f"Cell {global_cell}: retracting to safe Z")
 
     try:
-        cnc.retract_z_at_cell(x_pos, y_pos, z_safe=0, speed=Z_FEED_RATE)
+        retract_allow_abort = exit_reason != "user_stop"
+        cnc.retract_z_at_cell(
+            x_pos,
+            y_pos,
+            z_safe=0,
+            speed=Z_FEED_RATE,
+            allow_abort=retract_allow_abort,
+        )
         sleep_with_stop(1)
         cnc_retracted_ok = True
         print(f"Cell {global_cell} returned to safe Z position (CNC retract OK)")
@@ -2193,21 +2200,21 @@ def main():
                     )
                     # #endregion agent log
                     if stop_requested:
-                        print("Cleanup: stop requested; skipping CNC home/origin move.")
-                    else:
+                        web_interface.update_status("Stop requested — retracting to safe Z then homing")
+                        web_interface.clear_stop_request()
+                    web_interface.update_status("Cleanup: homing CNC")
+                    try:
+                        cnc.move_to_point_safe(0, 0, 0, speed=3000, allow_abort=False)
+                        web_interface.update_position(0, 0, 0)
+                        print("Cleanup: CNC move_to_point_safe(0,0,0) complete.")
+                    except CNCMotionError as e:
+                        print(f"Cleanup: safe move to origin failed ({e}), trying home()...")
                         try:
-                            cnc.move_to_point_safe(0, 0, 0, speed=3000)
+                            cnc.home(allow_abort=False)
                             web_interface.update_position(0, 0, 0)
-                        except CNCMotionError as e:
-                            print(f"Cleanup: safe move to origin failed ({e}), trying home()...")
-                            try:
-                                cnc.home()
-                                web_interface.update_position(0, 0, 0)
-                            except (CNCMotionError, KeyboardInterrupt) as home_error:
-                                print(f"Cleanup: CNC home fallback skipped/failed ({home_error})")
-                        except KeyboardInterrupt:
-                            # User stop is still active; do not retry homing in this state.
-                            print("Cleanup: CNC move interrupted by stop request; skipping home fallback.")
+                        except CNCMotionError as home_error:
+                            print(f"Cleanup: CNC home fallback failed ({home_error})")
+                    web_interface.update_status("Cleanup: CNC homed")
             except Exception as e:
                 print(f"Cleanup: CNC shutdown error: {e}")
         print("Hardware cleanup completed")

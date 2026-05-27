@@ -32,12 +32,17 @@ class CNC_Machine:
         time.sleep(1)
         ser.reset_input_buffer()
 
-    def _wait_idle(self, ser, should_abort: Optional[Callable[[], bool]] = None):
+    def _wait_idle(
+        self,
+        ser,
+        should_abort: Optional[Callable[[], bool]] = None,
+        allow_abort: bool = True,
+    ):
         abort_fn = should_abort or self.should_abort
         time.sleep(0.25)
         deadline = time.time() + self.idle_timeout_s
         while True:
-            if abort_fn and abort_fn():
+            if allow_abort and abort_fn and abort_fn():
                 # #region agent log
                 try:
                     import json as _json, time as _time, pathlib as _pathlib
@@ -94,27 +99,35 @@ class CNC_Machine:
         return s + "\n"
 
     # public ops
-    def home(self):
-        self.move_to_point_safe(0, 0, 0, gtype="G0")
+    def home(self, allow_abort: bool = True):
+        self.move_to_point_safe(0, 0, 0, gtype="G0", allow_abort=allow_abort)
 
-    def move_to_point(self, x=None, y=None, z=None, speed=3000, gtype="G1"):
+    def move_to_point(self, x=None, y=None, z=None, speed=3000, gtype="G1", allow_abort: bool = True):
         self._check_bounds(x, y, z)
         g = self._gcode_to(x, y, z, speed, gtype)
-        self.follow_gcode_path(g)
+        self.follow_gcode_path(g, allow_abort=allow_abort)
 
-    def move_to_point_safe(self, x, y, z, speed=3000, gtype="G1"):
+    def move_to_point_safe(self, x, y, z, speed=3000, gtype="G1", allow_abort: bool = True):
         self._check_bounds(x, y, z)
         g = ""
         g += self._gcode_to(z=self.Z_HIGH_BOUND, speed=speed, gtype=gtype)
         g += self._gcode_to(x=x, y=y, z=self.Z_HIGH_BOUND, speed=speed, gtype=gtype)
         g += self._gcode_to(z=z, speed=speed, gtype=gtype)
-        self.follow_gcode_path(g)
+        self.follow_gcode_path(g, allow_abort=allow_abort)
 
-    def retract_z_at_cell(self, x, y, z_safe: float = 0, speed: int = 3000, gtype: str = "G1") -> None:
+    def retract_z_at_cell(
+        self,
+        x,
+        y,
+        z_safe: float = 0,
+        speed: int = 3000,
+        gtype: str = "G1",
+        allow_abort: bool = True,
+    ) -> None:
         """Raise Z to safe height at fixed XY (no horizontal travel)."""
         self._check_bounds(x, y, z_safe)
         g = self._gcode_to(z=z_safe, speed=speed, gtype=gtype)
-        self.follow_gcode_path(g)
+        self.follow_gcode_path(g, allow_abort=allow_abort)
 
     def get_location_position(self, name: str, idx: int):
         L = self.LOCATIONS[name]
@@ -132,7 +145,7 @@ class CNC_Machine:
         if safe: self.move_to_point_safe(x, y, z, speed=speed)
         else:    self.move_to_point(x, y, z, speed=speed)
 
-    def follow_gcode_path(self, gcode: str, buffer: int = 20) -> List[str]:
+    def follow_gcode_path(self, gcode: str, buffer: int = 20, allow_abort: bool = True) -> List[str]:
         if self.VIRTUAL:
             print("VIRTUAL GCODE:\n" + gcode.strip())
             return ["ok"]
@@ -143,7 +156,7 @@ class CNC_Machine:
             for i in range(0, len(cmds), buffer):
                 chunk = "\n".join(cmds[i:i+buffer]) + "\n"
                 ser.write(chunk.encode())
-                self._wait_idle(ser)
+                self._wait_idle(ser, allow_abort=allow_abort)
                 out = ser.readline().decode(errors="ignore").strip()
                 outs.append(out)
                 print(f"Movement commands rendered: {min(i+buffer, len(cmds))}")
