@@ -2,7 +2,7 @@ import serial, time, math, yaml
 
 class CNC_Machine:
     BAUD_RATE = 115200
-    SERIAL_PORT = "COM12"              # "COM7"
+    SERIAL_PORT = "COM8"              # "COM7"
     X_LOW_BOUND = 0;   X_HIGH_BOUND = 450
     Y_LOW_BOUND = 0;   Y_HIGH_BOUND = 400
     Z_LOW_BOUND = -75; Z_HIGH_BOUND = 0
