@@ -1254,6 +1254,25 @@ h2 {
     color: var(--color-green-text);
 }
 
+.sidebar-value.fail-safe-yes {
+    color: var(--color-yellow-text);
+    font-weight: 700;
+}
+
+.sidebar-value.fail-safe-no {
+    color: var(--color-green-text);
+}
+
+.sidebar-value.confidence-hit {
+    color: var(--color-red-text);
+    font-weight: 700;
+}
+
+.sidebar-value.confidence-failsafe {
+    color: var(--color-yellow-text);
+    font-weight: 700;
+}
+
 .rpm-legend-list {
     display: flex;
     flex-direction: column;

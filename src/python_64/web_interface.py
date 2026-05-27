@@ -715,7 +715,7 @@ class ViscometryWebInterface:
         second_derivative_drag, second_derivative_cv, second_derivative_slope,
         trend_r_squared: float,
         moving_r2_cv, moving_r2_slope,
-        hit_confidence: float, hit_detected: bool,
+        hit_confidence: float, hit_detected: bool, fail_safe_active: bool,
         drag_sd2_calibrated: bool, cv_sd2_calibrated: bool, slope_sd2_calibrated: bool
     ):
         """Emit latest feedback controller metrics for a single RPM to the sidebar."""
@@ -729,6 +729,7 @@ class ViscometryWebInterface:
             'moving_r2_slope': moving_r2_slope,
             'hit_confidence': hit_confidence,
             'hit_detected': hit_detected,
+            'fail_safe_active': bool(fail_safe_active),
             'drag_sd2_calibrated': drag_sd2_calibrated,
             'cv_sd2_calibrated': cv_sd2_calibrated,
             'slope_sd2_calibrated': slope_sd2_calibrated,

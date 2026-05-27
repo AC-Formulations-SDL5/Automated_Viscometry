@@ -204,6 +204,7 @@ class ViscometryDashboard {
             sidebarMethodR2Cv: document.getElementById("sidebar-method-r2-cv"),
             sidebarMethodR2Slope: document.getElementById("sidebar-method-r2-slope"),
             sidebarConfidence: document.getElementById("sidebar-confidence"),
+            sidebarFailSafe: document.getElementById("sidebar-fail-safe"),
             sidebarHit: document.getElementById("sidebar-hit"),
             dragZRpmLegend: document.getElementById("drag-z-rpm-legend"),
             dragZRpmLegendNote: document.getElementById("drag-z-rpm-legend-note"),
@@ -1400,6 +1401,10 @@ class ViscometryDashboard {
         if (this.el.sidebarR2Cv) this.el.sidebarR2Cv.textContent = "-";
         if (this.el.sidebarR2Slope) this.el.sidebarR2Slope.textContent = "-";
         if (this.el.sidebarConfidence) this.el.sidebarConfidence.textContent = "-";
+        if (this.el.sidebarFailSafe) {
+            this.el.sidebarFailSafe.textContent = "No";
+            this.el.sidebarFailSafe.className = "sidebar-value mono fail-safe-no";
+        }
         if (this.el.sidebarHit) {
             this.el.sidebarHit.textContent = "No";
             this.el.sidebarHit.className = "sidebar-value mono hit-no";
@@ -2239,7 +2244,28 @@ class ViscometryDashboard {
         if (this.el.sidebarMethod2ndDerivDrag) this.updateCalibrationBadge(this.el.sidebarMethod2ndDerivDrag, Boolean(data.drag_sd2_calibrated));
         if (this.el.sidebarMethod2ndDerivCv) this.updateCalibrationBadge(this.el.sidebarMethod2ndDerivCv, Boolean(data.cv_sd2_calibrated));
         if (this.el.sidebarMethod2ndDerivSlope) this.updateCalibrationBadge(this.el.sidebarMethod2ndDerivSlope, Boolean(data.slope_sd2_calibrated));
-        if (this.el.sidebarConfidence) this.el.sidebarConfidence.textContent = fmt(data.hit_confidence);
+        const hitThreshold = Number(this.el.hitPointConfidenceThreshold?.value ?? 0.8);
+        const failSafeFloor = hitThreshold * 0.75;
+        const confidenceRaw = Number(data.hit_confidence);
+        const confidenceValid = Number.isFinite(confidenceRaw);
+        const confidenceInWindow = confidenceValid && confidenceRaw >= failSafeFloor && confidenceRaw < hitThreshold;
+
+        if (this.el.sidebarConfidence) {
+            this.el.sidebarConfidence.textContent = fmt(data.hit_confidence);
+            if (confidenceValid && confidenceRaw >= hitThreshold) {
+                this.el.sidebarConfidence.className = "sidebar-value mono confidence-hit";
+            } else if (confidenceInWindow) {
+                this.el.sidebarConfidence.className = "sidebar-value mono confidence-failsafe";
+            } else {
+                this.el.sidebarConfidence.className = "sidebar-value mono";
+            }
+        }
+
+        if (this.el.sidebarFailSafe) {
+            const isFailSafe = Boolean(data.fail_safe_active);
+            this.el.sidebarFailSafe.textContent = isFailSafe ? "Yes" : "No";
+            this.el.sidebarFailSafe.className = `sidebar-value mono ${isFailSafe ? "fail-safe-yes" : "fail-safe-no"}`;
+        }
 
         if (this.el.sidebarHit) {
             const isHit = Boolean(data.hit_detected);

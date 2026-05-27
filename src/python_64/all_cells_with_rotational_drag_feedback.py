@@ -1111,11 +1111,18 @@ def test_cell_dynamic_z_series(
                     print(f"  Rotational Drag Analysis:")
                     feedback_controller.add_measurements_at_z(z_rounded, rpm_data)
                     
+                    fail_safe_floor = HIT_POINT_CONFIDENCE_THRESHOLD * 0.75
+
                     # Extract and store metrics for each RPM at this Z-level
                     for rpm in cell_rpms:
                         if rpm in rpm_data and rpm_data[rpm] is not None:
                             trend_analysis = feedback_controller.analyze_trend_for_rpm(rpm)
                             if trend_analysis['valid']:
+                                rpm_confidence = float(trend_analysis.get('hit_confidence', 0.0) or 0.0)
+                                rpm_fail_safe_active = (
+                                    rpm_confidence >= fail_safe_floor
+                                    and rpm_confidence < hit_confidence_threshold
+                                )
                                 web_interface.emit_feedback_metrics(
                                     rpm=rpm,
                                     second_derivative_drag=trend_analysis.get('second_derivative_drag'),
@@ -1126,6 +1133,7 @@ def test_cell_dynamic_z_series(
                                     moving_r2_slope=trend_analysis.get('moving_r2_slope'),
                                     hit_confidence=trend_analysis.get('hit_confidence'),
                                     hit_detected=trend_analysis.get('hit_detected', False),
+                                    fail_safe_active=rpm_fail_safe_active,
                                     drag_sd2_calibrated=trend_analysis.get('drag_sd2_calibrated', False),
                                     cv_sd2_calibrated=trend_analysis.get('cv_sd2_calibrated', False),
                                     slope_sd2_calibrated=trend_analysis.get('slope_sd2_calibrated', False),
@@ -1164,6 +1172,7 @@ def test_cell_dynamic_z_series(
                                     moving_r2_slope=None,
                                     hit_confidence=0.0,
                                     hit_detected=False,
+                                    fail_safe_active=False,
                                     drag_sd2_calibrated=False,
                                     cv_sd2_calibrated=False,
                                     slope_sd2_calibrated=False,
@@ -1202,6 +1211,7 @@ def test_cell_dynamic_z_series(
                                 moving_r2_slope=None,
                                 hit_confidence=0.0,
                                 hit_detected=False,
+                                fail_safe_active=False,
                                 drag_sd2_calibrated=False,
                                 cv_sd2_calibrated=False,
                                 slope_sd2_calibrated=False,
@@ -1268,27 +1278,31 @@ def test_cell_dynamic_z_series(
                         cell_exit_reason = "hit_detected"
                         break
 
-                    # Fail-safe: sub-threshold confidence streak (requires feedback metrics above).
+                    # Fail-safe: confidence-window streak (requires feedback metrics above).
                     if FAIL_SAFE_ENABLED:
-                        fail_safe_threshold = HIT_POINT_CONFIDENCE_THRESHOLD * 0.75
+                        fail_safe_floor = HIT_POINT_CONFIDENCE_THRESHOLD * 0.75
                         has_valid_fail_safe_metrics = (
                             bool(metrics_data)
                             and len(feedback_controller.z_rpm_drag_data) >= MIN_DATA_POINTS_FOR_TREND
                         )
                         if has_valid_fail_safe_metrics:
-                            if z_level_max_confidence < fail_safe_threshold:
+                            in_fail_safe_window = (
+                                z_level_max_confidence >= fail_safe_floor
+                                and z_level_max_confidence < hit_confidence_threshold
+                            )
+                            if in_fail_safe_window:
                                 consecutive_fail_safe_steps += 1
                                 print(
                                     f"  Fail-safe streak: {consecutive_fail_safe_steps}/{FAIL_SAFE_CONSECUTIVE_STEPS} "
-                                    f"(sub-threshold: max confidence={z_level_max_confidence:.2f} < "
-                                    f"floor={fail_safe_threshold:.2f})"
+                                    f"(window: {fail_safe_floor:.2f} <= max confidence={z_level_max_confidence:.2f} "
+                                    f"< {hit_confidence_threshold:.2f})"
                                 )
                             else:
                                 if consecutive_fail_safe_steps > 0:
                                     print(
                                         f"  Fail-safe streak reset at Z={z_rounded:.3f} "
-                                        f"(max confidence={z_level_max_confidence:.2f} >= "
-                                        f"floor={fail_safe_threshold:.2f})"
+                                        f"(max confidence={z_level_max_confidence:.2f}, window {fail_safe_floor:.2f} "
+                                        f"to <{hit_confidence_threshold:.2f})"
                                     )
                                 consecutive_fail_safe_steps = 0
 
@@ -1299,11 +1313,12 @@ def test_cell_dynamic_z_series(
                                 cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
                                 web_interface.update_status(
                                     f"Cell {global_cell}: fail-safe activated after "
-                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive sub-threshold confidence readings"
+                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive confidence readings in window "
+                                    f"{fail_safe_floor:.2f} to <{hit_confidence_threshold:.2f}"
                                 )
                                 print(
                                     f"  *** FAIL-SAFE: terminating Cell {global_cell} after "
-                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive sub-threshold Z-steps ***"
+                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive confidence-window Z-steps ***"
                                 )
                                 cell_exit_reason = "fail_safe"
                                 break
