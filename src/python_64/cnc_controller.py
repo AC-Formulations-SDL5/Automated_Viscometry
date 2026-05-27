@@ -1,4 +1,11 @@
-import serial, time, math, yaml
+import serial
+import time
+import yaml
+from typing import Callable, List, Optional
+
+class CNCMotionError(Exception):
+    """Raised when CNC motion fails (bounds, timeout, alarm, hold)."""
+
 
 class CNC_Machine:
     BAUD_RATE = 115200
@@ -8,9 +15,13 @@ class CNC_Machine:
     Z_LOW_BOUND = -75; Z_HIGH_BOUND = 0
 
     LOCATION_FILE = "config/locations.yaml"
+    IDLE_TIMEOUT_S = 120.0
+    STATUS_POLL_INTERVAL_S = 0.1
 
-    def __init__(self, virtual: bool = False):
+    def __init__(self, virtual: bool = False, idle_timeout_s: Optional[float] = None):
         self.VIRTUAL = virtual
+        self.idle_timeout_s = idle_timeout_s if idle_timeout_s is not None else self.IDLE_TIMEOUT_S
+        self.should_abort: Optional[Callable[[], bool]] = None
         with open(self.LOCATION_FILE, "r") as f:
             self.LOCATIONS = yaml.safe_load(f) or {}
         print(f"Connected to CNC Machine! (virtual={self.VIRTUAL})")
@@ -21,15 +32,31 @@ class CNC_Machine:
         time.sleep(1)
         ser.reset_input_buffer()
 
-    def _wait_idle(self, ser):
+    def _wait_idle(self, ser, should_abort: Optional[Callable[[], bool]] = None):
+        abort_fn = should_abort or self.should_abort
         time.sleep(0.25)
+        deadline = time.time() + self.idle_timeout_s
         while True:
+            if abort_fn and abort_fn():
+                raise KeyboardInterrupt("Stop requested during CNC wait")
+            if time.time() > deadline:
+                raise CNCMotionError(
+                    f"Timed out waiting for CNC idle after {self.idle_timeout_s:.0f}s"
+                )
             ser.reset_input_buffer()
             ser.write(b"?\n")
             line = ser.readline().decode(errors="ignore").strip()
+            if "Alarm" in line:
+                raise CNCMotionError(f"GRBL alarm: {line}")
+            if "Hold" in line:
+                raise CNCMotionError(f"GRBL hold: {line}")
             if "Idle" in line:
                 break
-            time.sleep(0.1)
+            time.sleep(self.STATUS_POLL_INTERVAL_S)
+
+    def _check_bounds(self, x, y, z) -> None:
+        if not self._within(x, y, z):
+            raise CNCMotionError(f"Out of bounds: ({x},{y},{z})")
 
     # motion builders
     def _within(self, x, y, z) -> bool:
@@ -51,18 +78,22 @@ class CNC_Machine:
         self.move_to_point_safe(0, 0, 0, gtype="G0")
 
     def move_to_point(self, x=None, y=None, z=None, speed=3000, gtype="G1"):
-        if not self._within(x, y, z):
-            print(f"Out of bounds: ({x},{y},{z})"); return
+        self._check_bounds(x, y, z)
         g = self._gcode_to(x, y, z, speed, gtype)
         self.follow_gcode_path(g)
 
     def move_to_point_safe(self, x, y, z, speed=3000, gtype="G1"):
-        if not self._within(x, y, z):
-            print(f"Out of bounds: ({x},{y},{z})"); return
+        self._check_bounds(x, y, z)
         g = ""
         g += self._gcode_to(z=self.Z_HIGH_BOUND, speed=speed, gtype=gtype)
         g += self._gcode_to(x=x, y=y, z=self.Z_HIGH_BOUND, speed=speed, gtype=gtype)
         g += self._gcode_to(z=z, speed=speed, gtype=gtype)
+        self.follow_gcode_path(g)
+
+    def retract_z_at_cell(self, x, y, z_safe: float = 0, speed: int = 3000, gtype: str = "G1") -> None:
+        """Raise Z to safe height at fixed XY (no horizontal travel)."""
+        self._check_bounds(x, y, z_safe)
+        g = self._gcode_to(z=z_safe, speed=speed, gtype=gtype)
         self.follow_gcode_path(g)
 
     def get_location_position(self, name: str, idx: int):
@@ -81,14 +112,14 @@ class CNC_Machine:
         if safe: self.move_to_point_safe(x, y, z, speed=speed)
         else:    self.move_to_point(x, y, z, speed=speed)
 
-    def follow_gcode_path(self, gcode: str, buffer: int = 20):
+    def follow_gcode_path(self, gcode: str, buffer: int = 20) -> List[str]:
         if self.VIRTUAL:
             print("VIRTUAL GCODE:\n" + gcode.strip())
             return ["ok"]
         outs = []
-        with serial.Serial(self.SERIAL_PORT, self.BAUD_RATE) as ser:
+        with serial.Serial(self.SERIAL_PORT, self.BAUD_RATE, timeout=2.0) as ser:
             self._wake(ser)
-            cmds = gcode.splitlines()
+            cmds = [c for c in gcode.splitlines() if c.strip()]
             for i in range(0, len(cmds), buffer):
                 chunk = "\n".join(cmds[i:i+buffer]) + "\n"
                 ser.write(chunk.encode())
