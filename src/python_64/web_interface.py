@@ -42,6 +42,14 @@ class ViscometryWebInterface:
         self.control_lock = threading.Lock()
         self.start_requested_event = threading.Event()
         self.stop_requested_event = threading.Event()
+        self.testing_control_lock = threading.Lock()
+        self.testing_device_states = {
+            'washing_rotor': 'idle',
+            'drying_rotor': 'idle',
+            'filling_pump': 'idle',
+            'draining_pump': 'idle',
+        }
+        self.pump_controller = None
         self.experiment_history_path = os.path.join(self.project_root, 'results', 'web_experiment_history.json')
         self.experiment_history = []
         self._load_experiment_history()
@@ -145,6 +153,7 @@ class ViscometryWebInterface:
                 'current_cell_start_ts': self.current_cell_start_ts,
                 'completed_cells': self.completed_cells,
                 'status_message': self.status_message,
+                'testing_status': self.get_testing_status(),
                 'cell_positions': self.get_cell_positions(),
                 'wash_stations': [
                     {'id': 1, 'x': self.WASH_STATION1_X, 'y': self.WASH_STATION1_Y},
@@ -207,6 +216,43 @@ class ViscometryWebInterface:
                 return jsonify({'ok': True, 'status_message': self.status_message})
             except Exception as e:
                 print(f"Error in api_run_stop: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/status', methods=['GET'])
+        def api_testing_status():
+            try:
+                return jsonify(self.get_testing_status())
+            except Exception as e:
+                print(f"Error in api_testing_status: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/start', methods=['POST'])
+        def api_testing_start():
+            try:
+                payload = request.get_json(silent=True) or {}
+                device = str(payload.get('device') or '').strip()
+                return self._handle_testing_action(device=device, action='start')
+            except Exception as e:
+                print(f"Error in api_testing_start: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/stop', methods=['POST'])
+        def api_testing_stop():
+            try:
+                payload = request.get_json(silent=True) or {}
+                device = str(payload.get('device') or '').strip()
+                return self._handle_testing_action(device=device, action='stop')
+            except Exception as e:
+                print(f"Error in api_testing_stop: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/stop_all', methods=['POST'])
+        def api_testing_stop_all():
+            try:
+                result = self.stop_all_testing_devices()
+                return jsonify(result), (200 if result.get('ok') else 400)
+            except Exception as e:
+                print(f"Error in api_testing_stop_all: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/experiment_history', methods=['GET', 'POST'])
@@ -593,6 +639,7 @@ class ViscometryWebInterface:
 
     def request_start(self):
         """Mark that the experiment should start."""
+        self.stop_all_testing_devices()
         self.stop_requested_event.clear()
         self.experiment_start_ts = time.time()
         self.current_cell_start_ts = None
@@ -875,6 +922,8 @@ class ViscometryWebInterface:
         """Set running state"""
         previous_state = self.is_running
         self.is_running = is_running
+        if is_running:
+            self.stop_all_testing_devices()
         if not is_running:
             self.experiment_start_ts = None
             self.current_cell_start_ts = None
@@ -890,6 +939,106 @@ class ViscometryWebInterface:
                 self.socketio.emit('calibration_status_update', self._calibration_summary)
             except Exception:
                 pass
+
+    def set_pump_controller(self, pump_controller):
+        """Register active PumpESP32 controller used by testing endpoints."""
+        self.pump_controller = pump_controller
+
+    def _testing_device_command_map(self) -> Dict[str, Dict[str, bytes]]:
+        return {
+            'washing_rotor': {'start': b"M1", 'stop': b"SM1"},
+            'drying_rotor': {'start': b"M2", 'stop': b"SM2"},
+            'filling_pump': {'start': b"P1", 'stop': b"SP1"},
+            'draining_pump': {'start': b"R1", 'stop': b"SR1"},
+        }
+
+    def get_testing_status(self) -> Dict:
+        with self.testing_control_lock:
+            states = dict(self.testing_device_states)
+        return {
+            'enabled': not self.is_running,
+            'is_running': self.is_running,
+            'devices': states,
+        }
+
+    def _set_testing_device_state(self, device: str, state: str):
+        with self.testing_control_lock:
+            if device in self.testing_device_states:
+                self.testing_device_states[device] = state
+
+    def _set_all_testing_device_states(self, state: str = 'idle'):
+        with self.testing_control_lock:
+            for key in self.testing_device_states:
+                self.testing_device_states[key] = state
+
+    def _send_testing_command(self, command: bytes) -> bool:
+        pump = self.pump_controller
+        if not pump:
+            return False
+        if hasattr(pump, 'send_command_with_ack'):
+            return bool(pump.send_command_with_ack(command, timeout=3.0, max_retries=2, should_abort=self.should_stop))
+        if hasattr(pump, 'send_tag'):
+            pump.send_tag(command)
+            return True
+        return False
+
+    def _handle_testing_action(self, device: str, action: str):
+        mapping = self._testing_device_command_map()
+        if device not in mapping:
+            return jsonify({'ok': False, 'error': f"Unknown device '{device}'"}), 400
+        if action not in ('start', 'stop'):
+            return jsonify({'ok': False, 'error': f"Unknown action '{action}'"}), 400
+        if self.is_running:
+            return jsonify({'ok': False, 'error': 'Testing is unavailable during an active viscometry run'}), 409
+        if not self.pump_controller:
+            return jsonify({'ok': False, 'error': 'Pump controller is not initialized'}), 503
+
+        with self.testing_control_lock:
+            self.testing_device_states[device] = 'pending'
+        success = self._send_testing_command(mapping[device][action])
+        state = 'running' if (success and action == 'start') else 'idle'
+        if not success:
+            state = 'error'
+        self._set_testing_device_state(device, state)
+        if state != 'error':
+            self.update_status(f"Testing: {action} {device.replace('_', ' ')}")
+
+        response = {
+            'ok': success,
+            'device': device,
+            'action': action,
+            'state': state,
+            'testing_status': self.get_testing_status(),
+        }
+        if success:
+            return jsonify(response)
+        return jsonify({**response, 'error': 'Failed to send command to pump controller'}), 502
+
+    def stop_all_testing_devices(self) -> Dict:
+        mapping = self._testing_device_command_map()
+        if not self.pump_controller:
+            self._set_all_testing_device_states('idle')
+            return {
+                'ok': False,
+                'error': 'Pump controller is not initialized',
+                'testing_status': self.get_testing_status(),
+            }
+        failures = []
+        for device, commands in mapping.items():
+            self._set_testing_device_state(device, 'pending')
+            if self._send_testing_command(commands['stop']):
+                self._set_testing_device_state(device, 'idle')
+            else:
+                self._set_testing_device_state(device, 'error')
+                failures.append(device)
+        if not failures:
+            self.update_status("Testing: all devices stopped")
+        return {
+            'ok': not failures,
+            'stopped': [d for d in mapping if d not in failures],
+            'failed': failures,
+            'testing_status': self.get_testing_status(),
+        }
         
     def start_server(self, debug=False):
         """Start the web server"""

@@ -62,6 +62,7 @@
             <button class="tab-button active" data-tab="layout-tab">Layout & Timeline</button>
             <button class="tab-button" data-tab="controls-tab">Parameters & Tracking</button>
             <button class="tab-button" data-tab="data-processing-tab">Data and Processing</button>
+            <button class="tab-button" data-tab="testing-tab" id="testing-tab-button">Testing</button>
             <button class="tab-button" data-tab="summary-tab">Experimental Summary</button>
         </nav>
 
@@ -686,6 +687,80 @@
                         </div>
                     </div>
                     <ul id="status-log" class="status-log"></ul>
+                </section>
+            </div>
+
+            <div id="testing-tab" class="tab-panel">
+                <section class="card testing-controls-card">
+                    <div class="card-title-row">
+                        <h2>Hardware Test Controls</h2>
+                        <span id="testing-run-lock-pill" class="testing-run-lock-pill idle">Idle - Testing enabled</span>
+                    </div>
+                    <p class="form-hint">
+                        Use these manual controls only while no viscometry run is active.
+                    </p>
+
+                    <div class="testing-device-grid">
+                        <article class="testing-device" data-device="washing_rotor">
+                            <div class="testing-device-meta">
+                                <h3>Washing Station Rotor</h3>
+                                <span class="testing-device-status" id="testing-status-washing-rotor">Idle</span>
+                            </div>
+                            <div class="testing-device-actions">
+                                <button class="btn control-btn-start testing-action-btn" data-testing-device="washing_rotor" data-testing-action="start">
+                                    Start
+                                </button>
+                                <button class="btn subtle control-btn-stop testing-action-btn" data-testing-device="washing_rotor" data-testing-action="stop">
+                                    Stop
+                                </button>
+                            </div>
+                        </article>
+
+                        <article class="testing-device" data-device="drying_rotor">
+                            <div class="testing-device-meta">
+                                <h3>Drying Station Rotor</h3>
+                                <span class="testing-device-status" id="testing-status-drying-rotor">Idle</span>
+                            </div>
+                            <div class="testing-device-actions">
+                                <button class="btn control-btn-start testing-action-btn" data-testing-device="drying_rotor" data-testing-action="start">
+                                    Start
+                                </button>
+                                <button class="btn subtle control-btn-stop testing-action-btn" data-testing-device="drying_rotor" data-testing-action="stop">
+                                    Stop
+                                </button>
+                            </div>
+                        </article>
+
+                        <article class="testing-device" data-device="filling_pump">
+                            <div class="testing-device-meta">
+                                <h3>Filling Pump</h3>
+                                <span class="testing-device-status" id="testing-status-filling-pump">Idle</span>
+                            </div>
+                            <div class="testing-device-actions">
+                                <button class="btn control-btn-start testing-action-btn" data-testing-device="filling_pump" data-testing-action="start">
+                                    Start
+                                </button>
+                                <button class="btn subtle control-btn-stop testing-action-btn" data-testing-device="filling_pump" data-testing-action="stop">
+                                    Stop
+                                </button>
+                            </div>
+                        </article>
+
+                        <article class="testing-device" data-device="draining_pump">
+                            <div class="testing-device-meta">
+                                <h3>Draining Pump</h3>
+                                <span class="testing-device-status" id="testing-status-draining-pump">Idle</span>
+                            </div>
+                            <div class="testing-device-actions">
+                                <button class="btn control-btn-start testing-action-btn" data-testing-device="draining_pump" data-testing-action="start">
+                                    Start
+                                </button>
+                                <button class="btn subtle control-btn-stop testing-action-btn" data-testing-device="draining_pump" data-testing-action="stop">
+                                    Stop
+                                </button>
+                            </div>
+                        </article>
+                    </div>
                 </section>
             </div>
 

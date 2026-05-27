@@ -77,6 +77,14 @@ class ViscometryDashboard {
         this.calibrationPanelOpen = false;
         this.calChecksComplete = false;
         this.isCalibrationRun = false;
+        this.testingDeviceStates = {
+            washing_rotor: "idle",
+            drying_rotor: "idle",
+            filling_pump: "idle",
+            draining_pump: "idle",
+        };
+        this.testingRequestInFlight = new Set();
+        this.testingGateInProgress = false;
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -235,6 +243,14 @@ class ViscometryDashboard {
             summaryPlot: document.getElementById("summary-plot"),
             tabButtons: document.querySelectorAll(".tab-button"),
             tabPanels: document.querySelectorAll(".tab-panel"),
+            testingTabButton: document.getElementById("testing-tab-button"),
+            testingRunLockPill: document.getElementById("testing-run-lock-pill"),
+            testingActionButtons: document.querySelectorAll(".testing-action-btn"),
+            testingDevices: document.querySelectorAll(".testing-device"),
+            testingStatusWashingRotor: document.getElementById("testing-status-washing-rotor"),
+            testingStatusDryingRotor: document.getElementById("testing-status-drying-rotor"),
+            testingStatusFillingPump: document.getElementById("testing-status-filling-pump"),
+            testingStatusDrainingPump: document.getElementById("testing-status-draining-pump"),
             calPanelSection: document.getElementById("calibration-panel-section"),
             calStatusPill: document.getElementById("cal-status-pill"),
             calStatusText: document.getElementById("cal-status-text"),
@@ -465,9 +481,14 @@ class ViscometryDashboard {
         if (this.el.calStartRecalibrationBtn) {
             this.el.calStartRecalibrationBtn.addEventListener("click", () => this.startRecalibrationRun());
         }
+        this.bindTestingControls();
     }
 
     switchTab(tabId) {
+        if (tabId === "testing-tab" && this.isRunning) {
+            this.pushStatusMessage("Testing is disabled while a viscometry run is active");
+            return;
+        }
         // Remove active class from all buttons and panels
         this.el.tabButtons.forEach(button => button.classList.remove("active"));
         this.el.tabPanels.forEach(panel => panel.classList.remove("active"));
@@ -488,6 +509,9 @@ class ViscometryDashboard {
             this.startSummaryHistoryPolling();
         } else {
             this.stopSummaryHistoryPolling();
+        }
+        if (tabId === "testing-tab") {
+            this.fetchTestingStatus();
         }
     }
 
@@ -765,9 +789,11 @@ class ViscometryDashboard {
             fetch("/api/measurement_data").then((r) => r.json()),
             fetch("/api/calibration/status").then((r) => r.json()),
             fetch("/api/predicted_viscosity").then((r) => r.json()).catch(() => ({})),
+            fetch("/api/testing/status").then((r) => r.json()).catch(() => null),
         ])
-            .then(([status, measurementData, calSummary, predictedViscosity]) => {
+            .then(([status, measurementData, calSummary, predictedViscosity, testingStatus]) => {
                 this.applyStatusSnapshot(status);
+                this.applyTestingStatus(testingStatus || status.testing_status);
                 if (Array.isArray(measurementData)) {
                     measurementData.forEach((m) => this.ingestMeasurement(m, true));
                     this.refreshLivePlots();
@@ -1543,6 +1569,9 @@ class ViscometryDashboard {
 
         if (status.predicted_viscosity_results) {
             this._hydratePredictedViscosityFromServer(status.predicted_viscosity_results);
+        }
+        if (status.testing_status) {
+            this.applyTestingStatus(status.testing_status);
         }
 
         if (status.status_message) {
@@ -2659,6 +2688,10 @@ class ViscometryDashboard {
         if (isRunning && this.uiState !== "running") {
             this.setUiState("running");
         }
+        this.updateTestingTabAvailability();
+        if (isRunning && !previous) {
+            this.warnAndStopTestingForRunTransition();
+        }
 
         if (!isRunning) {
             this.washingCell = null;
@@ -2691,6 +2724,178 @@ class ViscometryDashboard {
         if (this.el.calStartRecalibrationBtn) {
             this.updateRecalibrationButtonState();
         }
+    }
+
+    bindTestingControls() {
+        if (!this.el.testingActionButtons) {
+            return;
+        }
+        this.el.testingActionButtons.forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const device = btn.dataset.testingDevice;
+                const action = btn.dataset.testingAction;
+                this.handleTestingAction(device, action);
+            });
+        });
+        this.updateTestingUi();
+        this.updateTestingTabAvailability();
+    }
+
+    fetchTestingStatus() {
+        fetch("/api/testing/status")
+            .then((response) => response.json())
+            .then((status) => this.applyTestingStatus(status))
+            .catch(() => this.pushStatusMessage("Failed to fetch testing status"));
+    }
+
+    applyTestingStatus(status) {
+        if (!status || typeof status !== "object") {
+            return;
+        }
+        if (status.devices && typeof status.devices === "object") {
+            this.testingDeviceStates = {
+                ...this.testingDeviceStates,
+                ...status.devices,
+            };
+        }
+        this.updateTestingUi();
+    }
+
+    updateTestingTabAvailability() {
+        if (this.el.testingTabButton) {
+            this.el.testingTabButton.classList.toggle("is-disabled", this.isRunning);
+            this.el.testingTabButton.disabled = this.isRunning;
+        }
+        if (this.el.testingRunLockPill) {
+            this.el.testingRunLockPill.classList.toggle("idle", !this.isRunning);
+            this.el.testingRunLockPill.classList.toggle("running", this.isRunning);
+            this.el.testingRunLockPill.textContent = this.isRunning
+                ? "Run active - Testing locked"
+                : "Idle - Testing enabled";
+        }
+        if (this.isRunning) {
+            this.el.testingActionButtons?.forEach((btn) => {
+                btn.disabled = true;
+                btn.classList.remove("is-active");
+                btn.classList.add("is-idle");
+            });
+        } else {
+            this.updateTestingUi();
+        }
+    }
+
+    async handleTestingAction(device, action) {
+        if (!device || !action) {
+            return;
+        }
+        if (this.isRunning) {
+            this.pushStatusMessage("Testing is unavailable during an active run");
+            return;
+        }
+        const requestKey = `${device}:${action}`;
+        if (this.testingRequestInFlight.has(requestKey)) {
+            return;
+        }
+        this.testingRequestInFlight.add(requestKey);
+        const optimisticState = action === "start" ? "pending" : "idle";
+        this.testingDeviceStates[device] = optimisticState;
+        this.updateTestingUi();
+        try {
+            const response = await fetch(`/api/testing/${action}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ device }),
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.ok) {
+                this.testingDeviceStates[device] = "error";
+                this.updateTestingUi();
+                this.pushStatusMessage(payload.error || `Testing ${action} failed for ${device.replace(/_/g, " ")}`);
+                return;
+            }
+            this.applyTestingStatus(payload.testing_status);
+            this.pushStatusMessage(`Testing: ${action} ${device.replace(/_/g, " ")}`);
+        } catch {
+            this.testingDeviceStates[device] = "error";
+            this.updateTestingUi();
+            this.pushStatusMessage(`Testing request failed for ${device.replace(/_/g, " ")}`);
+        } finally {
+            this.testingRequestInFlight.delete(requestKey);
+            this.updateTestingUi();
+        }
+    }
+
+    async warnAndStopTestingForRunTransition() {
+        if (this.testingGateInProgress) {
+            return;
+        }
+        const activeTab = document.querySelector(".tab-button.active")?.dataset?.tab;
+        const hasActiveTestingDevice = Object.values(this.testingDeviceStates).some((state) =>
+            state === "running" || state === "pending" || state === "error"
+        );
+        if (activeTab !== "testing-tab" && !hasActiveTestingDevice) {
+            return;
+        }
+        this.testingGateInProgress = true;
+        window.confirm("A viscometry run has started. Testing controls will now stop all test hardware and exit the Testing tab.");
+        this.pushStatusMessage("Run started - stopping all testing devices");
+        try {
+            const response = await fetch("/api/testing/stop_all", { method: "POST" });
+            const payload = await response.json();
+            this.applyTestingStatus(payload.testing_status);
+            if (!payload.ok) {
+                this.pushStatusMessage("Warning: some testing devices did not stop cleanly");
+            }
+        } catch {
+            this.pushStatusMessage("Warning: failed to stop testing devices automatically");
+        } finally {
+            if (activeTab === "testing-tab") {
+                this.switchTab("layout-tab");
+            }
+            this.testingGateInProgress = false;
+        }
+    }
+
+    updateTestingUi() {
+        const stateToLabel = {
+            idle: "Idle",
+            pending: "Switching...",
+            running: "Running",
+            error: "Error",
+        };
+        const statusMap = {
+            washing_rotor: this.el.testingStatusWashingRotor,
+            drying_rotor: this.el.testingStatusDryingRotor,
+            filling_pump: this.el.testingStatusFillingPump,
+            draining_pump: this.el.testingStatusDrainingPump,
+        };
+
+        this.el.testingDevices?.forEach((card) => {
+            const device = card.dataset.device;
+            const state = this.testingDeviceStates[device] || "idle";
+            card.classList.toggle("is-running", state === "running");
+            card.classList.toggle("is-pending", state === "pending");
+            card.classList.toggle("is-error", state === "error");
+        });
+
+        Object.entries(statusMap).forEach(([device, node]) => {
+            if (!node) return;
+            const state = this.testingDeviceStates[device] || "idle";
+            node.textContent = stateToLabel[state] || "Idle";
+        });
+
+        this.el.testingActionButtons?.forEach((btn) => {
+            const device = btn.dataset.testingDevice;
+            const action = btn.dataset.testingAction;
+            const state = this.testingDeviceStates[device] || "idle";
+            const isRequestActive = this.testingRequestInFlight.has(`${device}:start`) || this.testingRequestInFlight.has(`${device}:stop`);
+            btn.disabled = this.isRunning || isRequestActive;
+            const isActiveAction =
+                (action === "start" && state === "running") ||
+                (action === "stop" && state === "error");
+            btn.classList.toggle("is-active", isActiveAction);
+            btn.classList.toggle("is-idle", !isActiveAction);
+        });
     }
 
     initSummaryPlot() {

@@ -1915,6 +1915,7 @@ def main():
         cnc = None
         client = None
         pump = None
+        web_interface.set_pump_controller(None)
         
         try:
             print("Initializing CNC machine...")
@@ -1955,6 +1956,7 @@ def main():
                 
             print("ESP32 pump controller initialized successfully")
             web_interface.set_instrument_status(pump=True)
+            web_interface.set_pump_controller(pump)
             
         except Exception as e:
             print(f"ERROR initializing ESP32 pump controller: {e}")
@@ -2201,6 +2203,7 @@ def main():
                             print("Cleanup: waiting for fill/drain thread to finish...")
                             _t.join(timeout=10)
                     pump.close()
+                web_interface.set_pump_controller(None)
             except:
                 pass
             try:

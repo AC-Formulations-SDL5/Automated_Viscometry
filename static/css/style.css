@@ -441,6 +441,10 @@ body.running .header-sweep {
     gap: var(--controls-block-gap);
 }
 
+#testing-tab.tab-panel.active {
+    display: block !important;
+}
+
 #summary-tab.tab-panel.active {
     display: block !important;
 }
@@ -503,6 +507,138 @@ body.running .header-sweep {
     display: flex;
     flex-direction: column;
     gap: var(--controls-block-gap);
+}
+
+/* Testing Tab */
+#testing-tab {
+    display: block;
+}
+
+.testing-controls-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.testing-run-lock-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    border: 1px solid transparent;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.testing-run-lock-pill.idle {
+    background: var(--color-green-badge-bg);
+    color: var(--color-green-text);
+    border-color: var(--color-green-border);
+}
+
+.testing-run-lock-pill.running {
+    background: var(--color-red-badge-bg);
+    color: var(--color-red-text);
+    border-color: var(--color-red-border);
+    box-shadow: 0 0 14px rgba(248, 81, 73, 0.2);
+}
+
+.testing-device-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.testing-device {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+    background: #ffffff;
+    padding: 14px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.testing-device:hover {
+    border-color: var(--accent-primary-border);
+    box-shadow: var(--shadow-1);
+}
+
+.testing-device-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.testing-device-meta h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.testing-device-status {
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+    border: 1px solid var(--border-subtle);
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.testing-device-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+}
+
+.testing-action-btn {
+    min-width: 92px;
+}
+
+.testing-device.is-running {
+    border-color: var(--color-green-border);
+    box-shadow: 0 0 20px rgba(46, 160, 67, 0.2);
+}
+
+.testing-device.is-running .testing-device-status {
+    color: var(--color-green-text);
+    background: var(--color-green-badge-bg);
+    border-color: var(--color-green-border);
+    animation: pulse-green 1.8s ease-in-out infinite;
+}
+
+.testing-device.is-pending {
+    border-color: #f5a623;
+    box-shadow: 0 0 16px rgba(245, 166, 35, 0.2);
+}
+
+.testing-device.is-pending .testing-device-status {
+    color: #8a5d00;
+    background: rgba(245, 166, 35, 0.16);
+    border-color: rgba(245, 166, 35, 0.5);
+}
+
+.testing-device.is-error {
+    border-color: var(--color-red-border);
+    box-shadow: 0 0 16px rgba(248, 81, 73, 0.2);
+}
+
+.testing-device.is-error .testing-device-status {
+    color: var(--color-red-text);
+    background: var(--color-red-badge-bg);
+    border-color: var(--color-red-border);
+}
+
+.tab-button.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+    filter: grayscale(0.25);
 }
 
 .live-viscosity-table {
@@ -1782,6 +1918,22 @@ body.spinning .gauge-value {
     opacity: 0.35;
     filter: grayscale(0.7);
     cursor: default;
+}
+
+.testing-action-btn[data-testing-action="start"].is-active {
+    background: #2ea043;
+    color: #fff;
+    box-shadow: 0 0 12px rgba(46, 160, 67, 0.45);
+}
+
+.testing-action-btn[data-testing-action="stop"].is-active {
+    background: #f85149;
+    color: #fff;
+    box-shadow: 0 0 12px rgba(248, 81, 73, 0.45);
+}
+
+.testing-action-btn.is-idle {
+    opacity: 0.72;
 }
 
 .summary-layout {
