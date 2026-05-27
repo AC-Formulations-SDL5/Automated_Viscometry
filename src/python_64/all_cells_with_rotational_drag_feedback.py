@@ -133,6 +133,33 @@ SELECTED_ROWS = [2]
 SELECTED_CELLS = [1]  # Only used when TESTING_MODE = "custom"
 
 
+# #region agent log helper
+def _agent_debug_log(hypothesis_id: str, location: str, message: str, data: dict, run_id: str = "pre-fix-1") -> None:
+    """Append a single NDJSON debug log line for this debug session."""
+    try:
+        import json as _json
+        import time as _time
+
+        payload = {
+            "sessionId": "80a163",
+            "id": f"log_{int(_time.time() * 1000)}_{hypothesis_id}",
+            "timestamp": int(_time.time() * 1000),
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "runId": run_id,
+            "hypothesisId": hypothesis_id,
+        }
+        log_path = pathlib.Path(__file__).resolve().parents[2] / ".cursor" / "debug-80a163.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(_json.dumps(payload) + "\n")
+    except Exception:
+        # Logging must never interfere with runtime behavior.
+        pass
+# #endregion agent log helper
+
+
 def _sanitize_experiment_slug(name: str) -> str:
     """Create a filename-safe slug for experiment output files."""
     cleaned = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in (name or '').strip())
@@ -494,6 +521,20 @@ def _cell_xy_for_global(global_cell: int) -> Tuple[int, float, float]:
         raise ValueError(f"Invalid row for cell {global_cell}")
     x_pos = base_x
     y_pos = BASE_Y + (local_cell - 1) * Y_OFFSET
+    # #region agent log
+    _agent_debug_log(
+        hypothesis_id="H1",
+        location="all_cells_with_rotational_drag_feedback.py:_cell_xy_for_global",
+        message="Computed XY for global cell",
+        data={
+            "global_cell": global_cell,
+            "row_number": row_number,
+            "local_cell": local_cell,
+            "x_pos": x_pos,
+            "y_pos": y_pos,
+        },
+    )
+    # #endregion agent log
     return row_number, x_pos, y_pos
 
 
@@ -523,6 +564,19 @@ def _finish_cell_measurement(
         f"Cell {global_cell}: CNC retract to safe Z at X={x_pos}, Y={y_pos}, Z=0 "
         f"(exit_reason={exit_reason})"
     )
+    # #region agent log
+    _agent_debug_log(
+        hypothesis_id="H2",
+        location="all_cells_with_rotational_drag_feedback.py:_finish_cell_measurement",
+        message="Begin retract to safe Z",
+        data={
+            "global_cell": global_cell,
+            "x_pos": x_pos,
+            "y_pos": y_pos,
+            "exit_reason": exit_reason,
+        },
+    )
+    # #endregion agent log
     web_interface.update_status(f"Cell {global_cell}: retracting to safe Z")
 
     try:
@@ -537,6 +591,20 @@ def _finish_cell_measurement(
     except CNCMotionError as e:
         print(f"Cell {global_cell}: CNC retract failed: {e}")
         web_interface.update_status(f"Cell {global_cell}: CNC retract failed — wash skipped")
+    # #region agent log
+    _agent_debug_log(
+        hypothesis_id="H2",
+        location="all_cells_with_rotational_drag_feedback.py:_finish_cell_measurement",
+        message="Retract to safe Z result",
+        data={
+            "global_cell": global_cell,
+            "x_pos": x_pos,
+            "y_pos": y_pos,
+            "exit_reason": exit_reason,
+            "cnc_retracted_ok": cnc_retracted_ok,
+        },
+    )
+    # #endregion agent log
 
     try:
         client.stop()
@@ -581,6 +649,21 @@ def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: 
     y_pos = BASE_Y + (local_cell_number - 1) * Y_OFFSET
     global_cell = row_and_local_to_global_cell(row_number, local_cell_number)
     print(f"Moving to Cell {global_cell} (Row {row_number}, Local Cell {local_cell_number}): X={x_pos}, Y={y_pos}, Z={z_height:.3f}")
+    # #region agent log
+    _agent_debug_log(
+        hypothesis_id="H1",
+        location="all_cells_with_rotational_drag_feedback.py:move_to_cell_position",
+        message="Move to cell position",
+        data={
+            "row_number": row_number,
+            "local_cell": local_cell_number,
+            "global_cell": global_cell,
+            "x_pos": x_pos,
+            "y_pos": y_pos,
+            "z_height": z_height,
+        },
+    )
+    # #endregion agent log
     
     # Update web interface with current cell and position
     web_interface.set_current_cell(global_cell)
@@ -2100,7 +2183,16 @@ def main():
                 pass
             try:
                 if cnc:
-                    if web_interface.should_stop():
+                    stop_requested = web_interface.should_stop()
+                    # #region agent log
+                    _agent_debug_log(
+                        hypothesis_id="H3",
+                        location="all_cells_with_rotational_drag_feedback.py:cleanup",
+                        message="Cleanup CNC decision",
+                        data={"stop_requested": stop_requested},
+                    )
+                    # #endregion agent log
+                    if stop_requested:
                         print("Cleanup: stop requested; skipping CNC home/origin move.")
                     else:
                         try:

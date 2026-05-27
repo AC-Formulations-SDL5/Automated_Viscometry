@@ -38,6 +38,26 @@ class CNC_Machine:
         deadline = time.time() + self.idle_timeout_s
         while True:
             if abort_fn and abort_fn():
+                # #region agent log
+                try:
+                    import json as _json, time as _time, pathlib as _pathlib
+                    payload = {
+                        "sessionId": "80a163",
+                        "id": f"log_{int(_time.time() * 1000)}_H4",
+                        "timestamp": int(_time.time() * 1000),
+                        "location": "cnc_controller.py:_wait_idle",
+                        "message": "Abort requested during CNC wait",
+                        "data": {},
+                        "runId": "pre-fix-1",
+                        "hypothesisId": "H4",
+                    }
+                    log_path = _pathlib.Path(__file__).resolve().parents[2] / ".cursor" / "debug-80a163.log"
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    with log_path.open("a", encoding="utf-8") as f:
+                        f.write(_json.dumps(payload) + "\n")
+                except Exception:
+                    pass
+                # #endregion agent log
                 raise KeyboardInterrupt("Stop requested during CNC wait")
             if time.time() > deadline:
                 raise CNCMotionError(
