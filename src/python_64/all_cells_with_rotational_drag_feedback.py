@@ -10,7 +10,7 @@ import traceback
 import threading
 import statistics
 from typing import Dict, List, Optional, Tuple
-from cnc_controller import CNC_Machine
+from cnc_controller import CNC_Machine, CNCMotionError
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 from feedback_helper_function import RotationalDragFeedbackController
@@ -390,10 +390,9 @@ def perform_washing_sequence(
     """
     Washing sequence with concurrent fill/drain overlap.
 
-    PRE-CONDITION: _pump_fill_station1() and _motor1_start() are already running
-    in background threads (started by test_cell_dynamic_z_series at end of last measurement).
-    By the time this function is called and the CNC safe-moves to Station 1,
-    the station should be filled and Motor M1 spinning.
+    PRE-CONDITION: CNC has retracted to safe Z at the cell XY (_finish_cell_measurement).
+    _pump_fill_station1() and _motor1_start() may already be running in background threads
+    started only after successful retract.
     """
     print(f"\nStarting Washing Sequence for Cell {global_cell} (concurrent-overlap mode)")
     web_interface.update_status(f"Washing after Cell {global_cell}")
@@ -482,6 +481,89 @@ def perform_washing_sequence(
         except Exception as cleanup_error:
             print(f"Error during cleanup: {cleanup_error}")
         raise
+
+def _cell_xy_for_global(global_cell: int) -> Tuple[int, float, float]:
+    """Return (row_number, x_pos, y_pos) for a global cell id."""
+    row_number, local_cell = global_cell_to_row_and_local(global_cell)
+    base_x = None
+    for row in ROWS:
+        if row['row_number'] == row_number:
+            base_x = row['base_x']
+            break
+    if base_x is None:
+        raise ValueError(f"Invalid row for cell {global_cell}")
+    x_pos = base_x
+    y_pos = BASE_Y + (local_cell - 1) * Y_OFFSET
+    return row_number, x_pos, y_pos
+
+
+def _finish_cell_measurement(
+    cnc: CNC_Machine,
+    client: ViscometerClient,
+    pump: Optional[PumpESP32],
+    global_cell: int,
+    exit_reason: str,
+    start_wash_prefill: bool,
+) -> Tuple[Optional[threading.Thread], bool, str]:
+    """
+    Retract CNC to safe Z, stop viscometer, optionally start wash prefill threads.
+
+    Returns (fill_thread, cnc_retracted_ok, exit_reason).
+    """
+    fill_thread: Optional[threading.Thread] = None
+    cnc_retracted_ok = False
+    _, x_pos, y_pos = _cell_xy_for_global(global_cell)
+
+    try:
+        raise_if_stop_requested()
+    except KeyboardInterrupt:
+        exit_reason = "user_stop"
+
+    print(
+        f"Cell {global_cell}: CNC retract to safe Z at X={x_pos}, Y={y_pos}, Z=0 "
+        f"(exit_reason={exit_reason})"
+    )
+    web_interface.update_status(f"Cell {global_cell}: retracting to safe Z")
+
+    try:
+        cnc.retract_z_at_cell(x_pos, y_pos, z_safe=0, speed=Z_FEED_RATE)
+        sleep_with_stop(1)
+        cnc_retracted_ok = True
+        print(f"Cell {global_cell} returned to safe Z position (CNC retract OK)")
+        web_interface.update_position(x_pos, y_pos, 0)
+    except KeyboardInterrupt:
+        exit_reason = "user_stop"
+        print(f"Cell {global_cell}: CNC retract cancelled (stop requested)")
+    except CNCMotionError as e:
+        print(f"Cell {global_cell}: CNC retract failed: {e}")
+        web_interface.update_status(f"Cell {global_cell}: CNC retract failed — wash skipped")
+
+    try:
+        client.stop()
+    except Exception:
+        pass
+
+    if (
+        start_wash_prefill
+        and pump is not None
+        and cnc_retracted_ok
+        and exit_reason != "user_stop"
+    ):
+        web_interface.update_status(
+            f"Cell {global_cell}: last measurement done — pre-filling wash station"
+        )
+        print("[CONCURRENT] CNC retract OK — starting pump fill + motor start...")
+        fill_thread = _run_in_thread(_pump_fill_station1, pump)
+        _run_in_thread(_motor1_start, pump)
+    elif pump is not None and not cnc_retracted_ok:
+        try:
+            print(f"Cell {global_cell}: emergency pump stop (retract failed, no wash prefill)")
+            _safe_pump_send_tag(pump, b"0")
+        except Exception:
+            pass
+
+    return fill_thread, cnc_retracted_ok, exit_reason
+
 
 def move_to_cell_position(cnc: CNC_Machine, row_number: int, local_cell_number: int, z_height: float) -> Tuple[float, float, float]:
     """Move to specific cell position in a specific row (local cell numbering 1-6)"""
@@ -865,7 +947,9 @@ def test_cell_dynamic_z_series(
     consecutive_high_confidence_steps = 0
     consecutive_fail_safe_steps = 0
     _fill_thread: Optional[threading.Thread] = None
-    
+    cell_exit_reason = "normal"
+    start_wash_prefill = pump is not None
+
     step_count = 0
     try:
         while current_z >= max_z_travel:
@@ -926,6 +1010,7 @@ def test_cell_dynamic_z_series(
                 if first_rpm_exceeded:
                     print(f"  CELL TERMINATION: First RPM exceeded threshold at Z={z_rounded:.3f}")
                     print(f"  Stopping Cell {global_cell} Z-series testing")
+                    cell_exit_reason = "torque_limit"
                     break
                 
                 # Add measurements to feedback controller for rotational drag analysis
@@ -1090,39 +1175,48 @@ def test_cell_dynamic_z_series(
                         web_interface.update_status(f"Cell {global_cell} terminated early - hit-point detected{hit_z_msg}")
                         # Store metrics before breaking
                         cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
+                        cell_exit_reason = "hit_detected"
                         break
 
                     # Fail-safe: sub-threshold confidence streak (requires feedback metrics above).
                     if FAIL_SAFE_ENABLED:
                         fail_safe_threshold = HIT_POINT_CONFIDENCE_THRESHOLD * 0.75
-                        if z_level_max_confidence >= fail_safe_threshold:
-                            consecutive_fail_safe_steps += 1
-                            print(
-                                f"  Fail-safe streak: {consecutive_fail_safe_steps}/{FAIL_SAFE_CONSECUTIVE_STEPS} "
-                                f"(max confidence={z_level_max_confidence:.2f}, threshold={fail_safe_threshold:.2f})"
-                            )
-                        else:
-                            if consecutive_fail_safe_steps > 0:
+                        has_valid_fail_safe_metrics = (
+                            bool(metrics_data)
+                            and len(feedback_controller.z_rpm_drag_data) >= MIN_DATA_POINTS_FOR_TREND
+                        )
+                        if has_valid_fail_safe_metrics:
+                            if z_level_max_confidence < fail_safe_threshold:
+                                consecutive_fail_safe_steps += 1
                                 print(
-                                    f"  Fail-safe streak reset at Z={z_rounded:.3f} "
-                                    f"(max confidence={z_level_max_confidence:.2f})"
+                                    f"  Fail-safe streak: {consecutive_fail_safe_steps}/{FAIL_SAFE_CONSECUTIVE_STEPS} "
+                                    f"(sub-threshold: max confidence={z_level_max_confidence:.2f} < "
+                                    f"floor={fail_safe_threshold:.2f})"
                                 )
-                            consecutive_fail_safe_steps = 0
+                            else:
+                                if consecutive_fail_safe_steps > 0:
+                                    print(
+                                        f"  Fail-safe streak reset at Z={z_rounded:.3f} "
+                                        f"(max confidence={z_level_max_confidence:.2f} >= "
+                                        f"floor={fail_safe_threshold:.2f})"
+                                    )
+                                consecutive_fail_safe_steps = 0
 
-                        if consecutive_fail_safe_steps >= FAIL_SAFE_CONSECUTIVE_STEPS:
-                            for rpm in metrics_data:
-                                metrics_data[rpm]['Hit_Detected'] = False
-                                metrics_data[rpm]['Hit_Reasons'] = 'fail safe, experiment terminated'
-                            cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
-                            web_interface.update_status(
-                                f"Cell {global_cell}: fail-safe activated after "
-                                f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive sub-threshold confidence readings"
-                            )
-                            print(
-                                f"  *** FAIL-SAFE: terminating Cell {global_cell} after "
-                                f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive sub-threshold Z-steps ***"
-                            )
-                            break
+                            if consecutive_fail_safe_steps >= FAIL_SAFE_CONSECUTIVE_STEPS:
+                                for rpm in metrics_data:
+                                    metrics_data[rpm]['Hit_Detected'] = False
+                                    metrics_data[rpm]['Hit_Reasons'] = 'fail safe, experiment terminated'
+                                cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
+                                web_interface.update_status(
+                                    f"Cell {global_cell}: fail-safe activated after "
+                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive sub-threshold confidence readings"
+                                )
+                                print(
+                                    f"  *** FAIL-SAFE: terminating Cell {global_cell} after "
+                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive sub-threshold Z-steps ***"
+                                )
+                                cell_exit_reason = "fail_safe"
+                                break
                 else:
                     # Feedback control disabled or no data - store default metrics.
                     # Fail-safe never fires here (Hit_Point_Confidence is 0.0).
@@ -1188,36 +1282,27 @@ def test_cell_dynamic_z_series(
             
             # Move to next Z position
             current_z += Z_STEP_SIZE
-    finally:
-        if pump is not None:
-            web_interface.update_status(f"Cell {global_cell}: last measurement done — pre-filling wash station")
-            print("[CONCURRENT] Firing pump fill + motor start as CNC begins rising...")
-            _fill_thread = _run_in_thread(_pump_fill_station1, pump)
-            _run_in_thread(_motor1_start, pump)
-        
-    # Move Z back to safe position
-    try:
-        base_x = None
-        for row in ROWS:
-            if row['row_number'] == row_number:
-                base_x = row['base_x']
-                break
-        
-        x_pos = base_x
-        y_pos = BASE_Y + (local_cell - 1) * Y_OFFSET
-        cnc.move_to_point(x_pos, y_pos, z=0, speed=Z_FEED_RATE)
-        sleep_with_stop(1)
-        # Stop viscometer once at safe position
-        client.stop()
-        print(f"Cell {global_cell} returned to safe Z position")
-    except Exception as e:
-        print(f"  Warning: Error moving to safe Z: {e}")
-        # Ensure viscometer is stopped even if movement fails
-        try:
-            client.stop()
-        except:
-            pass
-    
+    except KeyboardInterrupt:
+        cell_exit_reason = "user_stop"
+        _fill_thread, cnc_retracted_ok, cell_exit_reason = _finish_cell_measurement(
+            cnc,
+            client,
+            pump,
+            global_cell,
+            cell_exit_reason,
+            start_wash_prefill=False,
+        )
+        raise
+
+    _fill_thread, cnc_retracted_ok, cell_exit_reason = _finish_cell_measurement(
+        cnc,
+        client,
+        pump,
+        global_cell,
+        cell_exit_reason,
+        start_wash_prefill=start_wash_prefill,
+    )
+
     # Print feedback controller summary
     if FEEDBACK_CONTROL_ENABLED:
         summary = feedback_controller.get_summary()
@@ -1240,6 +1325,8 @@ def test_cell_dynamic_z_series(
             'total_z_levels': len(cell_z_rpm_data),
             'feedback_enabled': False,
         }
+    feedback_summary['exit_reason'] = cell_exit_reason
+    feedback_summary['cnc_retracted_ok'] = cnc_retracted_ok
     return cell_z_rpm_data, _fill_thread, feedback_summary
 
 
@@ -1727,6 +1814,7 @@ def main():
         try:
             print("Initializing CNC machine...")
             cnc = CNC_Machine(virtual=False)
+            cnc.should_abort = web_interface.should_stop
             cnc.home()
             sleep_with_stop(1.0)
             print("CNC machine initialized and homed")
@@ -1913,10 +2001,18 @@ def main():
                             run_predicted_viscosity_for_cell(
                                 global_cell, cell_rpms, feedback_summary
                             )
-                        # Normal run: perform washing as before
-                        if pump:
+                        # Normal run: perform washing only after successful CNC retract
+                        if pump and feedback_summary.get("cnc_retracted_ok"):
                             perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)
                             web_interface.add_completed_cell(global_cell)
+                        elif pump:
+                            print(
+                                f"Wash skipped for Cell {global_cell}: CNC safe retract failed "
+                                f"(exit_reason={feedback_summary.get('exit_reason')})"
+                            )
+                            web_interface.update_status(
+                                f"Cell {global_cell}: wash skipped — CNC retract failed"
+                            )
                         else:
                             print(f"Warning: Pump not available, skipping washing for Cell {global_cell}")
 
@@ -2004,10 +2100,15 @@ def main():
                 pass
             try:
                 if cnc:
-                    cnc.home()
-                    web_interface.update_position(0, 0, 0)
-            except:
-                pass
+                    try:
+                        cnc.move_to_point_safe(0, 0, 0, speed=3000)
+                        web_interface.update_position(0, 0, 0)
+                    except (CNCMotionError, KeyboardInterrupt) as e:
+                        print(f"Cleanup: safe move to origin failed ({e}), trying home()...")
+                        cnc.home()
+                        web_interface.update_position(0, 0, 0)
+            except Exception as e:
+                print(f"Cleanup: CNC shutdown error: {e}")
         print("Hardware cleanup completed")
         web_interface.update_status("Ready - Configure next run and press Start")
         # Continue the loop to wait for next start command

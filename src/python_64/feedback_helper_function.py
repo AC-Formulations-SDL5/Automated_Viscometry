@@ -34,9 +34,15 @@ def _std(values: List[float], mean_value: Optional[float] = None) -> float:
 
 
 def _linear_regression(x: List[float], y: List[float]) -> Tuple[float, float, float]:
+    slope, intercept, r_squared, _ss_tot = _linear_regression_extended(x, y)
+    return slope, intercept, r_squared
+
+
+def _linear_regression_extended(x: List[float], y: List[float]) -> Tuple[float, float, float, float]:
+    """Return slope, intercept, r_squared, and ss_tot (0 when variance undefined)."""
     n = len(x)
     if n == 0:
-        return 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0
     x_mean = _mean(x)
     y_mean = _mean(y)
     ss_xy = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, y))
@@ -47,7 +53,7 @@ def _linear_regression(x: List[float], y: List[float]) -> Tuple[float, float, fl
     ss_res = sum((yi - yp) ** 2 for yi, yp in zip(y, y_pred))
     ss_tot = sum((yi - y_mean) ** 2 for yi in y)
     r_squared = 1.0 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
-    return slope, intercept, r_squared
+    return slope, intercept, r_squared, ss_tot
 
 
 def _approximate_second_derivative(z_heights: List[float], drag_values: List[float]) -> Optional[float]:
@@ -269,7 +275,7 @@ class RotationalDragFeedbackController:
         # Perform local-window linear regression using the latest 5 points (or fewer).
         recent_z = z_heights[-self.slope_window:] if len(z_heights) >= self.slope_window else z_heights
         recent_drag = drag_values[-self.slope_window:] if len(drag_values) >= self.slope_window else drag_values
-        trend_slope, _, trend_r_squared = _linear_regression(recent_z, recent_drag)
+        trend_slope, _, trend_r_squared, drag_ss_tot = _linear_regression_extended(recent_z, recent_drag)
 
         # Calculate second derivative approximation if we have enough points
         second_deriv_drag = _approximate_second_derivative(z_heights, drag_values)
@@ -283,10 +289,11 @@ class RotationalDragFeedbackController:
         self.rpm_slope_history[rpm].append(trend_slope)
 
         latest_slope_r2 = None
+        slope_ss_tot = 0.0
         if len(self.rpm_slope_history[rpm]) >= 5:
             recent_slope = self.rpm_slope_history[rpm][-5:]
             x_idx = list(range(5))
-            _, _, latest_slope_r2 = _linear_regression(x_idx, recent_slope)
+            _, _, latest_slope_r2, slope_ss_tot = _linear_regression_extended(x_idx, recent_slope)
             self.rpm_slope_r2_history[rpm].append(latest_slope_r2)
 
         latest_slope_second_deriv = None
@@ -322,9 +329,14 @@ class RotationalDragFeedbackController:
         if latest_slope_second_deriv is not None:
             hit_2nd_deriv_slope = slope_detector.feed(latest_slope_second_deriv)
 
-        hit_r2_drag = trend_r_squared < self.r2_drag_min
-        hit_r2_cv = latest_cv_r2 is not None and latest_cv_r2 < self.r2_cv_min
-        hit_r2_slope = latest_slope_r2 is not None and latest_slope_r2 < self.r2_slope_min
+        cv_ss_tot = 0.0
+        if len(self.rpm_cv_history.get(rpm, [])) >= 5:
+            recent_cv = self.rpm_cv_history[rpm][-5:]
+            _, _, _, cv_ss_tot = _linear_regression_extended(list(range(5)), recent_cv)
+
+        hit_r2_drag = drag_ss_tot > 0 and trend_r_squared < self.r2_drag_min
+        hit_r2_cv = latest_cv_r2 is not None and cv_ss_tot > 0 and latest_cv_r2 < self.r2_cv_min
+        hit_r2_slope = latest_slope_r2 is not None and slope_ss_tot > 0 and latest_slope_r2 < self.r2_slope_min
 
         if hit_2nd_deriv_drag:
             hit_confidence += self.weight_2nd_deriv_drag
