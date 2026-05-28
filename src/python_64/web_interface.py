@@ -42,6 +42,7 @@ class ViscometryWebInterface:
         self.control_lock = threading.Lock()
         self.start_requested_event = threading.Event()
         self.stop_requested_event = threading.Event()
+        self.terminate_current_cell_requested_event = threading.Event()
         self.testing_control_lock = threading.Lock()
         self.testing_device_states = {
             'washing_rotor': 'idle',
@@ -58,6 +59,7 @@ class ViscometryWebInterface:
         self.testing_pump_virtual = os.getenv('VISCOMETRY_PUMP_VIRTUAL', '0') == '1'
         self.experiment_history_path = os.path.join(self.project_root, 'results', 'web_experiment_history.json')
         self.experiment_history = []
+        self.cell_termination_reasons: Dict[int, str] = {}
         self._load_experiment_history()
         self.runtime_settings = {
             'experiment_name': '',
@@ -158,7 +160,9 @@ class ViscometryWebInterface:
                 'experiment_start_ts': self.experiment_start_ts,
                 'current_cell_start_ts': self.current_cell_start_ts,
                 'completed_cells': self.completed_cells,
+                'cell_termination_reasons': self.cell_termination_reasons,
                 'status_message': self.status_message,
+                'manual_terminate_current_cell_requested': self.should_terminate_current_cell(),
                 'testing_status': self.get_testing_status(),
                 'cell_positions': self.get_cell_positions(),
                 'wash_stations': [
@@ -222,6 +226,16 @@ class ViscometryWebInterface:
                 return jsonify({'ok': True, 'status_message': self.status_message})
             except Exception as e:
                 print(f"Error in api_run_stop: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/run/terminate_current_cell', methods=['POST'])
+        def api_run_terminate_current_cell():
+            try:
+                self.request_terminate_current_cell()
+                self.update_status('Manual termination requested for current cell')
+                return jsonify({'ok': True, 'status_message': self.status_message})
+            except Exception as e:
+                print(f"Error in api_run_terminate_current_cell: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/testing/status', methods=['GET'])
@@ -386,6 +400,18 @@ class ViscometryWebInterface:
                     emit('error', {'message': str(e)})
                 except:
                     pass
+
+        @self.socketio.on('terminate_current_cell')
+        def handle_terminate_current_cell():
+            try:
+                self.request_terminate_current_cell()
+                emit('status_update', {'status_message': 'Manual termination requested for current cell'}, broadcast=True)
+            except Exception as e:
+                print(f"Error in handle_terminate_current_cell: {e}")
+                try:
+                    emit('error', {'message': str(e)})
+                except:
+                    pass
             
     def get_cell_positions(self) -> List[Dict]:
         """Calculate positions for all 18 cells"""
@@ -422,7 +448,9 @@ class ViscometryWebInterface:
                 'experiment_start_ts': self.experiment_start_ts,
                 'current_cell_start_ts': self.current_cell_start_ts,
                 'completed_cells': self.completed_cells,
+                'cell_termination_reasons': self.cell_termination_reasons,
                 'status_message': self.status_message,
+                'manual_terminate_current_cell_requested': self.should_terminate_current_cell(),
                 'measurement_data': self.measurement_data,
                 'control_settings': runtime
                 ,
@@ -446,7 +474,9 @@ class ViscometryWebInterface:
                 'experiment_start_ts': self.experiment_start_ts,
                 'current_cell_start_ts': self.current_cell_start_ts,
                 'completed_cells': self.completed_cells,
+                'cell_termination_reasons': self.cell_termination_reasons,
                 'status_message': f"Error building status: {str(e)[:100]}",
+                'manual_terminate_current_cell_requested': self.should_terminate_current_cell(),
                 'measurement_data': [],
                 'control_settings': {}
                 ,
@@ -651,6 +681,7 @@ class ViscometryWebInterface:
             pass
         self._disconnect_testing_session()
         self.stop_requested_event.clear()
+        self.clear_terminate_current_cell_request()
         self.experiment_start_ts = time.time()
         self.current_cell_start_ts = None
         self.completed_cells = []
@@ -674,6 +705,7 @@ class ViscometryWebInterface:
     def request_stop(self):
         """Mark that the experiment should stop."""
         self.stop_requested_event.set()
+        self.clear_terminate_current_cell_request()
         self.set_running_state(False)
         self.calibration_mode = False
         self.broadcast_calibration_mode()
@@ -693,6 +725,20 @@ class ViscometryWebInterface:
     def should_stop(self) -> bool:
         """Return True when the UI has requested shutdown."""
         return self.stop_requested_event.is_set()
+
+    def request_terminate_current_cell(self):
+        """Queue a latched manual terminate request for current cell."""
+        self.terminate_current_cell_requested_event.set()
+        self.socketio.emit('manual_terminate_current_cell_update', {'requested': True})
+
+    def should_terminate_current_cell(self) -> bool:
+        """Return True if manual terminate current cell was requested."""
+        return self.terminate_current_cell_requested_event.is_set()
+
+    def clear_terminate_current_cell_request(self):
+        """Clear queued manual terminate current cell request."""
+        self.terminate_current_cell_requested_event.clear()
+        self.socketio.emit('manual_terminate_current_cell_update', {'requested': False})
 
     def clear_stop_request(self):
         """Clear any pending stop request."""
@@ -721,7 +767,7 @@ class ViscometryWebInterface:
         self.current_cell_start_ts = time.time() if cell_id is not None else None
         self.socketio.emit('cell_update', {'current_cell': cell_id})
 
-    def add_completed_cell(self, cell_id: int):
+    def add_completed_cell(self, cell_id: int, termination_reason: str = "normal"):
         """Track a cell as fully completed (including wash) for refresh-safe progress."""
         try:
             normalized = int(cell_id)
@@ -729,12 +775,14 @@ class ViscometryWebInterface:
             return
         if normalized not in self.completed_cells:
             self.completed_cells.append(normalized)
+        self.cell_termination_reasons[normalized] = str(termination_reason or "normal")
         runtime = self.get_runtime_settings()
         recalibration_cells = runtime.get('recalibration_cells') if isinstance(runtime, dict) else {}
         recalibration_target_count = len(recalibration_cells) if isinstance(recalibration_cells, dict) else 0
         recalibration_mode_active = bool(self.calibration_mode and runtime.get('recalibrate_individual_cells', False))
         self.socketio.emit('completed_cells_update', {
             'completed_cells': self.completed_cells,
+            'cell_termination_reasons': self.cell_termination_reasons,
             'recalibration_mode_active': recalibration_mode_active,
             'recalibration_target_count': recalibration_target_count,
         })
@@ -806,7 +854,9 @@ class ViscometryWebInterface:
             self.current_z_measuring = None
             self.current_cell_start_ts = None
             self.completed_cells = []
+            self.cell_termination_reasons = {}
             self.predicted_viscosity_results = {}
+        self.clear_terminate_current_cell_request()
         self.socketio.emit('clear_dashboard')
 
     def emit_predicted_viscosity(self, cell_id: int, rpm: float, result: Dict):

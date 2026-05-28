@@ -1352,6 +1352,19 @@ def test_cell_dynamic_z_series(
                 
                 # Always store metrics alongside RPM data for consistent CSV structure
                 cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
+                if (
+                    not (CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS)
+                    and web_interface.should_terminate_current_cell()
+                ):
+                    web_interface.clear_terminate_current_cell_request()
+                    cell_exit_reason = "manual_terminate"
+                    web_interface.update_status(
+                        f"Cell {global_cell}: manual termination queued; ending after current measurement cycle"
+                    )
+                    print(
+                        f"  *** MANUAL TERMINATION: ending Cell {global_cell} after current measurement cycle at Z={z_rounded:.3f} ***"
+                    )
+                    break
                     
                 print(f"  Completed Z={z_rounded:.3f}: {len([t for t in rpm_data.values() if t is not None])}/{len(cell_rpms)} successful RPM tests")
                 
@@ -1558,7 +1571,8 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
 
 
 def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
-                     timestamp: str, mode: str, completed_cells: List[int], experiment_name: str) -> str:
+                     timestamp: str, mode: str, completed_cells: List[int], experiment_name: str,
+                     termination_by_cell: Optional[Dict[int, str]] = None) -> str:
     """Save partial results when experiment is terminated early"""
     if not all_data:
         print("No data collected to save.")
@@ -1600,6 +1614,7 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
             "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
+            "Cell_Termination_Method",
             "CV", "R_2", "Trend_Slope", "Second_derivative",
             "Second_derivative_drag", "Second_derivative_cv", "Second_derivative_slope",
             "R_2_drag", "R_2_cv", "R_2_slope",
@@ -1671,6 +1686,7 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                                     f"{measurement['elapsed_time']:.2f}",        # Elapsed_Time_s
                                     f"{measurement['torque_percent']:.3f}",      # Torque_%
                                     f"{rotational_drag:.6f}",                   # Rotational_Drag
+                                    str((termination_by_cell or {}).get(global_cell, "normal")),
                                     f"{rpm_metrics['CV']:.6f}",                 # CV
                                     f"{rpm_metrics['R2']:.6f}",                 # R2
                                     f"{rpm_metrics['Trend_Slope']:.6f}",        # Trend_Slope
@@ -1698,7 +1714,8 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
     return csv_filename
 
 def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
-                              timestamp: str, mode: str, experiment_name: str) -> str:
+                              timestamp: str, mode: str, experiment_name: str,
+                              termination_by_cell: Optional[Dict[int, str]] = None) -> str:
     """Save dynamic analysis data - single CSV file for entire run with columns including metrics"""
     
     # Create single CSV filename
@@ -1732,6 +1749,7 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         # Write column headers with Rotational_Drag and metrics columns
         headers = [
             "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
+            "Cell_Termination_Method",
             "CV", "R_2", "Trend_Slope", "Second_derivative",
             "Second_derivative_drag", "Second_derivative_cv", "Second_derivative_slope",
             "R_2_drag", "R_2_cv", "R_2_slope",
@@ -1813,6 +1831,7 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 f"{latest_measurement['elapsed_time']:.2f}", # Elapsed_Time_s
                                 f"{latest_measurement['torque_percent']:.3f}", # Torque_%
                                 f"{rotational_drag:.6f}",                   # Rotational_Drag
+                                str((termination_by_cell or {}).get(global_cell, "normal")),
                                 f"{rpm_metrics['CV']:.6f}",                 # CV
                                 f"{rpm_metrics['R2']:.6f}",                 # R2
                                 f"{rpm_metrics['Trend_Slope']:.6f}",        # Trend_Slope
@@ -1994,6 +2013,7 @@ def main():
         # Data structure: all_data[global_cell] = cell_z_rpm_data
         all_data = {}
         completed_cells = []  # Track completed cells for partial saving
+        termination_by_cell: Dict[int, str] = {}
         active_threads: List[threading.Thread] = []
         global CELL_VISCOSITY_RESULTS
         CELL_VISCOSITY_RESULTS = {}
@@ -2085,6 +2105,7 @@ def main():
                         active_threads.append(_fill_thread)
                     all_data[global_cell] = cell_data
                     completed_cells.append(global_cell)
+                    termination_by_cell[global_cell] = str(feedback_summary.get("exit_reason", "normal"))
                     print(f"Cell {global_cell} testing completed")
 
                     if is_calibration_like_run:
@@ -2096,7 +2117,7 @@ def main():
                         else:
                             print(f"  Calibration: Cell {global_cell} — no reliable hitpoint found, skipping")
                         # Track calibration/recalibration progress for live cross-device UI sync.
-                        web_interface.add_completed_cell(global_cell)
+                        web_interface.add_completed_cell(global_cell, termination_reason=termination_by_cell.get(global_cell, "normal"))
                         if CALIBRATION_MODE:
                             web_interface.update_status(f"Calibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                         else:
@@ -2110,7 +2131,7 @@ def main():
                         # Normal run: perform washing only after successful CNC retract
                         if pump and feedback_summary.get("cnc_retracted_ok"):
                             perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)
-                            web_interface.add_completed_cell(global_cell)
+                            web_interface.add_completed_cell(global_cell, termination_reason=termination_by_cell.get(global_cell, "normal"))
                         elif pump:
                             print(
                                 f"Wash skipped for Cell {global_cell}: CNC safe retract failed "
@@ -2130,7 +2151,14 @@ def main():
                     traceback.print_exc()
                     # Save partial data before exiting
                     if all_data:
-                        save_partial_data(all_data, timestamp, mode, completed_cells, run_experiment_name)
+                        save_partial_data(
+                            all_data,
+                            timestamp,
+                            mode,
+                            completed_cells,
+                            run_experiment_name,
+                            termination_by_cell=termination_by_cell,
+                        )
                     raise  # Re-raise to trigger cleanup
         
             # All testing completed successfully
@@ -2161,7 +2189,13 @@ def main():
                 except Exception as e:
                     print(f"Error saving calibration data: {e}")
 
-            csv_filename = save_dynamic_analysis_data(all_data, timestamp, mode, run_experiment_name)
+            csv_filename = save_dynamic_analysis_data(
+                all_data,
+                timestamp,
+                mode,
+                run_experiment_name,
+                termination_by_cell=termination_by_cell,
+            )
             print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
             print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
@@ -2172,14 +2206,28 @@ def main():
             web_interface.update_status("Experiment interrupted by user")
             if all_data:
                 print("Saving partial results...")
-                save_partial_data(all_data, timestamp, mode, completed_cells, run_experiment_name)
+                save_partial_data(
+                    all_data,
+                    timestamp,
+                    mode,
+                    completed_cells,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                )
         except Exception as e:
             print(f"Critical error during experiment: {e}")
             traceback.print_exc()
             web_interface.update_status(f"Error: {str(e)}")
             if all_data:
                 print("Saving partial results...")
-                save_partial_data(all_data, timestamp, mode, completed_cells, run_experiment_name)
+                save_partial_data(
+                    all_data,
+                    timestamp,
+                    mode,
+                    completed_cells,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                )
         finally:
             # Cleanup hardware
             print("Cleaning up hardware...")
