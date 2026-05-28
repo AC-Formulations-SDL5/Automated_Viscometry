@@ -49,7 +49,11 @@ class ViscometryWebInterface:
             'filling_pump': 'idle',
             'draining_pump': 'idle',
         }
+        self.testing_request_in_progress = False
         self.pump_controller = None
+        self.testing_pump_port = os.getenv('VISCOMETRY_PUMP_PORT', 'COM11')
+        self.testing_pump_baud = int(os.getenv('VISCOMETRY_PUMP_BAUD', '115200'))
+        self.testing_pump_virtual = os.getenv('VISCOMETRY_PUMP_VIRTUAL', '0') == '1'
         self.experiment_history_path = os.path.join(self.project_root, 'results', 'web_experiment_history.json')
         self.experiment_history = []
         self._load_experiment_history()
@@ -944,6 +948,15 @@ class ViscometryWebInterface:
         """Register active PumpESP32 controller used by testing endpoints."""
         self.pump_controller = pump_controller
 
+    def configure_pump_connection(self, port: Optional[str] = None, baud: Optional[int] = None, virtual: Optional[bool] = None):
+        """Configure pump connection parameters used by idle testing sessions."""
+        if port:
+            self.testing_pump_port = str(port)
+        if baud is not None:
+            self.testing_pump_baud = int(baud)
+        if virtual is not None:
+            self.testing_pump_virtual = bool(virtual)
+
     def _testing_device_command_map(self) -> Dict[str, Dict[str, bytes]]:
         return {
             'washing_rotor': {'start': b"M1", 'stop': b"SM1"},
@@ -955,9 +968,11 @@ class ViscometryWebInterface:
     def get_testing_status(self) -> Dict:
         with self.testing_control_lock:
             states = dict(self.testing_device_states)
+            busy = bool(self.testing_request_in_progress)
         return {
             'enabled': not self.is_running,
             'is_running': self.is_running,
+            'busy': busy,
             'devices': states,
         }
 
@@ -971,16 +986,41 @@ class ViscometryWebInterface:
             for key in self.testing_device_states:
                 self.testing_device_states[key] = state
 
-    def _send_testing_command(self, command: bytes) -> bool:
-        pump = self.pump_controller
+    def _send_testing_command(self, pump, command: bytes) -> bool:
         if not pump:
             return False
         if hasattr(pump, 'send_command_with_ack'):
-            return bool(pump.send_command_with_ack(command, timeout=3.0, max_retries=2, should_abort=self.should_stop))
+            return bool(
+                pump.send_command_with_ack(
+                    command,
+                    timeout=3.0,
+                    max_retries=2,
+                    should_abort=lambda: self.should_stop() or self.is_running,
+                )
+            )
         if hasattr(pump, 'send_tag'):
             pump.send_tag(command)
             return True
         return False
+
+    def _create_testing_session_pump(self):
+        # Local import avoids run-loop module coupling at import time.
+        from move_to_locations import PumpESP32
+
+        pump = PumpESP32(
+            port=self.testing_pump_port,
+            baud=self.testing_pump_baud,
+            virtual=self.testing_pump_virtual,
+        )
+        pump.open()
+        ready = self._send_testing_command(pump, b"ST")
+        if not ready:
+            try:
+                pump.close()
+            except Exception:
+                pass
+            return None
+        return pump
 
     def _handle_testing_action(self, device: str, action: str):
         mapping = self._testing_device_command_map()
@@ -990,55 +1030,90 @@ class ViscometryWebInterface:
             return jsonify({'ok': False, 'error': f"Unknown action '{action}'"}), 400
         if self.is_running:
             return jsonify({'ok': False, 'error': 'Testing is unavailable during an active viscometry run'}), 409
-        if not self.pump_controller:
-            return jsonify({'ok': False, 'error': 'Pump controller is not initialized'}), 503
-
         with self.testing_control_lock:
+            self.testing_request_in_progress = True
             self.testing_device_states[device] = 'pending'
-        success = self._send_testing_command(mapping[device][action])
-        state = 'running' if (success and action == 'start') else 'idle'
-        if not success:
-            state = 'error'
-        self._set_testing_device_state(device, state)
-        if state != 'error':
-            self.update_status(f"Testing: {action} {device.replace('_', ' ')}")
 
-        response = {
-            'ok': success,
-            'device': device,
-            'action': action,
-            'state': state,
-            'testing_status': self.get_testing_status(),
-        }
-        if success:
-            return jsonify(response)
-        return jsonify({**response, 'error': 'Failed to send command to pump controller'}), 502
+        pump = None
+        try:
+            pump = self._create_testing_session_pump()
+            if not pump:
+                self._set_testing_device_state(device, 'error')
+                return jsonify({
+                    'ok': False,
+                    'device': device,
+                    'action': action,
+                    'state': 'error',
+                    'error': 'Unable to initialize pump controller for testing',
+                    'testing_status': self.get_testing_status(),
+                }), 503
+
+            success = self._send_testing_command(pump, mapping[device][action])
+            state = 'running' if (success and action == 'start') else 'idle'
+            if not success:
+                state = 'error'
+            self._set_testing_device_state(device, state)
+            if state != 'error':
+                self.update_status(f"Testing: {action} {device.replace('_', ' ')}")
+
+            response = {
+                'ok': success,
+                'device': device,
+                'action': action,
+                'state': state,
+                'testing_status': self.get_testing_status(),
+            }
+            if success:
+                return jsonify(response)
+            return jsonify({**response, 'error': 'Failed to send command to pump controller'}), 502
+        finally:
+            with self.testing_control_lock:
+                self.testing_request_in_progress = False
+            if pump:
+                try:
+                    pump.close()
+                except Exception:
+                    pass
 
     def stop_all_testing_devices(self) -> Dict:
         mapping = self._testing_device_command_map()
-        if not self.pump_controller:
-            self._set_all_testing_device_states('idle')
+        with self.testing_control_lock:
+            self.testing_request_in_progress = True
+        pump = None
+        try:
+            pump = self._create_testing_session_pump()
+            if not pump:
+                self._set_all_testing_device_states('idle')
+                return {
+                    'ok': False,
+                    'error': 'Unable to initialize pump controller for testing',
+                    'testing_status': self.get_testing_status(),
+                }
+
+            failures = []
+            for device, commands in mapping.items():
+                self._set_testing_device_state(device, 'pending')
+                if self._send_testing_command(pump, commands['stop']):
+                    self._set_testing_device_state(device, 'idle')
+                else:
+                    self._set_testing_device_state(device, 'error')
+                    failures.append(device)
+            if not failures:
+                self.update_status("Testing: all devices stopped")
             return {
-                'ok': False,
-                'error': 'Pump controller is not initialized',
+                'ok': not failures,
+                'stopped': [d for d in mapping if d not in failures],
+                'failed': failures,
                 'testing_status': self.get_testing_status(),
             }
-        failures = []
-        for device, commands in mapping.items():
-            self._set_testing_device_state(device, 'pending')
-            if self._send_testing_command(commands['stop']):
-                self._set_testing_device_state(device, 'idle')
-            else:
-                self._set_testing_device_state(device, 'error')
-                failures.append(device)
-        if not failures:
-            self.update_status("Testing: all devices stopped")
-        return {
-            'ok': not failures,
-            'stopped': [d for d in mapping if d not in failures],
-            'failed': failures,
-            'testing_status': self.get_testing_status(),
-        }
+        finally:
+            with self.testing_control_lock:
+                self.testing_request_in_progress = False
+            if pump:
+                try:
+                    pump.close()
+                except Exception:
+                    pass
         
     def start_server(self, debug=False):
         """Start the web server"""
