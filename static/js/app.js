@@ -88,6 +88,8 @@ class ViscometryDashboard {
         this.testingBackendBusy = false;
         this.testingSessionConnected = false;
         this.testingSessionLastError = null;
+        this.manualTerminateQueued = false;
+        this.cellTerminationReasons = new Map();
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -186,6 +188,7 @@ class ViscometryDashboard {
             applySettings: document.getElementById("apply-settings"),
             startRun: document.getElementById("start-run"),
             stopRun: document.getElementById("stop-run"),
+            terminateCurrentCell: document.getElementById("terminate-current-cell"),
             controlStatus: document.getElementById("control-status"),
             cellFlip: document.getElementById("cell-flip"),
             cellMeta: document.getElementById("cell-meta"),
@@ -225,6 +228,7 @@ class ViscometryDashboard {
             zFilterAll: document.getElementById("z-filter-all"),
             zFilterLatest: document.getElementById("z-filter-latest"),
             zConnectDots: document.getElementById("z-connect-dots"),
+            liveTerminationPill: document.getElementById("live-termination-pill"),
             exportTable: document.getElementById("table-export"),
             themeToggle: document.getElementById("theme-toggle"),
             cncStatus: document.getElementById("cnc-status"),
@@ -295,6 +299,9 @@ class ViscometryDashboard {
         this.el.applySettings.addEventListener("click", () => this.applyControlSettings());
         this.el.startRun.addEventListener("click", () => this.startRunFromUI());
         this.el.stopRun.addEventListener("click", () => this.stopRunFromUI());
+        if (this.el.terminateCurrentCell) {
+            this.el.terminateCurrentCell.addEventListener("click", () => this.terminateCurrentCellFromUI());
+        }
         if (this.el.themeToggle) {
             this.el.themeToggle.addEventListener("click", () => this.toggleTheme());
         }
@@ -1162,6 +1169,34 @@ class ViscometryDashboard {
             });
     }
 
+    terminateCurrentCellFromUI() {
+        if (!this.isRunning || this.calibrationModeActive || this.recalibrationModeActive) {
+            this.pushStatusMessage("Manual current-cell termination is only available during regular runs");
+            return;
+        }
+        if (this.manualTerminateQueued) {
+            this.pushStatusMessage("Manual current-cell termination already queued");
+            return;
+        }
+        this.manualTerminateQueued = true;
+        this.updateManualTerminateControl();
+        fetch("/api/run/terminate_current_cell", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+        })
+            .then((response) => response.json())
+            .then((result) => {
+                this.setControlStatus(result.status_message || "Manual current-cell termination queued");
+                this.pushStatusMessage(result.status_message || "Manual current-cell termination queued");
+            })
+            .catch(() => {
+                this.manualTerminateQueued = false;
+                this.updateManualTerminateControl();
+                this.setControlStatus("Failed to queue manual current-cell termination");
+            });
+    }
+
     connectSocket() {
         this.socket = io({ reconnectionAttempts: 5 });
 
@@ -1292,10 +1327,22 @@ class ViscometryDashboard {
             );
             this.measuredCells = new Set(this.completedCells);
             this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
+            if (data?.cell_termination_reasons && typeof data.cell_termination_reasons === "object") {
+                this.cellTerminationReasons = new Map(
+                    Object.entries(data.cell_termination_reasons).map(([k, v]) => [Number(k), String(v)])
+                );
+            }
             this.recalibrationModeActive = Boolean(data?.recalibration_mode_active);
             this.recalibrationTargetCount = Number(data?.recalibration_target_count) || 0;
             this.updateCompletionBar();
             this.updateCellVisuals();
+            this.updateLiveTerminationBadge();
+            this.updateManualTerminateControl();
+        });
+
+        this.socket.on("manual_terminate_current_cell_update", (data) => {
+            this.manualTerminateQueued = Boolean(data?.requested);
+            this.updateManualTerminateControl();
         });
 
         this.socket.on("instrument_status_update", (status) => {
@@ -1500,8 +1547,18 @@ class ViscometryDashboard {
             );
             this.measuredCells = new Set(this.completedCells);
             this.completedCells.forEach((cellId) => this.cellStates.set(cellId, "completed"));
+            if (status.cell_termination_reasons && typeof status.cell_termination_reasons === "object") {
+                this.cellTerminationReasons = new Map(
+                    Object.entries(status.cell_termination_reasons).map(([k, v]) => [Number(k), String(v)])
+                );
+            }
             this.updateCompletionBar();
             this.updateCellVisuals();
+            this.updateLiveTerminationBadge();
+        }
+        if (status.manual_terminate_current_cell_requested !== undefined) {
+            this.manualTerminateQueued = Boolean(status.manual_terminate_current_cell_requested);
+            this.updateManualTerminateControl();
         }
         if (status.recalibration_mode_active !== undefined) {
             this.recalibrationModeActive = Boolean(status.recalibration_mode_active);
@@ -1933,6 +1990,7 @@ class ViscometryDashboard {
             this.selectedGraphCell = null;
             this.updateGraphCellTabs();
             this.refreshLivePlots();
+            this.updateLiveTerminationBadge();
         });
         this.el.graphCellTabs.appendChild(currentBtn);
 
@@ -1944,9 +2002,11 @@ class ViscometryDashboard {
                 this.selectedGraphCell = cellId;
                 this.updateGraphCellTabs();
                 this.refreshLivePlots();
+                this.updateLiveTerminationBadge();
             });
             this.el.graphCellTabs.appendChild(btn);
         });
+        this.updateLiveTerminationBadge();
     }
 
     /** Torque % floor from "First-sample torque floor (%)" — used to tint live Z plots (below = red). */
@@ -2339,6 +2399,55 @@ class ViscometryDashboard {
             startBtn.disabled = true;
             stopBtn.disabled = false;
         }
+        this.updateManualTerminateControl();
+    }
+
+    _terminationDisplayMeta(reason) {
+        const normalized = String(reason || "normal");
+        if (normalized === "manual_terminate") {
+            return { text: "Manual Termination", cls: "termination-manual" };
+        }
+        if (normalized === "hit_detected") {
+            return { text: "Hitpoint Termination", cls: "termination-hitpoint" };
+        }
+        if (normalized === "fail_safe") {
+            return { text: "Fail Safe Termination", cls: "termination-failsafe" };
+        }
+        if (normalized === "torque_limit") {
+            return { text: "Torque Limit Termination", cls: "termination-manual" };
+        }
+        if (normalized === "user_stop") {
+            return { text: "Experiment Stop", cls: "termination-hitpoint" };
+        }
+        return { text: "Completed", cls: "termination-normal" };
+    }
+
+    updateManualTerminateControl() {
+        const btn = this.el.terminateCurrentCell;
+        if (!btn) return;
+        const isRegularRunning = this.isRunning && !this.calibrationModeActive && !this.recalibrationModeActive;
+        btn.classList.toggle("hidden", !isRegularRunning);
+        btn.disabled = !isRegularRunning || this.manualTerminateQueued;
+        btn.textContent = this.manualTerminateQueued
+            ? "Stop Measurement in current cell (queued)"
+            : "Stop Measurement in current cell";
+        btn.classList.toggle("is-active", isRegularRunning && !this.manualTerminateQueued);
+        btn.classList.toggle("is-idle", !isRegularRunning || this.manualTerminateQueued);
+    }
+
+    updateLiveTerminationBadge() {
+        const pill = this.el.liveTerminationPill;
+        if (!pill) return;
+        const candidateCell = Number.isInteger(this.selectedGraphCell)
+            ? this.selectedGraphCell
+            : (this.completedCells.size > 0 ? Math.max(...Array.from(this.completedCells)) : null);
+        if (!candidateCell || !this.cellTerminationReasons.has(candidateCell)) {
+            pill.classList.add("hidden");
+            return;
+        }
+        const meta = this._terminationDisplayMeta(this.cellTerminationReasons.get(candidateCell));
+        pill.className = `live-termination-pill ${meta.cls}`;
+        pill.textContent = meta.text;
     }
 
     toggleCalibrationPanel(forceOpen = null) {
@@ -2676,6 +2785,7 @@ class ViscometryDashboard {
             this.isSavingFinalResults = false;
             this.measuredCells.clear();
             this.completedCells.clear();
+            this.cellTerminationReasons.clear();
             this.washingCell = null;
             this._pendingCompletedCell = null;
             this.currentPhase = 0;
@@ -2686,6 +2796,8 @@ class ViscometryDashboard {
                 this.el.elapsed.textContent = "00:00:00";
             }
             this.setControlStatus("Run active");
+            this.manualTerminateQueued = false;
+            this.updateManualTerminateControl();
         }
 
         if (isRunning && this.uiState !== "running") {
@@ -2698,6 +2810,8 @@ class ViscometryDashboard {
 
         if (!isRunning) {
             this.washingCell = null;
+            this.manualTerminateQueued = false;
+            this.updateManualTerminateControl();
             if (previous) {
                 this.playChime(720, 0.14);
                 this.setControlStatus("Run stopped");
@@ -2727,6 +2841,7 @@ class ViscometryDashboard {
         if (this.el.calStartRecalibrationBtn) {
             this.updateRecalibrationButtonState();
         }
+        this.updateLiveTerminationBadge();
     }
 
     bindTestingControls() {
@@ -2903,8 +3018,8 @@ class ViscometryDashboard {
             const isRequestActive = this.testingRequestInFlight.has(`${device}:start`) || this.testingRequestInFlight.has(`${device}:stop`);
             btn.disabled = this.isRunning || isRequestActive;
             const isActiveAction =
-                (action === "start" && state === "running") ||
-                (action === "stop" && state === "error");
+                (action === "start" && state === "idle") ||
+                (action === "stop" && state === "running");
             btn.classList.toggle("is-active", isActiveAction);
             btn.classList.toggle("is-idle", !isActiveAction);
         });
@@ -3031,10 +3146,11 @@ class ViscometryDashboard {
             }
         });
 
-        const csvHeader = "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm\n";
+        const csvHeader = "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm,cell_termination_method\n";
         const csvBody = runData.map((m) => {
             const iso = new Date(m.timestamp * 1000).toISOString();
-            return `${iso},${m.cell_id},${m.height},${m.torque_percent},${m.rotational_drag},${m.rpm}`;
+            const termination = this.cellTerminationReasons.get(Number(m.cell_id)) || "normal";
+            return `${iso},${m.cell_id},${m.height},${m.torque_percent},${m.rotational_drag},${m.rpm},${termination}`;
         }).join("\n");
 
         const settingsSnapshot = this._getRunSettingsForHistorySave();
@@ -3053,6 +3169,7 @@ class ViscometryDashboard {
             runStartTsSec: Number.isFinite(runStartTsSec) ? runStartTsSec : null,
             runEndTsSec: Number(runData[runData.length - 1]?.timestamp) || null,
             csv: csvHeader + csvBody,
+            cell_termination_reasons: Object.fromEntries(this.cellTerminationReasons),
             viscosity_prediction_mode:
                 settingsSnapshot.viscosity_prediction_mode
                 || (hasPredictedViscosityData ? "Newtonian" : "off"),
@@ -3140,11 +3257,13 @@ class ViscometryDashboard {
             `<strong>w (R_2 Drag/CV/Slope):</strong> ${s.weight_r2_drag ?? "-"}/${s.weight_r2_cv ?? "-"}/${s.weight_r2_slope ?? "-"}`,
         ] : ["<strong>Feedback enabled:</strong> No"];
 
+        const terminationMap = exp.cell_termination_reasons || {};
         const durationRows = exp.cells.map((cellId) => {
             const dur = exp.cellDurations?.[cellId];
             const label = s.cell_content_map?.[cellId] ? ` (${s.cell_content_map[cellId]})` : "";
             const timeStr = dur != null ? this.formatDuration(dur) : "—";
-            return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td></tr>`;
+            const tMeta = this._terminationDisplayMeta(terminationMap[cellId] || terminationMap[String(cellId)] || "normal");
+            return `<tr><td>Cell ${cellId}${label}</td><td>${timeStr}</td><td><span class="summary-termination-chip ${tMeta.cls}">${tMeta.text}</span></td></tr>`;
         }).join("");
         const allTimestamps = (exp.latestPerZ || [])
             .map((p) => Number(p.timestamp))
@@ -3162,7 +3281,7 @@ class ViscometryDashboard {
             : null;
         const durationTable = `
 <table class="duration-table">
-  <thead><tr><th>Cell</th><th>Duration</th></tr></thead>
+  <thead><tr><th>Cell</th><th>Duration</th><th>Termination</th></tr></thead>
   <tbody>${durationRows}</tbody>
 </table>
 <div><strong>Total Time:</strong> ${totalDurationMs != null ? this.formatDuration(totalDurationMs) : "—"}</div>`;

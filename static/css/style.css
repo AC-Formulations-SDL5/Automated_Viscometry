@@ -520,6 +520,16 @@ body.running .header-sweep {
     gap: 12px;
 }
 
+.testing-pump-note {
+    border: 1px solid rgba(245, 166, 35, 0.45);
+    background: rgba(245, 166, 35, 0.12);
+    color: #8a5d00;
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
 .testing-run-lock-pill {
     display: inline-flex;
     align-items: center;
@@ -1215,6 +1225,42 @@ h2 {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.live-termination-pill {
+    border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+    padding: 5px 10px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.termination-manual {
+    color: #7f1d1d;
+    background: rgba(127, 29, 29, 0.16);
+    border-color: rgba(127, 29, 29, 0.45);
+    box-shadow: 0 0 14px rgba(127, 29, 29, 0.25);
+}
+
+.termination-hitpoint {
+    color: var(--color-red-text);
+    background: var(--color-red-badge-bg);
+    border-color: var(--color-red-border);
+    box-shadow: 0 0 14px rgba(248, 81, 73, 0.22);
+}
+
+.termination-failsafe {
+    color: #8a5d00;
+    background: rgba(245, 166, 35, 0.16);
+    border-color: rgba(245, 166, 35, 0.5);
+    box-shadow: 0 0 14px rgba(245, 166, 35, 0.22);
+}
+
+.termination-normal {
+    color: var(--color-green-text);
+    background: var(--color-green-badge-bg);
+    border-color: var(--color-green-border);
 }
 
 .segmented {
@@ -1920,10 +1966,29 @@ body.spinning .gauge-value {
     cursor: default;
 }
 
+.terminate-current-cell-btn {
+    width: 100%;
+    margin-top: 8px;
+    background: #8b1e1e;
+    color: #fff;
+    border-color: #8b1e1e;
+    box-shadow: 0 0 16px rgba(139, 30, 30, 0.35);
+}
+
+.terminate-current-cell-btn.is-active {
+    animation: pillPulse 1.8s ease-in-out infinite;
+}
+
+.terminate-current-cell-btn.is-idle {
+    opacity: 0.55;
+    filter: grayscale(0.35);
+}
+
 .testing-action-btn[data-testing-action="start"].is-active {
     background: #2ea043;
     color: #fff;
     box-shadow: 0 0 12px rgba(46, 160, 67, 0.45);
+    animation: pulse-green 1.8s ease-in-out infinite;
 }
 
 .testing-action-btn[data-testing-action="stop"].is-active {
@@ -1934,6 +1999,16 @@ body.spinning .gauge-value {
 
 .testing-action-btn.is-idle {
     opacity: 0.72;
+}
+
+.summary-termination-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+    padding: 3px 9px;
+    font-size: 0.72rem;
+    font-weight: 600;
 }
 
 .summary-layout {

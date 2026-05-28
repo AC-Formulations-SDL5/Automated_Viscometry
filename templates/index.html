@@ -337,8 +337,11 @@
                             <div class="control-actions">
                                 <button type="button" id="apply-settings" class="btn control-btn control-btn-neutral">Apply Settings</button>
                                 <button type="button" id="start-run" class="btn btn-start control-btn control-btn-start">Start Run</button>
-                                <button type="button" id="stop-run" class="btn btn-stop control-btn control-btn-stop">Stop Run</button>
+                                <button type="button" id="stop-run" class="btn btn-stop control-btn control-btn-stop">Stop Experiment</button>
                             </div>
+                            <button type="button" id="terminate-current-cell" class="btn control-btn control-btn-stop terminate-current-cell-btn hidden">
+                                Stop Measurement in current cell
+                            </button>
                             <div id="control-status" class="control-status">Ready</div>
                         </form>
                     </section>
@@ -569,6 +572,7 @@
                             <span id="drag-z-cell-label" class="chart-subtitle">All Cells</span>
                         </div>
                         <div class="plot-tools">
+                            <span id="live-termination-pill" class="live-termination-pill hidden">Termination: -</span>
                             <div class="segmented" role="group" aria-label="Z data filter">
                                 <button id="z-filter-all" class="seg active">All Samples</button>
                                 <button id="z-filter-latest" class="seg">Most Recent Per Z-Height</button>
@@ -699,6 +703,9 @@
                     <p class="form-hint">
                         Use these manual controls only while no viscometry run is active.
                     </p>
+                    <div class="testing-pump-note">
+                        Filling Pump and Draining Pump cannot run simultaneously on the same station.
+                    </div>
 
                     <div class="testing-device-grid">
                         <article class="testing-device" data-device="washing_rotor">
