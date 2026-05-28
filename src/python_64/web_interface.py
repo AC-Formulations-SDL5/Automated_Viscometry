@@ -50,6 +50,8 @@ class ViscometryWebInterface:
             'draining_pump': 'idle',
         }
         self.testing_request_in_progress = False
+        self.testing_session_connected = False
+        self.testing_session_last_error: Optional[str] = None
         self.pump_controller = None
         self.testing_pump_port = os.getenv('VISCOMETRY_PUMP_PORT', 'COM11')
         self.testing_pump_baud = int(os.getenv('VISCOMETRY_PUMP_BAUD', '115200'))
@@ -643,7 +645,11 @@ class ViscometryWebInterface:
 
     def request_start(self):
         """Mark that the experiment should start."""
-        self.stop_all_testing_devices()
+        try:
+            self.stop_all_testing_devices()
+        except Exception:
+            pass
+        self._disconnect_testing_session()
         self.stop_requested_event.clear()
         self.experiment_start_ts = time.time()
         self.current_cell_start_ts = None
@@ -927,7 +933,11 @@ class ViscometryWebInterface:
         previous_state = self.is_running
         self.is_running = is_running
         if is_running:
-            self.stop_all_testing_devices()
+            try:
+                self.stop_all_testing_devices()
+            except Exception:
+                pass
+            self._disconnect_testing_session()
         if not is_running:
             self.experiment_start_ts = None
             self.current_cell_start_ts = None
@@ -947,6 +957,7 @@ class ViscometryWebInterface:
     def set_pump_controller(self, pump_controller):
         """Register active PumpESP32 controller used by testing endpoints."""
         self.pump_controller = pump_controller
+        self.testing_session_connected = bool(pump_controller)
 
     def configure_pump_connection(self, port: Optional[str] = None, baud: Optional[int] = None, virtual: Optional[bool] = None):
         """Configure pump connection parameters used by idle testing sessions."""
@@ -973,6 +984,8 @@ class ViscometryWebInterface:
             'enabled': not self.is_running,
             'is_running': self.is_running,
             'busy': busy,
+            'connected': bool(self.testing_session_connected and self.pump_controller),
+            'last_error': self.testing_session_last_error,
             'devices': states,
         }
 
@@ -1022,6 +1035,32 @@ class ViscometryWebInterface:
             return None
         return pump
 
+    def _disconnect_testing_session(self):
+        pump = self.pump_controller
+        self.pump_controller = None
+        self.testing_session_connected = False
+        if pump:
+            try:
+                pump.close()
+            except Exception:
+                pass
+
+    def _ensure_testing_session_connected(self):
+        if self.pump_controller and self.testing_session_connected:
+            return True
+
+        pump = self._create_testing_session_pump()
+        if not pump:
+            self.testing_session_connected = False
+            self.testing_session_last_error = "Unable to initialize pump controller for testing"
+            self.pump_controller = None
+            return False
+
+        self.pump_controller = pump
+        self.testing_session_connected = True
+        self.testing_session_last_error = None
+        return True
+
     def _handle_testing_action(self, device: str, action: str):
         mapping = self._testing_device_command_map()
         if device not in mapping:
@@ -1034,10 +1073,8 @@ class ViscometryWebInterface:
             self.testing_request_in_progress = True
             self.testing_device_states[device] = 'pending'
 
-        pump = None
         try:
-            pump = self._create_testing_session_pump()
-            if not pump:
+            if not self._ensure_testing_session_connected():
                 self._set_testing_device_state(device, 'error')
                 return jsonify({
                     'ok': False,
@@ -1048,10 +1085,12 @@ class ViscometryWebInterface:
                     'testing_status': self.get_testing_status(),
                 }), 503
 
-            success = self._send_testing_command(pump, mapping[device][action])
+            success = self._send_testing_command(self.pump_controller, mapping[device][action])
             state = 'running' if (success and action == 'start') else 'idle'
             if not success:
                 state = 'error'
+                self.testing_session_last_error = "Failed to send command to pump controller"
+                self._disconnect_testing_session()
             self._set_testing_device_state(device, state)
             if state != 'error':
                 self.update_status(f"Testing: {action} {device.replace('_', ' ')}")
@@ -1069,20 +1108,13 @@ class ViscometryWebInterface:
         finally:
             with self.testing_control_lock:
                 self.testing_request_in_progress = False
-            if pump:
-                try:
-                    pump.close()
-                except Exception:
-                    pass
 
     def stop_all_testing_devices(self) -> Dict:
         mapping = self._testing_device_command_map()
         with self.testing_control_lock:
             self.testing_request_in_progress = True
-        pump = None
         try:
-            pump = self._create_testing_session_pump()
-            if not pump:
+            if not self._ensure_testing_session_connected():
                 self._set_all_testing_device_states('idle')
                 return {
                     'ok': False,
@@ -1093,13 +1125,16 @@ class ViscometryWebInterface:
             failures = []
             for device, commands in mapping.items():
                 self._set_testing_device_state(device, 'pending')
-                if self._send_testing_command(pump, commands['stop']):
+                if self._send_testing_command(self.pump_controller, commands['stop']):
                     self._set_testing_device_state(device, 'idle')
                 else:
                     self._set_testing_device_state(device, 'error')
                     failures.append(device)
             if not failures:
                 self.update_status("Testing: all devices stopped")
+                self.testing_session_last_error = None
+            else:
+                self.testing_session_last_error = "One or more testing devices failed to stop"
             return {
                 'ok': not failures,
                 'stopped': [d for d in mapping if d not in failures],
@@ -1109,11 +1144,6 @@ class ViscometryWebInterface:
         finally:
             with self.testing_control_lock:
                 self.testing_request_in_progress = False
-            if pump:
-                try:
-                    pump.close()
-                except Exception:
-                    pass
         
     def start_server(self, debug=False):
         """Start the web server"""
