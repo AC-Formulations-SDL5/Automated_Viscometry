@@ -85,6 +85,7 @@ class ViscometryDashboard {
         };
         this.testingRequestInFlight = new Set();
         this.testingGateInProgress = false;
+        this.testingBackendBusy = false;
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -2752,6 +2753,7 @@ class ViscometryDashboard {
         if (!status || typeof status !== "object") {
             return;
         }
+        this.testingBackendBusy = Boolean(status.busy);
         if (status.devices && typeof status.devices === "object") {
             this.testingDeviceStates = {
                 ...this.testingDeviceStates,
@@ -2810,7 +2812,8 @@ class ViscometryDashboard {
             if (!response.ok || !payload.ok) {
                 this.testingDeviceStates[device] = "error";
                 this.updateTestingUi();
-                this.pushStatusMessage(payload.error || `Testing ${action} failed for ${device.replace(/_/g, " ")}`);
+                const fallback = `Testing ${action} failed for ${device.replace(/_/g, " ")}`;
+                this.pushStatusMessage(payload.error || fallback);
                 return;
             }
             this.applyTestingStatus(payload.testing_status);
@@ -2889,7 +2892,7 @@ class ViscometryDashboard {
             const action = btn.dataset.testingAction;
             const state = this.testingDeviceStates[device] || "idle";
             const isRequestActive = this.testingRequestInFlight.has(`${device}:start`) || this.testingRequestInFlight.has(`${device}:stop`);
-            btn.disabled = this.isRunning || isRequestActive;
+            btn.disabled = this.isRunning || isRequestActive || this.testingBackendBusy;
             const isActiveAction =
                 (action === "start" && state === "running") ||
                 (action === "stop" && state === "error");

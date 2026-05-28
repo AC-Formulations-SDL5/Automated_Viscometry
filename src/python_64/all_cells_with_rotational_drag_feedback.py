@@ -1851,6 +1851,7 @@ def main():
     try:
         web_interface.start_in_thread(debug=False)
         print(f"Web interface started at http://localhost:{web_interface.port}")
+        web_interface.configure_pump_connection(ESP32_PORT, ESP32_BAUD, PUMP_VIRTUAL)
         web_interface.update_status("Configure the run in the web interface, then press Start")
         web_interface.set_running_state(False)
     except Exception as e:
@@ -1915,7 +1916,6 @@ def main():
         cnc = None
         client = None
         pump = None
-        web_interface.set_pump_controller(None)
         
         try:
             print("Initializing CNC machine...")
@@ -1956,7 +1956,6 @@ def main():
                 
             print("ESP32 pump controller initialized successfully")
             web_interface.set_instrument_status(pump=True)
-            web_interface.set_pump_controller(pump)
             
         except Exception as e:
             print(f"ERROR initializing ESP32 pump controller: {e}")
@@ -2203,7 +2202,6 @@ def main():
                             print("Cleanup: waiting for fill/drain thread to finish...")
                             _t.join(timeout=10)
                     pump.close()
-                web_interface.set_pump_controller(None)
             except:
                 pass
             try:
