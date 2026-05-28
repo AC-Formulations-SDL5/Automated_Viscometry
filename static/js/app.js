@@ -86,6 +86,8 @@ class ViscometryDashboard {
         this.testingRequestInFlight = new Set();
         this.testingGateInProgress = false;
         this.testingBackendBusy = false;
+        this.testingSessionConnected = false;
+        this.testingSessionLastError = null;
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -2754,11 +2756,18 @@ class ViscometryDashboard {
             return;
         }
         this.testingBackendBusy = Boolean(status.busy);
+        this.testingSessionConnected = Boolean(status.connected);
+        this.testingSessionLastError = status.last_error || null;
         if (status.devices && typeof status.devices === "object") {
             this.testingDeviceStates = {
                 ...this.testingDeviceStates,
                 ...status.devices,
             };
+        }
+        if (this.el.testingRunLockPill && !this.isRunning) {
+            this.el.testingRunLockPill.textContent = this.testingSessionConnected
+                ? "Idle - Testing connected"
+                : "Idle - Testing ready (auto-connect on action)";
         }
         this.updateTestingUi();
     }
@@ -2813,7 +2822,7 @@ class ViscometryDashboard {
                 this.testingDeviceStates[device] = "error";
                 this.updateTestingUi();
                 const fallback = `Testing ${action} failed for ${device.replace(/_/g, " ")}`;
-                this.pushStatusMessage(payload.error || fallback);
+                this.pushStatusMessage(payload.error || this.testingSessionLastError || fallback);
                 return;
             }
             this.applyTestingStatus(payload.testing_status);
@@ -2892,7 +2901,7 @@ class ViscometryDashboard {
             const action = btn.dataset.testingAction;
             const state = this.testingDeviceStates[device] || "idle";
             const isRequestActive = this.testingRequestInFlight.has(`${device}:start`) || this.testingRequestInFlight.has(`${device}:stop`);
-            btn.disabled = this.isRunning || isRequestActive || this.testingBackendBusy;
+            btn.disabled = this.isRunning || isRequestActive;
             const isActiveAction =
                 (action === "start" && state === "running") ||
                 (action === "stop" && state === "error");
