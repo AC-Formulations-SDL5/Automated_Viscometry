@@ -1,8 +1,7 @@
-/** Pastel RPM colors for live rotational-drag plot only (summary/history keep this.palette). */
 const LIVE_RPM_PASTEL_PALETTE = [
-    "#8ab4f8", "#fdd663", "#81c995", "#f6aea9",
-    "#c58af9", "#78d9ec", "#aecbfa", "#ceead6",
-    "#ffe082", "#b39ddb", "#80cbc4", "#efa17c",
+    "#3B82F6", "#7C3AED", "#06B6D4", "#6366f1",
+    "#8b5cf6", "#0ea5e9", "#2563eb", "#4f46e5",
+    "#0284c7", "#a855f7", "#3b82f6", "#06b6d4",
 ];
 
 const LIVE_PLOT_BELOW_FILL = "#f6aea9";
@@ -92,9 +91,8 @@ class ViscometryDashboard {
         this.cellTerminationReasons = new Map();
 
         this.palette = [
-            "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
-            "#B6E388", "#FFC47E", "#8FDDE5", "#EA9CB9", "#B9A0FF", "#8FD66B",
-            "#73B0F9", "#FFD36A", "#69D5C7", "#86E0A8", "#EFA17C", "#BFC7D5"
+            "#3B82F6", "#7C3AED", "#06B6D4", "#6366f1", "#8b5cf6", "#0ea5e9",
+            "#2563eb", "#4f46e5", "#0284c7", "#a855f7", "#3b82f6", "#06b6d4"
         ];
 
     this.calibrationModeActive = false;  // Server's calibration mode state (persists across page reloads)
@@ -689,20 +687,25 @@ class ViscometryDashboard {
     }
 
     _buildLivePlotLayout({ yTitle, xReversed = false, showLegend = false }) {
-        const plotFont = "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-        const axisTitleFont = { family: plotFont, size: 12, color: "#5f6368" };
-        const axisTickFont = { family: plotFont, size: 11, color: "#5f6368" };
+        const plotFont = "'DM Sans', 'Sora', sans-serif";
+        const axisTitleFont = { family: plotFont, size: 12, color: "#64748b" };
+        const axisTickFont = { family: "'JetBrains Mono', monospace", size: 11, color: "#94a3b8" };
         const axisStyle = {
-            gridcolor: "#e8eaed",
-            linecolor: "#dadce0",
-            tickcolor: "#9aa0a6",
+            gridcolor: "rgba(100,116,139,0.12)",
+            linecolor: "rgba(200, 210, 230, 0.40)",
+            tickcolor: "rgba(200, 210, 230, 0.40)",
             zeroline: false,
             tickfont: axisTickFont,
         };
         const layout = {
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
-            font: { family: plotFont, color: "#5f6368", size: 12 },
+            font: { family: plotFont, color: "#64748b", size: 12 },
+            hoverlabel: {
+                bgcolor: "rgba(255, 255, 255, 0.82)",
+                bordercolor: "rgba(255, 255, 255, 0.85)",
+                font: { family: plotFont, color: "#0f172a", size: 12 },
+            },
             xaxis: {
                 ...axisStyle,
                 title: { text: "Z-Height (mm)", standoff: 8, font: axisTitleFont },
@@ -718,8 +721,8 @@ class ViscometryDashboard {
         if (showLegend) {
             layout.legend = {
                 bgcolor: "rgba(0,0,0,0)",
-                bordercolor: "#dadce0",
-                font: { family: plotFont, size: 11, color: "#5f6368" },
+                bordercolor: "rgba(200, 210, 230, 0.40)",
+                font: { family: plotFont, size: 11, color: "#64748b" },
             };
         }
         return layout;
@@ -767,6 +770,10 @@ class ViscometryDashboard {
         if (this.el.zSparklinePlot) {
             Plotly.newPlot(this.el.zSparklinePlot, [], this.zSparklineLayout, config).then(() => {
                 this.zPlotInitialized = true;
+                this.el.zSparklinePlot.animate(
+                    [{ opacity: 0, transform: 'scale(0.97)' }, { opacity: 1, transform: 'scale(1)' }],
+                    { duration: 300, easing: 'ease-out' }
+                );
                 this.refreshLivePlots();
             });
         }
@@ -774,6 +781,10 @@ class ViscometryDashboard {
         if (this.el.torqueZPlot) {
             Plotly.newPlot(this.el.torqueZPlot, [], this.torqueZLayout, config).then(() => {
                 this.torquePlotInitialized = true;
+                this.el.torqueZPlot.animate(
+                    [{ opacity: 0, transform: 'scale(0.97)' }, { opacity: 1, transform: 'scale(1)' }],
+                    { duration: 300, easing: 'ease-out' }
+                );
                 this.refreshLivePlots();
             });
         }
@@ -3029,21 +3040,46 @@ class ViscometryDashboard {
         if (!this.el.summaryPlot) {
             return;
         }
+        const plotFont = "'DM Sans', 'Sora', sans-serif";
+        const axisTitleFont = { family: plotFont, size: 12, color: "#64748b" };
+        const axisTickFont = { family: "'JetBrains Mono', monospace", size: 11, color: "#94a3b8" };
+        const axisStyle = {
+            gridcolor: "rgba(100,116,139,0.12)",
+            linecolor: "rgba(200, 210, 230, 0.40)",
+            tickcolor: "rgba(200, 210, 230, 0.40)",
+            zeroline: false,
+            tickfont: axisTickFont,
+        };
         this.summaryPlotLayout = {
             xaxis: {
-                title: "Z-Height (mm) - descent ->",
+                ...axisStyle,
+                title: { text: "Z-Height (mm) - descent ->", standoff: 8, font: axisTitleFont },
                 autorange: true,
                 tickformat: ".3f",
             },
-            yaxis: { title: "Rotational Drag (torque / RPM)", rangemode: "tozero" },
+            yaxis: { 
+                ...axisStyle,
+                title: { text: "Rotational Drag (torque / RPM)", standoff: 10, font: axisTitleFont },
+                rangemode: "tozero" 
+            },
             margin: { t: 20, r: 16, b: 56, l: 64 },
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
-            font: { color: "#c9d1d9" },
-            legend: { orientation: "h", y: -0.22 }
+            font: { family: plotFont, color: "#64748b", size: 12 },
+            hoverlabel: {
+                bgcolor: "rgba(255, 255, 255, 0.82)",
+                bordercolor: "rgba(255, 255, 255, 0.85)",
+                font: { family: plotFont, color: "#0f172a", size: 12 },
+            },
+            legend: { orientation: "h", y: -0.22, font: { family: plotFont, size: 11, color: "#64748b" } }
         };
         Plotly.newPlot(this.el.summaryPlot, [], this.summaryPlotLayout,
-            { responsive: true, displayModeBar: false });
+            { responsive: true, displayModeBar: false }).then(() => {
+                this.el.summaryPlot.animate(
+                    [{ opacity: 0, transform: 'scale(0.97)' }, { opacity: 1, transform: 'scale(1)' }],
+                    { duration: 300, easing: 'ease-out' }
+                );
+            });
         this.summaryPlotInitialized = true;
     }
 
@@ -4044,12 +4080,30 @@ class ViscometryDashboard {
                 titleEl.textContent = `Cell ${cellId} — ${subtitles.join(" · ")}`;
             }
 
+            const plotFont = "'DM Sans', 'Sora', sans-serif";
+            const axisTitleFont = { family: plotFont, size: 12, color: "#64748b" };
+            const axisTickFont = { family: "'JetBrains Mono', monospace", size: 11, color: "#94a3b8" };
+            const axisStyle = {
+                gridcolor: "rgba(100,116,139,0.12)",
+                linecolor: "rgba(200, 210, 230, 0.40)",
+                tickcolor: "rgba(200, 210, 230, 0.40)",
+                zeroline: false,
+                tickfont: axisTickFont,
+            };
             const layout = {
                 margin: { t: 24, r: 16, b: 40, l: 52 },
-                xaxis: { title: "Z (mm)" },
-                yaxis: { title: "Rotational drag" },
+                xaxis: { ...axisStyle, title: { text: "Z (mm)", font: axisTitleFont } },
+                yaxis: { ...axisStyle, title: { text: "Rotational drag", font: axisTitleFont } },
                 showlegend: true,
-                legend: { orientation: "h", y: 1.12 },
+                legend: { orientation: "h", y: 1.12, font: { family: plotFont, size: 11, color: "#64748b" } },
+                paper_bgcolor: "rgba(0,0,0,0)",
+                plot_bgcolor: "rgba(0,0,0,0)",
+                font: { family: plotFont, color: "#64748b", size: 12 },
+                hoverlabel: {
+                    bgcolor: "rgba(255, 255, 255, 0.82)",
+                    bordercolor: "rgba(255, 255, 255, 0.85)",
+                    font: { family: plotFont, color: "#0f172a", size: 12 },
+                },
             };
 
             Plotly.react(plotEl, traces, layout, { responsive: true, displayModeBar: false });

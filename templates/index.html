@@ -4,18 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Automated Viscometry Platform</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 </head>
-<body class="theme-dark loading">
+<body class="loading">
     <div id="disconnect-banner" class="disconnect-banner hidden" role="alert" aria-live="polite">
         <span class="banner-icon">!</span>
         <span>Disconnected from instrument, attempting to reconnect...</span>
     </div>
 
-    <header class="app-header">
+    <header class="app-header glass-nav">
         <div class="header-left">
             <div class="wordmark-wrap">
                 <img id="ac-logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="Acceleration Consortium logo">
@@ -70,7 +70,7 @@
         <div class="tab-content">
             <!-- Tab 1: Layout & Timeline -->
             <div id="layout-tab" class="tab-panel active">
-                <section class="card map-card skeleton-host">
+                <section class="glass-card map-card skeleton-host">
                     <div class="card-title-row">
                         <h2>Platform Map</h2>
                         <div class="legend-inline">
@@ -108,7 +108,7 @@
                     </div>
                 </section>
 
-                <section class="card timeline-card skeleton-host">
+                <section class="glass-card timeline-card skeleton-host">
                     <div class="card-title-row">
                         <h2>Protocol Timeline</h2>
                     </div>
@@ -130,7 +130,7 @@
             <!-- Tab 2: Parameters & Tracking -->
             <div id="controls-tab" class="tab-panel">
                 <div class="controls-tracking-grid">
-                    <section class="card parameters-card">
+                    <section class="glass-card parameters-card">
                         <div class="card-title-row">
                             <h2>Design Experiment</h2>
                         </div>
@@ -483,7 +483,7 @@
                             </section>
                             <!-- ===== END CALIBRATION PANEL ===== -->
 
-                    <section class="card tracking-card">
+                    <section class="glass-card tracking-card">
                         <div class="card-title-row">
                             <h2>Live Tracking</h2>
                         </div>
@@ -543,7 +543,7 @@
                         </div>
                     </section>
 
-                    <section class="card live-viscosity-card">
+                    <section class="glass-card live-viscosity-card">
                         <div class="card-title-row">
                             <h2>Live Viscosity Predictions</h2>
                         </div>
@@ -565,7 +565,7 @@
                 </div>
 
                 <div class="controls-charts-stack">
-                <section class="card plot-card skeleton-host">
+                <section class="glass-card plot-card skeleton-host">
                     <div class="card-title-row">
                         <div>
                             <h2>Live Rotational Drag</h2>
@@ -644,7 +644,7 @@
                     </div>
                 </section>
 
-                <section class="card plot-card skeleton-host">
+                <section class="glass-card plot-card skeleton-host">
                     <div class="card-title-row">
                         <h2>Torque vs Z-Height</h2>
                     </div>
