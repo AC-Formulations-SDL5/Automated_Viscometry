@@ -102,6 +102,7 @@ class ViscometryWebInterface:
             'viscosity_prediction_mode': 'off',
         }
         self.predicted_viscosity_results: Dict = {}
+        self.rpm_torque_status_by_cell: Dict[int, Dict[str, str]] = {}
         # ========== Calibration state ==========
         self.calibration_mode = False         # True when a calibration run is active
         self._calibration_summary = {}        # Cached summary from last calibration check
@@ -856,8 +857,28 @@ class ViscometryWebInterface:
             self.completed_cells = []
             self.cell_termination_reasons = {}
             self.predicted_viscosity_results = {}
+            self.rpm_torque_status_by_cell = {}
         self.clear_terminate_current_cell_request()
         self.socketio.emit('clear_dashboard')
+
+    def emit_rpm_torque_status(
+        self,
+        cell_id: int,
+        cell_rpms: List[float],
+        dropped_torque_rpms: set,
+    ) -> None:
+        """Broadcast per-RPM active/dropped status for the live drag sidebar."""
+        statuses: Dict[str, str] = {}
+        for rpm in cell_rpms:
+            key = f"{float(rpm):.3f}"
+            statuses[key] = "dropped" if rpm in dropped_torque_rpms else "active"
+        payload = {
+            "cell_id": int(cell_id),
+            "statuses": statuses,
+        }
+        with self.control_lock:
+            self.rpm_torque_status_by_cell[int(cell_id)] = dict(statuses)
+        self.socketio.emit("rpm_torque_status_update", payload)
 
     def emit_predicted_viscosity(self, cell_id: int, rpm: float, result: Dict):
         """Store and broadcast predicted viscosity for one cell/RPM."""

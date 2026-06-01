@@ -131,6 +131,17 @@
             <div id="controls-tab" class="tab-panel">
                 <div class="controls-tracking-grid">
                     <section class="card parameters-card">
+                        <section id="load-old-experiment" class="load-old-experiment-card">
+                            <details id="load-old-experiment-details" class="load-old-experiment-details">
+                                <summary class="load-old-experiment-summary">Load old experiment</summary>
+                                <p class="load-old-experiment-hint">Copy labels, RPMs, and parameters from a completed run.</p>
+                                <div id="load-old-experiment-list" class="load-old-experiment-list"></div>
+                                <div class="load-old-experiment-actions">
+                                    <button type="button" id="load-old-experiment-btn" class="btn subtle" disabled>Load into Design Experiment</button>
+                                </div>
+                                <p id="load-old-experiment-status" class="load-old-experiment-status" role="status"></p>
+                            </details>
+                        </section>
                         <div class="card-title-row">
                             <h2>Design Experiment</h2>
                         </div>
@@ -553,6 +564,7 @@
                                     <tr>
                                         <th>Cell No.</th>
                                         <th>Cell Label</th>
+                                        <th>RPM</th>
                                         <th>Predicted Viscosity (kCp)</th>
                                     </tr>
                                 </thead>
