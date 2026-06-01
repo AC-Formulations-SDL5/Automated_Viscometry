@@ -9,7 +9,7 @@ import datetime
 import traceback
 import threading
 import statistics
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 from cnc_controller import CNC_Machine, CNCMotionError
 from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
@@ -853,114 +853,137 @@ def measure_torque_at_rpm(
             pass
         return None
 
+def _torque_should_drop_rpm(measurements: Optional[List[Dict]]) -> Tuple[bool, str]:
+    """Return whether an RPM should be dropped from future Z-heights after this measurement."""
+    if measurements is None:
+        return True, "invalid torque (high resistance)"
+    if not measurements:
+        return True, "no valid measurements"
+    max_torque = max(abs(m["torque_percent"]) for m in measurements)
+    if max_torque >= TORQUE_BREAK_THRESHOLD:
+        return (
+            True,
+            f"max torque {max_torque:.2f}% >= threshold {TORQUE_BREAK_THRESHOLD:.2f}%",
+        )
+    return False, ""
+
+
+def _mark_rpm_torque_dropped(
+    rpm: float,
+    dropped_torque_rpms: Set[float],
+    cell_rpms: List[float],
+    global_cell: int,
+    reason: str,
+) -> None:
+    if rpm in dropped_torque_rpms:
+        return
+    dropped_torque_rpms.add(rpm)
+    print(f"      [RPM DROPPED] RPM {rpm}: {reason} — excluded from future Z-heights")
+    web_interface.emit_rpm_torque_status(global_cell, cell_rpms, dropped_torque_rpms)
+
+
 def test_dynamic_analysis_at_z(
     client: ViscometerClient,
     z_height: float,
     cell_rpms: List[float],
     *,
+    global_cell: int,
+    dropped_torque_rpms: Optional[Set[float]] = None,
     liquid_skip_enabled: bool = False,
     liquid_threshold_pct: float = 20.0,
     liquid_contact_established_box: Optional[List[bool]] = None,
 ) -> Tuple[Dict[float, Optional[List[Dict]]], bool, bool]:
-    """Test all RPMs at a specific Z-height.
+    """Test active RPMs at a specific Z-height.
 
     Returns ``(rpm_torque_data, first_rpm_exceeded_threshold, z_skipped_due_to_liquid)``.
-    When ``z_skipped_due_to_liquid`` is True, ``rpm_torque_data`` maps every RPM to ``None`` and no
-    further RPMs were measured at this Z-level.
+    The second value is retained for API compatibility and is always ``False`` (cells no longer
+    terminate on first-RPM torque limit). Dropped RPMs are recorded in ``dropped_torque_rpms``.
     """
-    print(f"    Testing {len(cell_rpms)} RPMs at Z={z_height:.3f}")
+    dropped: Set[float] = dropped_torque_rpms if dropped_torque_rpms is not None else set()
     rpm_torque_data: Dict[float, Optional[List[Dict]]] = {}
-    first_rpm_exceeded_threshold = False
-    start_i = 0
-    box = liquid_contact_established_box
+    for r in cell_rpms:
+        if r in dropped:
+            rpm_torque_data[r] = None
 
-    if liquid_skip_enabled and box is not None and (not box[0]) and len(cell_rpms) > 0:
-        first_rpm = cell_rpms[0]
-        measurements = measure_torque_at_rpm(
-            client,
-            first_rpm,
-            z_height,
-            hunting_first_contact_min_pct=liquid_threshold_pct,
-        )
-        if measurements is None or len(measurements) == 0:
-            print(f"      [LIQUID CONTACT] No valid torque samples at Z={z_height:.3f} — skipping Z-level")
-            for r in cell_rpms:
-                rpm_torque_data[r] = None
-            return rpm_torque_data, False, True
-        post_interval = next(
-            (m for m in measurements if float(m.get("elapsed_time", 0)) >= SAMPLE_INTERVAL),
-            None,
-        )
-        if post_interval is not None:
-            t_gate = float(post_interval["torque_percent"])
-            if t_gate < liquid_threshold_pct:
+    active_rpms = [r for r in cell_rpms if r not in dropped]
+    if not active_rpms:
+        print(f"    No active RPMs at Z={z_height:.3f} (all dropped)")
+        return rpm_torque_data, False, False
+
+    print(
+        f"    Testing {len(active_rpms)} active RPM(s) at Z={z_height:.3f} "
+        f"({len(dropped)} dropped)"
+    )
+    box = liquid_contact_established_box
+    measured_this_z: Set[float] = set()
+
+    if liquid_skip_enabled and box is not None and (not box[0]):
+        hunt_rpms = list(active_rpms)
+        for hunt_rpm in hunt_rpms:
+            if hunt_rpm in dropped:
+                continue
+            measurements = measure_torque_at_rpm(
+                client,
+                hunt_rpm,
+                z_height,
+                hunting_first_contact_min_pct=liquid_threshold_pct,
+            )
+            measured_this_z.add(hunt_rpm)
+            if measurements is None or len(measurements) == 0:
+                should_drop, reason = _torque_should_drop_rpm(measurements)
+                if should_drop:
+                    _mark_rpm_torque_dropped(
+                        hunt_rpm, dropped, cell_rpms, global_cell, reason
+                    )
+                    continue
                 print(
-                    f"      [LIQUID CONTACT] Post-interval torque {t_gate:.2f}% (first sample at "
-                    f"elapsed ≥ {SAMPLE_INTERVAL:.1f}s) < {liquid_threshold_pct:.2f}% — "
-                    "skipping Z-level (no hit-point inputs, no further RPMs)"
+                    f"      [LIQUID CONTACT] No valid torque samples at Z={z_height:.3f} "
+                    "— skipping Z-level"
                 )
                 for r in cell_rpms:
                     rpm_torque_data[r] = None
                 return rpm_torque_data, False, True
-        else:
-            print(
-                f"      [LIQUID CONTACT] No sample with elapsed ≥ {SAMPLE_INTERVAL:.1f}s — "
-                "cannot evaluate air gap; treating as liquid contact at this Z"
-            )
-        box[0] = True
-        rpm_torque_data[first_rpm] = measurements
-        start_i = 1
-        max_torque = max(abs(m["torque_percent"]) for m in measurements)
-        if max_torque >= TORQUE_BREAK_THRESHOLD:
-            print(
-                f"      CRITICAL: First RPM {first_rpm} exceeded safety threshold with max {max_torque:.2f}% "
-                f"- will break entire cell"
-            )
-            first_rpm_exceeded_threshold = True
-            for remaining_rpm in cell_rpms[1:]:
-                rpm_torque_data[remaining_rpm] = None
-            return rpm_torque_data, first_rpm_exceeded_threshold, False
 
-    for i in range(start_i, len(cell_rpms)):
-        rpm = cell_rpms[i]
+            post_interval = next(
+                (m for m in measurements if float(m.get("elapsed_time", 0)) >= SAMPLE_INTERVAL),
+                None,
+            )
+            if post_interval is not None:
+                t_gate = float(post_interval["torque_percent"])
+                if t_gate < liquid_threshold_pct:
+                    print(
+                        f"      [LIQUID CONTACT] Post-interval torque {t_gate:.2f}% (first sample at "
+                        f"elapsed ≥ {SAMPLE_INTERVAL:.1f}s) < {liquid_threshold_pct:.2f}% — "
+                        "skipping Z-level (no hit-point inputs, no further RPMs)"
+                    )
+                    for r in cell_rpms:
+                        rpm_torque_data[r] = None
+                    return rpm_torque_data, False, True
+            else:
+                print(
+                    f"      [LIQUID CONTACT] No sample with elapsed ≥ {SAMPLE_INTERVAL:.1f}s — "
+                    "cannot evaluate air gap; treating as liquid contact at this Z"
+                )
+            box[0] = True
+            rpm_torque_data[hunt_rpm] = measurements
+            should_drop, reason = _torque_should_drop_rpm(measurements)
+            if should_drop:
+                _mark_rpm_torque_dropped(hunt_rpm, dropped, cell_rpms, global_cell, reason)
+            break
+
+    for rpm in cell_rpms:
+        if rpm in dropped:
+            rpm_torque_data[rpm] = None
+            continue
+        if rpm in measured_this_z:
+            continue
         measurements = measure_torque_at_rpm(client, rpm, z_height)
         rpm_torque_data[rpm] = measurements
-        is_first_rpm_in_profile = rpm == cell_rpms[0]
+        should_drop, reason = _torque_should_drop_rpm(measurements)
+        if should_drop:
+            _mark_rpm_torque_dropped(rpm, dropped, cell_rpms, global_cell, reason)
 
-        # Check if measurements are invalid (high resistance condition) or exceed threshold
-        if measurements is None:
-            if is_first_rpm_in_profile:  # First RPM failed - critical condition
-                print(f"      CRITICAL: First RPM {rpm} returned invalid torque (high resistance) - will break entire cell")
-                first_rpm_exceeded_threshold = True
-                # Fill remaining RPMs with None
-                for remaining_rpm in cell_rpms[cell_rpms.index(rpm) + 1:]:
-                    rpm_torque_data[remaining_rpm] = None
-                break
-            else:  # Later RPM failed - high resistance at this Z-level
-                print(f"      RESISTANCE: RPM {rpm} returned invalid torque (high resistance) - stopping RPM sweep at this Z-level")
-                # Fill remaining RPMs with None
-                for remaining_rpm in cell_rpms[cell_rpms.index(rpm) + 1:]:
-                    rpm_torque_data[remaining_rpm] = None
-                break
-        else:
-            # Check if any torque measurement exceeds threshold
-            max_torque = max(abs(m["torque_percent"]) for m in measurements)
-            if max_torque >= TORQUE_BREAK_THRESHOLD:
-                if is_first_rpm_in_profile:  # First RPM exceeded threshold
-                    print(f"      CRITICAL: First RPM {rpm} exceeded threshold with max {max_torque:.2f}% - will break entire cell")
-                    first_rpm_exceeded_threshold = True
-                    # Fill remaining RPMs with None
-                    for remaining_rpm in cell_rpms[cell_rpms.index(rpm) + 1:]:
-                        rpm_torque_data[remaining_rpm] = None
-                    break
-                else:  # Later RPM exceeded threshold
-                    print(f"      SAFETY: RPM {rpm} exceeded threshold with max {max_torque:.2f}% - stopping RPM sweep at this Z-level")
-                    # Fill remaining RPMs with None
-                    for remaining_rpm in cell_rpms[cell_rpms.index(rpm) + 1:]:
-                        rpm_torque_data[remaining_rpm] = None
-                    break
-
-    return rpm_torque_data, first_rpm_exceeded_threshold, False
+    return rpm_torque_data, False, False
 
 def test_cell_dynamic_z_series(
     cnc: CNC_Machine,
@@ -1040,6 +1063,9 @@ def test_cell_dynamic_z_series(
     cell_exit_reason = "normal"
     start_wash_prefill = pump is not None
 
+    dropped_torque_rpms: Set[float] = set()
+    web_interface.emit_rpm_torque_status(global_cell, cell_rpms, dropped_torque_rpms)
+
     step_count = 0
     try:
         while current_z >= max_z_travel:
@@ -1073,11 +1099,24 @@ def test_cell_dynamic_z_series(
                     )
                     sleep_with_stop(SETTLE_TIME)
                 
-                # Test all RPMs at this Z-height
-                rpm_data, first_rpm_exceeded, z_liquid_skipped = test_dynamic_analysis_at_z(
+                if len(dropped_torque_rpms) >= len(cell_rpms):
+                    print(
+                        f"  All RPMs dropped at Z={z_rounded:.3f}; continuing Z-series "
+                        "(hit-point / fail-safe only, no spindle tests)"
+                    )
+                    rpm_data = {r: None for r in cell_rpms}
+                    rpm_data["_metrics"] = {}
+                    cell_z_rpm_data[z_rounded] = rpm_data
+                    current_z += Z_STEP_SIZE
+                    continue
+
+                # Test active RPMs at this Z-height
+                rpm_data, _first_rpm_exceeded, z_liquid_skipped = test_dynamic_analysis_at_z(
                     client,
                     z_rounded,
                     cell_rpms,
+                    global_cell=global_cell,
+                    dropped_torque_rpms=dropped_torque_rpms,
                     liquid_skip_enabled=use_liquid_z_skip,
                     liquid_threshold_pct=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT,
                     liquid_contact_established_box=liquid_contact_established_box,
@@ -1096,13 +1135,6 @@ def test_cell_dynamic_z_series(
                     current_z += Z_STEP_SIZE
                     continue
 
-                # Check if first RPM exceeded threshold - if so, break entire cell
-                if first_rpm_exceeded:
-                    print(f"  CELL TERMINATION: First RPM exceeded threshold at Z={z_rounded:.3f}")
-                    print(f"  Stopping Cell {global_cell} Z-series testing")
-                    cell_exit_reason = "torque_limit"
-                    break
-                
                 # Add measurements to feedback controller for rotational drag analysis
                 # Always calculate and store metrics for consistent CSV output
                 metrics_data = {}

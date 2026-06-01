@@ -832,15 +832,70 @@ body.running .header-sweep {
     background: var(--bg-subtle, #fafbfc);
 }
 
-.predicted-viscosity-plot-title {
-    font-size: 0.85rem;
-    color: var(--text-secondary, #4a5568);
-    margin-bottom: 8px;
+.predicted-viscosity-cell-heading {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 10px;
+}
+
+.predicted-viscosity-plot-row {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
 }
 
 .predicted-viscosity-plot {
-    width: 100%;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 280px;
+}
+
+.predicted-viscosity-params-panel {
+    flex: 0 0 260px;
+    max-width: 320px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: #ffffff;
+    padding: 8px 10px;
+    overflow-x: auto;
+}
+
+.predicted-viscosity-params-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.72rem;
+}
+
+.predicted-viscosity-params-table th,
+.predicted-viscosity-params-table td {
+    padding: 4px 6px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.predicted-viscosity-params-table th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.predicted-viscosity-params-table .pv-status-cell {
+    max-width: 120px;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    word-break: break-word;
+}
+
+@media (max-width: 900px) {
+    .predicted-viscosity-plot-row {
+        flex-direction: column;
+    }
+
+    .predicted-viscosity-params-panel {
+        flex: 1 1 auto;
+        max-width: none;
+    }
 }
 
 
@@ -1483,6 +1538,24 @@ h2 {
     color: var(--text-primary);
 }
 
+.rpm-status-dot {
+    flex: 0 0 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-left: auto;
+}
+
+.rpm-status-active {
+    background: #34a853;
+    box-shadow: 0 0 6px 2px rgba(52, 168, 83, 0.85);
+}
+
+.rpm-status-dropped {
+    background: #ea4335;
+    box-shadow: 0 0 6px 2px rgba(234, 67, 53, 0.9);
+}
+
 .rpm-legend-note {
     font-size: 0.66rem;
     color: var(--text-muted);
@@ -2089,6 +2162,81 @@ body.spinning .gauge-value {
 
 .experiment-card:hover .experiment-delete {
     opacity: 1;
+}
+
+.load-old-experiment-card {
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.load-old-experiment-details {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+    background: var(--bg-subtle, #f8f9fa);
+    padding: 10px 12px;
+}
+
+.load-old-experiment-summary {
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    list-style: none;
+}
+
+.load-old-experiment-summary::-webkit-details-marker {
+    display: none;
+}
+
+.load-old-experiment-hint {
+    margin: 8px 0 10px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.load-old-experiment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    padding-right: 4px;
+}
+
+.load-old-experiment-list .load-old-experiment-empty {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin: 0;
+    padding: 8px 4px;
+}
+
+.load-old-experiment-list .experiment-card {
+    margin: 0;
+}
+
+.load-old-experiment-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.load-old-experiment-status {
+    margin: 8px 0 0;
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    min-height: 1.2em;
+}
+
+.load-old-experiment-status.is-error {
+    color: var(--color-red-text);
+}
+
+.load-old-experiment-status.is-success {
+    color: var(--color-green-text);
 }
 
 .summary-detail-body {
