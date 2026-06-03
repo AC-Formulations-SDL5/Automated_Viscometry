@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
+<rect width="1200" height="600" fill="#0d1117"/>
+<text x="600" y="60" text-anchor="middle" fill="white" font-size="28" font-family="Arial">Physics-Informed Rheology Inversion Loop</text>
+<rect x="710" y="105" width="165" height="70" rx="35" fill="#3fb950"/>
+<text x="792" y="145" text-anchor="middle" fill="white" font-size="16" font-family="Arial">Fluid Parameters (K,n)</text>
+<rect x="840" y="85" width="180" height="110" rx="12" fill="#1f6feb"/>
+<text x="930" y="140" text-anchor="middle" fill="white" font-size="18" font-family="Arial">Kinematics &amp; Cone SDF</text>
+<rect x="1030" y="85" width="150" height="110" rx="12" fill="#76B900"/>
+<text x="1105" y="140" text-anchor="middle" fill="white" font-size="18" font-family="Arial">NVIDIA Warp</text>
+</svg>

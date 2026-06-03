@@ -1,0 +1,8 @@
+model,param,value,ci95_lo,ci95_hi
+power,C,0.48197,0.47338,0.48914
+power,n,0.20651,0.19943,0.21555
+regularized,C,0.41572,0.41039,0.42148
+regularized,h_c,0.40263,0.39617,0.40997
+gen_regularized,C,0.38382,0.38101,0.38721
+gen_regularized,h_c,0.20422,0.17916,0.23814
+gen_regularized,n,0.63894,0.59193,0.70469

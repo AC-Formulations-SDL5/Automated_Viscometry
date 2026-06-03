@@ -1,0 +1,1995 @@
+{
+  "measurement_data": [
+    {
+      "timestamp": 1779206316.8190324,
+      "height": -65.4,
+      "rotational_drag": 19.8625,
+      "torque_percent": 15.89,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206328.1770244,
+      "height": -65.42,
+      "rotational_drag": 24.799999999999997,
+      "torque_percent": 19.84,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206339.5356662,
+      "height": -65.44,
+      "rotational_drag": 27.7,
+      "torque_percent": 22.16,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206350.8984745,
+      "height": -65.46,
+      "rotational_drag": 29.037499999999998,
+      "torque_percent": 23.23,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206362.2598896,
+      "height": -65.48,
+      "rotational_drag": 29.8375,
+      "torque_percent": 23.87,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206373.622186,
+      "height": -65.5,
+      "rotational_drag": 30.474999999999998,
+      "torque_percent": 24.38,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206384.9814658,
+      "height": -65.52,
+      "rotational_drag": 31.150000000000002,
+      "torque_percent": 24.92,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206396.3404148,
+      "height": -65.54,
+      "rotational_drag": 31.812499999999996,
+      "torque_percent": 25.45,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206401.4042926,
+      "height": -65.54,
+      "rotational_drag": 34.9625,
+      "torque_percent": 27.97,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206406.361376,
+      "height": -65.54,
+      "rotational_drag": 35.762499999999996,
+      "torque_percent": 28.61,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206411.4246647,
+      "height": -65.54,
+      "rotational_drag": 36.012499999999996,
+      "torque_percent": 28.81,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206416.4024756,
+      "height": -65.54,
+      "rotational_drag": 36.1125,
+      "torque_percent": 28.89,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206427.7639573,
+      "height": -65.56,
+      "rotational_drag": 32.925,
+      "torque_percent": 26.34,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206432.8263419,
+      "height": -65.56,
+      "rotational_drag": 36.074999999999996,
+      "torque_percent": 28.86,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206437.7875686,
+      "height": -65.56,
+      "rotational_drag": 36.9,
+      "torque_percent": 29.52,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206442.748214,
+      "height": -65.56,
+      "rotational_drag": 37.1625,
+      "torque_percent": 29.730000000000004,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206447.8123338,
+      "height": -65.56,
+      "rotational_drag": 37.25,
+      "torque_percent": 29.8,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206459.1708858,
+      "height": -65.58,
+      "rotational_drag": 33.675,
+      "torque_percent": 26.939999999999998,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206464.2345388,
+      "height": -65.58,
+      "rotational_drag": 36.9625,
+      "torque_percent": 29.57,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206469.195367,
+      "height": -65.58,
+      "rotational_drag": 37.775,
+      "torque_percent": 30.22,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206474.1604843,
+      "height": -65.58,
+      "rotational_drag": 38.05,
+      "torque_percent": 30.439999999999998,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206479.223553,
+      "height": -65.58,
+      "rotational_drag": 38.1375,
+      "torque_percent": 30.510000000000005,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206490.5927649,
+      "height": -65.6,
+      "rotational_drag": 34.4125,
+      "torque_percent": 27.53,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206495.6509893,
+      "height": -65.6,
+      "rotational_drag": 37.8625,
+      "torque_percent": 30.29,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206500.613052,
+      "height": -65.6,
+      "rotational_drag": 38.849999999999994,
+      "torque_percent": 31.08,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206505.67671,
+      "height": -65.6,
+      "rotational_drag": 39.1875,
+      "torque_percent": 31.35,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206510.6400747,
+      "height": -65.6,
+      "rotational_drag": 39.3125,
+      "torque_percent": 31.450000000000003,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206522.0206127,
+      "height": -65.62,
+      "rotational_drag": 35.2375,
+      "torque_percent": 28.189999999999998,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206527.0807211,
+      "height": -65.62,
+      "rotational_drag": 38.849999999999994,
+      "torque_percent": 31.08,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206532.0422232,
+      "height": -65.62,
+      "rotational_drag": 39.87499999999999,
+      "torque_percent": 31.899999999999995,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206537.0072672,
+      "height": -65.62,
+      "rotational_drag": 40.287499999999994,
+      "torque_percent": 32.23,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206542.0722601,
+      "height": -65.62,
+      "rotational_drag": 40.3625,
+      "torque_percent": 32.29,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206547.0357742,
+      "height": -65.62,
+      "rotational_drag": 40.3625,
+      "torque_percent": 32.29,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206558.397917,
+      "height": -65.64,
+      "rotational_drag": 36.3,
+      "torque_percent": 29.04,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206563.465693,
+      "height": -65.64,
+      "rotational_drag": 39.887499999999996,
+      "torque_percent": 31.909999999999997,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206568.4251666,
+      "height": -65.64,
+      "rotational_drag": 40.99999999999999,
+      "torque_percent": 32.8,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206573.3899562,
+      "height": -65.64,
+      "rotational_drag": 41.387499999999996,
+      "torque_percent": 33.11,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206578.4532936,
+      "height": -65.64,
+      "rotational_drag": 41.512499999999996,
+      "torque_percent": 33.21,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206583.414075,
+      "height": -65.64,
+      "rotational_drag": 41.537499999999994,
+      "torque_percent": 33.23,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206594.779139,
+      "height": -65.66,
+      "rotational_drag": 37.137499999999996,
+      "torque_percent": 29.709999999999997,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206599.84201,
+      "height": -65.66,
+      "rotational_drag": 40.925,
+      "torque_percent": 32.74,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206604.807501,
+      "height": -65.66,
+      "rotational_drag": 42.099999999999994,
+      "torque_percent": 33.68,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206609.7710328,
+      "height": -65.66,
+      "rotational_drag": 42.575,
+      "torque_percent": 34.06,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206614.8311877,
+      "height": -65.66,
+      "rotational_drag": 42.68749999999999,
+      "torque_percent": 34.15,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206619.7917676,
+      "height": -65.66,
+      "rotational_drag": 42.724999999999994,
+      "torque_percent": 34.18,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206631.1540039,
+      "height": -65.68,
+      "rotational_drag": 38.1625,
+      "torque_percent": 30.53,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206636.2215037,
+      "height": -65.68,
+      "rotational_drag": 42.1125,
+      "torque_percent": 33.69,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206641.184778,
+      "height": -65.68,
+      "rotational_drag": 43.31249999999999,
+      "torque_percent": 34.65,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206646.1427994,
+      "height": -65.68,
+      "rotational_drag": 43.762499999999996,
+      "torque_percent": 35.01,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206651.206602,
+      "height": -65.68,
+      "rotational_drag": 43.89999999999999,
+      "torque_percent": 35.12,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206656.1703436,
+      "height": -65.68,
+      "rotational_drag": 43.925,
+      "torque_percent": 35.14,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206667.5326595,
+      "height": -65.7,
+      "rotational_drag": 38.974999999999994,
+      "torque_percent": 31.179999999999996,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206672.5939205,
+      "height": -65.7,
+      "rotational_drag": 43.0875,
+      "torque_percent": 34.47,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206677.5534227,
+      "height": -65.7,
+      "rotational_drag": 44.43749999999999,
+      "torque_percent": 35.55,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206682.6167107,
+      "height": -65.7,
+      "rotational_drag": 44.974999999999994,
+      "torque_percent": 35.98,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206687.5810642,
+      "height": -65.7,
+      "rotational_drag": 45.175,
+      "torque_percent": 36.14,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206692.5423155,
+      "height": -65.7,
+      "rotational_drag": 45.224999999999994,
+      "torque_percent": 36.18,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206703.908134,
+      "height": -65.72,
+      "rotational_drag": 40.125,
+      "torque_percent": 32.1,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206708.9707868,
+      "height": -65.72,
+      "rotational_drag": 44.3625,
+      "torque_percent": 35.49,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206713.9358149,
+      "height": -65.72,
+      "rotational_drag": 45.8,
+      "torque_percent": 36.64,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206718.898656,
+      "height": -65.72,
+      "rotational_drag": 46.387499999999996,
+      "torque_percent": 37.11,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206723.9628043,
+      "height": -65.72,
+      "rotational_drag": 46.537499999999994,
+      "torque_percent": 37.23,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206728.9201844,
+      "height": -65.72,
+      "rotational_drag": 46.55,
+      "torque_percent": 37.24,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206740.2887485,
+      "height": -65.74,
+      "rotational_drag": 41.0125,
+      "torque_percent": 32.81,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206745.3576698,
+      "height": -65.74,
+      "rotational_drag": 45.4375,
+      "torque_percent": 36.35,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206750.3186817,
+      "height": -65.74,
+      "rotational_drag": 47.012499999999996,
+      "torque_percent": 37.61,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206755.2795277,
+      "height": -65.74,
+      "rotational_drag": 47.6625,
+      "torque_percent": 38.13,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206760.34615,
+      "height": -65.74,
+      "rotational_drag": 47.8625,
+      "torque_percent": 38.29,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206765.3103702,
+      "height": -65.74,
+      "rotational_drag": 47.9375,
+      "torque_percent": 38.35,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206776.684534,
+      "height": -65.76,
+      "rotational_drag": 42.199999999999996,
+      "torque_percent": 33.76,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206781.7477202,
+      "height": -65.76,
+      "rotational_drag": 46.849999999999994,
+      "torque_percent": 37.48,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206786.7143397,
+      "height": -65.76,
+      "rotational_drag": 48.525,
+      "torque_percent": 38.82,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206791.6818166,
+      "height": -65.76,
+      "rotational_drag": 49.2375,
+      "torque_percent": 39.39,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206796.748277,
+      "height": -65.76,
+      "rotational_drag": 49.474999999999994,
+      "torque_percent": 39.58,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206801.7089396,
+      "height": -65.76,
+      "rotational_drag": 49.5375,
+      "torque_percent": 39.63,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206813.0807102,
+      "height": -65.78,
+      "rotational_drag": 43.324999999999996,
+      "torque_percent": 34.66,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206818.1470017,
+      "height": -65.78,
+      "rotational_drag": 47.99999999999999,
+      "torque_percent": 38.4,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206823.11215,
+      "height": -65.78,
+      "rotational_drag": 49.83749999999999,
+      "torque_percent": 39.87,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206828.0752053,
+      "height": -65.78,
+      "rotational_drag": 50.599999999999994,
+      "torque_percent": 40.48,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206833.1417558,
+      "height": -65.78,
+      "rotational_drag": 50.875,
+      "torque_percent": 40.7,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206838.1089482,
+      "height": -65.78,
+      "rotational_drag": 50.949999999999996,
+      "torque_percent": 40.76,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206849.479709,
+      "height": -65.8,
+      "rotational_drag": 44.574999999999996,
+      "torque_percent": 35.66,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206854.5431123,
+      "height": -65.8,
+      "rotational_drag": 49.599999999999994,
+      "torque_percent": 39.68,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206859.509534,
+      "height": -65.8,
+      "rotational_drag": 51.537499999999994,
+      "torque_percent": 41.23,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206864.4770072,
+      "height": -65.8,
+      "rotational_drag": 52.412499999999994,
+      "torque_percent": 41.93,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206869.540586,
+      "height": -65.8,
+      "rotational_drag": 52.7125,
+      "torque_percent": 42.17,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206874.5046601,
+      "height": -65.8,
+      "rotational_drag": 52.8,
+      "torque_percent": 42.24,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206885.8728952,
+      "height": -65.82,
+      "rotational_drag": 45.912499999999994,
+      "torque_percent": 36.73,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206890.9391003,
+      "height": -65.82,
+      "rotational_drag": 51.037499999999994,
+      "torque_percent": 40.83,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206895.905507,
+      "height": -65.82,
+      "rotational_drag": 53.037499999999994,
+      "torque_percent": 42.43,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206900.8701289,
+      "height": -65.82,
+      "rotational_drag": 53.875,
+      "torque_percent": 43.1,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206905.9395463,
+      "height": -65.82,
+      "rotational_drag": 54.3,
+      "torque_percent": 43.44,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206910.9094229,
+      "height": -65.82,
+      "rotational_drag": 54.4,
+      "torque_percent": 43.52,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206922.277366,
+      "height": -65.84,
+      "rotational_drag": 47.300000000000004,
+      "torque_percent": 37.84,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206927.3430767,
+      "height": -65.84,
+      "rotational_drag": 52.7125,
+      "torque_percent": 42.17,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206932.3177736,
+      "height": -65.84,
+      "rotational_drag": 54.9375,
+      "torque_percent": 43.95,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206937.2843225,
+      "height": -65.84,
+      "rotational_drag": 55.975,
+      "torque_percent": 44.78,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206942.3503828,
+      "height": -65.84,
+      "rotational_drag": 56.387499999999996,
+      "torque_percent": 45.11,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206947.3149087,
+      "height": -65.84,
+      "rotational_drag": 56.55,
+      "torque_percent": 45.24,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206958.6824913,
+      "height": -65.86,
+      "rotational_drag": 48.875,
+      "torque_percent": 39.1,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206963.745745,
+      "height": -65.86,
+      "rotational_drag": 54.3375,
+      "torque_percent": 43.47,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206968.7094223,
+      "height": -65.86,
+      "rotational_drag": 56.662499999999994,
+      "torque_percent": 45.33,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206973.769698,
+      "height": -65.86,
+      "rotational_drag": 57.75,
+      "torque_percent": 46.2,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206978.736728,
+      "height": -65.86,
+      "rotational_drag": 58.18749999999999,
+      "torque_percent": 46.55,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206983.7013097,
+      "height": -65.86,
+      "rotational_drag": 58.324999999999996,
+      "torque_percent": 46.66,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779206995.0671773,
+      "height": -65.88,
+      "rotational_drag": 50.475,
+      "torque_percent": 40.38,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207000.1297545,
+      "height": -65.88,
+      "rotational_drag": 56.2125,
+      "torque_percent": 44.97,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207005.090919,
+      "height": -65.88,
+      "rotational_drag": 58.762499999999996,
+      "torque_percent": 47.01,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207010.0545423,
+      "height": -65.88,
+      "rotational_drag": 60.012499999999996,
+      "torque_percent": 48.01,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207015.1181366,
+      "height": -65.88,
+      "rotational_drag": 60.55,
+      "torque_percent": 48.44,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207020.0770962,
+      "height": -65.88,
+      "rotational_drag": 60.81249999999999,
+      "torque_percent": 48.65,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207025.14234,
+      "height": -65.88,
+      "rotational_drag": 60.949999999999996,
+      "torque_percent": 48.76,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207036.5073736,
+      "height": -65.9,
+      "rotational_drag": 52.699999999999996,
+      "torque_percent": 42.16,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207041.5705948,
+      "height": -65.9,
+      "rotational_drag": 58.3625,
+      "torque_percent": 46.69,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207046.5362828,
+      "height": -65.9,
+      "rotational_drag": 60.912499999999994,
+      "torque_percent": 48.73,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207051.5022535,
+      "height": -65.9,
+      "rotational_drag": 62.162499999999994,
+      "torque_percent": 49.73,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207056.5651262,
+      "height": -65.9,
+      "rotational_drag": 62.75,
+      "torque_percent": 50.2,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207061.5238025,
+      "height": -65.9,
+      "rotational_drag": 62.925000000000004,
+      "torque_percent": 50.34,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207066.5870187,
+      "height": -65.9,
+      "rotational_drag": 63.037499999999994,
+      "torque_percent": 50.43,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207077.9540339,
+      "height": -65.92,
+      "rotational_drag": 54.65,
+      "torque_percent": 43.72,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207083.015439,
+      "height": -65.92,
+      "rotational_drag": 60.5625,
+      "torque_percent": 48.45,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207087.9802055,
+      "height": -65.92,
+      "rotational_drag": 63.375,
+      "torque_percent": 50.7,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207092.9467392,
+      "height": -65.92,
+      "rotational_drag": 64.82499999999999,
+      "torque_percent": 51.85999999999999,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207098.0100389,
+      "height": -65.92,
+      "rotational_drag": 65.5,
+      "torque_percent": 52.400000000000006,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207102.9739325,
+      "height": -65.92,
+      "rotational_drag": 65.82499999999999,
+      "torque_percent": 52.66,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207107.9407325,
+      "height": -65.92,
+      "rotational_drag": 66.0625,
+      "torque_percent": 52.85,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207119.3033912,
+      "height": -65.94,
+      "rotational_drag": 55.525,
+      "torque_percent": 44.42,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207124.369077,
+      "height": -65.94,
+      "rotational_drag": 62.2375,
+      "torque_percent": 49.79,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207129.337135,
+      "height": -65.94,
+      "rotational_drag": 65.5,
+      "torque_percent": 52.400000000000006,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207134.3035064,
+      "height": -65.94,
+      "rotational_drag": 67.1625,
+      "torque_percent": 53.73,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207139.3665898,
+      "height": -65.94,
+      "rotational_drag": 67.9875,
+      "torque_percent": 54.39,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207144.3352766,
+      "height": -65.94,
+      "rotational_drag": 68.2875,
+      "torque_percent": 54.629999999999995,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207149.301529,
+      "height": -65.94,
+      "rotational_drag": 68.49999999999999,
+      "torque_percent": 54.79999999999999,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207160.6636388,
+      "height": -65.96,
+      "rotational_drag": 57.724999999999994,
+      "torque_percent": 46.18,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207165.7296944,
+      "height": -65.96,
+      "rotational_drag": 64.77499999999999,
+      "torque_percent": 51.81999999999999,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207170.6908565,
+      "height": -65.96,
+      "rotational_drag": 68.35,
+      "torque_percent": 54.68,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207175.6579275,
+      "height": -65.96,
+      "rotational_drag": 70.2875,
+      "torque_percent": 56.23,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207180.7237318,
+      "height": -65.96,
+      "rotational_drag": 71.275,
+      "torque_percent": 57.02000000000001,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207185.6887584,
+      "height": -65.96,
+      "rotational_drag": 71.77499999999999,
+      "torque_percent": 57.419999999999995,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207190.6522908,
+      "height": -65.96,
+      "rotational_drag": 72.1375,
+      "torque_percent": 57.71000000000001,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207202.011693,
+      "height": -65.98,
+      "rotational_drag": 60.35,
+      "torque_percent": 48.28,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207207.07805,
+      "height": -65.98,
+      "rotational_drag": 67.51249999999999,
+      "torque_percent": 54.00999999999999,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207212.0453565,
+      "height": -65.98,
+      "rotational_drag": 71.3,
+      "torque_percent": 57.04,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207217.006574,
+      "height": -65.98,
+      "rotational_drag": 73.375,
+      "torque_percent": 58.7,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207222.072758,
+      "height": -65.98,
+      "rotational_drag": 74.45,
+      "torque_percent": 59.56,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207227.0371416,
+      "height": -65.98,
+      "rotational_drag": 74.96249999999999,
+      "torque_percent": 59.97,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207232.0042489,
+      "height": -65.98,
+      "rotational_drag": 75.2625,
+      "torque_percent": 60.21000000000001,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207243.3694224,
+      "height": -66.0,
+      "rotational_drag": 66.38749999999999,
+      "torque_percent": 53.10999999999999,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207248.4476824,
+      "height": -66.0,
+      "rotational_drag": 76.2375,
+      "torque_percent": 60.99,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207253.4123676,
+      "height": -66.0,
+      "rotational_drag": 80.52499999999999,
+      "torque_percent": 64.42,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207258.3787415,
+      "height": -66.0,
+      "rotational_drag": 82.79999999999998,
+      "torque_percent": 66.24,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207263.4417152,
+      "height": -66.0,
+      "rotational_drag": 83.6875,
+      "torque_percent": 66.95,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207268.4059665,
+      "height": -66.0,
+      "rotational_drag": 84.25,
+      "torque_percent": 67.4,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207273.367108,
+      "height": -66.0,
+      "rotational_drag": 84.525,
+      "torque_percent": 67.62,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207284.7323177,
+      "height": -66.02,
+      "rotational_drag": 69.96249999999999,
+      "torque_percent": 55.97,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207289.7961571,
+      "height": -66.02,
+      "rotational_drag": 76.5,
+      "torque_percent": 61.2,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207294.759619,
+      "height": -66.02,
+      "rotational_drag": 79.5375,
+      "torque_percent": 63.629999999999995,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207299.724259,
+      "height": -66.02,
+      "rotational_drag": 81.3,
+      "torque_percent": 65.04,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207304.7901702,
+      "height": -66.02,
+      "rotational_drag": 82.6625,
+      "torque_percent": 66.13,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207309.7543502,
+      "height": -66.02,
+      "rotational_drag": 83.225,
+      "torque_percent": 66.58,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207314.81767,
+      "height": -66.02,
+      "rotational_drag": 84.975,
+      "torque_percent": 67.98,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207331.0876198,
+      "height": -66.04,
+      "rotational_drag": 79.6875,
+      "torque_percent": 63.75,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207336.1537592,
+      "height": -66.04,
+      "rotational_drag": 88.46249999999999,
+      "torque_percent": 70.77,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207341.1182442,
+      "height": -66.04,
+      "rotational_drag": 89.51249999999999,
+      "torque_percent": 71.61,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207346.0851402,
+      "height": -66.04,
+      "rotational_drag": 88.71249999999999,
+      "torque_percent": 70.97,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207351.1506507,
+      "height": -66.04,
+      "rotational_drag": 88.1375,
+      "torque_percent": 70.51,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207356.1155546,
+      "height": -66.04,
+      "rotational_drag": 88.225,
+      "torque_percent": 70.58,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": null,
+      "sample_count": 1
+    },
+    {
+      "timestamp": 1779207486.2168248,
+      "height": -65.54,
+      "rotational_drag": 36.1125,
+      "torque_percent": 28.89,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 5
+    },
+    {
+      "timestamp": 1779207486.224976,
+      "height": -65.56,
+      "rotational_drag": 37.25,
+      "torque_percent": 29.8,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 5
+    },
+    {
+      "timestamp": 1779207486.234932,
+      "height": -65.58,
+      "rotational_drag": 38.1375,
+      "torque_percent": 30.510000000000005,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 5
+    },
+    {
+      "timestamp": 1779207486.243117,
+      "height": -65.6,
+      "rotational_drag": 39.3125,
+      "torque_percent": 31.450000000000003,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 5
+    },
+    {
+      "timestamp": 1779207486.2534723,
+      "height": -65.62,
+      "rotational_drag": 40.3625,
+      "torque_percent": 32.29,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.2615786,
+      "height": -65.64,
+      "rotational_drag": 41.537499999999994,
+      "torque_percent": 33.23,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.2719324,
+      "height": -65.66,
+      "rotational_drag": 42.724999999999994,
+      "torque_percent": 34.18,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.2812796,
+      "height": -65.68,
+      "rotational_drag": 43.925,
+      "torque_percent": 35.14,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.2914293,
+      "height": -65.7,
+      "rotational_drag": 45.224999999999994,
+      "torque_percent": 36.18,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.3036644,
+      "height": -65.72,
+      "rotational_drag": 46.55,
+      "torque_percent": 37.24,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.3141313,
+      "height": -65.74,
+      "rotational_drag": 47.9375,
+      "torque_percent": 38.35,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.338148,
+      "height": -65.76,
+      "rotational_drag": 49.5375,
+      "torque_percent": 39.63,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.3506198,
+      "height": -65.78,
+      "rotational_drag": 50.949999999999996,
+      "torque_percent": 40.76,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.3608997,
+      "height": -65.8,
+      "rotational_drag": 52.8,
+      "torque_percent": 42.24,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.3719606,
+      "height": -65.82,
+      "rotational_drag": 54.4,
+      "torque_percent": 43.52,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.3831363,
+      "height": -65.84,
+      "rotational_drag": 56.55,
+      "torque_percent": 45.24,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.3932993,
+      "height": -65.86,
+      "rotational_drag": 58.324999999999996,
+      "torque_percent": 46.66,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 6
+    },
+    {
+      "timestamp": 1779207486.404532,
+      "height": -65.88,
+      "rotational_drag": 60.949999999999996,
+      "torque_percent": 48.76,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 7
+    },
+    {
+      "timestamp": 1779207486.4164343,
+      "height": -65.9,
+      "rotational_drag": 63.037499999999994,
+      "torque_percent": 50.43,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 7
+    },
+    {
+      "timestamp": 1779207486.426905,
+      "height": -65.92,
+      "rotational_drag": 66.0625,
+      "torque_percent": 52.85,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 7
+    },
+    {
+      "timestamp": 1779207486.438042,
+      "height": -65.94,
+      "rotational_drag": 68.49999999999999,
+      "torque_percent": 54.79999999999999,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 7
+    },
+    {
+      "timestamp": 1779207486.4500637,
+      "height": -65.96,
+      "rotational_drag": 72.1375,
+      "torque_percent": 57.71000000000001,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 7
+    },
+    {
+      "timestamp": 1779207486.4596925,
+      "height": -65.98,
+      "rotational_drag": 75.2625,
+      "torque_percent": 60.21000000000001,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": false,
+      "sample_count": 7
+    },
+    {
+      "timestamp": 1779207486.4710987,
+      "height": -66.0,
+      "rotational_drag": 84.525,
+      "torque_percent": 67.62,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": true,
+      "sample_count": 7
+    },
+    {
+      "timestamp": 1779207486.4802926,
+      "height": -66.02,
+      "rotational_drag": 84.975,
+      "torque_percent": 67.98,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": true,
+      "sample_count": 7
+    },
+    {
+      "timestamp": 1779207486.490823,
+      "height": -66.04,
+      "rotational_drag": 88.225,
+      "torque_percent": 70.58,
+      "rpm": 0.8,
+      "cell_id": 12,
+      "hit_detected": true,
+      "sample_count": 6
+    }
+  ],
+  "current_position": {
+    "x": 383,
+    "y": 68,
+    "z": 0
+  },
+  "current_cell": 12,
+  "current_rpm": 0,
+  "current_torque_percent": 70.58,
+  "current_z_measuring": -66.04,
+  "completed_cells": [
+    12
+  ],
+  "experiment_start_ts": 1779206279.1741812,
+  "current_cell_start_ts": 1779206290.2993202,
+  "is_running": true,
+  "status_message": "Saving final results...",
+  "runtime_settings": {
+    "experiment_name": "test_prediction",
+    "testing_mode": "custom",
+    "selected_rows": [
+      2
+    ],
+    "selected_cells": [
+      12
+    ],
+    "test_rpms": [
+      0.8
+    ],
+    "cell_rpm_map": {},
+    "cell_content_map": {},
+    "z_step_size": -0.02,
+    "measurement_duration": 40.0,
+    "sample_interval": 5.0,
+    "dwell_seconds": 2.0,
+    "inter_rpm_pause": 2.0,
+    "feedback_control_enabled": true,
+    "smart_early_exit_enabled": true,
+    "smart_cv_threshold": 0.005,
+    "smart_window_size": 3,
+    "min_data_points_for_trend": 8,
+    "r2_drag_min": 0.975,
+    "r2_cv_min": 0.975,
+    "r2_slope_min": 0.975,
+    "hit_point_confidence_threshold": 0.8,
+    "weight_2nd_deriv_drag": 0.2,
+    "weight_2nd_deriv_cv": 0.2,
+    "weight_2nd_deriv_slope": 0.2,
+    "weight_r2_drag": 0.2,
+    "weight_r2_cv": 0.2,
+    "weight_r2_slope": 0.2,
+    "baseline_n_calibration": 10,
+    "baseline_z_threshold": 5.0,
+    "torque_break_threshold": 100.0,
+    "calibration_mode": false,
+    "recalibrate_individual_cells": false,
+    "recalibration_cells": {},
+    "low_torque_liquid_contact_skip_enabled": true,
+    "low_torque_liquid_contact_threshold_pct": 25.0,
+    "predicted_viscosity_enabled": true
+  },
+  "predicted_viscosity_results": {}
+}
