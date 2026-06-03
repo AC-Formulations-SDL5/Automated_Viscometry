@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Automated Viscometry Platform</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 </head>
-<body class="theme-dark loading">
+<body class="theme-light loading">
     <div id="disconnect-banner" class="disconnect-banner hidden" role="alert" aria-live="polite">
         <span class="banner-icon">!</span>
         <span>Disconnected from instrument, attempting to reconnect...</span>

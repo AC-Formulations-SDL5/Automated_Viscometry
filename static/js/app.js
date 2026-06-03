@@ -708,20 +708,21 @@ class ViscometryDashboard {
     }
 
     _buildLivePlotLayout({ yTitle, xReversed = false, showLegend = false }) {
-        const plotFont = "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-        const axisTitleFont = { family: plotFont, size: 12, color: "#5f6368" };
-        const axisTickFont = { family: plotFont, size: 11, color: "#5f6368" };
+        const plotFont = '"DM Sans", -apple-system, BlinkMacSystemFont, sans-serif';
+        const plotText = "rgb(72, 84, 110)";
+        const axisTitleFont = { family: plotFont, size: 12, color: plotText };
+        const axisTickFont = { family: plotFont, size: 11, color: plotText };
         const axisStyle = {
-            gridcolor: "#e8eaed",
-            linecolor: "#dadce0",
-            tickcolor: "#9aa0a6",
+            gridcolor: "rgba(180, 200, 230, 0.45)",
+            linecolor: "rgba(150, 175, 215, 0.60)",
+            tickcolor: "rgb(138, 150, 175)",
             zeroline: false,
             tickfont: axisTickFont,
         };
         const layout = {
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
-            font: { family: plotFont, color: "#5f6368", size: 12 },
+            font: { family: plotFont, color: plotText, size: 12 },
             xaxis: {
                 ...axisStyle,
                 title: { text: "Z-Height (mm)", standoff: 8, font: axisTitleFont },
@@ -737,8 +738,8 @@ class ViscometryDashboard {
         if (showLegend) {
             layout.legend = {
                 bgcolor: "rgba(0,0,0,0)",
-                bordercolor: "#dadce0",
-                font: { family: plotFont, size: 11, color: "#5f6368" },
+                bordercolor: "rgba(150, 175, 215, 0.60)",
+                font: { family: plotFont, size: 11, color: plotText },
             };
         }
         return layout;
@@ -2346,11 +2347,11 @@ class ViscometryDashboard {
         this.el.torqueValue.textContent = `${torquePercent.toFixed(2)}%`;
 
         if (pct > 80) {
-            this.el.torqueFill.style.background = "linear-gradient(180deg, #f85149, #c2322b)";
+            this.el.torqueFill.style.background = "linear-gradient(180deg, rgb(255, 59, 48), rgb(185, 28, 18))";
         } else if (pct > 50) {
-            this.el.torqueFill.style.background = "linear-gradient(180deg, #f5a623, #d5891d)";
+            this.el.torqueFill.style.background = "linear-gradient(180deg, rgb(255, 159, 10), rgb(148, 88, 0))";
         } else {
-            this.el.torqueFill.style.background = "linear-gradient(180deg, #2ea043, #1a7431)";
+            this.el.torqueFill.style.background = "linear-gradient(180deg, rgb(48, 209, 88), rgb(21, 128, 49))";
         }
     }
 
@@ -3090,18 +3091,25 @@ class ViscometryDashboard {
         if (!this.el.summaryPlot) {
             return;
         }
+        const summaryBase = this._buildLivePlotLayout({
+            yTitle: "Rotational Drag (torque / RPM)",
+            showLegend: true,
+        });
         this.summaryPlotLayout = {
+            ...summaryBase,
+            showlegend: true,
             xaxis: {
+                ...summaryBase.xaxis,
                 title: "Z-Height (mm) - descent ->",
                 autorange: true,
                 tickformat: ".3f",
             },
-            yaxis: { title: "Rotational Drag (torque / RPM)", rangemode: "tozero" },
+            yaxis: {
+                ...summaryBase.yaxis,
+                rangemode: "tozero",
+            },
             margin: { t: 20, r: 16, b: 56, l: 64 },
-            paper_bgcolor: "rgba(0,0,0,0)",
-            plot_bgcolor: "rgba(0,0,0,0)",
-            font: { color: "#c9d1d9" },
-            legend: { orientation: "h", y: -0.22 }
+            legend: { ...summaryBase.legend, orientation: "h", y: -0.22 },
         };
         Plotly.newPlot(this.el.summaryPlot, [], this.summaryPlotLayout,
             { responsive: true, displayModeBar: false });
@@ -3637,7 +3645,13 @@ class ViscometryDashboard {
 
         const s = exp.settings || {};
         const cellLabelsSummary = s.cell_content_map && typeof s.cell_content_map === "object"
-            ? Object.entries(s.cell_content_map).map(([cellId, label]) => `C${cellId}: ${label}`).join(" | ")
+            ? (exp.cells || [])
+                .map((cellId) => {
+                    const label = s.cell_content_map[cellId] ?? s.cell_content_map[String(cellId)];
+                    return label ? `C${cellId}: ${label}` : null;
+                })
+                .filter(Boolean)
+                .join(" | ")
             : "";
         const feedbackRows = s.feedback_control_enabled ? [
             `<strong>Feedback enabled:</strong> Yes`,
@@ -3874,7 +3888,7 @@ class ViscometryDashboard {
                     y0: 0,
                     y1: 1,
                     yref: "paper",
-                    line: { color: "#ff4d4f", width: 2, dash: "dash" },
+                    line: { color: "rgb(255, 59, 48)", width: 2, dash: "dash" },
                 }))
                 : [];
             const layout = {
@@ -4429,7 +4443,7 @@ class ViscometryDashboard {
                         type: "scatter",
                         name: `RPM ${rpm} trimmed`,
                         legendgroup: `rpm${rpm}`,
-                        marker: { size: 9, color, line: { width: 1, color: "#1a1a1a" } },
+                        marker: { size: 9, color, line: { width: 1, color: "rgb(18, 24, 38)" } },
                         showlegend: idx === 0,
                     });
                 }
@@ -4472,12 +4486,16 @@ class ViscometryDashboard {
                 paramsBody.innerHTML = paramRows.join("");
             }
 
+            const pvBase = this._buildLivePlotLayout({
+                yTitle: "Rotational drag",
+                showLegend: true,
+            });
             const layout = {
-                margin: { t: 24, r: 16, b: 40, l: 52 },
-                xaxis: { title: "Z (mm)" },
-                yaxis: { title: "Rotational drag" },
+                ...pvBase,
                 showlegend: true,
-                legend: { orientation: "h", y: 1.12 },
+                margin: { t: 24, r: 16, b: 40, l: 52 },
+                xaxis: { ...pvBase.xaxis, title: "Z (mm)" },
+                legend: { ...pvBase.legend, orientation: "h", y: 1.12 },
             };
 
             Plotly.react(plotEl, traces, layout, { responsive: true, displayModeBar: false });
