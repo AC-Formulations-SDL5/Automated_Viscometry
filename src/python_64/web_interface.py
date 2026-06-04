@@ -20,6 +20,51 @@ from calibration_store import (
     update_calibration_for_cells,
 )
 
+
+class _MeasurementEmitBuffer:
+    """Batch live measurement socket emissions to reduce broadcast churn."""
+
+    FLUSH_INTERVAL_S = 0.075
+    MAX_BATCH = 25
+
+    def __init__(self, socketio: SocketIO):
+        self._socketio = socketio
+        self._lock = threading.Lock()
+        self._buffer: List[Dict] = []
+        self._timer: Optional[threading.Timer] = None
+
+    def add(self, measurement: Dict) -> None:
+        with self._lock:
+            self._buffer.append(measurement)
+            if len(self._buffer) >= self.MAX_BATCH:
+                self._flush_locked()
+            elif self._timer is None:
+                self._timer = threading.Timer(self.FLUSH_INTERVAL_S, self._flush_timer)
+                self._timer.daemon = True
+                self._timer.start()
+
+    def flush(self) -> None:
+        with self._lock:
+            self._flush_locked()
+
+    def _flush_timer(self) -> None:
+        with self._lock:
+            self._flush_locked()
+
+    def _flush_locked(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+        if not self._buffer:
+            return
+        batch = self._buffer
+        self._buffer = []
+        try:
+            self._socketio.emit('new_measurement', batch)
+        except Exception as emit_error:
+            print(f"Warning: Failed to emit measurement batch: {emit_error}")
+
+
 class ViscometryWebInterface:
     def __init__(self, port=5001):
         # Set template and static folder paths relative to project root
@@ -30,7 +75,8 @@ class ViscometryWebInterface:
         
         self.app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
         self.app.config['SECRET_KEY'] = 'viscometry_secret_key'
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode="threading")
+        self._measurement_emit_buffer = _MeasurementEmitBuffer(self.socketio)
         self.port = port
         
         # Current state
@@ -403,7 +449,7 @@ class ViscometryWebInterface:
         @self.socketio.on('connect')
         def handle_connect():
             try:
-                emit('status_update', self.get_status_dict())
+                emit('status_update', self.get_connect_status_dict())
                 emit('control_settings_update', self.get_runtime_settings())
                 review_session = self.get_calibration_review_session()
                 if review_session:
@@ -549,6 +595,13 @@ class ViscometryWebInterface:
                 'calibration_review': None,
                 'calibration_review_pending': False,
             }
+
+    def get_connect_status_dict(self) -> Dict:
+        """Socket connect payload: full run state without bulk measurement arrays."""
+        status = self.get_status_dict()
+        status.pop('measurement_data', None)
+        status['measurement_count'] = len(self.measurement_data)
+        return status
 
     def has_pending_calibration_review(self) -> bool:
         with self.control_lock:
@@ -1146,6 +1199,10 @@ class ViscometryWebInterface:
             self.predicted_viscosity_results = {}
             self.rpm_torque_status_by_cell = {}
         self.clear_terminate_current_cell_request()
+        try:
+            self._measurement_emit_buffer.flush()
+        except Exception:
+            pass
         self.socketio.emit('clear_dashboard')
 
     def emit_rpm_torque_status(
@@ -1278,11 +1335,11 @@ class ViscometryWebInterface:
             }
             self.measurement_data.append(measurement)
             
-            # Emit to connected clients
+            # Emit to connected clients (batched)
             try:
-                self.socketio.emit('new_measurement', measurement)
+                self._measurement_emit_buffer.add(measurement)
             except Exception as emit_error:
-                print(f"Warning: Failed to emit measurement: {emit_error}")
+                print(f"Warning: Failed to queue measurement emit: {emit_error}")
         except Exception as e:
             print(f"Error in add_measurement_point: {e}")
         
