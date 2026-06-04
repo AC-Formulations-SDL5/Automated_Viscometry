@@ -629,17 +629,23 @@ body.running .header-sweep {
 }
 
 .tracking-grid-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tracking-row {
     display: grid;
-    grid-template-columns: minmax(200px, 1fr) minmax(110px, 0.55fr) minmax(160px, 0.85fr) minmax(120px, 0.5fr);
     gap: 10px;
     align-items: stretch;
 }
 
-.tracking-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-height: 0;
+.tracking-row-primary {
+    grid-template-columns: minmax(180px, 1.2fr) minmax(100px, 0.7fr) minmax(120px, 0.8fr);
+}
+
+.tracking-row-secondary {
+    grid-template-columns: minmax(160px, 1.2fr) minmax(100px, 0.75fr) minmax(100px, 0.75fr);
 }
 
 .tracking-col-gauge,
@@ -3261,24 +3267,20 @@ body.loading .skeleton-lines {
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     }
 
-    .tracking-grid-compact {
+    .tracking-row-primary {
         grid-template-columns: 1fr 1fr;
     }
 
-    .tracking-col-gauge {
-        grid-column: 1;
+    .tracking-row-primary .tracking-col-gauge {
+        grid-column: 1 / -1;
     }
 
-    .tracking-col-pos {
-        grid-column: 2;
+    .tracking-row-secondary {
+        grid-template-columns: 1fr 1fr;
     }
 
-    .tracking-col-torque {
-        grid-column: 1;
-    }
-
-    .tracking-col-meta {
-        grid-column: 2;
+    .tracking-row-secondary .tracking-col-torque {
+        grid-column: 1 / -1;
     }
 
     .protocol-flowchart {
@@ -3314,6 +3316,16 @@ body.loading .skeleton-lines {
     .controls-tracking-grid,
     .tracking-grid {
         grid-template-columns: 1fr;
+    }
+
+    .tracking-row-primary,
+    .tracking-row-secondary {
+        grid-template-columns: 1fr;
+    }
+
+    .tracking-row-primary .tracking-col-gauge,
+    .tracking-row-secondary .tracking-col-torque {
+        grid-column: auto;
     }
 
     .controls-right-stack {
