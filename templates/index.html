@@ -221,21 +221,33 @@
                                     <input id="torque-break-threshold" name="torque_break_threshold" type="number" step="0.1" value="100">
                                 </label>
                             </div>
-                            <label class="checkbox-row">
-                                <input id="feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
-                                <span>Feedback control enabled</span>
+                            <label class="ui-switch-row">
+                                <span class="ui-switch">
+                                    <input id="feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
+                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                </span>
+                                <span class="ui-switch-label">Feedback control enabled</span>
                             </label>
-                            <label class="checkbox-row">
-                                <input id="smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox" checked>
-                                <span>Smart Early Exit (CV-based)</span>
+                            <label class="ui-switch-row">
+                                <span class="ui-switch">
+                                    <input id="smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox" checked>
+                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                </span>
+                                <span class="ui-switch-label">Smart Early Exit (CV-based)</span>
                             </label>
-                            <label class="checkbox-row">
-                                <input id="fail-safe-enabled" name="fail_safe_enabled" type="checkbox" checked>
-                                <span>Fail-Safe Termination (sub-threshold)</span>
+                            <label class="ui-switch-row">
+                                <span class="ui-switch">
+                                    <input id="fail-safe-enabled" name="fail_safe_enabled" type="checkbox" checked>
+                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                </span>
+                                <span class="ui-switch-label">Fail-Safe Termination (sub-threshold)</span>
                             </label>
-                            <label class="checkbox-row">
-                                <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox" checked>
-                                <span>Skip Z-levels until liquid contact (regular runs only; not calibration / recalibration)</span>
+                            <label class="ui-switch-row">
+                                <span class="ui-switch">
+                                    <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox" checked>
+                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                </span>
+                                <span class="ui-switch-label">Skip Z-levels until liquid contact (regular runs only; not calibration / recalibration)</span>
                             </label>
                             <div id="viscosity-predictions-panel" class="viscosity-predictions-panel" data-mode="off">
                                 <div class="viscosity-predictions-header">
@@ -379,17 +391,26 @@
 
                                     <div class="cal-checklist">
                                         <p class="cal-checklist-title">⚠ Pre-Calibration Checklist</p>
-                                        <label class="cal-check-item">
-                                            <input type="checkbox" id="cal-check-empty" class="cal-checkbox">
-                                            <span>All cells are <strong>empty and clean</strong> — no sample loaded in any cell</span>
+                                        <label class="cal-check-item ui-switch-row ui-switch-row--align-start">
+                                            <span class="ui-switch">
+                                                <input type="checkbox" id="cal-check-empty" class="cal-checkbox">
+                                                <span class="ui-switch-track" aria-hidden="true"></span>
+                                            </span>
+                                            <span class="ui-switch-label">All cells are <strong>empty and clean</strong> — no sample loaded in any cell</span>
                                         </label>
-                                        <label class="cal-check-item">
-                                            <input type="checkbox" id="cal-check-feedback" class="cal-checkbox">
-                                            <span>Feedback (hit-point detection) is <strong>enabled</strong> in the experiment settings above</span>
+                                        <label class="cal-check-item ui-switch-row ui-switch-row--align-start">
+                                            <span class="ui-switch">
+                                                <input type="checkbox" id="cal-check-feedback" class="cal-checkbox">
+                                                <span class="ui-switch-track" aria-hidden="true"></span>
+                                            </span>
+                                            <span class="ui-switch-label">Feedback (hit-point detection) is <strong>enabled</strong> in the experiment settings above</span>
                                         </label>
-                                        <label class="cal-check-item">
-                                            <input type="checkbox" id="cal-check-smart-exit" class="cal-checkbox">
-                                            <span>Smart Early Exit is <strong>disabled</strong> (unchecked above)</span>
+                                        <label class="cal-check-item ui-switch-row ui-switch-row--align-start">
+                                            <span class="ui-switch">
+                                                <input type="checkbox" id="cal-check-smart-exit" class="cal-checkbox">
+                                                <span class="ui-switch-track" aria-hidden="true"></span>
+                                            </span>
+                                            <span class="ui-switch-label">Smart Early Exit is <strong>disabled</strong> (unchecked above)</span>
                                         </label>
                                     </div>
 
@@ -428,36 +449,39 @@
 
                                     <!-- Recalibration Mode Toggle and Cell Selector -->
                                     <div class="cal-recalibration-section">
-                                        <label class="cal-recalibration-toggle">
-                                            <input type="checkbox" id="cal-recalibrate-individual" class="cal-checkbox">
-                                            <span>Recalibrate Individual Cells</span>
+                                        <label class="cal-recalibration-toggle ui-switch-row">
+                                            <span class="ui-switch">
+                                                <input type="checkbox" id="cal-recalibrate-individual" class="cal-checkbox">
+                                                <span class="ui-switch-track" aria-hidden="true"></span>
+                                            </span>
+                                            <span class="ui-switch-label">Recalibrate Individual Cells</span>
                                         </label>
                                         <div id="cal-cell-selector-container" class="cal-cell-selector-container hidden">
                                             <p class="cal-section-label">Select Cells to Recalibrate</p>
                                             <div class="cal-cell-grid">
                                                 <div class="cal-cell-row">
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="1"> Cell 1</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="2"> Cell 2</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="3"> Cell 3</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="4"> Cell 4</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="5"> Cell 5</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="6"> Cell 6</label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="1"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 1</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="2"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 2</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="3"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 3</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="4"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 4</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="5"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 5</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="6"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 6</span></label>
                                                 </div>
                                                 <div class="cal-cell-row">
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="7"> Cell 7</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="8"> Cell 8</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="9"> Cell 9</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="10"> Cell 10</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="11"> Cell 11</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="12"> Cell 12</label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="7"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 7</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="8"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 8</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="9"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 9</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="10"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 10</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="11"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 11</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="12"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 12</span></label>
                                                 </div>
                                                 <div class="cal-cell-row">
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="13"> Cell 13</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="14"> Cell 14</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="15"> Cell 15</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="16"> Cell 16</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="17"> Cell 17</label>
-                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="18"> Cell 18</label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="13"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 13</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="14"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 14</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="15"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 15</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="16"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 16</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="17"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 17</span></label>
+                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="18"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 18</span></label>
                                                 </div>
                                             </div>
                                             <div id="cal-custom-z-container" class="cal-custom-z-container">
@@ -465,6 +489,16 @@
                                                 <p class="cal-custom-z-hint">Leave empty to auto-detect. Enter custom Z value to start recalibration from a specific height.</p>
                                                 <div id="cal-cell-z-inputs" class="cal-cell-z-inputs"></div>
                                             </div>
+                                            <label class="cal-recalibration-toggle cal-recalibration-max-z-toggle ui-switch-row">
+                                                <span class="ui-switch">
+                                                    <input type="checkbox" id="cal-recalibration-ignore-max-z" class="cal-checkbox">
+                                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                                </span>
+                                                <span class="ui-switch-label">Ignore row max-Z-travel (use global floor −66.8 mm)</span>
+                                            </label>
+                                            <p class="cal-custom-z-hint cal-recalibration-max-z-hint">
+                                                Recalibration only — not full calibration or regular runs. Use when the hitpoint may be below the row max-Z limit.
+                                            </p>
                                         </div>
                                     </div>
 
@@ -806,13 +840,19 @@
                             <div id="summary-meta-right" class="summary-meta-col summary-meta-feedback"></div>
                         </div>
                         <div class="run-settings-form" style="margin-top:10px;">
-                            <label class="checkbox-row">
-                                <input id="summary-show-hit-line" type="checkbox">
-                                <span>Show hit point marker (red line)</span>
+                            <label class="ui-switch-row">
+                                <span class="ui-switch">
+                                    <input id="summary-show-hit-line" type="checkbox">
+                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                </span>
+                                <span class="ui-switch-label">Show hit point marker (red line)</span>
                             </label>
-                            <label class="checkbox-row">
-                                <input id="summary-align-hitpoint" type="checkbox">
-                                <span>Align traces to hit point (hit = 0 mm)</span>
+                            <label class="ui-switch-row">
+                                <span class="ui-switch">
+                                    <input id="summary-align-hitpoint" type="checkbox">
+                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                </span>
+                                <span class="ui-switch-label">Align traces to hit point (hit = 0 mm)</span>
                             </label>
                         </div>
                         <div id="summary-custom-hitpoint-controls" style="margin-top:12px;">

@@ -280,6 +280,7 @@ class ViscometryDashboard {
             calStartBtn: document.getElementById("cal-start-btn"),
             calStartRecalibrationBtn: document.getElementById("cal-start-recalibration-btn"),
             calRecalibrateIndividual: document.getElementById("cal-recalibrate-individual"),
+            calRecalibrationIgnoreMaxZ: document.getElementById("cal-recalibration-ignore-max-z"),
             calCellSelectorContainer: document.getElementById("cal-cell-selector-container"),
             calCellChecks: document.querySelectorAll(".cal-cell-check"),
             calCellZInputs: document.getElementById("cal-cell-z-inputs"),
@@ -2672,6 +2673,9 @@ class ViscometryDashboard {
                 checkbox.checked = false;
             });
             this.el.calCellZInputs.innerHTML = "";
+            if (this.el.calRecalibrationIgnoreMaxZ) {
+                this.el.calRecalibrationIgnoreMaxZ.checked = false;
+            }
             this.updateRecalibrationButtonState();
         }
     }
@@ -2750,6 +2754,9 @@ class ViscometryDashboard {
         const settings = this.readControlSettings();
         settings.recalibrate_individual_cells = true;
         settings.recalibration_cells = recalibrationCells;
+        settings.recalibration_ignore_max_z_travel = Boolean(
+            this.el.calRecalibrationIgnoreMaxZ?.checked
+        );
         settings.calibration_mode = false;  // Not full calibration mode
         settings.testing_mode = "custom";
         settings.selected_cells = selectedCells;

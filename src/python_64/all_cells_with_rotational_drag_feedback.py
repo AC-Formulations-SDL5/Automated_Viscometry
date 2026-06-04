@@ -114,6 +114,8 @@ CELL_VISCOSITY_RESULTS: Dict[int, Dict[float, dict]] = {}
 CALIBRATION_MODE = False          # Set to True when a calibration run is requested
 RECALIBRATE_INDIVIDUAL_CELLS = False  # Set to True for individual cell recalibration mode
 RECALIBRATION_CELLS = {}  # Dict[cell_id, optional_starting_z] for individual recalibration
+RECALIBRATION_IGNORE_MAX_Z_TRAVEL = False  # Recalibration only: use global floor instead of row max_z_travel
+RECALIBRATION_ABSOLUTE_MAX_Z_TRAVEL = -66.800  # Global Z floor when override is enabled (mm)
 CALIBRATION_OFFSET = 0.4         # mm above rough hitpoint to use as safe_z
 
 # ========== TESTING MODE CONFIGURATION ==========
@@ -179,6 +181,7 @@ def apply_runtime_settings_from_web():
     global WEIGHT_R2_DRAG, WEIGHT_R2_CV, WEIGHT_R2_SLOPE
     global BASELINE_N_CALIBRATION, BASELINE_Z_THRESHOLD
     global CALIBRATION_MODE, RECALIBRATE_INDIVIDUAL_CELLS, RECALIBRATION_CELLS
+    global RECALIBRATION_IGNORE_MAX_Z_TRAVEL
     global LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED, LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT
     global VISCOSITY_PREDICTION_MODE
 
@@ -223,6 +226,9 @@ def apply_runtime_settings_from_web():
     BASELINE_Z_THRESHOLD = float(settings.get('baseline_z_threshold', BASELINE_Z_THRESHOLD))
     CALIBRATION_MODE = bool(settings.get('calibration_mode', False))
     RECALIBRATE_INDIVIDUAL_CELLS = bool(settings.get('recalibrate_individual_cells', False))
+    RECALIBRATION_IGNORE_MAX_Z_TRAVEL = bool(
+        settings.get('recalibration_ignore_max_z_travel', RECALIBRATION_IGNORE_MAX_Z_TRAVEL)
+    )
     LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = bool(
         settings.get('low_torque_liquid_contact_skip_enabled', LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED)
     )
@@ -1004,7 +1010,13 @@ def test_cell_dynamic_z_series(
     print(f"\n{'='*60}")
     print(f"DYNAMIC ANALYSIS - CELL {global_cell} (Row {row_number}, Local Cell {local_cell})")
     print(f"Testing RPMs {cell_rpms} across Z-gap range")
-    print(f"Safe Z: {safe_z:.3f}, Max Z Travel: {max_z_travel:.3f}")
+    use_row_z_limit = not (
+        RECALIBRATE_INDIVIDUAL_CELLS and RECALIBRATION_IGNORE_MAX_Z_TRAVEL
+    )
+    effective_max_z = max_z_travel if use_row_z_limit else RECALIBRATION_ABSOLUTE_MAX_Z_TRAVEL
+    z_limit_mode = "row limit" if use_row_z_limit else "global override (recalibration)"
+    print(f"Safe Z: {safe_z:.3f}, Row max Z travel: {max_z_travel:.3f}")
+    print(f"Effective max Z: {effective_max_z:.3f} ({z_limit_mode})")
     if custom_starting_z is not None:
         print(f"Custom Starting Z: {custom_starting_z:.3f}")
     print(f"Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}")
@@ -1053,6 +1065,10 @@ def test_cell_dynamic_z_series(
         # In calibration or recalibration mode, use the provided safe_z
         current_z = safe_z
     print(f"Starting from Z-safe: {current_z:.3f}")
+    if not use_row_z_limit:
+        web_interface.update_status(
+            f"Cell {global_cell}: recalibration ignoring row max-Z; floor Z={effective_max_z:.3f} mm"
+        )
 
     # Require persistent confidence trigger before terminating the Z-series.
     hit_confidence_threshold = 0.80
@@ -1068,7 +1084,7 @@ def test_cell_dynamic_z_series(
 
     step_count = 0
     try:
-        while current_z >= max_z_travel:
+        while current_z >= effective_max_z:
             raise_if_stop_requested()
             step_count += 1
             z_rounded = round(current_z, 3)
