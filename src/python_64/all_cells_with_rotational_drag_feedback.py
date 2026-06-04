@@ -17,8 +17,7 @@ from feedback_helper_function import RotationalDragFeedbackController
 from web_interface import web_interface
 from predicted_viscosity import predict_viscosity
 from calibration_store import (
-    is_calibrated, load_calibration, save_calibration,
-    update_calibration_for_cells, get_safe_z_for_cell, get_calibration_summary, clear_calibration
+    is_calibrated, load_calibration, get_safe_z_for_cell, get_calibration_summary, clear_calibration
 )
 
 # Ensure progress prints appear in real time even when launched in buffered contexts.
@@ -2157,11 +2156,21 @@ def main():
                     print(f"Cell {global_cell} testing completed")
 
                     if is_calibration_like_run:
-                        # Extract and save rough hitpoint for this cell
+                        # Extract rough hitpoint for post-run review (not auto-saved to disk)
                         rough_z = extract_rough_hitpoint(cell_data)
                         if rough_z is not None:
                             print(f"  Calibration: Cell {global_cell} rough hitpoint = {rough_z:.3f}")
                             calibration_cells[global_cell] = rough_z
+                            snapshot = [
+                                m for m in web_interface.measurement_data
+                                if isinstance(m, dict) and int(m.get("cell_id", -1)) == int(global_cell)
+                            ]
+                            web_interface.add_calibration_review_cell(
+                                global_cell,
+                                rough_z,
+                                snapshot,
+                                calibration_offset=CALIBRATION_OFFSET,
+                            )
                         else:
                             print(f"  Calibration: Cell {global_cell} — no reliable hitpoint found, skipping")
                         # Track calibration/recalibration progress for live cross-device UI sync.
@@ -2215,27 +2224,6 @@ def main():
             print(f"Saving final results...")
             
             web_interface.update_status("Saving final results...")
-            
-            # If this was a calibration or recalibration run, save per-cell rough hitpoints
-            if (CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS) and calibration_cells:
-                try:
-                    calibrated_at_local = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
-                    if RECALIBRATE_INDIVIDUAL_CELLS:
-                        # For individual cell recalibration, use update_calibration_for_cells to merge with existing data
-                        update_calibration_for_cells(calibration_cells, calibrated_at=calibrated_at_local)
-                        print(f"Updated calibration data for {len(calibration_cells)} cells (other cells preserved).")
-                        web_interface.update_status("Individual cell recalibration complete — Z-height data updated")
-                    else:
-                        # For full calibration, replace all calibration data
-                        save_calibration(calibration_cells, calibrated_at=calibrated_at_local)
-                        print(f"Calibration data saved for {len(calibration_cells)} cells.")
-                        web_interface.update_status("Calibration complete — Z-height data saved")
-                    try:
-                        web_interface.emit_calibration_complete(get_calibration_summary())
-                    except Exception:
-                        pass
-                except Exception as e:
-                    print(f"Error saving calibration data: {e}")
 
             csv_filename = save_dynamic_analysis_data(
                 all_data,
@@ -2246,8 +2234,19 @@ def main():
             )
             print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
             print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            
-            web_interface.update_status("Experiment completed successfully")
+
+            if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                review_type = "recalibration" if RECALIBRATE_INDIVIDUAL_CELLS else "calibration"
+                if web_interface.open_calibration_review_if_needed(
+                    review_type, calibration_offset=CALIBRATION_OFFSET
+                ):
+                    web_interface.update_status(
+                        "Run finished — review calibration data (Save or Discard each cell)"
+                    )
+                else:
+                    web_interface.update_status("Experiment completed successfully")
+            else:
+                web_interface.update_status("Experiment completed successfully")
             
         except KeyboardInterrupt:
             print(f"\nExperiment interrupted by user")
@@ -2262,6 +2261,11 @@ def main():
                     run_experiment_name,
                     termination_by_cell=termination_by_cell,
                 )
+            if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                review_type = "recalibration" if RECALIBRATE_INDIVIDUAL_CELLS else "calibration"
+                web_interface.open_calibration_review_if_needed(
+                    review_type, calibration_offset=CALIBRATION_OFFSET
+                )
         except Exception as e:
             print(f"Critical error during experiment: {e}")
             traceback.print_exc()
@@ -2275,6 +2279,11 @@ def main():
                     completed_cells,
                     run_experiment_name,
                     termination_by_cell=termination_by_cell,
+                )
+            if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                review_type = "recalibration" if RECALIBRATE_INDIVIDUAL_CELLS else "calibration"
+                web_interface.open_calibration_review_if_needed(
+                    review_type, calibration_offset=CALIBRATION_OFFSET
                 )
         finally:
             # Cleanup hardware

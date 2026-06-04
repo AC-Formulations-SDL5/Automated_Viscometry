@@ -9,9 +9,16 @@ import threading
 import time
 import os
 import math
-from typing import Dict, List, Tuple, Optional
+import uuid
+from typing import Dict, List, Tuple, Optional, Any
 import json
-from calibration_store import is_calibrated, get_calibration_summary, clear_calibration
+from calibration_store import (
+    is_calibrated,
+    get_calibration_summary,
+    clear_calibration,
+    save_calibration,
+    update_calibration_for_cells,
+)
 
 class ViscometryWebInterface:
     def __init__(self, port=5001):
@@ -108,6 +115,11 @@ class ViscometryWebInterface:
         self.calibration_mode = False         # True when a calibration run is active
         self._calibration_summary = {}        # Cached summary from last calibration check
         self._refresh_calibration_summary()   # Populate on startup
+        self.calibration_review_session: Optional[dict] = None
+        self._calibration_review_pending: Dict[str, Any] = {
+            "completion_order": [],
+            "cells": {},
+        }
         
         # Platform configuration from your code
         self.X_LOW_BOUND = 0
@@ -216,6 +228,8 @@ class ViscometryWebInterface:
                 self.request_start()
                 self.update_status('Start command received from web interface')
                 return jsonify({'ok': True, 'status_message': self.status_message})
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
             except Exception as e:
                 print(f"Error in api_run_start: {e}")
                 return jsonify({'error': str(e)}), 500
@@ -317,9 +331,43 @@ class ViscometryWebInterface:
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
 
+        @self.app.route('/api/calibration/review', methods=['GET'])
+        def api_calibration_review_get():
+            try:
+                return jsonify(self.get_calibration_review_session())
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/calibration/review/decision', methods=['POST'])
+        def api_calibration_review_decision():
+            try:
+                payload = request.get_json(silent=True) or {}
+                session_id = payload.get('session_id')
+                cell_id = payload.get('cell_id')
+                action = payload.get('action')
+                session = self.apply_calibration_review_decision(session_id, cell_id, action)
+                return jsonify({'ok': True, 'session': session})
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/calibration/review/commit', methods=['POST'])
+        def api_calibration_review_commit():
+            try:
+                payload = request.get_json(silent=True) or {}
+                session_id = payload.get('session_id')
+                result = self.commit_calibration_review(session_id)
+                return jsonify({'ok': True, **result})
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
         @self.app.route('/api/run/start_calibration', methods=['POST'])
         def api_run_start_calibration():
             try:
+                self._reject_start_if_calibration_review_pending()
                 payload = request.get_json(silent=True) or {}
                 # Force calibration_mode flag into settings before starting
                 payload['calibration_mode'] = True
@@ -328,12 +376,15 @@ class ViscometryWebInterface:
                 self.request_start()
                 self.update_status('Calibration run started')
                 return jsonify({'ok': True, 'status_message': self.status_message})
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
         
         @self.app.route('/api/run/start_recalibration', methods=['POST'])
         def api_run_start_recalibration():
             try:
+                self._reject_start_if_calibration_review_pending()
                 payload = request.get_json(silent=True) or {}
                 # Force individual cell recalibration flags
                 payload['recalibrate_individual_cells'] = True
@@ -344,6 +395,8 @@ class ViscometryWebInterface:
                 self.broadcast_calibration_mode()
                 self.update_status('Individual cell recalibration run started')
                 return jsonify({'ok': True, 'status_message': self.status_message})
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
             
@@ -352,6 +405,9 @@ class ViscometryWebInterface:
             try:
                 emit('status_update', self.get_status_dict())
                 emit('control_settings_update', self.get_runtime_settings())
+                review_session = self.get_calibration_review_session()
+                if review_session:
+                    emit('calibration_review_open', review_session)
                 # Send current calibration status
                 try:
                     self._refresh_calibration_summary()
@@ -380,6 +436,7 @@ class ViscometryWebInterface:
         @self.socketio.on('start_run')
         def handle_start_run(payload=None):
             try:
+                self._reject_start_if_calibration_review_pending()
                 if isinstance(payload, dict) and payload:
                     self.update_runtime_settings(payload)
                 self.request_start()
@@ -461,6 +518,8 @@ class ViscometryWebInterface:
                 'recalibration_mode_active': recalibration_mode_active,
                 'recalibration_target_count': recalibration_target_count,
                 'predicted_viscosity_results': self._copy_predicted_viscosity_results(),
+                'calibration_review': self.get_calibration_review_session(),
+                'calibration_review_pending': self.has_pending_calibration_review(),
             }
         except Exception as e:
             print(f"Error in get_status_dict: {e}")
@@ -487,7 +546,228 @@ class ViscometryWebInterface:
                 'recalibration_mode_active': False,
                 'recalibration_target_count': 0,
                 'predicted_viscosity_results': {},
+                'calibration_review': None,
+                'calibration_review_pending': False,
             }
+
+    def has_pending_calibration_review(self) -> bool:
+        with self.control_lock:
+            return self.calibration_review_session is not None
+
+    def _reject_start_if_calibration_review_pending(self) -> None:
+        if self.has_pending_calibration_review():
+            raise ValueError(
+                "Finish the calibration save review (Save or Discard each cell) before starting a new run."
+            )
+
+    def reset_calibration_review_pending(self) -> None:
+        with self.control_lock:
+            self._calibration_review_pending = {"completion_order": [], "cells": {}}
+
+    def add_calibration_review_cell(
+        self,
+        cell_id: int,
+        rough_z: float,
+        measurements: Optional[List[dict]] = None,
+        calibration_offset: float = 0.4,
+    ) -> None:
+        """Queue a completed cell with a rough hitpoint for post-run review."""
+        key = str(int(cell_id))
+        rough = float(rough_z)
+        safe_z = rough + float(calibration_offset)
+        snapshot = []
+        if measurements:
+            for row in measurements:
+                if not isinstance(row, dict):
+                    continue
+                snapshot.append({
+                    "height": row.get("height"),
+                    "rotational_drag": row.get("rotational_drag"),
+                    "torque_percent": row.get("torque_percent"),
+                    "rpm": row.get("rpm"),
+                    "timestamp": row.get("timestamp"),
+                })
+        with self.control_lock:
+            pending = self._calibration_review_pending
+            if key not in pending["cells"]:
+                pending["completion_order"].append(int(cell_id))
+            pending["cells"][key] = {
+                "cell_id": int(cell_id),
+                "rough_z": rough,
+                "safe_z": safe_z,
+                "measurements": snapshot,
+            }
+
+    def _build_review_session_from_pending(
+        self,
+        run_type: str,
+        calibration_offset: float = 0.4,
+    ) -> Optional[dict]:
+        with self.control_lock:
+            pending = self._calibration_review_pending
+            order = list(pending.get("completion_order") or [])
+            raw_cells = pending.get("cells") or {}
+            if not order or not raw_cells:
+                return None
+            cells_out = {}
+            for cid in order:
+                key = str(int(cid))
+                entry = raw_cells.get(key)
+                if not entry:
+                    continue
+                cells_out[key] = {
+                    "cell_id": int(entry["cell_id"]),
+                    "rough_z": float(entry["rough_z"]),
+                    "safe_z": float(entry["safe_z"]),
+                    "measurements": list(entry.get("measurements") or []),
+                    "decision": "pending",
+                }
+            if not cells_out:
+                return None
+            session = {
+                "session_id": str(uuid.uuid4()),
+                "run_type": run_type if run_type in ("calibration", "recalibration") else "recalibration",
+                "calibration_offset": float(calibration_offset),
+                "completion_order": [int(c) for c in order if str(c) in cells_out],
+                "cells": cells_out,
+                "queued_saves": {},
+            }
+            self.calibration_review_session = session
+            self._calibration_review_pending = {"completion_order": [], "cells": {}}
+            return self._public_review_session_locked()
+
+    def _public_review_session_locked(self) -> Optional[dict]:
+        session = self.calibration_review_session
+        if not session:
+            return None
+        cells = {}
+        for key, cell in (session.get("cells") or {}).items():
+            cells[key] = dict(cell)
+        return {
+            "session_id": session.get("session_id"),
+            "run_type": session.get("run_type"),
+            "calibration_offset": session.get("calibration_offset"),
+            "completion_order": list(session.get("completion_order") or []),
+            "cells": cells,
+            "queued_saves": dict(session.get("queued_saves") or {}),
+        }
+
+    def get_calibration_review_session(self) -> Optional[dict]:
+        with self.control_lock:
+            return self._public_review_session_locked()
+
+    def open_calibration_review_if_needed(
+        self,
+        run_type: str,
+        calibration_offset: float = 0.4,
+    ) -> bool:
+        """Open review modal when at least one cell with a rough hitpoint was queued."""
+        if self.has_pending_calibration_review():
+            return True
+        session = self._build_review_session_from_pending(run_type, calibration_offset)
+        if not session:
+            return False
+        try:
+            self.socketio.emit("calibration_review_open", session)
+            self.update_status("Review calibration data — Save or Discard each cell")
+        except Exception as e:
+            print(f"Warning: failed to emit calibration_review_open: {e}")
+        return True
+
+    def apply_calibration_review_decision(
+        self,
+        session_id: str,
+        cell_id: int,
+        action: str,
+    ) -> dict:
+        action_norm = str(action or "").strip().lower()
+        if action_norm not in ("save", "discard"):
+            raise ValueError("action must be 'save' or 'discard'")
+        key = str(int(cell_id))
+        with self.control_lock:
+            session = self.calibration_review_session
+            if not session or session.get("session_id") != session_id:
+                raise ValueError("No active calibration review session")
+            cells = session.get("cells") or {}
+            if key not in cells:
+                raise ValueError(f"Cell {cell_id} is not in the review session")
+            cell = cells[key]
+            if cell.get("decision") != "pending":
+                raise ValueError(f"Cell {cell_id} was already resolved")
+            rough_z = float(cell["rough_z"])
+            if action_norm == "save":
+                cell["decision"] = "saved"
+                session.setdefault("queued_saves", {})[key] = rough_z
+            else:
+                cell["decision"] = "discarded"
+            public = self._public_review_session_locked()
+        try:
+            self.socketio.emit("calibration_review_update", public)
+        except Exception as e:
+            print(f"Warning: failed to emit calibration_review_update: {e}")
+        return public
+
+    def commit_calibration_review(self, session_id: str) -> dict:
+        with self.control_lock:
+            session = self.calibration_review_session
+            if not session or session.get("session_id") != session_id:
+                raise ValueError("No active calibration review session")
+            cells = session.get("cells") or {}
+            pending_ids = [
+                int(k) for k, c in cells.items() if c.get("decision") == "pending"
+            ]
+            if pending_ids:
+                raise ValueError(
+                    f"Resolve all cells before commit (pending: {sorted(pending_ids)})"
+                )
+            queued = session.get("queued_saves") or {}
+            run_type = session.get("run_type", "recalibration")
+            completion_order = session.get("completion_order") or []
+            saved_cells = {int(k): float(v) for k, v in queued.items()}
+            self.calibration_review_session = None
+
+        calibrated_at_local = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        try:
+            from datetime import datetime
+            calibrated_at_local = datetime.now().astimezone().isoformat(timespec="seconds")
+        except Exception:
+            pass
+
+        if saved_cells:
+            try:
+                if (
+                    run_type == "calibration"
+                    and len(completion_order) == 18
+                    and len(saved_cells) == 18
+                ):
+                    save_calibration(saved_cells, calibrated_at=calibrated_at_local)
+                else:
+                    update_calibration_for_cells(saved_cells, calibrated_at=calibrated_at_local)
+            except Exception as e:
+                raise ValueError(f"Failed to write calibration file: {e}") from e
+
+        self._refresh_calibration_summary()
+        summary = get_calibration_summary()
+        payload = {
+            "saved_cells": {str(k): float(v) for k, v in saved_cells.items()},
+            "summary": summary,
+        }
+        try:
+            self.socketio.emit("calibration_review_committed", payload)
+            self.socketio.emit("calibration_status_update", summary)
+            if saved_cells:
+                self.emit_calibration_complete(summary)
+        except Exception as e:
+            print(f"Warning: failed to emit calibration_review_committed: {e}")
+
+        if saved_cells:
+            self.update_status(
+                f"Calibration saved for {len(saved_cells)} cell(s)"
+            )
+        else:
+            self.update_status("Calibration review complete — no cells saved")
+
+        return payload
 
     def get_runtime_settings(self) -> Dict:
         """Get a copy of the current runtime settings."""
@@ -681,6 +961,7 @@ class ViscometryWebInterface:
 
     def request_start(self):
         """Mark that the experiment should start."""
+        self._reject_start_if_calibration_review_pending()
         try:
             self.stop_all_testing_devices()
         except Exception:
@@ -852,6 +1133,7 @@ class ViscometryWebInterface:
 
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
+        self.reset_calibration_review_pending()
         with self.control_lock:
             self.measurement_data = []
             self.current_cell = None

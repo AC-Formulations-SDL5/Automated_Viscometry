@@ -103,6 +103,11 @@ class ViscometryDashboard {
     this.calibrationModeActive = false;  // Server's calibration mode state (persists across page reloads)
     this.recalibrationModeActive = false;
     this.recalibrationTargetCount = 0;
+        this.calibrationReviewSession = null;
+        this.calibrationReviewActiveCellId = null;
+        this.calibrationReviewPending = false;
+        this.calibrationReviewPlotInitialized = false;
+        this.calibrationReviewDecisionInFlight = false;
 
         this.initElements();
         this.bindUI();
@@ -289,6 +294,17 @@ class ViscometryDashboard {
             loadOldExperimentList: document.getElementById("load-old-experiment-list"),
             loadOldExperimentBtn: document.getElementById("load-old-experiment-btn"),
             loadOldExperimentStatus: document.getElementById("load-old-experiment-status"),
+            calReviewBackdrop: document.getElementById("calibration-review-backdrop"),
+            calReviewModal: document.getElementById("calibration-review-modal"),
+            calReviewTabs: document.getElementById("calibration-review-tabs"),
+            calReviewPlot: document.getElementById("calibration-review-plot"),
+            calReviewSummary: document.getElementById("calibration-review-summary"),
+            calReviewSave: document.getElementById("calibration-review-save"),
+            calReviewDiscard: document.getElementById("calibration-review-discard"),
+            calSavedBackdrop: document.getElementById("calibration-saved-backdrop"),
+            calSavedBody: document.getElementById("calibration-saved-body"),
+            calSavedClose: document.getElementById("calibration-saved-close"),
+            calSavedOk: document.getElementById("calibration-saved-ok"),
         };
     }
 
@@ -510,6 +526,19 @@ class ViscometryDashboard {
         // Start recalibration run
         if (this.el.calStartRecalibrationBtn) {
             this.el.calStartRecalibrationBtn.addEventListener("click", () => this.startRecalibrationRun());
+        }
+
+        if (this.el.calReviewSave) {
+            this.el.calReviewSave.addEventListener("click", () => this.onCalibrationReviewSave());
+        }
+        if (this.el.calReviewDiscard) {
+            this.el.calReviewDiscard.addEventListener("click", () => this.onCalibrationReviewDiscard());
+        }
+        if (this.el.calSavedClose) {
+            this.el.calSavedClose.addEventListener("click", () => this.hideCalibrationSavedModal());
+        }
+        if (this.el.calSavedOk) {
+            this.el.calSavedOk.addEventListener("click", () => this.hideCalibrationSavedModal());
         }
         this.bindTestingControls();
     }
@@ -833,6 +862,9 @@ class ViscometryDashboard {
                     predictedViscosity || status.predicted_viscosity_results
                 );
                 this.applyCalibrationStatus(calSummary);
+                if (status.calibration_review) {
+                    this.openCalibrationReview(status.calibration_review);
+                }
                 this.el.body.classList.remove("loading");
                 this.pushStatusMessage(status.status_message || "Connected and ready");
             })
@@ -1149,6 +1181,10 @@ class ViscometryDashboard {
     }
 
     startRunFromUI() {
+        if (this.calibrationReviewPending) {
+            this.pushStatusMessage("Finish calibration save review before starting a new run");
+            return;
+        }
         if (this.uiState !== "ready") {
             this.setControlStatus("Apply settings before starting");
             return;
@@ -1433,13 +1469,22 @@ class ViscometryDashboard {
         });
 
         this.socket.on("calibration_complete", (summary) => {
-            this.applyCalibrationStatus(summary);
-            this.pushStatusMessage("✓ Calibration complete — Z-height data saved for all cells");
-            // Auto-open panel so user sees the green confirmation
-            if (!this.calibrationPanelOpen) {
-                this.toggleCalibrationPanel(true);
+            if (summary) {
+                this.applyCalibrationStatus(summary);
             }
             this.isCalibrationRun = false;
+        });
+
+        this.socket.on("calibration_review_open", (session) => {
+            this.openCalibrationReview(session);
+        });
+
+        this.socket.on("calibration_review_update", (session) => {
+            this.syncCalibrationReviewSession(session);
+        });
+
+        this.socket.on("calibration_review_committed", (payload) => {
+            this.onCalibrationReviewCommitted(payload);
         });
 
     }
@@ -1611,6 +1656,14 @@ class ViscometryDashboard {
 
         if (status.calibration_mode !== undefined) {
             this.calibrationModeActive = Boolean(status.calibration_mode);
+        }
+
+        if (status.calibration_review_pending !== undefined) {
+            this.calibrationReviewPending = Boolean(status.calibration_review_pending);
+            this.updateCalibrationReviewStartGuard();
+        }
+        if (status.calibration_review) {
+            this.openCalibrationReview(status.calibration_review);
         }
 
         if (status.current_rpm !== undefined) {
@@ -2447,6 +2500,7 @@ class ViscometryDashboard {
             startBtn.disabled = true;
             stopBtn.disabled = true;
             applyBtn.disabled = false;
+            this.updateCalibrationReviewStartGuard();
         } else if (state === "ready") {
             applyBtn.classList.add("is-idle");
             startBtn.classList.add("is-active");
@@ -2454,6 +2508,7 @@ class ViscometryDashboard {
             applyBtn.disabled = false;
             startBtn.disabled = false;
             stopBtn.disabled = true;
+            this.updateCalibrationReviewStartGuard();
         } else if (state === "running") {
             applyBtn.classList.add("is-idle");
             startBtn.classList.add("is-idle");
@@ -2626,6 +2681,10 @@ class ViscometryDashboard {
     }
 
     startCalibrationRun() {
+        if (this.calibrationReviewPending) {
+            this.pushStatusMessage("Finish calibration save review before starting a new run");
+            return;
+        }
         if (!this.calChecksComplete) {
             this.pushStatusMessage("Complete the calibration checklist before starting");
             return;
@@ -2725,6 +2784,10 @@ class ViscometryDashboard {
     }
 
     startRecalibrationRun() {
+        if (this.calibrationReviewPending) {
+            this.pushStatusMessage("Finish calibration save review before starting a new run");
+            return;
+        }
         const selectedCells = [];
         this.el.calCellChecks.forEach((checkbox) => {
             if (checkbox.checked) {
@@ -4619,6 +4682,383 @@ class ViscometryDashboard {
         URL.revokeObjectURL(url);
 
         this.pushStatusMessage("CSV export generated");
+    }
+
+    updateCalibrationReviewStartGuard() {
+        const blocked = Boolean(this.calibrationReviewPending);
+        if (this.el.startRun && this.uiState === "ready") {
+            this.el.startRun.disabled = blocked;
+        }
+        if (this.el.calStartBtn) {
+            this.el.calStartBtn.disabled = blocked || !this.calChecksComplete || this.isRunning;
+        }
+        if (this.el.calStartRecalibrationBtn) {
+            this.updateRecalibrationButtonState();
+            if (blocked && this.el.calStartRecalibrationBtn) {
+                this.el.calStartRecalibrationBtn.disabled = true;
+            }
+        }
+    }
+
+    syncCalibrationReviewSession(session) {
+        if (!session || !session.session_id) {
+            return;
+        }
+        this.calibrationReviewSession = session;
+        this.calibrationReviewPending = true;
+        this.updateCalibrationReviewStartGuard();
+        this.renderCalibrationReviewTabs();
+        const pending = this.getPendingReviewCellIds();
+        if (pending.length === 0) {
+            this.commitCalibrationReview();
+            return;
+        }
+        if (!pending.includes(this.calibrationReviewActiveCellId)) {
+            this.calibrationReviewActiveCellId = pending[0];
+        }
+        this.renderCalibrationReviewCellView(this.calibrationReviewActiveCellId);
+    }
+
+    openCalibrationReview(session) {
+        if (!session || !session.session_id) {
+            return;
+        }
+        this.calibrationReviewSession = session;
+        this.calibrationReviewPending = true;
+        this.isCalibrationRun = false;
+        this.updateCalibrationReviewStartGuard();
+
+        const pending = this.getPendingReviewCellIds();
+        if (pending.length === 0) {
+            this.closeCalibrationReviewModal();
+            return;
+        }
+        this.calibrationReviewActiveCellId = pending[0];
+
+        if (this.el.calReviewBackdrop) {
+            this.el.calReviewBackdrop.classList.remove("hidden");
+            this.el.calReviewBackdrop.setAttribute("aria-hidden", "false");
+        }
+        this.el.body.classList.add("calibration-review-active");
+        this.renderCalibrationReviewTabs();
+        this.renderCalibrationReviewCellView(this.calibrationReviewActiveCellId);
+        this.pushStatusMessage("Review calibration data — Save or Discard each cell");
+    }
+
+    closeCalibrationReviewModal() {
+        this.calibrationReviewPending = false;
+        this.calibrationReviewSession = null;
+        this.calibrationReviewActiveCellId = null;
+        if (this.el.calReviewBackdrop) {
+            this.el.calReviewBackdrop.classList.add("hidden");
+            this.el.calReviewBackdrop.setAttribute("aria-hidden", "true");
+        }
+        this.el.body.classList.remove("calibration-review-active");
+        this.updateCalibrationReviewStartGuard();
+    }
+
+    getPendingReviewCellIds() {
+        const session = this.calibrationReviewSession;
+        if (!session) {
+            return [];
+        }
+        const order = session.completion_order || [];
+        const cells = session.cells || {};
+        return order.filter((cellId) => {
+            const key = String(cellId);
+            const entry = cells[key];
+            return entry && entry.decision === "pending";
+        });
+    }
+
+    getReviewCellEntry(cellId) {
+        const session = this.calibrationReviewSession;
+        if (!session) {
+            return null;
+        }
+        return session.cells?.[String(cellId)] || null;
+    }
+
+    getMeasurementsForReviewCell(cellId) {
+        const entry = this.getReviewCellEntry(cellId);
+        const fromSession = entry?.measurements;
+        if (Array.isArray(fromSession) && fromSession.length > 0) {
+            return fromSession.map((m) => ({
+                height: Number(m.height),
+                rotational_drag: Number(m.rotational_drag),
+                torque_percent: Number(m.torque_percent),
+                rpm: Number(m.rpm),
+                timestamp: m.timestamp,
+                cell_id: Number(cellId),
+            })).filter((m) => Number.isFinite(m.height) && Number.isFinite(m.rpm));
+        }
+        return (this.measurementsByCell.get(Number(cellId)) || []).slice();
+    }
+
+    renderCalibrationReviewTabs() {
+        const tabsEl = this.el.calReviewTabs;
+        const session = this.calibrationReviewSession;
+        if (!tabsEl || !session) {
+            return;
+        }
+        const order = session.completion_order || [];
+        const cells = session.cells || {};
+        tabsEl.innerHTML = "";
+        order.forEach((cellId) => {
+            const key = String(cellId);
+            const entry = cells[key];
+            if (!entry) {
+                return;
+            }
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "calibration-review-tab";
+            if (entry.decision !== "pending") {
+                btn.classList.add("resolved");
+            }
+            if (Number(cellId) === Number(this.calibrationReviewActiveCellId)) {
+                btn.classList.add("active");
+            }
+            btn.textContent = `Cell ${cellId}`;
+            if (entry.decision === "pending") {
+                btn.addEventListener("click", () => {
+                    this.calibrationReviewActiveCellId = Number(cellId);
+                    this.renderCalibrationReviewTabs();
+                    this.renderCalibrationReviewCellView(this.calibrationReviewActiveCellId);
+                });
+            }
+            tabsEl.appendChild(btn);
+        });
+    }
+
+    renderCalibrationReviewSummary(cellId) {
+        const box = this.el.calReviewSummary;
+        const entry = this.getReviewCellEntry(cellId);
+        if (!box || !entry) {
+            return;
+        }
+        const offset = Number(this.calibrationReviewSession?.calibration_offset ?? 0.4);
+        const rpms = this.getRpmsForCell(cellId);
+        const rpmText = rpms.length ? rpms.map((r) => Number(r).toFixed(3)).join(", ") : "—";
+        box.innerHTML = `
+            <div><strong>Cell ${cellId}</strong></div>
+            <div>Rough hitpoint Z: <strong>${Number(entry.rough_z).toFixed(3)} mm</strong></div>
+            <div>Saved safe Z (rough + ${offset.toFixed(1)} mm): <strong>${Number(entry.safe_z).toFixed(3)} mm</strong></div>
+            <div>RPMs tested: ${rpmText}</div>
+        `;
+    }
+
+    renderCalibrationReviewCellView(cellId) {
+        if (!Number.isFinite(cellId)) {
+            return;
+        }
+        this.renderCalibrationReviewSummary(cellId);
+        this.renderCalibrationReviewPlot(cellId);
+        const pending = this.getPendingReviewCellIds();
+        const isPending = pending.includes(cellId);
+        if (this.el.calReviewSave) {
+            this.el.calReviewSave.disabled = !isPending || this.calibrationReviewDecisionInFlight;
+        }
+        if (this.el.calReviewDiscard) {
+            this.el.calReviewDiscard.disabled = !isPending || this.calibrationReviewDecisionInFlight;
+        }
+    }
+
+    renderCalibrationReviewPlot(cellId) {
+        const plotEl = this.el.calReviewPlot;
+        if (!plotEl || typeof Plotly === "undefined") {
+            return;
+        }
+        const measurements = this.getMeasurementsForReviewCell(cellId);
+        const entry = this.getReviewCellEntry(cellId);
+        const roughZ = entry ? Number(entry.rough_z) : NaN;
+        const orderedRpms = this.expandRpmsWithObserved(this.getRpmsForCell(cellId), measurements);
+        const floor = this._torqueFloorPctForLivePlots();
+        const buckets = this.partitionMeasurementsByRpm(measurements, orderedRpms);
+        const traces = orderedRpms
+            .map((rpm) => {
+                const key = Number(rpm).toFixed(3);
+                const points = buckets.get(key) || [];
+                if (points.length === 0) {
+                    return null;
+                }
+                return this._buildDragTraceForRpm(rpm, points, floor, orderedRpms);
+            })
+            .filter(Boolean);
+
+        if (!this.calibrationReviewPlotInitialized) {
+            this.calibrationReviewPlotLayout = {
+                margin: { t: 28, r: 16, b: 44, l: 52 },
+                paper_bgcolor: "rgba(0,0,0,0)",
+                plot_bgcolor: "rgba(255,255,255,0.35)",
+                font: { family: "DM Sans, sans-serif", size: 11, color: "rgb(72, 84, 110)" },
+                xaxis: {
+                    title: "Z-Height (mm)",
+                    tickformat: ".3f",
+                    gridcolor: "rgba(180, 200, 230, 0.35)",
+                    zeroline: false,
+                },
+                yaxis: {
+                    title: "Rotational Drag (torque / RPM)",
+                    gridcolor: "rgba(180, 200, 230, 0.35)",
+                    zeroline: false,
+                },
+                showlegend: orderedRpms.length > 1,
+                legend: { orientation: "h", y: 1.12, font: { size: 10 } },
+            };
+            Plotly.newPlot(plotEl, traces, this.calibrationReviewPlotLayout, {
+                responsive: true,
+                displayModeBar: false,
+            });
+            this.calibrationReviewPlotInitialized = true;
+        } else {
+            const shapes = Number.isFinite(roughZ)
+                ? [{
+                    type: "line",
+                    x0: roughZ,
+                    x1: roughZ,
+                    y0: 0,
+                    y1: 1,
+                    yref: "paper",
+                    line: { color: "rgb(255, 59, 48)", width: 2, dash: "dash" },
+                }]
+                : [];
+            Plotly.react(
+                plotEl,
+                traces,
+                { ...this.calibrationReviewPlotLayout, shapes },
+                { responsive: true, displayModeBar: false }
+            );
+        }
+    }
+
+    postCalibrationReviewDecision(action) {
+        const session = this.calibrationReviewSession;
+        const cellId = this.calibrationReviewActiveCellId;
+        if (!session || !Number.isFinite(cellId) || this.calibrationReviewDecisionInFlight) {
+            return Promise.resolve();
+        }
+        this.calibrationReviewDecisionInFlight = true;
+        if (this.el.calReviewSave) {
+            this.el.calReviewSave.disabled = true;
+        }
+        if (this.el.calReviewDiscard) {
+            this.el.calReviewDiscard.disabled = true;
+        }
+        return fetch("/api/calibration/review/decision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                session_id: session.session_id,
+                cell_id: cellId,
+                action,
+            }),
+        })
+            .then((r) => r.json())
+            .then((result) => {
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                if (result.session) {
+                    this.syncCalibrationReviewSession(result.session);
+                }
+            })
+            .catch((err) => {
+                this.pushStatusMessage(
+                    `Calibration review failed: ${err.message || "unknown error"}`
+                );
+            })
+            .finally(() => {
+                this.calibrationReviewDecisionInFlight = false;
+                const pending = this.getPendingReviewCellIds();
+                if (pending.length === 0) {
+                    this.commitCalibrationReview();
+                } else {
+                    this.renderCalibrationReviewCellView(this.calibrationReviewActiveCellId);
+                }
+            });
+    }
+
+    onCalibrationReviewSave() {
+        this.postCalibrationReviewDecision("save");
+    }
+
+    onCalibrationReviewDiscard() {
+        this.postCalibrationReviewDecision("discard");
+    }
+
+    commitCalibrationReview() {
+        const session = this.calibrationReviewSession;
+        if (!session?.session_id) {
+            this.closeCalibrationReviewModal();
+            return;
+        }
+        fetch("/api/calibration/review/commit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: session.session_id }),
+        })
+            .then((r) => r.json())
+            .then((result) => {
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                this.onCalibrationReviewCommitted(result);
+            })
+            .catch((err) => {
+                this.pushStatusMessage(
+                    `Failed to save calibration file: ${err.message || "unknown error"}`
+                );
+            });
+    }
+
+    onCalibrationReviewCommitted(payload) {
+        this.closeCalibrationReviewModal();
+        const saved = payload?.saved_cells || {};
+        const summary = payload?.summary;
+        if (summary) {
+            this.applyCalibrationStatus(summary);
+        }
+        const ids = Object.keys(saved)
+            .map((k) => Number(k))
+            .filter((n) => Number.isInteger(n) && n > 0)
+            .sort((a, b) => a - b);
+        if (ids.length > 0) {
+            this.showCalibrationSavedModal(ids, saved);
+            this.pushStatusMessage(`Calibration saved for cell(s): ${ids.join(", ")}`);
+            if (!this.calibrationPanelOpen) {
+                this.toggleCalibrationPanel(true);
+            }
+        } else {
+            this.pushStatusMessage("Calibration review complete — no cells saved");
+        }
+        this.isCalibrationRun = false;
+    }
+
+    showCalibrationSavedModal(cellIds, savedCells) {
+        if (!this.el.calSavedBackdrop || !this.el.calSavedBody) {
+            return;
+        }
+        const items = cellIds
+            .map((id) => {
+                const z = savedCells[String(id)];
+                const zText = Number.isFinite(Number(z)) ? `${Number(z).toFixed(3)} mm` : "—";
+                return `<li>Cell ${id}: rough hitpoint ${zText}</li>`;
+            })
+            .join("");
+        this.el.calSavedBody.innerHTML = `
+            <p>The following cells were written to the calibration file:</p>
+            <ul>${items}</ul>
+        `;
+        this.el.calSavedBackdrop.classList.remove("hidden");
+        this.el.calSavedBackdrop.setAttribute("aria-hidden", "false");
+    }
+
+    hideCalibrationSavedModal() {
+        if (this.el.calSavedBackdrop) {
+            this.el.calSavedBackdrop.classList.add("hidden");
+            this.el.calSavedBackdrop.setAttribute("aria-hidden", "true");
+        }
     }
 
     playChime(frequency, duration) {

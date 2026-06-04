@@ -883,6 +883,58 @@
         </div>
     </main>
 
+    <!-- Calibration save review (blocking) -->
+    <div id="calibration-review-backdrop" class="calibration-review-backdrop hidden" aria-hidden="true">
+        <div
+            id="calibration-review-modal"
+            class="calibration-review-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calibration-review-title"
+        >
+            <header class="calibration-review-header">
+                <h2 id="calibration-review-title">Save Calibration Data</h2>
+            </header>
+            <nav id="calibration-review-tabs" class="calibration-review-tabs" aria-label="Cells to review"></nav>
+            <div class="calibration-review-body">
+                <div class="calibration-review-main">
+                    <div id="calibration-review-plot" class="calibration-review-plot"></div>
+                    <div id="calibration-review-summary" class="calibration-review-summary"></div>
+                </div>
+                <div class="calibration-review-actions">
+                    <button type="button" id="calibration-review-save" class="btn calibration-review-btn-save">
+                        Save
+                    </button>
+                    <button type="button" id="calibration-review-discard" class="btn calibration-review-btn-discard">
+                        Discard
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Post-commit confirmation -->
+    <div id="calibration-saved-backdrop" class="calibration-saved-backdrop hidden" aria-hidden="true">
+        <div
+            id="calibration-saved-modal"
+            class="calibration-saved-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calibration-saved-title"
+        >
+            <header class="calibration-saved-header">
+                <h2 id="calibration-saved-title">Data Saved</h2>
+                <button type="button" id="calibration-saved-close" class="btn subtle calibration-saved-close" aria-label="Close">
+                    ×
+                </button>
+            </header>
+            <div id="calibration-saved-body" class="calibration-saved-body"></div>
+            <footer class="calibration-saved-footer">
+                <button type="button" id="calibration-saved-ok" class="btn">OK</button>
+            </footer>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
