@@ -64,7 +64,16 @@ class ViscometryDashboard {
         /** Debounce heavy Plotly / table DOM work during streaming measurements (remote viewers). */
         this._plotRefreshTimer = null;
         this._tableRefreshTimer = null;
+        this._mapRefreshTimer = null;
         this._graphTabIdsKey = "";
+        /** Dedup keys for bootstrap / reconnect / batched socket payloads. */
+        this._measurementKeys = new Set();
+        this._renderPaused = false;
+        this._needsRenderFlush = false;
+        this._plotIncrementalPending = false;
+        this._plotStreamState = null;
+        this._catchUpInFlight = false;
+        this._initialBootstrapDone = false;
         this.customHitpointSelectedCellId = null;
         this.isSavingFinalResults = false;
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
@@ -130,6 +139,7 @@ class ViscometryDashboard {
         }
         this.switchTab(activeTab);
         this.connectSocket();
+        this._bindPageVisibility();
     }
 
     initElements() {
@@ -345,14 +355,14 @@ class ViscometryDashboard {
             this.el.zFilterAll.addEventListener("click", () => {
                 this.zLatestOnly = false;
                 this.updateZFilterButtons();
-                this.refreshLivePlots();
+                this.refreshLivePlots({ forceFull: true });
             });
         }
         if (this.el.zFilterLatest) {
             this.el.zFilterLatest.addEventListener("click", () => {
                 this.zLatestOnly = true;
                 this.updateZFilterButtons();
-                this.refreshLivePlots();
+                this.refreshLivePlots({ forceFull: true });
             });
         }
         if (this.el.zConnectDots) {
@@ -360,7 +370,7 @@ class ViscometryDashboard {
                 this.zConnectDots = !this.zConnectDots;
                 this.el.zConnectDots.textContent = `Connect Dots: ${this.zConnectDots ? "On" : "Off"}`;
                 this.el.zConnectDots.classList.toggle("dots-on", this.zConnectDots);
-                this.refreshLivePlots();
+                this.refreshLivePlots({ forceFull: true });
             });
         }
         if (this.el.summaryDownload) {
@@ -412,7 +422,9 @@ class ViscometryDashboard {
         }
         if (this.el.lowTorqueLiquidContactThresholdPct) {
             this.el.lowTorqueLiquidContactThresholdPct.addEventListener("input", () => {
+                this._plotIncrementalPending = false;
                 this._schedulePlotRefresh();
+                this._plotStreamState = null;
             });
         }
 
@@ -855,9 +867,9 @@ class ViscometryDashboard {
                 this.applyStatusSnapshot(status);
                 this.applyTestingStatus(testingStatus || status.testing_status);
                 if (Array.isArray(measurementData)) {
-                    measurementData.forEach((m) => this.ingestMeasurement(m, true));
-                    this.refreshLivePlots();
+                    this._bootstrapMeasurements(measurementData);
                 }
+                this._initialBootstrapDone = true;
                 this._hydratePredictedViscosityFromServer(
                     predictedViscosity || status.predicted_viscosity_results
                 );
@@ -966,7 +978,7 @@ class ViscometryDashboard {
 
         this.setControlStatus("Settings loaded");
         this.updateCompletionBar();
-        this.refreshLivePlots();
+        this.refreshLivePlots({ forceFull: true });
     }
 
     rebuildCellRpmTable() {
@@ -1263,6 +1275,17 @@ class ViscometryDashboard {
             this.el.connectionDot.classList.add("connected");
             this.showDisconnectedBanner(false);
             this.pushStatusMessage("Socket connection established");
+            const catchUp = this._initialBootstrapDone
+                ? Promise.all([
+                    this._catchUpMeasurements(),
+                    this._catchUpStatusIfRunning(),
+                ])
+                : Promise.resolve();
+            catchUp.finally(() => {
+                if (this._needsRenderFlush && !this._renderPaused) {
+                    this._flushDeferredRenders();
+                }
+            });
         });
 
         this.socket.on("disconnect", () => {
@@ -1307,20 +1330,7 @@ class ViscometryDashboard {
         });
 
         this.socket.on("new_measurement", (data) => {
-            this.addPointToChart(
-                data.cell_id,
-                data.height,
-                data.rotational_drag,
-                data.rpm,
-                data.timestamp,
-                data.hit_detected
-            );
-            const torquePercent = Number.isFinite(Number(data.torque_percent))
-                ? Number(data.torque_percent)
-                : (Number(data.rotational_drag) || 0) * (Number(data.rpm) || 0);
-            this.updateTorqueBar(torquePercent);
-            this.updateLiveTorqueDisplay(torquePercent);
-            this.updateLiveRotationalDragDisplay(data.rotational_drag);
+            this._onNewMeasurement(data);
         });
 
         this.socket.on("torque_update", (data) => {
@@ -1491,6 +1501,8 @@ class ViscometryDashboard {
 
     clearDashboard() {
         this.measurements = [];
+        this._measurementKeys.clear();
+        this._plotStreamState = null;
         this.predictedViscosityData = {};
         if (this.el.predictedViscosityCharts) {
             this.el.predictedViscosityCharts.innerHTML = "";
@@ -1527,6 +1539,12 @@ class ViscometryDashboard {
             window.clearTimeout(this._tableRefreshTimer);
             this._tableRefreshTimer = null;
         }
+        if (this._mapRefreshTimer) {
+            window.clearTimeout(this._mapRefreshTimer);
+            this._mapRefreshTimer = null;
+        }
+        this._needsRenderFlush = false;
+        this._plotIncrementalPending = false;
 
         if (this.el.statusLog) {
             this.el.statusLog.innerHTML = "";
@@ -1587,7 +1605,7 @@ class ViscometryDashboard {
             this.el.zMeasuringDisplay.textContent = "-";
         }
         this.updateGraphCellTabs();
-        this.refreshLivePlots();
+        this.refreshLivePlots({ forceFull: true });
         this.updateTable();
     }
 
@@ -1717,9 +1735,9 @@ class ViscometryDashboard {
             }
         }
 
-        if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0) {
-            status.measurement_data.forEach((m) => this.ingestMeasurement(m, true));
-            this.refreshLivePlots();
+        if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0
+                && this.measurements.length === 0) {
+            this._bootstrapMeasurements(status.measurement_data);
         }
 
         if (status.predicted_viscosity_results) {
@@ -1794,7 +1812,7 @@ class ViscometryDashboard {
         this.updateCellVisuals();
         this.updateTable();
         this.updateGraphCellTabs();
-        this.refreshLivePlots();
+        this.refreshLivePlots({ forceFull: true });
     }
 
     updateCellDisplay() {
@@ -1820,15 +1838,31 @@ class ViscometryDashboard {
         this.el.cellMeta.textContent = `Row ${row}, local ${local}`;
     }
 
-    updateCellVisuals() {
+    _activeWashStationFromStatus() {
+        const statusLower = (this.statusLog[0] || "").toLowerCase();
+        if (statusLower.includes("wash station 1") || statusLower.includes("motor 1") || statusLower.includes("pump 1")) {
+            return "WASH";
+        }
+        if (statusLower.includes("wash station 2") || statusLower.includes("motor 2") || statusLower.includes("pump 2")) {
+            return "DRY";
+        }
+        return null;
+    }
+
+    _syncWashStationHighlights() {
+        const activeStation = this._activeWashStationFromStatus();
+        ["WASH", "DRY"].forEach((id) => {
+            const node = document.getElementById(`station-${id}`);
+            if (!node) {
+                return;
+            }
+            node.classList.toggle("station-active", activeStation === id);
+        });
+    }
+
+    computeCellVisualStates() {
         const statusLower = (this.statusLog[0] || "").toLowerCase();
         const hasErrorStatus = statusLower.includes("error") || statusLower.includes("fail") || statusLower.includes("critical");
-        let activeStation = null;
-        if (statusLower.includes("wash station 1") || statusLower.includes("motor 1") || statusLower.includes("pump 1")) {
-            activeStation = "WASH";
-        } else if (statusLower.includes("wash station 2") || statusLower.includes("motor 2") || statusLower.includes("pump 2")) {
-            activeStation = "DRY";
-        }
 
         this.platform.cells.forEach((cell) => {
             const overrideState = this.cellStates.get(cell.id);
@@ -1848,16 +1882,12 @@ class ViscometryDashboard {
 
             this.cellStates.set(cell.id, state);
         });
+    }
 
+    updateCellVisuals() {
+        this.computeCellVisualStates();
         this.renderMap();
-
-        ["WASH", "DRY"].forEach((id) => {
-            const node = document.getElementById(`station-${id}`);
-            if (!node) {
-                return;
-            }
-            node.classList.toggle("station-active", activeStation === id);
-        });
+        this._syncWashStationHighlights();
     }
 
     consumeStatusForPhase(message) {
@@ -1946,7 +1976,7 @@ class ViscometryDashboard {
                 const maybeHeight = Number(match[match.length - 1]);
                 if (!Number.isNaN(maybeHeight)) {
                     this.hitPoints.set(this.currentCell, maybeHeight);
-                    this.refreshLivePlots();
+                    this.refreshLivePlots({ forceFull: true });
                 }
             }
         }
@@ -1968,24 +1998,179 @@ class ViscometryDashboard {
         this.el.timelineFill.style.transform = `scaleX(${fillPct})`;
     }
 
-    _schedulePlotRefresh() {
-        if (this._plotRefreshTimer) {
-            window.clearTimeout(this._plotRefreshTimer);
-        }
-        this._plotRefreshTimer = window.setTimeout(() => {
-            this._plotRefreshTimer = null;
-            this.refreshLivePlots();
-        }, 110);
-    }
-
     _scheduleTableRefresh() {
         if (this._tableRefreshTimer) {
             window.clearTimeout(this._tableRefreshTimer);
+        }
+        if (this._renderPaused) {
+            this._needsRenderFlush = true;
+            return;
         }
         this._tableRefreshTimer = window.setTimeout(() => {
             this._tableRefreshTimer = null;
             this.updateTable();
         }, 140);
+    }
+
+    _scheduleMapRefresh() {
+        if (this._mapRefreshTimer) {
+            window.clearTimeout(this._mapRefreshTimer);
+        }
+        if (this._renderPaused) {
+            this._needsRenderFlush = true;
+            return;
+        }
+        this._mapRefreshTimer = window.setTimeout(() => {
+            this._mapRefreshTimer = null;
+            this.computeCellVisualStates();
+            this.renderMap();
+        }, 200);
+    }
+
+    _measurementDedupKey(measurement) {
+        const cellId = Number(measurement.cell_id) || 0;
+        const height = Number(measurement.height) || 0;
+        const rpm = Number(measurement.rpm) || 0;
+        const ts = Number(measurement.timestamp) || 0;
+        return `${cellId}|${height.toFixed(3)}|${rpm.toFixed(3)}|${ts.toFixed(3)}`;
+    }
+
+    _bootstrapMeasurements(points) {
+        if (!Array.isArray(points) || points.length === 0) {
+            return 0;
+        }
+        let added = 0;
+        points.forEach((m) => {
+            if (this.ingestMeasurement(m, true)) {
+                added += 1;
+            }
+        });
+        if (added > 0) {
+            this.computeCellVisualStates();
+            this.renderMap();
+            this.refreshLivePlots({ forceFull: true });
+            this.updateTable();
+        }
+        return added;
+    }
+
+    _catchUpMeasurements() {
+        if (this._catchUpInFlight) {
+            return Promise.resolve();
+        }
+        this._catchUpInFlight = true;
+        return fetch("/api/measurement_data")
+            .then((r) => r.json())
+            .then((data) => {
+                if (Array.isArray(data)) {
+                    this._bootstrapMeasurements(data);
+                }
+            })
+            .catch(() => {
+                // Best-effort; live socket may still deliver points.
+            })
+            .finally(() => {
+                this._catchUpInFlight = false;
+            });
+    }
+
+    _catchUpStatusIfRunning() {
+        if (!this.isRunning) {
+            return Promise.resolve();
+        }
+        return fetch("/api/status")
+            .then((r) => r.json())
+            .then((status) => {
+                if (status && typeof status === "object") {
+                    this.applyStatusSnapshot(status);
+                }
+            })
+            .catch(() => {});
+    }
+
+    _flushDeferredRenders() {
+        this._needsRenderFlush = false;
+        if (this._plotRefreshTimer) {
+            window.clearTimeout(this._plotRefreshTimer);
+            this._plotRefreshTimer = null;
+        }
+        if (this._tableRefreshTimer) {
+            window.clearTimeout(this._tableRefreshTimer);
+            this._tableRefreshTimer = null;
+        }
+        if (this._mapRefreshTimer) {
+            window.clearTimeout(this._mapRefreshTimer);
+            this._mapRefreshTimer = null;
+        }
+        this.computeCellVisualStates();
+        this.renderMap();
+        this.refreshLivePlots({ forceFull: true });
+        this.updateTable();
+    }
+
+    _bindPageVisibility() {
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                this._renderPaused = true;
+                if (this.timerInterval) {
+                    window.clearInterval(this.timerInterval);
+                    this.timerInterval = null;
+                }
+                this.stopSummaryHistoryPolling();
+                return;
+            }
+            this._renderPaused = false;
+            this.startTimerLoop();
+            const activeTab = localStorage.getItem("activeTab") || "layout-tab";
+            if (activeTab === "summary-tab") {
+                this.startSummaryHistoryPolling();
+            }
+            Promise.all([
+                this._catchUpMeasurements(),
+                this._catchUpStatusIfRunning(),
+            ]).finally(() => {
+                this.updateTimers();
+                if (this._needsRenderFlush) {
+                    this._flushDeferredRenders();
+                }
+            });
+        });
+    }
+
+    _onNewMeasurement(payload) {
+        const list = Array.isArray(payload) ? payload : [payload];
+        list.forEach((data) => {
+            if (!data || typeof data !== "object") {
+                return;
+            }
+            this.addPointToChart(
+                data.cell_id,
+                data.height,
+                data.rotational_drag,
+                data.rpm,
+                data.timestamp,
+                data.hit_detected
+            );
+        });
+    }
+
+    _schedulePlotRefresh(options = {}) {
+        if (options.incremental) {
+            this._plotIncrementalPending = true;
+        }
+        if (this._plotRefreshTimer) {
+            window.clearTimeout(this._plotRefreshTimer);
+        }
+        if (this._renderPaused) {
+            this._needsRenderFlush = true;
+            return;
+        }
+        this._plotRefreshTimer = window.setTimeout(() => {
+            this._plotRefreshTimer = null;
+            const incremental = this._plotIncrementalPending;
+            this._plotIncrementalPending = false;
+            this.refreshLivePlots({ forceFull: !incremental });
+        }, 110);
     }
 
     ingestMeasurement(rawMeasurement, bootstrap) {
@@ -2010,8 +2195,28 @@ class ViscometryDashboard {
         };
 
         if (!measurement.cell_id) {
-            return;
+            return false;
         }
+
+        const dedupKey = this._measurementDedupKey(measurement);
+        if (this._measurementKeys.has(dedupKey)) {
+            const cellList = this.measurementsByCell.get(measurement.cell_id);
+            if (cellList && cellList.length > 0) {
+                const existing = cellList.find(
+                    (m) => this._measurementDedupKey(m) === dedupKey
+                );
+                if (existing) {
+                    if (rawMeasurement.hit_detected === true || rawMeasurement.hit_detected === false) {
+                        existing.hit_detected = measurement.hit_detected;
+                    }
+                    if (sampleCount > 1) {
+                        existing.sample_count = sampleCount;
+                    }
+                }
+            }
+            return false;
+        }
+        this._measurementKeys.add(dedupKey);
 
         this.measurements.push(measurement);
 
@@ -2034,9 +2239,32 @@ class ViscometryDashboard {
             this.updateGraphCellTabs();
         }
 
-        this._schedulePlotRefresh();
+        if (bootstrap) {
+            return true;
+        }
+
+        this.computeCellVisualStates();
+        this.updateCellNode(measurement.cell_id);
+        const torque = this.latestTorqueByCell.get(measurement.cell_id);
+        const node = document.getElementById(`cell-node-${measurement.cell_id}`);
+        if (node && torque !== undefined) {
+            const cell = this.platform.cells.find((c) => c.id === measurement.cell_id);
+            if (cell) {
+                node.title = `${cell.label} - last torque ${torque.toFixed(2)}%`;
+            }
+        }
+        if (this.currentCell) {
+            this.updateCellNode(this.currentCell);
+        }
+        if (this.washingCell) {
+            this.updateCellNode(this.washingCell);
+        }
+        this._syncWashStationHighlights();
+
+        this._schedulePlotRefresh({ incremental: true });
         this._scheduleTableRefresh();
-        this.updateCellVisuals();
+        this._scheduleMapRefresh();
+        return true;
     }
 
     updateZFilterButtons() {
@@ -2084,7 +2312,7 @@ class ViscometryDashboard {
         currentBtn.addEventListener("click", () => {
             this.selectedGraphCell = null;
             this.updateGraphCellTabs();
-            this.refreshLivePlots();
+            this.refreshLivePlots({ forceFull: true });
             this.updateLiveTerminationBadge();
         });
         this.el.graphCellTabs.appendChild(currentBtn);
@@ -2096,7 +2324,7 @@ class ViscometryDashboard {
             btn.addEventListener("click", () => {
                 this.selectedGraphCell = cellId;
                 this.updateGraphCellTabs();
-                this.refreshLivePlots();
+                this.refreshLivePlots({ forceFull: true });
                 this.updateLiveTerminationBadge();
             });
             this.el.graphCellTabs.appendChild(btn);
@@ -2294,7 +2522,7 @@ class ViscometryDashboard {
         }).join("");
     }
 
-    refreshLivePlots() {
+    _livePlotContext() {
         const activeCell = this.getActiveGraphCellId();
         const source = activeCell ? (this.measurementsByCell.get(activeCell) || []) : [];
         const torqueFloor = this._torqueFloorPctForLivePlots();
@@ -2312,8 +2540,123 @@ class ViscometryDashboard {
             zData = [...latestByHeightRpm.values()];
         }
 
-        let orderedRpms = activeCell ? this.expandRpmsWithObserved(this.getRpmsForCell(activeCell), zData) : [];
+        const orderedRpms = activeCell
+            ? this.expandRpmsWithObserved(this.getRpmsForCell(activeCell), zData)
+            : [];
         const buckets = this.partitionMeasurementsByRpm(zData, orderedRpms);
+        return { activeCell, zData, torqueFloor, orderedRpms, buckets };
+    }
+
+    _rpmKeysWithPlotPoints(orderedRpms, buckets) {
+        return orderedRpms
+            .map((rpm) => Number(rpm).toFixed(3))
+            .filter((key) => (buckets.get(key) || []).length > 0);
+    }
+
+    _recordPlotStreamState(activeCell, orderedRpms, buckets) {
+        const pointCounts = new Map();
+        const rpmKeys = this._rpmKeysWithPlotPoints(orderedRpms, buckets);
+        rpmKeys.forEach((key) => {
+            pointCounts.set(key, (buckets.get(key) || []).length);
+        });
+        this._plotStreamState = {
+            activeCellId: activeCell,
+            rpmKeys,
+            pointCounts,
+        };
+    }
+
+    _newPointsCrossTorqueFloor(prevPoints, newPoints, floorPct) {
+        const prevBelow = prevPoints.length > 0
+            ? (() => {
+                const tp = Number(prevPoints[prevPoints.length - 1].torque_percent);
+                return Number.isFinite(tp) && tp < floorPct;
+            })()
+            : null;
+        return newPoints.some((m) => {
+            const tp = Number(m.torque_percent);
+            const below = Number.isFinite(tp) && tp < floorPct;
+            return prevBelow === null ? false : below !== prevBelow;
+        });
+    }
+
+    _tryIncrementalPlotRefresh(ctx) {
+        const state = this._plotStreamState;
+        if (!state || !ctx.activeCell) {
+            return false;
+        }
+        if (Number(state.activeCellId) !== Number(ctx.activeCell)) {
+            return false;
+        }
+        const rpmKeys = this._rpmKeysWithPlotPoints(ctx.orderedRpms, ctx.buckets);
+        if (rpmKeys.join(",") !== state.rpmKeys.join(",")) {
+            return false;
+        }
+
+        let zExtended = false;
+        let torqueExtended = false;
+
+        try {
+            rpmKeys.forEach((rpmKey, traceIdx) => {
+                const points = [...(ctx.buckets.get(rpmKey) || [])].sort(
+                    (a, b) => Number(a.height) - Number(b.height)
+                );
+                const prevCount = state.pointCounts.get(rpmKey) || 0;
+                if (points.length < prevCount) {
+                    throw new Error("point count decreased");
+                }
+                if (points.length === prevCount) {
+                    return;
+                }
+                const newPoints = points.slice(prevCount);
+                if (this._newPointsCrossTorqueFloor(points.slice(0, prevCount), newPoints, ctx.torqueFloor)) {
+                    throw new Error("torque floor color change");
+                }
+
+                const rpm = Number(rpmKey);
+                const markerPalette = this._markerColorsForRpmTrace(newPoints, ctx.torqueFloor, this.getLiveRpmColor(rpm, ctx.orderedRpms));
+
+                if (this.zPlotInitialized && this.el.zSparklinePlot) {
+                    const zUpdate = {
+                        x: [newPoints.map((m) => m.height)],
+                        y: [newPoints.map((m) => m.rotational_drag)],
+                        customdata: [newPoints.map((m) => Number(m.torque_percent))],
+                        "marker.color": [markerPalette.map((p) => p.fill)],
+                        "marker.line.color": [markerPalette.map((p) => p.line)],
+                    };
+                    Plotly.extendTraces(this.el.zSparklinePlot, zUpdate, [traceIdx]);
+                    zExtended = true;
+                }
+
+                if (this.torquePlotInitialized && this.el.torqueZPlot) {
+                    const tUpdate = {
+                        x: [newPoints.map((m) => m.height)],
+                        y: [newPoints.map((m) => m.torque_percent)],
+                        "marker.color": [markerPalette.map((p) => p.fill)],
+                        "marker.line.color": [markerPalette.map((p) => p.line)],
+                    };
+                    Plotly.extendTraces(this.el.torqueZPlot, tUpdate, [traceIdx]);
+                    torqueExtended = true;
+                }
+
+                state.pointCounts.set(rpmKey, points.length);
+            });
+        } catch (e) {
+            return false;
+        }
+
+        if (zExtended && this.el.zSparklineEmpty) {
+            this.el.zSparklineEmpty.classList.add("hidden");
+        }
+        if (torqueExtended && this.el.torqueZEmpty) {
+            this.el.torqueZEmpty.classList.add("hidden");
+        }
+        this.renderDragZRpmLegend(ctx.activeCell, ctx.orderedRpms);
+        return zExtended || torqueExtended;
+    }
+
+    _fullPlotRefresh(ctx) {
+        const { activeCell, torqueFloor, orderedRpms, buckets } = ctx;
 
         if (this.zPlotInitialized && this.el.zSparklinePlot) {
             const zTraces = orderedRpms
@@ -2357,6 +2700,22 @@ class ViscometryDashboard {
                 this.el.torqueZEmpty.classList.toggle("hidden", torqueTraces.length > 0);
             }
         }
+
+        this._recordPlotStreamState(activeCell, orderedRpms, buckets);
+    }
+
+    refreshLivePlots(options = {}) {
+        const ctx = this._livePlotContext();
+        const forceFull = Boolean(options.forceFull)
+            || this.zLatestOnly
+            || !this.zPlotInitialized
+            || !this.torquePlotInitialized;
+
+        if (!forceFull && this._tryIncrementalPlotRefresh(ctx)) {
+            return;
+        }
+
+        this._fullPlotRefresh(ctx);
     }
 
     updateGauge(targetRPM) {
@@ -4623,7 +4982,8 @@ class ViscometryDashboard {
             this.el.statusLog.appendChild(li);
         });
 
-        this.updateCellVisuals();
+        this._scheduleMapRefresh();
+        this._syncWashStationHighlights();
     }
 
     showDisconnectedBanner(show) {
