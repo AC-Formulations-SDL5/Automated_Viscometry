@@ -120,7 +120,13 @@ class ViscometryWebInterface:
             "completion_order": [],
             "cells": {},
         }
-        
+        self.experiment_review_session: Optional[dict] = None
+        self._experiment_review_pending: Dict[str, Any] = {
+            "completion_order": [],
+            "cells": {},
+        }
+        self._experiment_review_run_context: Optional[Dict[str, Any]] = None
+
         # Platform configuration from your code
         self.X_LOW_BOUND = 0
         self.X_HIGH_BOUND = 450
@@ -133,7 +139,7 @@ class ViscometryWebInterface:
         self.ROWS = [
             {'row_number': 1, 'base_x': 10, 'safe_z': -65.5, 'max_z_travel': -66.500},
             {'row_number': 2, 'base_x': 85, 'safe_z': -65.5, 'max_z_travel': -66.500},
-            {'row_number': 3, 'base_x': 309, 'safe_z': -64.5, 'max_z_travel': -65.500}
+            {'row_number': 3, 'base_x': 309, 'safe_z': -64.5, 'max_z_travel': -66.500}
         ]
         
         # Wash stations
@@ -223,9 +229,7 @@ class ViscometryWebInterface:
         def api_run_start():
             try:
                 payload = request.get_json(silent=True) or {}
-                if payload:
-                    self.update_runtime_settings(payload)
-                self.request_start()
+                self._start_regular_run(payload)
                 self.update_status('Start command received from web interface')
                 return jsonify({'ok': True, 'status_message': self.status_message})
             except ValueError as e:
@@ -364,10 +368,43 @@ class ViscometryWebInterface:
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
 
+        @self.app.route('/api/experiment/review', methods=['GET'])
+        def api_experiment_review_get():
+            try:
+                return jsonify(self.get_experiment_review_session())
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/experiment/review/decision', methods=['POST'])
+        def api_experiment_review_decision():
+            try:
+                payload = request.get_json(silent=True) or {}
+                session_id = payload.get('session_id')
+                cell_id = payload.get('cell_id')
+                action = payload.get('action')
+                session = self.apply_experiment_review_decision(session_id, cell_id, action)
+                return jsonify({'ok': True, 'session': session})
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/experiment/review/commit', methods=['POST'])
+        def api_experiment_review_commit():
+            try:
+                payload = request.get_json(silent=True) or {}
+                session_id = payload.get('session_id')
+                result = self.commit_experiment_review(session_id)
+                return jsonify({'ok': True, **result})
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
         @self.app.route('/api/run/start_calibration', methods=['POST'])
         def api_run_start_calibration():
             try:
-                self._reject_start_if_calibration_review_pending()
+                self._reject_start_if_review_pending()
                 payload = request.get_json(silent=True) or {}
                 # Force calibration_mode flag into settings before starting
                 payload['calibration_mode'] = True
@@ -384,7 +421,7 @@ class ViscometryWebInterface:
         @self.app.route('/api/run/start_recalibration', methods=['POST'])
         def api_run_start_recalibration():
             try:
-                self._reject_start_if_calibration_review_pending()
+                self._reject_start_if_review_pending()
                 payload = request.get_json(silent=True) or {}
                 # Force individual cell recalibration flags
                 payload['recalibrate_individual_cells'] = True
@@ -408,6 +445,9 @@ class ViscometryWebInterface:
                 review_session = self.get_calibration_review_session()
                 if review_session:
                     emit('calibration_review_open', review_session)
+                exp_review = self.get_experiment_review_session()
+                if exp_review:
+                    emit('experiment_review_open', exp_review)
                 # Send current calibration status
                 try:
                     self._refresh_calibration_summary()
@@ -436,10 +476,8 @@ class ViscometryWebInterface:
         @self.socketio.on('start_run')
         def handle_start_run(payload=None):
             try:
-                self._reject_start_if_calibration_review_pending()
-                if isinstance(payload, dict) and payload:
-                    self.update_runtime_settings(payload)
-                self.request_start()
+                run_payload = payload if isinstance(payload, dict) else {}
+                self._start_regular_run(run_payload)
                 emit('status_update', {'status_message': 'Start command received from web interface'}, broadcast=True)
             except Exception as e:
                 print(f"Error in handle_start_run: {e}")
@@ -520,6 +558,8 @@ class ViscometryWebInterface:
                 'predicted_viscosity_results': self._copy_predicted_viscosity_results(),
                 'calibration_review': self.get_calibration_review_session(),
                 'calibration_review_pending': self.has_pending_calibration_review(),
+                'experiment_review': self.get_experiment_review_session(),
+                'experiment_review_pending': self.has_pending_experiment_review(),
             }
         except Exception as e:
             print(f"Error in get_status_dict: {e}")
@@ -548,17 +588,33 @@ class ViscometryWebInterface:
                 'predicted_viscosity_results': {},
                 'calibration_review': None,
                 'calibration_review_pending': False,
+                'experiment_review': None,
+                'experiment_review_pending': False,
             }
 
     def has_pending_calibration_review(self) -> bool:
         with self.control_lock:
             return self.calibration_review_session is not None
 
+    def has_pending_experiment_review(self) -> bool:
+        with self.control_lock:
+            return self.experiment_review_session is not None
+
     def _reject_start_if_calibration_review_pending(self) -> None:
         if self.has_pending_calibration_review():
             raise ValueError(
                 "Finish the calibration save review (Save or Discard each cell) before starting a new run."
             )
+
+    def _reject_start_if_experiment_review_pending(self) -> None:
+        if self.has_pending_experiment_review():
+            raise ValueError(
+                "Finish the experiment data review (Save or Discard each cell) before starting a new run."
+            )
+
+    def _reject_start_if_review_pending(self) -> None:
+        self._reject_start_if_calibration_review_pending()
+        self._reject_start_if_experiment_review_pending()
 
     def reset_calibration_review_pending(self) -> None:
         with self.control_lock:
@@ -769,6 +825,426 @@ class ViscometryWebInterface:
 
         return payload
 
+    def reset_experiment_review_pending(self) -> None:
+        with self.control_lock:
+            self._experiment_review_pending = {"completion_order": [], "cells": {}}
+
+    def add_experiment_review_cell(
+        self,
+        cell_id: int,
+        measurements: Optional[List[dict]] = None,
+        termination_reason: str = "normal",
+    ) -> None:
+        """Queue a completed regular-run cell for post-run data review."""
+        key = str(int(cell_id))
+        snapshot = []
+        if measurements:
+            for row in measurements:
+                if not isinstance(row, dict):
+                    continue
+                snapshot.append({
+                    "height": row.get("height"),
+                    "rotational_drag": row.get("rotational_drag"),
+                    "torque_percent": row.get("torque_percent"),
+                    "rpm": row.get("rpm"),
+                    "timestamp": row.get("timestamp"),
+                })
+        with self.control_lock:
+            pending = self._experiment_review_pending
+            if key not in pending["cells"]:
+                pending["completion_order"].append(int(cell_id))
+            pending["cells"][key] = {
+                "cell_id": int(cell_id),
+                "measurements": snapshot,
+                "termination_reason": str(termination_reason or "normal"),
+            }
+
+    def _snapshot_measurements_for_cell(self, cell_id: int) -> List[dict]:
+        snapshot = []
+        for row in self.measurement_data:
+            if not isinstance(row, dict):
+                continue
+            try:
+                if int(row.get("cell_id", -1)) != int(cell_id):
+                    continue
+            except (TypeError, ValueError):
+                continue
+            snapshot.append({
+                "height": row.get("height"),
+                "rotational_drag": row.get("rotational_drag"),
+                "torque_percent": row.get("torque_percent"),
+                "rpm": row.get("rpm"),
+                "timestamp": row.get("timestamp"),
+            })
+        return snapshot
+
+    @staticmethod
+    def _cell_all_data_has_content(cell_data) -> bool:
+        if not cell_data:
+            return False
+        if isinstance(cell_data, dict):
+            return len(cell_data) > 0
+        return True
+
+    def sync_experiment_review_cells_from_run(
+        self,
+        all_data: Optional[Dict] = None,
+        termination_by_cell: Optional[Dict[int, str]] = None,
+        default_termination: str = "normal",
+    ) -> None:
+        """Queue any cell with run data or live measurements for post-run review."""
+        all_data = all_data or {}
+        termination_by_cell = termination_by_cell or {}
+        cell_ids = set()
+        for key in all_data.keys():
+            try:
+                cell_ids.add(int(key))
+            except (TypeError, ValueError):
+                continue
+        for row in self.measurement_data:
+            if not isinstance(row, dict):
+                continue
+            try:
+                cell_ids.add(int(row.get("cell_id")))
+            except (TypeError, ValueError):
+                continue
+        for cell_id in sorted(cell_ids):
+            snapshot = self._snapshot_measurements_for_cell(cell_id)
+            has_all_data = self._cell_all_data_has_content(all_data.get(cell_id))
+            if not snapshot and not has_all_data:
+                continue
+            term = termination_by_cell.get(cell_id)
+            if term is None:
+                term = termination_by_cell.get(str(cell_id), default_termination)
+            self.add_experiment_review_cell(
+                cell_id,
+                snapshot,
+                termination_reason=str(term or default_termination),
+            )
+
+    def set_experiment_review_run_context(
+        self,
+        all_data: Dict,
+        timestamp: str,
+        mode: str,
+        experiment_name: str,
+        termination_by_cell: Optional[Dict[int, str]] = None,
+        completed_cells: Optional[List[int]] = None,
+    ) -> None:
+        """Stash run outputs until experiment review commit writes filtered CSV/history."""
+        with self.control_lock:
+            settings = {}
+            for key, value in self.runtime_settings.items():
+                if isinstance(value, list):
+                    settings[key] = value[:]
+                elif isinstance(value, dict):
+                    settings[key] = dict(value)
+                else:
+                    settings[key] = value
+            self._experiment_review_run_context = {
+                "all_data": json.loads(json.dumps(all_data)) if all_data else {},
+                "timestamp": str(timestamp),
+                "mode": str(mode),
+                "experiment_name": str(experiment_name or ""),
+                "termination_by_cell": {
+                    str(int(k)): str(v)
+                    for k, v in (termination_by_cell or {}).items()
+                },
+                "completed_cells": [int(c) for c in (completed_cells or [])],
+                "run_start_ts": self.experiment_start_ts,
+                "runtime_settings": settings,
+                "predicted_viscosity_results": self._copy_predicted_viscosity_results(),
+            }
+
+    def _build_experiment_review_session_from_pending(self) -> Optional[dict]:
+        with self.control_lock:
+            pending = self._experiment_review_pending
+            order = list(pending.get("completion_order") or [])
+            raw_cells = pending.get("cells") or {}
+            if not order or not raw_cells:
+                return None
+            cells_out = {}
+            for cid in order:
+                key = str(int(cid))
+                entry = raw_cells.get(key)
+                if not entry:
+                    continue
+                cells_out[key] = {
+                    "cell_id": int(entry["cell_id"]),
+                    "measurements": list(entry.get("measurements") or []),
+                    "termination_reason": str(entry.get("termination_reason") or "normal"),
+                    "decision": "pending",
+                }
+            if not cells_out:
+                return None
+            session = {
+                "session_id": str(uuid.uuid4()),
+                "completion_order": [int(c) for c in order if str(c) in cells_out],
+                "cells": cells_out,
+                "queued_saves": {},
+            }
+            self.experiment_review_session = session
+            self._experiment_review_pending = {"completion_order": [], "cells": {}}
+            return self._public_experiment_review_session_locked()
+
+    def _public_experiment_review_session_locked(self) -> Optional[dict]:
+        session = self.experiment_review_session
+        if not session:
+            return None
+        cells = {}
+        for key, cell in (session.get("cells") or {}).items():
+            cells[key] = dict(cell)
+        return {
+            "session_id": session.get("session_id"),
+            "completion_order": list(session.get("completion_order") or []),
+            "cells": cells,
+            "queued_saves": dict(session.get("queued_saves") or {}),
+        }
+
+    def get_experiment_review_session(self) -> Optional[dict]:
+        with self.control_lock:
+            return self._public_experiment_review_session_locked()
+
+    def open_experiment_review_if_needed(self) -> bool:
+        if self.has_pending_experiment_review():
+            return True
+        session = self._build_experiment_review_session_from_pending()
+        if not session:
+            return False
+        try:
+            self.socketio.emit("experiment_review_open", session)
+            self.update_status("Review experiment data — Save or Discard each cell")
+        except Exception as e:
+            print(f"Warning: failed to emit experiment_review_open: {e}")
+        return True
+
+    def apply_experiment_review_decision(
+        self,
+        session_id: str,
+        cell_id: int,
+        action: str,
+    ) -> dict:
+        action_norm = str(action or "").strip().lower()
+        if action_norm not in ("save", "discard"):
+            raise ValueError("action must be 'save' or 'discard'")
+        key = str(int(cell_id))
+        with self.control_lock:
+            session = self.experiment_review_session
+            if not session or session.get("session_id") != session_id:
+                raise ValueError("No active experiment review session")
+            cells = session.get("cells") or {}
+            if key not in cells:
+                raise ValueError(f"Cell {cell_id} is not in the review session")
+            cell = cells[key]
+            if cell.get("decision") != "pending":
+                raise ValueError(f"Cell {cell_id} was already resolved")
+            if action_norm == "save":
+                cell["decision"] = "saved"
+                session.setdefault("queued_saves", {})[key] = True
+            else:
+                cell["decision"] = "discarded"
+            public = self._public_experiment_review_session_locked()
+        try:
+            self.socketio.emit("experiment_review_update", public)
+        except Exception as e:
+            print(f"Warning: failed to emit experiment_review_update: {e}")
+        return public
+
+    def _normalize_viscosity_prediction_mode(self, settings: Dict) -> str:
+        mode = str(settings.get("viscosity_prediction_mode", "off") or "off").strip()
+        if mode in ("off", "Newtonian", "Non-Newtonian"):
+            return mode
+        if settings.get("predicted_viscosity_enabled"):
+            return "Newtonian"
+        return "off"
+
+    def _predicted_viscosity_has_data(self, pred_data: Dict) -> bool:
+        if not isinstance(pred_data, dict):
+            return False
+        for rpm_map in pred_data.values():
+            if isinstance(rpm_map, dict) and rpm_map:
+                return True
+        return False
+
+    def _build_experiment_history_entry_from_review(
+        self,
+        session: dict,
+        run_context: dict,
+        saved_cell_ids: List[int],
+    ) -> Optional[dict]:
+        if not saved_cell_ids:
+            return None
+        settings = dict(run_context.get("runtime_settings") or {})
+        cells_sorted = sorted(int(c) for c in saved_cell_ids)
+        run_data = []
+        termination_map = {}
+        cells_dict = session.get("cells") or {}
+        for cell_id in cells_sorted:
+            key = str(int(cell_id))
+            entry = cells_dict.get(key) or {}
+            term = str(entry.get("termination_reason") or "normal")
+            termination_map[cell_id] = term
+            termination_map[str(cell_id)] = term
+            for row in entry.get("measurements") or []:
+                if not isinstance(row, dict):
+                    continue
+                ts = row.get("timestamp")
+                try:
+                    ts_num = float(ts) if ts is not None else None
+                except (TypeError, ValueError):
+                    ts_num = None
+                run_data.append({
+                    "timestamp": ts_num if ts_num is not None else time.time(),
+                    "cell_id": int(cell_id),
+                    "height": float(row.get("height") or 0),
+                    "torque_percent": float(row.get("torque_percent") or 0),
+                    "rotational_drag": float(row.get("rotational_drag") or 0),
+                    "rpm": float(row.get("rpm") or 0),
+                    "is_final_save": False,
+                })
+        if not run_data:
+            return None
+
+        latest_by_key = {}
+        for m in run_data:
+            k = f"{m['cell_id']}|{float(m['height']):.3f}|{float(m['rpm']):.3f}"
+            latest_by_key[k] = m
+
+        rpms = sorted({float(m["rpm"]) for m in run_data})
+        cell_durations = {}
+        for cell_id in cells_sorted:
+            pts = [
+                m for m in run_data
+                if int(m["cell_id"]) == int(cell_id)
+            ]
+            pts.sort(key=lambda x: float(x["timestamp"]))
+            if len(pts) >= 2:
+                start_ts = float(pts[0]["timestamp"])
+                end_ts = float(pts[-1]["timestamp"])
+                cell_durations[cell_id] = max(0.0, (end_ts - start_ts) * 1000.0)
+
+        run_start_ts = run_context.get("run_start_ts")
+        timestamps = [float(m["timestamp"]) for m in run_data if m.get("timestamp") is not None]
+        earliest = float(run_start_ts) if run_start_ts is not None else (min(timestamps) if timestamps else None)
+        latest = max(timestamps) if timestamps else None
+
+        csv_header = (
+            "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm,cell_termination_method\n"
+        )
+        csv_rows = []
+        for m in run_data:
+            iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(m["timestamp"])))
+            term = termination_map.get(int(m["cell_id"]), "normal")
+            csv_rows.append(
+                f"{iso},{m['cell_id']},{m['height']},{m['torque_percent']},"
+                f"{m['rotational_drag']},{m['rpm']},{term}"
+            )
+
+        pred_all = run_context.get("predicted_viscosity_results") or {}
+        pred_filtered = {}
+        for cell_id in cells_sorted:
+            key = str(int(cell_id))
+            if key in pred_all:
+                pred_filtered[key] = pred_all[key]
+
+        pred_mode = self._normalize_viscosity_prediction_mode(settings)
+        if pred_mode == "off" and self._predicted_viscosity_has_data(pred_filtered):
+            pred_mode = "Newtonian"
+
+        return {
+            "id": f"exp-{int(time.time() * 1000)}",
+            "created_at": int(time.time() * 1000),
+            "measurement_count": len(run_data),
+            "cells": cells_sorted,
+            "rpms": rpms,
+            "settings": settings,
+            "latestPerZ": list(latest_by_key.values()),
+            "cellDurations": cell_durations,
+            "runStartTsSec": earliest,
+            "runEndTsSec": latest,
+            "csv": csv_header + "\n".join(csv_rows),
+            "cell_termination_reasons": termination_map,
+            "viscosity_prediction_mode": pred_mode,
+            "predicted_viscosity": pred_filtered,
+        }
+
+    def commit_experiment_review(self, session_id: str) -> dict:
+        with self.control_lock:
+            session = self.experiment_review_session
+            if not session or session.get("session_id") != session_id:
+                raise ValueError("No active experiment review session")
+            cells = session.get("cells") or {}
+            pending_ids = [
+                int(k) for k, c in cells.items() if c.get("decision") == "pending"
+            ]
+            if pending_ids:
+                raise ValueError(
+                    f"Resolve all cells before commit (pending: {sorted(pending_ids)})"
+                )
+            queued = session.get("queued_saves") or {}
+            saved_cell_ids = sorted(int(k) for k in queued.keys())
+            run_context = dict(self._experiment_review_run_context or {})
+            session_copy = {
+                "session_id": session.get("session_id"),
+                "completion_order": list(session.get("completion_order") or []),
+                "cells": {k: dict(v) for k, v in cells.items()},
+                "queued_saves": dict(queued),
+            }
+            self.experiment_review_session = None
+            self._experiment_review_run_context = None
+
+        csv_filename = None
+        experiment_entry = None
+        if saved_cell_ids and run_context:
+            all_data = run_context.get("all_data") or {}
+            filtered_all_data = {
+                int(k): all_data[k]
+                for k in all_data.keys()
+                if int(k) in saved_cell_ids
+            }
+            if filtered_all_data:
+                try:
+                    from all_cells_with_rotational_drag_feedback import save_dynamic_analysis_data
+                    csv_filename = save_dynamic_analysis_data(
+                        filtered_all_data,
+                        run_context.get("timestamp", ""),
+                        run_context.get("mode", "custom"),
+                        run_context.get("experiment_name", ""),
+                        termination_by_cell={
+                            int(k): str(v)
+                            for k, v in (run_context.get("termination_by_cell") or {}).items()
+                            if int(k) in saved_cell_ids
+                        },
+                    )
+                except Exception as e:
+                    raise ValueError(f"Failed to write experiment CSV: {e}") from e
+            experiment_entry = self._build_experiment_history_entry_from_review(
+                session_copy, run_context, saved_cell_ids
+            )
+            if experiment_entry:
+                if csv_filename:
+                    experiment_entry["csv_filename"] = csv_filename
+                self.add_experiment_history_entry(experiment_entry)
+
+        payload = {
+            "saved_cells": [int(c) for c in saved_cell_ids],
+            "experiment": experiment_entry,
+            "csv_filename": csv_filename,
+        }
+        try:
+            self.socketio.emit("experiment_review_committed", payload)
+        except Exception as e:
+            print(f"Warning: failed to emit experiment_review_committed: {e}")
+
+        if saved_cell_ids:
+            self.update_status(
+                f"Experiment data saved for {len(saved_cell_ids)} cell(s)"
+            )
+        else:
+            self.update_status("Experiment review complete — no cells saved")
+
+        return payload
+
     def get_runtime_settings(self) -> Dict:
         """Get a copy of the current runtime settings."""
         with self.control_lock:
@@ -959,9 +1435,29 @@ class ViscometryWebInterface:
         except Exception as e:
             print(f"Warning: failed to emit calibration complete: {e}")
 
+    @staticmethod
+    def _regular_run_mode_clear_payload() -> dict:
+        """Runtime flags cleared so a normal run cannot inherit calibration/recalibration."""
+        return {
+            'calibration_mode': False,
+            'recalibrate_individual_cells': False,
+            'recalibration_cells': {},
+            'recalibration_ignore_max_z_travel': False,
+        }
+
+    def _start_regular_run(self, payload: Optional[dict] = None) -> None:
+        """Apply settings for a normal (non-calibration) run and queue start."""
+        merged = {**(payload or {}), **self._regular_run_mode_clear_payload()}
+        self.update_runtime_settings(merged)
+        self.request_start()
+
+    def _clear_persisted_calibration_run_flags(self) -> None:
+        """Drop calibration/recalibration mode from persisted runtime settings."""
+        self.update_runtime_settings(self._regular_run_mode_clear_payload())
+
     def request_start(self):
         """Mark that the experiment should start."""
-        self._reject_start_if_calibration_review_pending()
+        self._reject_start_if_review_pending()
         try:
             self.stop_all_testing_devices()
         except Exception:
@@ -995,6 +1491,7 @@ class ViscometryWebInterface:
         self.clear_terminate_current_cell_request()
         self.set_running_state(False)
         self.calibration_mode = False
+        self._clear_persisted_calibration_run_flags()
         self.broadcast_calibration_mode()
 
     def wait_for_start_command(self, poll_interval=0.2):
@@ -1134,6 +1631,8 @@ class ViscometryWebInterface:
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
         self.reset_calibration_review_pending()
+        self.reset_experiment_review_pending()
+        self._experiment_review_run_context = None
         with self.control_lock:
             self.measurement_data = []
             self.current_cell = None

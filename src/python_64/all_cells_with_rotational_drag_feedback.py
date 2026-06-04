@@ -80,9 +80,9 @@ WASH_STATION2_Z = -67    # -67 is the contact point, so -10 is safely above that
 
 # Row configurations: each row has different Z-parameters and BASE_X position
 ROWS = [
-    {'row_number': 1, 'base_x': 10, 'safe_z': -65.5, 'max_z_travel': -66.500},
-    {'row_number': 2, 'base_x': 85, 'safe_z': -65.5, 'max_z_travel': -66.500},
-    {'row_number': 3, 'base_x': 309, 'safe_z': -64.5, 'max_z_travel': -65.500}
+    {'row_number': 1, 'base_x': 10, 'safe_z': -65.5, 'max_z_travel': -67.00},
+    {'row_number': 2, 'base_x': 85, 'safe_z': -65.5, 'max_z_travel': -67.00},
+    {'row_number': 3, 'base_x': 309, 'safe_z': -64.5, 'max_z_travel': -67.00}
 ]
 
 # Array of RPMs to test at each Z-position (similar to analysis_methods.py)
@@ -2181,6 +2181,19 @@ def main():
                             web_interface.update_status(f"Recalibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                         # NO washing in calibration/recalibration mode — move directly to next cell
                     else:
+                        snapshot = [
+                            m for m in web_interface.measurement_data
+                            if isinstance(m, dict) and int(m.get("cell_id", -1)) == int(global_cell)
+                        ]
+                        web_interface.add_experiment_review_cell(
+                            global_cell,
+                            snapshot,
+                            termination_reason=termination_by_cell.get(global_cell, "normal"),
+                        )
+                        web_interface.add_completed_cell(
+                            global_cell,
+                            termination_reason=termination_by_cell.get(global_cell, "normal"),
+                        )
                         if VISCOSITY_PREDICTION_MODE != "off":
                             run_predicted_viscosity_for_cell(
                                 global_cell, cell_rpms, feedback_summary
@@ -2188,7 +2201,6 @@ def main():
                         # Normal run: perform washing only after successful CNC retract
                         if pump and feedback_summary.get("cnc_retracted_ok"):
                             perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)
-                            web_interface.add_completed_cell(global_cell, termination_reason=termination_by_cell.get(global_cell, "normal"))
                         elif pump:
                             print(
                                 f"Wash skipped for Cell {global_cell}: CNC safe retract failed "
@@ -2204,18 +2216,18 @@ def main():
 
                 except Exception as e:
                     print(f"Error during testing of Cell {global_cell}: {e}")
-                    print(f"Saving partial results and terminating...")
                     traceback.print_exc()
-                    # Save partial data before exiting
-                    if all_data:
-                        save_partial_data(
-                            all_data,
-                            timestamp,
-                            mode,
-                            completed_cells,
-                            run_experiment_name,
-                            termination_by_cell=termination_by_cell,
-                        )
+                    if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                        print("Saving partial results and terminating...")
+                        if all_data:
+                            save_partial_data(
+                                all_data,
+                                timestamp,
+                                mode,
+                                completed_cells,
+                                run_experiment_name,
+                                termination_by_cell=termination_by_cell,
+                            )
                     raise  # Re-raise to trigger cleanup
         
             # All testing completed successfully
@@ -2223,19 +2235,17 @@ def main():
             print(f"Tested {len(completed_cells)} cells: {completed_cells}")
             print(f"Saving final results...")
             
-            web_interface.update_status("Saving final results...")
-
-            csv_filename = save_dynamic_analysis_data(
-                all_data,
-                timestamp,
-                mode,
-                run_experiment_name,
-                termination_by_cell=termination_by_cell,
-            )
-            print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
-            print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
             if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                web_interface.update_status("Saving final results...")
+                csv_filename = save_dynamic_analysis_data(
+                    all_data,
+                    timestamp,
+                    mode,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                )
+                print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
+                print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 review_type = "recalibration" if RECALIBRATE_INDIVIDUAL_CELLS else "calibration"
                 if web_interface.open_calibration_review_if_needed(
                     review_type, calibration_offset=CALIBRATION_OFFSET
@@ -2246,45 +2256,123 @@ def main():
                 else:
                     web_interface.update_status("Experiment completed successfully")
             else:
-                web_interface.update_status("Experiment completed successfully")
+                web_interface.sync_experiment_review_cells_from_run(
+                    all_data,
+                    termination_by_cell,
+                    default_termination="normal",
+                )
+                web_interface.set_experiment_review_run_context(
+                    all_data,
+                    timestamp,
+                    mode,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                    completed_cells=completed_cells,
+                )
+                if web_interface.open_experiment_review_if_needed():
+                    web_interface.update_status(
+                        "Run finished — review experiment data (Save or Discard each cell)"
+                    )
+                else:
+                    web_interface.update_status("Saving final results...")
+                    csv_filename = save_dynamic_analysis_data(
+                        all_data,
+                        timestamp,
+                        mode,
+                        run_experiment_name,
+                        termination_by_cell=termination_by_cell,
+                    )
+                    print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
+                    web_interface.update_status("Experiment completed successfully")
+                print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
         except KeyboardInterrupt:
             print(f"\nExperiment interrupted by user")
             web_interface.update_status("Experiment interrupted by user")
-            if all_data:
-                print("Saving partial results...")
-                save_partial_data(
-                    all_data,
-                    timestamp,
-                    mode,
-                    completed_cells,
-                    run_experiment_name,
-                    termination_by_cell=termination_by_cell,
-                )
             if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                if all_data:
+                    print("Saving partial results...")
+                    save_partial_data(
+                        all_data,
+                        timestamp,
+                        mode,
+                        completed_cells,
+                        run_experiment_name,
+                        termination_by_cell=termination_by_cell,
+                    )
                 review_type = "recalibration" if RECALIBRATE_INDIVIDUAL_CELLS else "calibration"
                 web_interface.open_calibration_review_if_needed(
                     review_type, calibration_offset=CALIBRATION_OFFSET
                 )
+            else:
+                web_interface.sync_experiment_review_cells_from_run(
+                    all_data,
+                    termination_by_cell,
+                    default_termination="user_stop",
+                )
+                web_interface.set_experiment_review_run_context(
+                    all_data,
+                    timestamp,
+                    mode,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                    completed_cells=completed_cells,
+                )
+                if not web_interface.open_experiment_review_if_needed():
+                    if all_data:
+                        print("Saving partial results...")
+                        save_partial_data(
+                            all_data,
+                            timestamp,
+                            mode,
+                            completed_cells,
+                            run_experiment_name,
+                            termination_by_cell=termination_by_cell,
+                        )
         except Exception as e:
             print(f"Critical error during experiment: {e}")
             traceback.print_exc()
             web_interface.update_status(f"Error: {str(e)}")
-            if all_data:
-                print("Saving partial results...")
-                save_partial_data(
-                    all_data,
-                    timestamp,
-                    mode,
-                    completed_cells,
-                    run_experiment_name,
-                    termination_by_cell=termination_by_cell,
-                )
             if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                if all_data:
+                    print("Saving partial results...")
+                    save_partial_data(
+                        all_data,
+                        timestamp,
+                        mode,
+                        completed_cells,
+                        run_experiment_name,
+                        termination_by_cell=termination_by_cell,
+                    )
                 review_type = "recalibration" if RECALIBRATE_INDIVIDUAL_CELLS else "calibration"
                 web_interface.open_calibration_review_if_needed(
                     review_type, calibration_offset=CALIBRATION_OFFSET
                 )
+            else:
+                web_interface.sync_experiment_review_cells_from_run(
+                    all_data,
+                    termination_by_cell,
+                    default_termination="error",
+                )
+                web_interface.set_experiment_review_run_context(
+                    all_data,
+                    timestamp,
+                    mode,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                    completed_cells=completed_cells,
+                )
+                if not web_interface.open_experiment_review_if_needed():
+                    if all_data:
+                        print("Saving partial results...")
+                        save_partial_data(
+                            all_data,
+                            timestamp,
+                            mode,
+                            completed_cells,
+                            run_experiment_name,
+                            termination_by_cell=termination_by_cell,
+                        )
         finally:
             # Cleanup hardware
             print("Cleaning up hardware...")
