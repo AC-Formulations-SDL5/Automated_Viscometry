@@ -829,14 +829,14 @@ class ViscometryDashboard {
         if (this.el.zSparklinePlot) {
             Plotly.newPlot(this.el.zSparklinePlot, [], this.zSparklineLayout, config).then(() => {
                 this.zPlotInitialized = true;
-                this.refreshLivePlots();
+                void this.refreshLivePlots({ forceFull: true });
             });
         }
 
         if (this.el.torqueZPlot) {
             Plotly.newPlot(this.el.torqueZPlot, [], this.torqueZLayout, config).then(() => {
                 this.torquePlotInitialized = true;
-                this.refreshLivePlots();
+                void this.refreshLivePlots({ forceFull: true });
             });
         }
     }
@@ -2048,7 +2048,7 @@ class ViscometryDashboard {
         if (added > 0) {
             this.computeCellVisualStates();
             this.renderMap();
-            this.refreshLivePlots({ forceFull: true });
+            void this.refreshLivePlots({ forceFull: true });
             this.updateTable();
         }
         return added;
@@ -2104,7 +2104,7 @@ class ViscometryDashboard {
         }
         this.computeCellVisualStates();
         this.renderMap();
-        this.refreshLivePlots({ forceFull: true });
+        void this.refreshLivePlots({ forceFull: true });
         this.updateTable();
     }
 
@@ -2169,8 +2169,15 @@ class ViscometryDashboard {
             this._plotRefreshTimer = null;
             const incremental = this._plotIncrementalPending;
             this._plotIncrementalPending = false;
-            this.refreshLivePlots({ forceFull: !incremental });
+            void this.refreshLivePlots({ forceFull: !incremental });
         }, 110);
+    }
+
+    _plotlyWhenDone(result) {
+        if (result && typeof result.then === "function") {
+            return result;
+        }
+        return Promise.resolve();
     }
 
     ingestMeasurement(rawMeasurement, bootstrap) {
@@ -2563,6 +2570,7 @@ class ViscometryDashboard {
             activeCellId: activeCell,
             rpmKeys,
             pointCounts,
+            plotsDrawn: true,
         };
     }
 
@@ -2580,9 +2588,9 @@ class ViscometryDashboard {
         });
     }
 
-    _tryIncrementalPlotRefresh(ctx) {
+    async _tryIncrementalPlotRefresh(ctx) {
         const state = this._plotStreamState;
-        if (!state || !ctx.activeCell) {
+        if (!state || !ctx.activeCell || !state.plotsDrawn) {
             return false;
         }
         if (Number(state.activeCellId) !== Number(ctx.activeCell)) {
@@ -2593,6 +2601,8 @@ class ViscometryDashboard {
             return false;
         }
 
+        const extendTasks = [];
+        const countUpdates = [];
         let zExtended = false;
         let torqueExtended = false;
 
@@ -2614,7 +2624,11 @@ class ViscometryDashboard {
                 }
 
                 const rpm = Number(rpmKey);
-                const markerPalette = this._markerColorsForRpmTrace(newPoints, ctx.torqueFloor, this.getLiveRpmColor(rpm, ctx.orderedRpms));
+                const markerPalette = this._markerColorsForRpmTrace(
+                    newPoints,
+                    ctx.torqueFloor,
+                    this.getLiveRpmColor(rpm, ctx.orderedRpms)
+                );
 
                 if (this.zPlotInitialized && this.el.zSparklinePlot) {
                     const zUpdate = {
@@ -2624,7 +2638,11 @@ class ViscometryDashboard {
                         "marker.color": [markerPalette.map((p) => p.fill)],
                         "marker.line.color": [markerPalette.map((p) => p.line)],
                     };
-                    Plotly.extendTraces(this.el.zSparklinePlot, zUpdate, [traceIdx]);
+                    extendTasks.push(
+                        this._plotlyWhenDone(
+                            Plotly.extendTraces(this.el.zSparklinePlot, zUpdate, [traceIdx])
+                        )
+                    );
                     zExtended = true;
                 }
 
@@ -2635,15 +2653,34 @@ class ViscometryDashboard {
                         "marker.color": [markerPalette.map((p) => p.fill)],
                         "marker.line.color": [markerPalette.map((p) => p.line)],
                     };
-                    Plotly.extendTraces(this.el.torqueZPlot, tUpdate, [traceIdx]);
+                    extendTasks.push(
+                        this._plotlyWhenDone(
+                            Plotly.extendTraces(this.el.torqueZPlot, tUpdate, [traceIdx])
+                        )
+                    );
                     torqueExtended = true;
                 }
 
-                state.pointCounts.set(rpmKey, points.length);
+                countUpdates.push({ rpmKey, length: points.length });
             });
         } catch (e) {
             return false;
         }
+
+        if (!extendTasks.length) {
+            return false;
+        }
+
+        try {
+            await Promise.all(extendTasks);
+        } catch (e) {
+            console.warn("Incremental plot extend failed, will full refresh:", e);
+            return false;
+        }
+
+        countUpdates.forEach(({ rpmKey, length }) => {
+            state.pointCounts.set(rpmKey, length);
+        });
 
         if (zExtended && this.el.zSparklineEmpty) {
             this.el.zSparklineEmpty.classList.add("hidden");
@@ -2652,11 +2689,12 @@ class ViscometryDashboard {
             this.el.torqueZEmpty.classList.add("hidden");
         }
         this.renderDragZRpmLegend(ctx.activeCell, ctx.orderedRpms);
-        return zExtended || torqueExtended;
+        return true;
     }
 
-    _fullPlotRefresh(ctx) {
+    async _fullPlotRefresh(ctx) {
         const { activeCell, torqueFloor, orderedRpms, buckets } = ctx;
+        const reactTasks = [];
 
         if (this.zPlotInitialized && this.el.zSparklinePlot) {
             const zTraces = orderedRpms
@@ -2671,11 +2709,16 @@ class ViscometryDashboard {
                 .filter(Boolean);
 
             const layout = this.zSparklineLayout || undefined;
-            Plotly.react(this.el.zSparklinePlot, zTraces, layout, { responsive: true, displayModeBar: false });
-            if (this.el.zSparklineEmpty) {
-                this.el.zSparklineEmpty.classList.toggle("hidden", zTraces.length > 0);
-            }
-            this.renderDragZRpmLegend(activeCell, orderedRpms);
+            reactTasks.push(
+                this._plotlyWhenDone(
+                    Plotly.react(this.el.zSparklinePlot, zTraces, layout, { responsive: true, displayModeBar: false })
+                ).then(() => {
+                    if (this.el.zSparklineEmpty) {
+                        this.el.zSparklineEmpty.classList.toggle("hidden", zTraces.length > 0);
+                    }
+                    this.renderDragZRpmLegend(activeCell, orderedRpms);
+                })
+            );
         }
 
         if (this.torquePlotInitialized && this.el.torqueZPlot) {
@@ -2690,32 +2733,50 @@ class ViscometryDashboard {
                 })
                 .filter(Boolean);
 
-            Plotly.react(
-                this.el.torqueZPlot,
-                torqueTraces,
-                this.torqueZLayout || undefined,
-                { responsive: true, displayModeBar: false }
+            reactTasks.push(
+                this._plotlyWhenDone(
+                    Plotly.react(
+                        this.el.torqueZPlot,
+                        torqueTraces,
+                        this.torqueZLayout || undefined,
+                        { responsive: true, displayModeBar: false }
+                    )
+                ).then(() => {
+                    if (this.el.torqueZEmpty) {
+                        this.el.torqueZEmpty.classList.toggle("hidden", torqueTraces.length > 0);
+                    }
+                })
             );
-            if (this.el.torqueZEmpty) {
-                this.el.torqueZEmpty.classList.toggle("hidden", torqueTraces.length > 0);
-            }
         }
 
-        this._recordPlotStreamState(activeCell, orderedRpms, buckets);
+        if (reactTasks.length === 0) {
+            return;
+        }
+
+        try {
+            await Promise.all(reactTasks);
+            this._recordPlotStreamState(activeCell, orderedRpms, buckets);
+        } catch (e) {
+            console.warn("Full plot refresh failed:", e);
+            this._plotStreamState = null;
+        }
     }
 
-    refreshLivePlots(options = {}) {
+    async refreshLivePlots(options = {}) {
         const ctx = this._livePlotContext();
         const forceFull = Boolean(options.forceFull)
             || this.zLatestOnly
             || !this.zPlotInitialized
             || !this.torquePlotInitialized;
 
-        if (!forceFull && this._tryIncrementalPlotRefresh(ctx)) {
-            return;
+        if (!forceFull) {
+            const extended = await this._tryIncrementalPlotRefresh(ctx);
+            if (extended) {
+                return;
+            }
         }
 
-        this._fullPlotRefresh(ctx);
+        await this._fullPlotRefresh(ctx);
     }
 
     updateGauge(targetRPM) {
