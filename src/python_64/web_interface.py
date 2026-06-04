@@ -96,6 +96,7 @@ class ViscometryWebInterface:
             'calibration_mode': False,
             'recalibrate_individual_cells': False,
             'recalibration_cells': {},
+            'recalibration_ignore_max_z_travel': False,
             # Regular runs only: skip Z-levels when torque (first sample at elapsed >= SAMPLE_INTERVAL) is below threshold.
             'low_torque_liquid_contact_skip_enabled': True,
             'low_torque_liquid_contact_threshold_pct': 25.0,
@@ -623,6 +624,10 @@ class ViscometryWebInterface:
                 normalized['calibration_mode'] = bool(settings['calibration_mode'])
             if 'recalibrate_individual_cells' in settings:
                 normalized['recalibrate_individual_cells'] = bool(settings['recalibrate_individual_cells'])
+            if 'recalibration_ignore_max_z_travel' in settings:
+                normalized['recalibration_ignore_max_z_travel'] = bool(
+                    settings['recalibration_ignore_max_z_travel']
+                )
             if 'recalibration_cells' in settings:
                 raw_cells = settings['recalibration_cells']
                 if isinstance(raw_cells, dict):

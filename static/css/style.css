@@ -1993,6 +1993,141 @@ h2 {
     gap: 8px;
 }
 
+/* ── Liquid-glass toggle switch (native checkbox preserved for JS) ── */
+.ui-switch {
+    --switch-width: 44px;
+    --switch-height: 26px;
+    --switch-thumb: 20px;
+    --switch-accent: var(--color-green);
+    --switch-accent-subtle: var(--color-green-subtle);
+    --switch-accent-border: var(--color-green-border);
+    --switch-accent-glow: var(--color-green-glow);
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    width: var(--switch-width);
+    height: var(--switch-height);
+    vertical-align: middle;
+}
+
+.ui-switch--accent-blue {
+    --switch-accent: var(--accent-blue);
+    --switch-accent-subtle: var(--accent-blue-subtle);
+    --switch-accent-border: var(--accent-blue-border);
+    --switch-accent-glow: var(--accent-blue-glow);
+}
+
+.ui-switch--compact {
+    --switch-width: 36px;
+    --switch-height: 22px;
+    --switch-thumb: 16px;
+}
+
+.ui-switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.ui-switch input:disabled {
+    cursor: not-allowed;
+}
+
+.ui-switch-track {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-pill);
+    background: var(--glass-white-subtle);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.75) inset,
+        0 2px 6px rgba(0, 0, 0, 0.05);
+    transition:
+        background var(--duration-fast) var(--ease-smooth),
+        border-color var(--duration-fast) var(--ease-smooth),
+        box-shadow var(--duration-fast) var(--ease-smooth);
+    pointer-events: none;
+}
+
+.ui-switch-track::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 3px;
+    width: var(--switch-thumb);
+    height: var(--switch-thumb);
+    border-radius: var(--radius-pill);
+    background: var(--glass-white-strong);
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.95) inset,
+        0 2px 8px rgba(0, 0, 0, 0.12);
+    transform: translateY(-50%);
+    transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.ui-switch input:checked + .ui-switch-track {
+    background: var(--switch-accent-subtle);
+    border-color: var(--switch-accent-border);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.55) inset,
+        0 0 0 1px var(--switch-accent-border),
+        0 4px 14px var(--switch-accent-glow);
+}
+
+.ui-switch input:checked + .ui-switch-track::after {
+    transform: translate(
+        calc(var(--switch-width) - var(--switch-thumb) - 6px),
+        -50%
+    );
+}
+
+.ui-switch input:focus-visible + .ui-switch-track {
+    outline: 2px solid var(--switch-accent);
+    outline-offset: 2px;
+}
+
+.ui-switch input:disabled + .ui-switch-track {
+    opacity: 0.45;
+    filter: grayscale(0.2);
+}
+
+.ui-switch-row {
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    cursor: pointer;
+    font-size: inherit;
+    color: inherit;
+}
+
+.cal-cell-checkbox.ui-switch-row {
+    min-height: 36px;
+}
+
+.ui-switch-row--align-start {
+    align-items: flex-start;
+}
+
+.ui-switch-row--align-start .ui-switch {
+    margin-top: 2px;
+}
+
+.ui-switch-label {
+    flex: 1;
+    min-width: 0;
+    line-height: 1.45;
+    color: var(--text-primary);
+}
+
 .checkbox-row input {
     width: auto;
     margin: 0;
@@ -2966,19 +3101,8 @@ body.loading .skeleton-lines {
 }
 
 .cal-check-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
     font-size: 0.78rem;
     color: var(--text-primary);
-    cursor: pointer;
-}
-
-.cal-checkbox {
-    margin-top: 2px;
-    width: auto;
-    flex-shrink: 0;
-    accent-color: rgb(48, 209, 88);
 }
 
 /* Recommended settings */
@@ -3100,17 +3224,12 @@ body.loading .skeleton-lines {
 }
 
 .cal-recalibration-toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
     font-size: 0.78rem;
     color: var(--text-secondary);
-    cursor: pointer;
 }
 
-.cal-recalibration-toggle input {
-    width: auto;
-    margin: 0;
+.cal-recalibration-toggle .ui-switch-label {
+    color: var(--text-secondary);
 }
 
 .cal-cell-selector-container {
@@ -3121,6 +3240,15 @@ body.loading .skeleton-lines {
 
 .cal-cell-selector-container.hidden {
     display: none;
+}
+
+.cal-recalibration-max-z-toggle {
+    margin-top: 10px;
+}
+
+.cal-recalibration-max-z-hint {
+    margin-top: 4px;
+    margin-bottom: 0;
 }
 
 .cal-cell-grid {
@@ -3137,18 +3265,14 @@ body.loading .skeleton-lines {
 }
 
 .cal-cell-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 6px;
     font-size: 0.74rem;
     color: var(--text-primary);
-    cursor: pointer;
+    gap: 8px;
 }
 
-.cal-cell-checkbox input {
-    width: auto;
-    margin: 0;
-    accent-color: rgb(10, 132, 255);
+.cal-cell-checkbox .ui-switch-label {
+    font-size: 0.74rem;
+    flex: 0 1 auto;
 }
 
 .cal-custom-z-container {
