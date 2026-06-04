@@ -8,6 +8,147 @@ const LIVE_RPM_PASTEL_PALETTE = [
 const LIVE_PLOT_BELOW_FILL = "#f6aea9";
 const LIVE_PLOT_BELOW_LINE = "#e57373";
 
+/** Mode-aware protocol steps and compact orchestration flow (see ORCHESTRATION_SCENARIO.md). */
+const PROTOCOL_DEFINITIONS = {
+    idle: {
+        badge: "Idle",
+        badgeClass: "mode-idle",
+        steps: [{ id: "idle", label: "Standby" }],
+        flow: [{ id: "idle", short: "Idle" }],
+        stepToFlow: { idle: "idle" },
+    },
+    regular: {
+        badge: "Regular",
+        badgeClass: "",
+        steps: [
+            { id: "init", label: "Initialize hardware" },
+            { id: "move", label: "Move to cell" },
+            { id: "zero", label: "Auto-zero viscometer" },
+            { id: "measure", label: "Z-descent & measure" },
+            { id: "retract", label: "Retract to safe Z" },
+            { id: "wash_after", label: "Washing after cell" },
+            { id: "wash1_travel", label: "Wash Station 1 — travel" },
+            { id: "wash1_scrub", label: "Wash Station 1 — scrub" },
+            { id: "wash1_drain", label: "Wash Station 1 — drain" },
+            { id: "wash2_travel", label: "Wash Station 2 — travel" },
+            { id: "wash2_scrub", label: "Wash Station 2 — scrub / dry" },
+            { id: "save", label: "Save results" },
+            { id: "cleanup", label: "Cleanup & homing" },
+            { id: "done", label: "Run complete" },
+        ],
+        flow: [
+            { id: "init", short: "Init" },
+            { id: "move", short: "Move" },
+            { id: "zero", short: "Zero" },
+            { id: "measure", short: "Measure" },
+            { id: "retract", short: "Retract" },
+            { id: "wash1", short: "WS1" },
+            { id: "wash2", short: "WS2" },
+            { id: "save", short: "Save" },
+        ],
+        stepToFlow: {
+            init: "init",
+            move: "move",
+            zero: "zero",
+            measure: "measure",
+            retract: "retract",
+            wash_after: "wash1",
+            wash1_travel: "wash1",
+            wash1_scrub: "wash1",
+            wash1_drain: "wash1",
+            wash2_travel: "wash2",
+            wash2_scrub: "wash2",
+            save: "save",
+            cleanup: "save",
+            done: "save",
+        },
+    },
+    calibration: {
+        badge: "Calibration",
+        badgeClass: "mode-calibration",
+        steps: [
+            { id: "init", label: "Initialize hardware" },
+            { id: "move", label: "Move to cell" },
+            { id: "zero", label: "Auto-zero viscometer" },
+            { id: "measure", label: "Z-descent & hitpoint hunt" },
+            { id: "review", label: "Review calibration data" },
+            { id: "save", label: "Save calibration" },
+            { id: "cleanup", label: "Cleanup & homing" },
+            { id: "done", label: "Run complete" },
+        ],
+        flow: [
+            { id: "init", short: "Init" },
+            { id: "move", short: "Move" },
+            { id: "zero", short: "Zero" },
+            { id: "measure", short: "Measure" },
+            { id: "review", short: "Review" },
+            { id: "save", short: "Save" },
+        ],
+        stepToFlow: {
+            init: "init",
+            move: "move",
+            zero: "zero",
+            measure: "measure",
+            review: "review",
+            save: "save",
+            cleanup: "save",
+            done: "save",
+        },
+    },
+    recalibration: {
+        badge: "Recalibration",
+        badgeClass: "mode-recalibration",
+        steps: [
+            { id: "init", label: "Initialize hardware" },
+            { id: "move", label: "Move to cell" },
+            { id: "zero", label: "Auto-zero viscometer" },
+            { id: "measure", label: "Z-descent & hitpoint hunt" },
+            { id: "review", label: "Review recalibration data" },
+            { id: "save", label: "Save recalibration" },
+            { id: "cleanup", label: "Cleanup & homing" },
+            { id: "done", label: "Run complete" },
+        ],
+        flow: [
+            { id: "init", short: "Init" },
+            { id: "move", short: "Move" },
+            { id: "zero", short: "Zero" },
+            { id: "measure", short: "Measure" },
+            { id: "review", short: "Review" },
+            { id: "save", short: "Save" },
+        ],
+        stepToFlow: {
+            init: "init",
+            move: "move",
+            zero: "zero",
+            measure: "measure",
+            review: "review",
+            save: "save",
+            cleanup: "save",
+            done: "save",
+        },
+    },
+};
+
+/** Ordered rules: first match wins. Tests receive normalized lowercase message. */
+const PROTOCOL_STATUS_RULES = [
+    { id: "idle", test: (m) => /ready - configure|start cancelled|configure the run/.test(m) },
+    { id: "done", test: (m) => /experiment completed|review calibration data — save/.test(m) },
+    { id: "cleanup", test: (m) => /cleaning up|cleanup:|stop requested — retract|cleanup: homing|experiment interrupted/.test(m) },
+    { id: "save", test: (m) => /saving final|run finished — review/.test(m) },
+    { id: "review", test: (m) => /review calibration|save or discard each cell/.test(m) },
+    { id: "wash2_scrub", test: (m) => /wash station 2: scrub|drying station: scrub|motor 2/.test(m) && !/travelling/.test(m) },
+    { id: "wash2_travel", test: (m) => /wash station 2: travel|drying station: travel/.test(m) },
+    { id: "wash1_drain", test: (m) => /wash station 1: drain/.test(m) },
+    { id: "wash1_scrub", test: (m) => /wash station 1: scrub/.test(m) },
+    { id: "wash1_travel", test: (m) => /wash station 1: travel/.test(m) },
+    { id: "wash_after", test: (m) => /washing after cell/.test(m) },
+    { id: "retract", test: (m) => /retracting to safe|cnc retract|wash skipped/.test(m) },
+    { id: "measure", test: (m) => /measuring at|testing cell|calibrating cell|recalibrating|terminated early|hit-point|hit point|surface detected|z-step|descending z/.test(m) },
+    { id: "zero", test: (m) => /auto-zero|zeroing viscometer/.test(m) },
+    { id: "move", test: (m) => /moving to cell/.test(m) },
+    { id: "init", test: (m) => /initializing hardware|initializing cnc|initializing viscometer|initializing esp32/.test(m) },
+];
+
 class ViscometryDashboard {
     constructor() {
         this.platform = {
@@ -40,6 +181,10 @@ class ViscometryDashboard {
         this.zLatestOnly = false;
         this.zConnectDots = false;
         this.currentPhase = 0;
+        this.protocolRunMode = "idle";
+        this.protocolCurrentStepId = "idle";
+        this.protocolLastStatusMessage = "";
+        this._protocolRenderedMode = null;
         this.gaugeDisplayRPM = 0;
         this.gaugeAnimationFrame = null;
         this.zPlotInitialized = false;
@@ -65,7 +210,6 @@ class ViscometryDashboard {
         this._plotRefreshTimer = null;
         this._tableRefreshTimer = null;
         this._graphTabIdsKey = "";
-        this.customHitpointSelectedCellId = null;
         this.isSavingFinalResults = false;
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
@@ -106,8 +250,13 @@ class ViscometryDashboard {
         this.calibrationReviewSession = null;
         this.calibrationReviewActiveCellId = null;
         this.calibrationReviewPending = false;
-        this.calibrationReviewPlotInitialized = false;
+        this.calibrationReviewPlotState = { initialized: false, layout: null };
         this.calibrationReviewDecisionInFlight = false;
+        this.experimentReviewSession = null;
+        this.experimentReviewActiveCellId = null;
+        this.experimentReviewPending = false;
+        this.experimentReviewPlotState = { initialized: false, layout: null };
+        this.experimentReviewDecisionInFlight = false;
 
         this.initElements();
         this.bindUI();
@@ -142,10 +291,19 @@ class ViscometryDashboard {
             completionBar: document.getElementById("completion-bar"),
             completionText: document.getElementById("completion-text"),
             experimentCompleteBanner: document.getElementById("experiment-complete-banner"),
+            experimentTerminatedBanner: document.getElementById("experiment-terminated-banner"),
+            experimentNamePromptBackdrop: document.getElementById("experiment-name-prompt-backdrop"),
+            experimentNamePromptInput: document.getElementById("experiment-name-prompt-input"),
+            experimentNamePromptProceed: document.getElementById("experiment-name-prompt-proceed"),
+            experimentNamePromptContinue: document.getElementById("experiment-name-prompt-continue"),
             map: document.getElementById("platform-map"),
             armDot: document.getElementById("arm-dot"),
-            timeline: document.getElementById("timeline"),
-            timelineFill: document.getElementById("timeline-fill"),
+            protocolModeBadge: document.getElementById("protocol-mode-badge"),
+            protocolCurrentStep: document.getElementById("protocol-current-step"),
+            protocolStepList: document.getElementById("protocol-step-list"),
+            protocolFlowchart: document.getElementById("protocol-flowchart"),
+            protocolProgressFill: document.getElementById("protocol-progress-fill"),
+            summaryPredictedViscosity: document.getElementById("summary-predicted-viscosity"),
             statusLog: document.getElementById("status-log"),
             zSparklinePlot: document.getElementById("z-sparkline-plot"),
             zSparklineEmpty: document.getElementById("z-sparkline-empty"),
@@ -208,7 +366,6 @@ class ViscometryDashboard {
             xyzZ: document.getElementById("xyz-z"),
             torqueFill: document.getElementById("torque-fill"),
             torqueValue: document.getElementById("torque-value"),
-            torqueDisplay: document.getElementById("torque-display"),
             rotationalDragDisplay: document.getElementById("rotational-drag-display"),
             dragLiveBox: document.getElementById("drag-live-box"),
             zMeasuringDisplay: document.getElementById("z-measuring-display"),
@@ -248,13 +405,7 @@ class ViscometryDashboard {
             summaryMetaLeft: document.getElementById("summary-meta-left"),
             summaryMetaRight: document.getElementById("summary-meta-right"),
             summaryDownload: document.getElementById("summary-download"),
-            summaryShowHitLine: document.getElementById("summary-show-hit-line"),
             summaryAlignHitpoint: document.getElementById("summary-align-hitpoint"),
-            summaryCustomHitpointCell: document.getElementById("summary-custom-hitpoint-cell"),
-            summaryCustomHitpointZ: document.getElementById("summary-custom-hitpoint-z"),
-            summaryMakeCustomHitpoint: document.getElementById("summary-make-custom-hitpoint"),
-            summaryUndoCustomHitpoint: document.getElementById("summary-undo-custom-hitpoint"),
-            summaryCustomHitpointStatus: document.getElementById("summary-custom-hitpoint-status"),
             summaryPlot: document.getElementById("summary-plot"),
             tabButtons: document.querySelectorAll(".tab-button"),
             tabPanels: document.querySelectorAll(".tab-panel"),
@@ -274,7 +425,11 @@ class ViscometryDashboard {
             calCheckEmpty: document.getElementById("cal-check-empty"),
             calCheckFeedback: document.getElementById("cal-check-feedback"),
             calCheckSmartExit: document.getElementById("cal-check-smart-exit"),
+            calCheckFailSafeOff: document.getElementById("cal-check-fail-safe-off"),
+            calCheckLiquidSkipOff: document.getElementById("cal-check-liquid-skip-off"),
+            calCheckViscosityOff: document.getElementById("cal-check-viscosity-off"),
             calApplyZStep: document.getElementById("cal-apply-z-step"),
+            calApplyRpm: document.getElementById("cal-apply-rpm"),
             calApplyDuration: document.getElementById("cal-apply-duration"),
             calApplyInterval: document.getElementById("cal-apply-interval"),
             calApplyAll: document.getElementById("cal-apply-all-recommended"),
@@ -301,10 +456,21 @@ class ViscometryDashboard {
             calReviewSummary: document.getElementById("calibration-review-summary"),
             calReviewSave: document.getElementById("calibration-review-save"),
             calReviewDiscard: document.getElementById("calibration-review-discard"),
+            expReviewBackdrop: document.getElementById("experiment-review-backdrop"),
+            expReviewModal: document.getElementById("experiment-review-modal"),
+            expReviewTabs: document.getElementById("experiment-review-tabs"),
+            expReviewPlot: document.getElementById("experiment-review-plot"),
+            expReviewSummary: document.getElementById("experiment-review-summary"),
+            expReviewSave: document.getElementById("experiment-review-save"),
+            expReviewDiscard: document.getElementById("experiment-review-discard"),
             calSavedBackdrop: document.getElementById("calibration-saved-backdrop"),
             calSavedBody: document.getElementById("calibration-saved-body"),
             calSavedClose: document.getElementById("calibration-saved-close"),
             calSavedOk: document.getElementById("calibration-saved-ok"),
+            expSavedBackdrop: document.getElementById("experiment-saved-backdrop"),
+            expSavedBody: document.getElementById("experiment-saved-body"),
+            expSavedClose: document.getElementById("experiment-saved-close"),
+            expSavedOk: document.getElementById("experiment-saved-ok"),
         };
     }
 
@@ -366,32 +532,10 @@ class ViscometryDashboard {
         if (this.el.summaryDownload) {
             this.el.summaryDownload.addEventListener("click", () => this.downloadSelectedCSV());
         }
-        if (this.el.summaryShowHitLine) {
-            this.el.summaryShowHitLine.addEventListener("change", () => {
-                if (this.selectedExperimentId) this.selectExperiment(this.selectedExperimentId);
-            });
-        }
         if (this.el.summaryAlignHitpoint) {
             this.el.summaryAlignHitpoint.addEventListener("change", () => {
                 if (this.selectedExperimentId) this.selectExperiment(this.selectedExperimentId);
             });
-        }
-
-        if (this.el.summaryCustomHitpointCell) {
-            this.el.summaryCustomHitpointCell.addEventListener("change", () => {
-                this.customHitpointSelectedCellId = this.el.summaryCustomHitpointCell.value
-                    ? Number(this.el.summaryCustomHitpointCell.value)
-                    : null;
-                if (this.selectedExperimentId) this.updateCustomHitpointControlsUI();
-            });
-        }
-
-        if (this.el.summaryMakeCustomHitpoint) {
-            this.el.summaryMakeCustomHitpoint.addEventListener("click", () => this.applyCustomHitpointOverrideFromUI());
-        }
-
-        if (this.el.summaryUndoCustomHitpoint) {
-            this.el.summaryUndoCustomHitpoint.addEventListener("click", () => this.undoCustomHitpointOverrideFromUI());
         }
 
         document.addEventListener("keydown", (event) => {
@@ -451,9 +595,33 @@ class ViscometryDashboard {
         }
 
         // Checklist validation
-        [this.el.calCheckEmpty, this.el.calCheckFeedback, this.el.calCheckSmartExit].forEach((cb) => {
+        [
+            this.el.calCheckEmpty,
+            this.el.calCheckFeedback,
+            this.el.calCheckSmartExit,
+            this.el.calCheckFailSafeOff,
+            this.el.calCheckLiquidSkipOff,
+            this.el.calCheckViscosityOff,
+        ].forEach((cb) => {
             if (cb) cb.addEventListener("change", () => this.validateCalibrationChecklist());
         });
+
+        if (this.el.experimentNamePromptProceed) {
+            this.el.experimentNamePromptProceed.addEventListener("click", () => {
+                this._onExperimentNamePromptProceed();
+            });
+        }
+        if (this.el.experimentNamePromptContinue) {
+            this.el.experimentNamePromptContinue.addEventListener("click", () => {
+                this._closeExperimentNamePromptModal();
+                this._startRegularRunAfterNameCheck();
+            });
+        }
+        if (this.el.experimentNamePromptInput) {
+            this.el.experimentNamePromptInput.addEventListener("input", () => {
+                this._updateExperimentNamePromptProceedState();
+            });
+        }
 
         // Apply recommended settings buttons
         if (this.el.calApplyZStep) {
@@ -462,23 +630,30 @@ class ViscometryDashboard {
                 this.setUiState("idle");
             });
         }
+        if (this.el.calApplyRpm) {
+            this.el.calApplyRpm.addEventListener("click", () => {
+                if (this.el.testRpms) this.el.testRpms.value = "1";
+                this.setUiState("idle");
+            });
+        }
         if (this.el.calApplyDuration) {
             this.el.calApplyDuration.addEventListener("click", () => {
-                if (this.el.measurementDuration) this.el.measurementDuration.value = "5";
+                if (this.el.measurementDuration) this.el.measurementDuration.value = "6";
                 this.setUiState("idle");
             });
         }
         if (this.el.calApplyInterval) {
             this.el.calApplyInterval.addEventListener("click", () => {
-                if (this.el.sampleInterval) this.el.sampleInterval.value = "4";
+                if (this.el.sampleInterval) this.el.sampleInterval.value = "3";
                 this.setUiState("idle");
             });
         }
         if (this.el.calApplyAll) {
             this.el.calApplyAll.addEventListener("click", () => {
                 if (this.el.zStepSize) this.el.zStepSize.value = "-0.02";
-                if (this.el.measurementDuration) this.el.measurementDuration.value = "5";
-                if (this.el.sampleInterval) this.el.sampleInterval.value = "4";
+                if (this.el.testRpms) this.el.testRpms.value = "1";
+                if (this.el.measurementDuration) this.el.measurementDuration.value = "6";
+                if (this.el.sampleInterval) this.el.sampleInterval.value = "3";
                 this.setUiState("idle");
             });
         }
@@ -534,11 +709,23 @@ class ViscometryDashboard {
         if (this.el.calReviewDiscard) {
             this.el.calReviewDiscard.addEventListener("click", () => this.onCalibrationReviewDiscard());
         }
+        if (this.el.expReviewSave) {
+            this.el.expReviewSave.addEventListener("click", () => this.onExperimentReviewSave());
+        }
+        if (this.el.expReviewDiscard) {
+            this.el.expReviewDiscard.addEventListener("click", () => this.onExperimentReviewDiscard());
+        }
         if (this.el.calSavedClose) {
             this.el.calSavedClose.addEventListener("click", () => this.hideCalibrationSavedModal());
         }
         if (this.el.calSavedOk) {
             this.el.calSavedOk.addEventListener("click", () => this.hideCalibrationSavedModal());
+        }
+        if (this.el.expSavedClose) {
+            this.el.expSavedClose.addEventListener("click", () => this.hideExperimentSavedModal());
+        }
+        if (this.el.expSavedOk) {
+            this.el.expSavedOk.addEventListener("click", () => this.hideExperimentSavedModal());
         }
         this.bindTestingControls();
     }
@@ -579,10 +766,9 @@ class ViscometryDashboard {
             return;
         }
         this._summaryHistoryPollIntervalId = window.setInterval(() => {
-            this.pollExperimentHistoryForCustomHitpoints();
+            this.pollExperimentHistoryWhileSummaryOpen();
         }, this._summaryHistoryPollMs);
-        // Do an immediate sync so another device's changes show up quickly.
-        this.pollExperimentHistoryForCustomHitpoints();
+        this.pollExperimentHistoryWhileSummaryOpen();
     }
 
     stopSummaryHistoryPolling() {
@@ -593,7 +779,7 @@ class ViscometryDashboard {
         this._summaryHistoryPollIntervalId = null;
     }
 
-    pollExperimentHistoryForCustomHitpoints() {
+    pollExperimentHistoryWhileSummaryOpen() {
         if (!this.selectedExperimentId) {
             return;
         }
@@ -602,8 +788,7 @@ class ViscometryDashboard {
         }
 
         const selectedId = this.selectedExperimentId;
-        const prevExp = this.experimentHistory.find((e) => e.id === selectedId);
-        const prevCustom = JSON.stringify(prevExp?.custom_hitpoints || {});
+        const prevJson = JSON.stringify(this.experimentHistory.find((e) => e.id === selectedId));
 
         fetch("/api/experiment_history")
             .then((r) => r.json())
@@ -611,17 +796,15 @@ class ViscometryDashboard {
                 if (!Array.isArray(history)) return;
                 const nextExp = history.find((e) => e.id === selectedId);
                 if (!nextExp) return;
-                const nextCustom = JSON.stringify(nextExp?.custom_hitpoints || {});
-                if (nextCustom === prevCustom) {
+                const nextJson = JSON.stringify(nextExp);
+                if (nextJson === prevJson) {
                     return;
                 }
                 this.experimentHistory = history;
-                // Re-render the plot/controls with the synced overrides.
+                this.renderExperimentCards();
                 this.selectExperiment(selectedId);
             })
-            .catch(() => {
-                // Polling is best-effort; ignore failures to avoid noisy status messages.
-            });
+            .catch(() => {});
     }
 
     handleLogoFallback() {
@@ -648,6 +831,7 @@ class ViscometryDashboard {
         this.setUiState("idle");
         this.updateCompletionChip();
         this.updateZFilterButtons();
+        this.renderProtocolUI();
     }
 
     buildCells() {
@@ -864,6 +1048,9 @@ class ViscometryDashboard {
                 this.applyCalibrationStatus(calSummary);
                 if (status.calibration_review) {
                     this.openCalibrationReview(status.calibration_review);
+                }
+                if (status.experiment_review) {
+                    this.openExperimentReview(status.experiment_review);
                 }
                 this.el.body.classList.remove("loading");
                 this.pushStatusMessage(status.status_message || "Connected and ready");
@@ -1112,6 +1299,15 @@ class ViscometryDashboard {
         return payload;
     }
 
+    regularRunModeClearFlags() {
+        return {
+            calibration_mode: false,
+            recalibrate_individual_cells: false,
+            recalibration_cells: {},
+            recalibration_ignore_max_z_travel: false,
+        };
+    }
+
     readControlSettings() {
         const parseList = (value) => value.split(",").map((item) => item.trim()).filter(Boolean);
 
@@ -1181,32 +1377,86 @@ class ViscometryDashboard {
     }
 
     startRunFromUI() {
-        if (this.calibrationReviewPending) {
-            this.pushStatusMessage("Finish calibration save review before starting a new run");
+        if (this.calibrationReviewPending || this.experimentReviewPending) {
+            this.pushStatusMessage("Finish the data save review before starting a new run");
             return;
         }
         if (this.uiState !== "ready") {
             this.setControlStatus("Apply settings before starting");
             return;
         }
+        const name = (this.el.experimentName?.value || "").trim();
+        if (!name) {
+            this._openExperimentNamePromptModal();
+            return;
+        }
+        this._startRegularRunAfterNameCheck();
+    }
+
+    _openExperimentNamePromptModal() {
+        if (!this.el.experimentNamePromptBackdrop) {
+            this._startRegularRunAfterNameCheck();
+            return;
+        }
+        if (this.el.experimentNamePromptInput) {
+            this.el.experimentNamePromptInput.value = "";
+        }
+        this._updateExperimentNamePromptProceedState();
+        this.el.experimentNamePromptBackdrop.classList.remove("hidden");
+        this.el.experimentNamePromptBackdrop.setAttribute("aria-hidden", "false");
+        this.el.body.classList.add("experiment-name-prompt-active");
+        window.setTimeout(() => this.el.experimentNamePromptInput?.focus(), 50);
+    }
+
+    _closeExperimentNamePromptModal() {
+        if (this.el.experimentNamePromptBackdrop) {
+            this.el.experimentNamePromptBackdrop.classList.add("hidden");
+            this.el.experimentNamePromptBackdrop.setAttribute("aria-hidden", "true");
+        }
+        this.el.body.classList.remove("experiment-name-prompt-active");
+    }
+
+    _updateExperimentNamePromptProceedState() {
+        const hasName = Boolean((this.el.experimentNamePromptInput?.value || "").trim());
+        if (this.el.experimentNamePromptProceed) {
+            this.el.experimentNamePromptProceed.disabled = !hasName;
+        }
+    }
+
+    _onExperimentNamePromptProceed() {
+        const name = (this.el.experimentNamePromptInput?.value || "").trim();
+        if (!name) {
+            return;
+        }
+        if (this.el.experimentName) {
+            this.el.experimentName.value = name;
+        }
+        this._closeExperimentNamePromptModal();
+        this._startRegularRunAfterNameCheck();
+    }
+
+    _startRegularRunAfterNameCheck() {
         this.setUiState("running");
         this.applyControlSettings(true)
             .then((settings) => {
                 this._captureRunSettingsSnapshot();
                 this._syncPlannedCells(this.readControlSettings());
                 return fetch("/api/run/start", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(settings)
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ...settings, ...this.regularRunModeClearFlags() }),
                 });
             })
             .then((response) => response.json())
             .then((result) => {
+                if (result.error) {
+                    throw new Error(result.error);
+                }
                 this.setControlStatus(result.status_message || "Run started");
             })
-            .catch(() => {
+            .catch((err) => {
                 this.setUiState("idle");
-                this.setControlStatus("Failed to start run");
+                this.setControlStatus(err?.message || "Failed to start run");
             });
     }
 
@@ -1351,7 +1601,9 @@ class ViscometryDashboard {
             }
             if (!data.is_running && wasRunning) {
                 this.isRunning = false;
-                this.saveCompletedExperiment();
+                if (!this.experimentReviewPending && !this.calibrationReviewPending) {
+                    this.saveCompletedExperiment();
+                }
             }
             this.setRunningState(Boolean(data.is_running), wasRunning);
         });
@@ -1363,6 +1615,7 @@ class ViscometryDashboard {
             this._captureRunSettingsSnapshot();
             this.cellStart = Date.now();
             this._hideExperimentCompleteMessage();
+            this._hideExperimentTerminatedMessage();
             if (this.el.elapsed) {
                 this.el.elapsed.textContent = "00:00:00";
             }
@@ -1427,6 +1680,7 @@ class ViscometryDashboard {
                 this.recalibrationTargetCount = Number(data.recalibration_target_count) || 0;
                 this.updateCompletionBar();
                 this.updateCellVisuals();
+                this.renderProtocolUI();
             }
         });
 
@@ -1487,6 +1741,18 @@ class ViscometryDashboard {
             this.onCalibrationReviewCommitted(payload);
         });
 
+        this.socket.on("experiment_review_open", (session) => {
+            this.openExperimentReview(session);
+        });
+
+        this.socket.on("experiment_review_update", (session) => {
+            this.syncExperimentReviewSession(session);
+        });
+
+        this.socket.on("experiment_review_committed", (payload) => {
+            this.onExperimentReviewCommitted(payload);
+        });
+
     }
 
     clearDashboard() {
@@ -1518,6 +1784,9 @@ class ViscometryDashboard {
         this.runMeasurementStartIndex = 0;
         this.runSettingsSnapshot = null;
         this.currentPhase = 0;
+        this.protocolCurrentStepId = "idle";
+        this.protocolLastStatusMessage = "";
+        this._protocolRenderedMode = null;
         this._graphTabIdsKey = "";
         if (this._plotRefreshTimer) {
             window.clearTimeout(this._plotRefreshTimer);
@@ -1550,11 +1819,8 @@ class ViscometryDashboard {
         if (this.el.rotationalDragDisplay) {
             this.el.rotationalDragDisplay.textContent = "0.000";
         }
-        if (this.el.torqueDisplay) {
-            this.el.torqueDisplay.textContent = "0.00 %";
-        }
         if (this.el.torqueValue) {
-            this.el.torqueValue.textContent = "0.00";
+            this.el.torqueValue.textContent = "0.00%";
         }
         if (this.el.sidebarRpm) this.el.sidebarRpm.textContent = "-";
         if (this.el.sidebarSecondDerivDrag) this.el.sidebarSecondDerivDrag.textContent = "-";
@@ -1660,10 +1926,18 @@ class ViscometryDashboard {
 
         if (status.calibration_review_pending !== undefined) {
             this.calibrationReviewPending = Boolean(status.calibration_review_pending);
-            this.updateCalibrationReviewStartGuard();
+            this.updateReviewStartGuard();
         }
         if (status.calibration_review) {
             this.openCalibrationReview(status.calibration_review);
+        }
+
+        if (status.experiment_review_pending !== undefined) {
+            this.experimentReviewPending = Boolean(status.experiment_review_pending);
+            this.updateReviewStartGuard();
+        }
+        if (status.experiment_review) {
+            this.openExperimentReview(status.experiment_review);
         }
 
         if (status.current_rpm !== undefined) {
@@ -1775,8 +2049,8 @@ class ViscometryDashboard {
             this.updateCompletionBar();
         }
 
-        // Reset timeline to phase 1 when a new cell starts
         if (this.currentCell && this.currentCell !== previousCell) {
+            this.protocolCurrentStepId = "move";
             this.currentPhase = 1;
             this.updateTimeline();
         }
@@ -1860,80 +2134,82 @@ class ViscometryDashboard {
         });
     }
 
-    consumeStatusForPhase(message) {
-        const normalized = (message || "").toLowerCase();
-        let phase = 0;
+    getProtocolRunMode() {
+        if (!this.isRunning) {
+            return "idle";
+        }
+        if (this.recalibrationModeActive) {
+            return "recalibration";
+        }
+        if (this.calibrationModeActive) {
+            return "calibration";
+        }
+        return "regular";
+    }
 
-        // Phase 1 — moving to cell
-        if (
-            normalized.includes("moving to cell") ||
-            normalized.includes("auto-zeroing") ||
-            normalized.includes("initializing")
-        ) {
-            phase = 1;
+    resolveProtocolStep(message) {
+        const normalized = (message || "").toLowerCase().trim();
+        if (!normalized) {
+            return this.protocolCurrentStepId || "idle";
         }
-        // Phase 2 — auto-zero
-        else if (
-            normalized.includes("zeroing") ||
-            normalized.includes("auto-zero")
-        ) {
-            phase = 2;
-        }
-        // Phase 3 — Z-descent and measurement
-        else if (
-            normalized.includes("descending") ||
-            normalized.includes("measuring") ||
-            normalized.includes("z-step") ||
-            normalized.includes("testing cell") ||
-            normalized.includes("at rpm") ||
-            normalized.includes("rotational drag")
-        ) {
-            phase = 3;
-        }
-        // Phase 4 — raising Z / returning / saving
-        else if (
-            normalized.includes("returning") ||
-            normalized.includes("raising") ||
-            normalized.includes("safe z") ||
-            normalized.includes("saving")
-        ) {
-            phase = 4;
-        }
-        // Phase 5 — wash station 1
-        else if (
-            normalized.includes("wash station 1") ||
-            normalized.includes("washing after") ||
-            normalized.includes("pump 1") ||
-            normalized.includes("motor 1")
-        ) {
-            phase = 5;
-            // Capture which cell is being washed from messages like "Washing after Cell 3"
-            const washMatch = message.match(/washing after cell\s+(\d+)/i);
-            if (washMatch) {
-                this.washingCell = Number(washMatch[1]);
+        const mode = this.getProtocolRunMode();
+        for (const rule of PROTOCOL_STATUS_RULES) {
+            if (!rule.test(normalized)) {
+                continue;
             }
+            if (mode !== "regular" && /^wash/.test(rule.id)) {
+                continue;
+            }
+            if ((mode === "regular") && rule.id === "review") {
+                continue;
+            }
+            return rule.id;
         }
-        // Phase 6 — wash station 2
-        else if (
-            normalized.includes("wash station 2") ||
-            normalized.includes("pump 2") ||
-            normalized.includes("motor 2") ||
+        return this.protocolCurrentStepId || (mode === "idle" ? "idle" : "init");
+    }
+
+    consumeStatusForPhase(message) {
+        if (!message) {
+            return;
+        }
+        this.protocolLastStatusMessage = message;
+        const normalized = message.toLowerCase();
+        const stepId = this.resolveProtocolStep(message);
+        if (stepId) {
+            this.protocolCurrentStepId = stepId;
+        }
+
+        const legacyPhaseMap = {
+            init: 1,
+            move: 1,
+            zero: 2,
+            measure: 3,
+            retract: 4,
+            wash_after: 5,
+            wash1_travel: 5,
+            wash1_scrub: 5,
+            wash1_drain: 5,
+            wash2_travel: 6,
+            wash2_scrub: 6,
+            save: 4,
+            review: 4,
+            cleanup: 4,
+            done: 6,
+            idle: 0,
+        };
+        this.currentPhase = legacyPhaseMap[stepId] ?? this.currentPhase;
+        this.updateTimeline();
+
+        const washMatch = message.match(/washing after cell\s+(\d+)/i);
+        if (washMatch) {
+            this.washingCell = Number(washMatch[1]);
+        }
+        if (
+            normalized.includes("completed") ||
+            normalized.includes("stopping motor 2") ||
             normalized.includes("wash sequence completed")
         ) {
-            phase = 6;
-            if (
-                normalized.includes("completed") ||
-                normalized.includes("stopping motor 2") ||
-                normalized.includes("wash sequence completed")
-            ) {
-                this._finalizePendingCompletedCell();
-            }
-        }
-
-        if (phase !== 0) {
-            this.currentPhase = phase;
-            this.updateTimeline();
-            this.updateCellVisuals();
+            this._finalizePendingCompletedCell();
         }
 
         if (normalized.includes("saving final results")) {
@@ -1953,19 +2229,74 @@ class ViscometryDashboard {
     }
 
     updateTimeline() {
-        const nodes = this.el.timeline.querySelectorAll("li");
-        nodes.forEach((node) => {
-            const phase = Number(node.dataset.phase);
-            node.classList.remove("current", "done");
-            if (phase < this.currentPhase) {
-                node.classList.add("done");
-            } else if (phase === this.currentPhase) {
-                node.classList.add("current");
-            }
-        });
+        this.renderProtocolUI();
+    }
 
-        const fillPct = this.currentPhase > 0 ? this.currentPhase / 6 : 0;
-        this.el.timelineFill.style.transform = `scaleX(${fillPct})`;
+    renderProtocolUI() {
+        const mode = this.getProtocolRunMode();
+        const def = PROTOCOL_DEFINITIONS[mode] || PROTOCOL_DEFINITIONS.idle;
+        const stepId = this.protocolCurrentStepId || def.steps[0]?.id || "idle";
+        const stepIndex = Math.max(0, def.steps.findIndex((s) => s.id === stepId));
+
+        if (this.el.protocolModeBadge) {
+            this.el.protocolModeBadge.textContent = def.badge;
+            this.el.protocolModeBadge.className = `protocol-mode-badge ${def.badgeClass || ""}`.trim();
+        }
+
+        if (this.el.protocolCurrentStep) {
+            const stepLabel = def.steps.find((s) => s.id === stepId)?.label;
+            const detail = (this.protocolLastStatusMessage || "").trim();
+            this.el.protocolCurrentStep.textContent = detail
+                ? detail
+                : (stepLabel || "Waiting for run…");
+        }
+
+        if (this.el.protocolProgressFill) {
+            const fillPct = def.steps.length > 1
+                ? Math.min(1, (stepIndex + 1) / def.steps.length)
+                : 0;
+            this.el.protocolProgressFill.style.transform = `scaleX(${fillPct})`;
+        }
+
+        if (this.el.protocolStepList) {
+            if (this._protocolRenderedMode !== mode) {
+                this._protocolRenderedMode = mode;
+                this.el.protocolStepList.innerHTML = def.steps.map((step) => (
+                    `<li data-step-id="${step.id}">${step.label}</li>`
+                )).join("");
+            }
+            this.el.protocolStepList.querySelectorAll("li").forEach((node, idx) => {
+                node.classList.remove("current", "done");
+                if (idx < stepIndex) {
+                    node.classList.add("done");
+                } else if (idx === stepIndex) {
+                    node.classList.add("current");
+                }
+            });
+        }
+
+        if (this.el.protocolFlowchart) {
+            const flowId = def.stepToFlow[stepId] || stepId;
+            const flowIndex = def.flow.findIndex((n) => n.id === flowId);
+            const parts = [];
+            def.flow.forEach((node, idx) => {
+                let cls = "protocol-flow-node";
+                if (flowIndex >= 0) {
+                    if (idx < flowIndex) {
+                        cls += " done";
+                    } else if (idx === flowIndex) {
+                        cls += " active";
+                    }
+                } else if (node.id === flowId) {
+                    cls += " active";
+                }
+                parts.push(`<span class="${cls}">${node.short}</span>`);
+                if (idx < def.flow.length - 1) {
+                    parts.push('<span class="protocol-flow-arrow" aria-hidden="true">→</span>');
+                }
+            });
+            this.el.protocolFlowchart.innerHTML = parts.join("");
+        }
     }
 
     _schedulePlotRefresh() {
@@ -2410,11 +2741,7 @@ class ViscometryDashboard {
     }
 
     updateLiveTorqueDisplay(value) {
-        const torque = Number(value) || 0;
-        this.currentTorquePercent = torque;
-        if (this.el.torqueDisplay) {
-            this.el.torqueDisplay.textContent = `${torque.toFixed(2)} %`;
-        }
+        this.currentTorquePercent = Number(value) || 0;
     }
 
     updateLiveRotationalDragDisplay(value) {
@@ -2586,7 +2913,11 @@ class ViscometryDashboard {
         const empty = this.el.calCheckEmpty?.checked || false;
         const feedback = this.el.calCheckFeedback?.checked || false;
         const noSmartExit = this.el.calCheckSmartExit?.checked || false;
-        this.calChecksComplete = empty && feedback && noSmartExit;
+        const failSafeOff = this.el.calCheckFailSafeOff?.checked || false;
+        const liquidSkipOff = this.el.calCheckLiquidSkipOff?.checked || false;
+        const viscosityOff = this.el.calCheckViscosityOff?.checked || false;
+        this.calChecksComplete =
+            empty && feedback && noSmartExit && failSafeOff && liquidSkipOff && viscosityOff;
 
         if (this.el.calStartBtn) {
             this.el.calStartBtn.disabled = !this.calChecksComplete || this.isRunning;
@@ -2681,8 +3012,8 @@ class ViscometryDashboard {
     }
 
     startCalibrationRun() {
-        if (this.calibrationReviewPending) {
-            this.pushStatusMessage("Finish calibration save review before starting a new run");
+        if (this.calibrationReviewPending || this.experimentReviewPending) {
+            this.pushStatusMessage("Finish the data save review before starting a new run");
             return;
         }
         if (!this.calChecksComplete) {
@@ -2784,8 +3115,8 @@ class ViscometryDashboard {
     }
 
     startRecalibrationRun() {
-        if (this.calibrationReviewPending) {
-            this.pushStatusMessage("Finish calibration save review before starting a new run");
+        if (this.calibrationReviewPending || this.experimentReviewPending) {
+            this.pushStatusMessage("Finish the data save review before starting a new run");
             return;
         }
         const selectedCells = [];
@@ -2920,10 +3251,14 @@ class ViscometryDashboard {
             this.cellTerminationReasons.clear();
             this.washingCell = null;
             this._pendingCompletedCell = null;
+            this.protocolCurrentStepId = "init";
+            this.protocolLastStatusMessage = "";
+            this._protocolRenderedMode = null;
             this.currentPhase = 0;
             this.updateTimeline();
             this.updateCompletionBar();
             this._hideExperimentCompleteMessage();
+            this._hideExperimentTerminatedMessage();
             if (this.el.elapsed) {
                 this.el.elapsed.textContent = "00:00:00";
             }
@@ -2947,11 +3282,13 @@ class ViscometryDashboard {
             if (previous) {
                 this.playChime(720, 0.14);
                 this.setControlStatus("Run stopped");
-                // Mark timeline as fully complete when run stops
+                this.protocolCurrentStepId = "done";
                 this.currentPhase = 6;
                 this.updateTimeline();
-                // Then immediately reset for next run after a brief visual pause
                 setTimeout(() => {
+                    this.protocolCurrentStepId = "idle";
+                    this.protocolLastStatusMessage = "";
+                    this._protocolRenderedMode = null;
                     this.currentPhase = 0;
                     this.washingCell = null;
                     this._finalizePendingCompletedCell();
@@ -3432,25 +3769,10 @@ class ViscometryDashboard {
 
         listEl.innerHTML = "";
         this.experimentHistory.forEach((exp) => {
-            const experimentName = (exp.settings && exp.settings.experiment_name)
-                ? exp.settings.experiment_name
-                : "(unnamed)";
             const card = document.createElement("div");
             card.className = `experiment-card${exp.id === this.selectedLoadExperimentId ? " active" : ""}`;
             card.dataset.experimentId = exp.id;
-            card.innerHTML = `
-            <div class="experiment-card-row">
-                <strong>${new Date(exp.created_at).toLocaleString()}</strong>
-            </div>
-            <div class="experiment-card-row">
-                <span>Name</span><span>${this._escapeHtml(experimentName)}</span>
-            </div>
-            <div class="experiment-card-row">
-                <span>Cells</span><span>${(exp.cells || []).join(", ") || "-"}</span>
-            </div>
-            <div class="experiment-card-row">
-                <span>RPMs</span><span>${(exp.rpms || []).join(", ") || "-"}</span>
-            </div>`;
+            card.innerHTML = this._buildExperimentCardInnerHtml(exp);
             card.addEventListener("click", () => {
                 this.selectedLoadExperimentId = exp.id;
                 this.renderLoadOldExperimentList();
@@ -3655,6 +3977,124 @@ class ViscometryDashboard {
         this.renderExperimentCards();
     }
 
+    _buildExperimentCardInnerHtml(exp) {
+        const experimentName = (exp.settings && exp.settings.experiment_name)
+            ? exp.settings.experiment_name
+            : "(unnamed)";
+        const dateStr = exp.created_at
+            ? new Date(exp.created_at).toLocaleString()
+            : "";
+        return `
+            <strong class="experiment-card-title">${this._escapeHtml(experimentName)}</strong>
+            <div class="experiment-card-date">${this._escapeHtml(dateStr)}</div>
+            <div class="experiment-card-row">
+                <span>Cells</span><span>${(exp.cells || []).join(", ") || "-"}</span>
+            </div>
+            <div class="experiment-card-row">
+                <span>RPMs</span><span>${(exp.rpms || []).join(", ") || "-"}</span>
+            </div>`;
+    }
+
+    _attachExperimentDeleteButton(card, expId) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "btn subtle experiment-delete";
+        del.setAttribute("aria-label", "Delete experiment");
+        del.innerHTML = "&times;";
+        del.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.deleteExperiment(expId);
+        });
+        card.appendChild(del);
+    }
+
+    _buildSummaryFeatureTiles(s) {
+        const predMode = this._normalizeViscosityPredictionMode(
+            s.viscosity_prediction_mode,
+            s.predicted_viscosity_enabled
+        );
+        const torqueFloorOn = s.low_torque_liquid_contact_skip_enabled === true;
+        const smartExitOn = s.smart_early_exit_enabled === true;
+        const feedbackOn = Boolean(s.feedback_control_enabled);
+
+        const feedbackDetail = feedbackOn
+            ? [
+                `R² drag ≥ ${s.r2_drag_min ?? "-"}`,
+                `R² CV ≥ ${s.r2_cv_min ?? "-"}`,
+                `R² slope ≥ ${s.r2_slope_min ?? "-"}`,
+                `Hit confidence ≥ ${s.hit_point_confidence_threshold ?? "-"}`,
+            ].join("<br>")
+            : "Disabled for this run";
+
+        const smartDetail = smartExitOn
+            ? `CV threshold ${s.smart_cv_threshold ?? "-"} · window ${s.smart_window_size ?? "-"}`
+            : "Disabled for this run";
+
+        const torqueDetail = torqueFloorOn
+            ? `Skip Z-rows when first sample &lt; ${s.low_torque_liquid_contact_threshold_pct ?? "-"}%`
+            : "Disabled for this run";
+
+        const viscosityDetail = predMode !== "off"
+            ? `Mode: ${predMode}`
+            : "Disabled for this run";
+
+        const tile = (title, on, status, detail) => `
+            <article class="summary-feature-tile ${on ? "is-on" : "is-off"}">
+                <h4>${title}</h4>
+                <div class="tile-status">${status}</div>
+                <div class="tile-detail">${detail}</div>
+            </article>`;
+
+        return [
+            tile("Feedback", feedbackOn, feedbackOn ? "On" : "Off", feedbackDetail),
+            tile("Smart Early Exit", smartExitOn, smartExitOn ? "On" : "Off", smartDetail),
+            tile("1st Sample Torque Floor", torqueFloorOn, torqueFloorOn ? "On" : "Off", torqueDetail),
+            tile("Viscosity Prediction", predMode !== "off", predMode !== "off" ? "On" : "Off", viscosityDetail),
+        ].join("");
+    }
+
+    _buildPredictedViscosityTableHtml(exp, s) {
+        const predData = exp.predicted_viscosity || {};
+        const hasPredData = this._predictedViscosityEntryHasData(predData);
+        const predMode = this._normalizeViscosityPredictionMode(
+            exp.viscosity_prediction_mode ?? s.viscosity_prediction_mode,
+            exp.predicted_viscosity_enabled ?? s.predicted_viscosity_enabled
+        );
+        if (predMode === "off" && !hasPredData) {
+            return "<p class=\"summary-empty\"><em>Viscosity predictions were off for this run.</em></p>";
+        }
+        const rows = [];
+        Object.keys(predData).forEach((cellKey) => {
+            const cellId = Number(cellKey);
+            const rpmMap = predData[cellKey];
+            if (!rpmMap || typeof rpmMap !== "object") {
+                return;
+            }
+            Object.keys(rpmMap).forEach((rpmKey) => {
+                const result = rpmMap[rpmKey];
+                const label = s.cell_content_map?.[cellId] ?? s.cell_content_map?.[String(cellId)] ?? "";
+                const visc = result?.success && result?.viscosity_kcp != null
+                    ? Number(result.viscosity_kcp).toFixed(3)
+                    : "—";
+                const flowIdx = result?.flow_index != null
+                    ? Number(result.flow_index).toFixed(3)
+                    : "—";
+                rows.push(
+                    `<tr><td>${cellId}</td><td>${label || "—"}</td><td>${rpmKey}</td><td>${visc}</td><td>${flowIdx}</td></tr>`
+                );
+            });
+        });
+        if (rows.length === 0) {
+            return "<p class=\"summary-empty\"><em>No predicted viscosity results were recorded.</em></p>";
+        }
+        return `
+            <h3 class="summary-table-heading">Predicted viscosity</h3>
+            <table class="duration-table predicted-viscosity-summary-table">
+                <thead><tr><th>Cell No.</th><th>Cell Label</th><th>RPM</th><th>Predicted Viscosity (kCp)</th><th>Flow index (n)</th></tr></thead>
+                <tbody>${rows.join("")}</tbody>
+            </table>`;
+    }
+
     renderExperimentCards() {
         if (!this.el.summaryCards) {
             return;
@@ -3670,31 +4110,10 @@ class ViscometryDashboard {
 
         this.el.summaryCards.innerHTML = "";
         this.experimentHistory.forEach((exp) => {
-            const experimentName = (exp.settings && exp.settings.experiment_name) ? exp.settings.experiment_name : "(unnamed)";
             const card = document.createElement("div");
             card.className = `experiment-card${exp.id === this.selectedExperimentId ? " active" : ""}`;
-            card.innerHTML = `
-            <div class="experiment-card-row">
-                <strong>${new Date(exp.created_at).toLocaleString()}</strong>
-            </div>
-            <div class="experiment-card-row">
-                <span>Name</span><span>${experimentName}</span>
-            </div>
-            <div class="experiment-card-row">
-                <span>Cells</span><span>${exp.cells.join(", ") || "-"}</span>
-            </div>
-            <div class="experiment-card-row">
-                <span>RPMs</span><span>${exp.rpms.join(", ") || "-"}</span>
-            </div>`;
-
-            const del = document.createElement("button");
-            del.className = "experiment-delete";
-            del.textContent = "x";
-            del.addEventListener("click", (e) => {
-                e.stopPropagation();
-                this.deleteExperiment(exp.id);
-            });
-            card.appendChild(del);
+            card.innerHTML = this._buildExperimentCardInnerHtml(exp);
+            this._attachExperimentDeleteButton(card, exp.id);
             card.addEventListener("click", () => this.selectExperiment(exp.id));
             this.el.summaryCards.appendChild(card);
         });
@@ -3723,15 +4142,10 @@ class ViscometryDashboard {
                 .filter(Boolean)
                 .join(" | ")
             : "";
-        const feedbackRows = s.feedback_control_enabled ? [
-            `<strong>Feedback enabled:</strong> Yes`,
-            `<strong>R_2 Drag threshold:</strong> ${s.r2_drag_min ?? "-"}`,
-            `<strong>R_2 CV threshold:</strong> ${s.r2_cv_min ?? "-"}`,
-            `<strong>R_2 Slope threshold:</strong> ${s.r2_slope_min ?? "-"}`,
-            `<strong>Hit Confidence threshold:</strong> ${s.hit_point_confidence_threshold ?? "-"}`,
-            `<strong>w (2nd Deriv Drag/CV/Slope):</strong> ${s.weight_2nd_deriv_drag ?? "-"}/${s.weight_2nd_deriv_cv ?? "-"}/${s.weight_2nd_deriv_slope ?? "-"}`,
-            `<strong>w (R_2 Drag/CV/Slope):</strong> ${s.weight_r2_drag ?? "-"}/${s.weight_r2_cv ?? "-"}/${s.weight_r2_slope ?? "-"}`,
-        ] : ["<strong>Feedback enabled:</strong> No"];
+        const torqueFloorOn = s.low_torque_liquid_contact_skip_enabled === true;
+        const torqueFloorStatus = torqueFloorOn
+            ? `On — ${s.low_torque_liquid_contact_threshold_pct ?? "-"}%`
+            : "Off";
 
         const terminationMap = exp.cell_termination_reasons || {};
         const durationRows = exp.cells.map((cellId) => {
@@ -3770,82 +4184,22 @@ class ViscometryDashboard {
             `<strong>Z step:</strong> ${s.z_step_size ?? "-"} mm`,
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
             `<strong>Sample interval:</strong> ${s.sample_interval ?? "-"} s`,
-            `<strong>Viscosity predictions:</strong> ${
-                this._normalizeViscosityPredictionMode(
-                    exp.viscosity_prediction_mode ?? s.viscosity_prediction_mode,
-                    exp.predicted_viscosity_enabled ?? s.predicted_viscosity_enabled
-                )
-            }`,
+            `<strong>1st Sample Torque Floor:</strong> ${torqueFloorStatus}`,
             durationTable,
         ];
-        const rightLines = [
-            ...feedbackRows,
-            `<strong>Smart early exit:</strong> ${
-                s.smart_early_exit_enabled === true
-                    ? "Yes"
-                    : (s.smart_early_exit_enabled === false ? "No" : "-")
-            }`,
-            `<strong>Smart CV threshold:</strong> ${s.smart_cv_threshold ?? "-"}`,
-            `<strong>Smart window size:</strong> ${s.smart_window_size ?? "-"}`,
-        ];
-
-        let predictedViscosityBlock;
-        const predData = exp.predicted_viscosity || {};
-        const hasPredData = this._predictedViscosityEntryHasData(predData);
-        const predMode = this._normalizeViscosityPredictionMode(
-            exp.viscosity_prediction_mode ?? s.viscosity_prediction_mode,
-            exp.predicted_viscosity_enabled ?? s.predicted_viscosity_enabled
-        );
-        if (predMode === "off" && !hasPredData) {
-            predictedViscosityBlock = "<p><em>Viscosity predictions were off for this run.</em></p>";
-        } else {
-            const rows = [];
-            Object.keys(predData).forEach((cellKey) => {
-                const cellId = Number(cellKey);
-                const rpmMap = predData[cellKey];
-                if (!rpmMap || typeof rpmMap !== "object") {
-                    return;
-                }
-                Object.keys(rpmMap).forEach((rpmKey) => {
-                    const result = rpmMap[rpmKey];
-                    const label = s.cell_content_map?.[cellId] ?? s.cell_content_map?.[String(cellId)] ?? "";
-                    const visc = result?.success && result?.viscosity_kcp != null
-                        ? Number(result.viscosity_kcp).toFixed(3)
-                        : "—";
-                    const flowIdx = result?.flow_index != null
-                        ? Number(result.flow_index).toFixed(3)
-                        : "—";
-                    rows.push(
-                        `<tr><td>${cellId}</td><td>${label || "—"}</td><td>${rpmKey}</td><td>${visc}</td><td>${flowIdx}</td></tr>`
-                    );
-                });
-            });
-            if (rows.length === 0) {
-                predictedViscosityBlock = "<p><em>No predicted viscosity results were recorded.</em></p>";
-            } else {
-                predictedViscosityBlock = `
-<table class="duration-table predicted-viscosity-summary-table">
-  <thead><tr><th>Cell No.</th><th>Cell Label</th><th>RPM</th><th>Predicted Viscosity (kCp)</th><th>Flow index (n)</th></tr></thead>
-  <tbody>${rows.join("")}</tbody>
-</table>`;
-            }
-        }
 
         const leftEl = this.el.summaryMetaLeft;
         const rightEl = this.el.summaryMetaRight;
+        const predEl = this.el.summaryPredictedViscosity;
         if (leftEl) {
             leftEl.innerHTML = leftLines.map((line) => line.startsWith("<table") ? line : `<div>${line}</div>`).join("");
         }
         if (rightEl) {
-            rightEl.innerHTML = [
-                ...rightLines.map((line) => `<div>${line}</div>`),
-                `<div><strong>Viscosity predictions:</strong> ${predMode}</div>`,
-                "<div><strong>Predicted viscosity</strong></div>",
-                predictedViscosityBlock,
-            ].join("");
+            rightEl.innerHTML = this._buildSummaryFeatureTiles(s);
         }
-
-        this.syncCustomHitpointControlsForExperiment(exp);
+        if (predEl) {
+            predEl.innerHTML = this._buildPredictedViscosityTableHtml(exp, s);
+        }
 
         const byCellRpm = {};
         (exp.latestPerZ || []).forEach((p) => {
@@ -3858,10 +4212,7 @@ class ViscometryDashboard {
             if (!byCellRpm[k]) byCellRpm[k] = [];
             byCellRpm[k].push(p);
         });
-        const showHitLine = Boolean(this.el.summaryShowHitLine?.checked);
         const alignToHit = Boolean(this.el.summaryAlignHitpoint?.checked);
-        const customHitpoints = this._getCustomHitpointsForExperiment(exp);
-        const getCustomHitZForCell = (cellId) => this._getCustomHitZForCell(customHitpoints, cellId);
 
         const traces = Object.entries(byCellRpm)
             .sort((a, b) => {
@@ -3878,29 +4229,12 @@ class ViscometryDashboard {
             pts.sort((a, b) => a.height - b.height);
             const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
             const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
-            const customHitZ = Number.isFinite(getCustomHitZForCell(cellId))
-                ? getCustomHitZForCell(cellId)
+            const plotPoints = alignToHit
+                ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
+                : [...timeOrdered];
+            const alignReference = plotPoints.length > 0
+                ? Number(plotPoints[plotPoints.length - 1].height)
                 : null;
-
-            let plotPoints;
-            let alignReference;
-
-            if (customHitZ != null) {
-                // Drop points before (hit − 3 samples); keep 3 points before hit + rest through end.
-                // With "align traces": keep only those 3 + hit, then shift so hit = 0 (same as auto logic).
-                const hitIdx = this._closestMeasurementIndexByZ(timeOrdered, customHitZ);
-                const startIdx = Math.max(0, hitIdx - 3);
-                const hitZMeasured = Number(timeOrdered[hitIdx].height);
-                plotPoints = alignToHit
-                    ? timeOrdered.slice(startIdx, hitIdx + 1)
-                    : timeOrdered.slice(startIdx);
-                alignReference = Number.isFinite(hitZMeasured) ? hitZMeasured : customHitZ;
-            } else {
-                plotPoints = alignToHit
-                    ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
-                    : [...timeOrdered];
-                alignReference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
-            }
             const rawX = plotPoints.map((p) => Number(p.height));
             const xSeries = (alignToHit && Number.isFinite(alignReference))
                 ? rawX.map((x) => x - alignReference)
@@ -3925,42 +4259,6 @@ class ViscometryDashboard {
         });
 
         if (this.summaryPlotInitialized && this.el.summaryPlot) {
-            const referenceXs = [];
-            Object.entries(byCellRpm).forEach(([key, pts]) => {
-                const [cellIdStr] = key.split("|");
-                const cellId = Number(cellIdStr);
-                const customHitZ = getCustomHitZForCell(cellId);
-
-                let reference = null;
-                if (Number.isFinite(customHitZ)) {
-                    const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
-                    const hitIdx = this._closestMeasurementIndexByZ(timeOrdered, customHitZ);
-                    reference = Number(timeOrdered[hitIdx]?.height);
-                } else {
-                    const timeOrdered = [...pts].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
-                    const trimmed = timeOrdered.length > 3 ? timeOrdered.slice(0, -3) : [...timeOrdered];
-                    const plotPoints = alignToHit
-                        ? (trimmed.length > 0 ? trimmed : [...timeOrdered])
-                        : [...timeOrdered];
-                    reference = plotPoints.length > 0 ? Number(plotPoints[plotPoints.length - 1].height) : null;
-                }
-
-                if (Number.isFinite(reference)) {
-                    referenceXs.push(alignToHit ? 0 : reference);
-                }
-            });
-            const uniqueRefXs = [...new Set(referenceXs.map((v) => Number(v.toFixed(6))))];
-            const shapes = showHitLine
-                ? uniqueRefXs.map((xVal) => ({
-                    type: "line",
-                    x0: xVal,
-                    x1: xVal,
-                    y0: 0,
-                    y1: 1,
-                    yref: "paper",
-                    line: { color: "rgb(255, 59, 48)", width: 2, dash: "dash" },
-                }))
-                : [];
             const layout = {
                 ...this.summaryPlotLayout,
                 xaxis: {
@@ -3970,165 +4268,11 @@ class ViscometryDashboard {
                         : "Z-Height (mm) - descent ->",
                     tickformat: ".3f",
                 },
-                shapes,
+                shapes: [],
             };
             Plotly.react(this.el.summaryPlot, traces, layout,
                 { responsive: true, displayModeBar: false });
         }
-    }
-
-    _closestMeasurementIndexByZ(timeOrdered, targetZ) {
-        if (!Array.isArray(timeOrdered) || timeOrdered.length === 0) {
-            return 0;
-        }
-        const z = Number(targetZ);
-        if (!Number.isFinite(z)) {
-            return 0;
-        }
-        let bestIdx = 0;
-        let bestDist = Math.abs(Number(timeOrdered[0].height) - z);
-        for (let i = 1; i < timeOrdered.length; i += 1) {
-            const d = Math.abs(Number(timeOrdered[i].height) - z);
-            if (d < bestDist) {
-                bestDist = d;
-                bestIdx = i;
-            }
-        }
-        return bestIdx;
-    }
-
-    _getCustomHitpointsForExperiment(exp) {
-        const ch = exp?.custom_hitpoints;
-        if (ch && typeof ch === "object") return ch;
-        return {};
-    }
-
-    _getCustomHitZForCell(customHitpoints, cellId) {
-        const key = String(cellId);
-        const raw = customHitpoints?.[key];
-        const num = typeof raw === "number"
-            ? raw
-            : (raw && typeof raw === "object" ? Number(raw.hit_z) : Number(raw));
-        return Number.isFinite(num) ? num : null;
-    }
-
-    syncCustomHitpointControlsForExperiment(exp) {
-        if (!this.el.summaryCustomHitpointCell) return;
-        const cells = Array.isArray(exp?.cells) ? exp.cells : [];
-        const select = this.el.summaryCustomHitpointCell;
-        if (!select) return;
-
-        select.innerHTML = "";
-        cells.forEach((cellId) => {
-            const opt = document.createElement("option");
-            opt.value = String(cellId);
-            opt.textContent = `Cell ${cellId}`;
-            select.appendChild(opt);
-        });
-
-        const desired = cells.includes(this.customHitpointSelectedCellId)
-            ? this.customHitpointSelectedCellId
-            : (cells.length ? cells[0] : null);
-        this.customHitpointSelectedCellId = desired;
-        select.value = desired != null ? String(desired) : "";
-
-        this.updateCustomHitpointControlsUI(exp, desired);
-    }
-
-    updateCustomHitpointControlsUI(exp = null, selectedCellId = null) {
-        if (!this.el.summaryCustomHitpointZ || !this.el.summaryUndoCustomHitpoint || !this.el.summaryCustomHitpointStatus) {
-            return;
-        }
-
-        if (!exp) {
-            exp = this.experimentHistory.find((e) => e.id === this.selectedExperimentId);
-        }
-        if (!exp) return;
-
-        const cells = Array.isArray(exp.cells) ? exp.cells : [];
-        if (selectedCellId == null) {
-            selectedCellId = this.customHitpointSelectedCellId;
-        }
-        if (selectedCellId == null || !cells.includes(selectedCellId)) {
-            selectedCellId = cells.length ? cells[0] : null;
-        }
-
-        const customHitpoints = this._getCustomHitpointsForExperiment(exp);
-        const hitZ = selectedCellId != null
-            ? this._getCustomHitZForCell(customHitpoints, selectedCellId)
-            : null;
-
-        this.el.summaryCustomHitpointZ.value = Number.isFinite(hitZ) ? String(hitZ.toFixed(3)) : "";
-        const hasOverride = Number.isFinite(hitZ);
-
-        this.el.summaryUndoCustomHitpoint.disabled = !hasOverride;
-        this.el.summaryCustomHitpointStatus.textContent = hasOverride
-            ? `Custom hitpoint: Cell ${selectedCellId} @ ${hitZ.toFixed(3)} mm`
-            : "Using auto hitpoint for this cell";
-    }
-
-    applyCustomHitpointOverrideFromUI() {
-        if (!this.selectedExperimentId) return;
-        const exp = this.experimentHistory.find((e) => e.id === this.selectedExperimentId);
-        if (!exp) return;
-        if (!this.el.summaryCustomHitpointCell || !this.el.summaryCustomHitpointZ) return;
-
-        const cellId = Number(this.el.summaryCustomHitpointCell.value);
-        const hitZ = Number(this.el.summaryCustomHitpointZ.value);
-        if (!Number.isFinite(cellId) || !Number.isFinite(hitZ)) {
-            this.pushStatusMessage("Enter a valid cell and Hitpoint Z value first");
-            return;
-        }
-
-        const overrides = { ...this._getCustomHitpointsForExperiment(exp) };
-        overrides[String(cellId)] = hitZ;
-        const updatedExp = { ...exp, custom_hitpoints: overrides };
-
-        const idx = this.experimentHistory.findIndex((e) => e.id === updatedExp.id);
-        if (idx >= 0) this.experimentHistory[idx] = updatedExp;
-        else this.experimentHistory.unshift(updatedExp);
-
-        // Persist to server so other devices get the override.
-        this.saveExperimentHistoryEntry(updatedExp).catch(() => {
-            this.pushStatusMessage("Warning: failed to sync custom hitpoint to server");
-        });
-
-        this.customHitpointSelectedCellId = cellId;
-        this.selectExperiment(updatedExp.id);
-    }
-
-    undoCustomHitpointOverrideFromUI() {
-        if (!this.selectedExperimentId) return;
-        const exp = this.experimentHistory.find((e) => e.id === this.selectedExperimentId);
-        if (!exp) return;
-        if (!this.el.summaryCustomHitpointCell) return;
-
-        const cellId = Number(this.el.summaryCustomHitpointCell.value);
-        if (!Number.isFinite(cellId)) return;
-
-        const overrides = { ...this._getCustomHitpointsForExperiment(exp) };
-        const key = String(cellId);
-        if (!(key in overrides)) {
-            return;
-        }
-
-        delete overrides[key];
-        const updatedExp = { ...exp };
-        if (Object.keys(overrides).length > 0) {
-            updatedExp.custom_hitpoints = overrides;
-        } else {
-            delete updatedExp.custom_hitpoints;
-        }
-
-        const idx = this.experimentHistory.findIndex((e) => e.id === updatedExp.id);
-        if (idx >= 0) this.experimentHistory[idx] = updatedExp;
-        else this.experimentHistory.unshift(updatedExp);
-
-        this.saveExperimentHistoryEntry(updatedExp).catch(() => {
-            this.pushStatusMessage("Warning: failed to sync undo to server");
-        });
-
-        this.selectExperiment(updatedExp.id);
     }
 
     deleteExperiment(id) {
@@ -4221,8 +4365,17 @@ class ViscometryDashboard {
             this.el.completionChip.textContent = chipText;
         }
 
-        if (isAllDone && !this.isRunning) {
-            this._showExperimentCompleteMessage();
+        if (!this.isRunning && !isCalibrating && !isRecalibrating) {
+            if (isAllDone) {
+                this._showExperimentCompleteMessage();
+                this._hideExperimentTerminatedMessage();
+            } else if (done > 0) {
+                this._showExperimentTerminatedMessage();
+                this._hideExperimentCompleteMessage();
+            } else {
+                this._hideExperimentCompleteMessage();
+                this._hideExperimentTerminatedMessage();
+            }
         }
     }
 
@@ -4239,6 +4392,18 @@ class ViscometryDashboard {
     _hideExperimentCompleteMessage() {
         if (this.el.experimentCompleteBanner) {
             this.el.experimentCompleteBanner.classList.add("hidden");
+        }
+    }
+
+    _showExperimentTerminatedMessage() {
+        if (this.el.experimentTerminatedBanner) {
+            this.el.experimentTerminatedBanner.classList.remove("hidden");
+        }
+    }
+
+    _hideExperimentTerminatedMessage() {
+        if (this.el.experimentTerminatedBanner) {
+            this.el.experimentTerminatedBanner.classList.add("hidden");
         }
     }
 
@@ -4684,8 +4849,8 @@ class ViscometryDashboard {
         this.pushStatusMessage("CSV export generated");
     }
 
-    updateCalibrationReviewStartGuard() {
-        const blocked = Boolean(this.calibrationReviewPending);
+    updateReviewStartGuard() {
+        const blocked = Boolean(this.calibrationReviewPending || this.experimentReviewPending);
         if (this.el.startRun && this.uiState === "ready") {
             this.el.startRun.disabled = blocked;
         }
@@ -4700,13 +4865,17 @@ class ViscometryDashboard {
         }
     }
 
+    updateCalibrationReviewStartGuard() {
+        this.updateReviewStartGuard();
+    }
+
     syncCalibrationReviewSession(session) {
         if (!session || !session.session_id) {
             return;
         }
         this.calibrationReviewSession = session;
         this.calibrationReviewPending = true;
-        this.updateCalibrationReviewStartGuard();
+        this.updateReviewStartGuard();
         this.renderCalibrationReviewTabs();
         const pending = this.getPendingReviewCellIds();
         if (pending.length === 0) {
@@ -4726,7 +4895,7 @@ class ViscometryDashboard {
         this.calibrationReviewSession = session;
         this.calibrationReviewPending = true;
         this.isCalibrationRun = false;
-        this.updateCalibrationReviewStartGuard();
+        this.updateReviewStartGuard();
 
         const pending = this.getPendingReviewCellIds();
         if (pending.length === 0) {
@@ -4749,12 +4918,13 @@ class ViscometryDashboard {
         this.calibrationReviewPending = false;
         this.calibrationReviewSession = null;
         this.calibrationReviewActiveCellId = null;
+        this.calibrationReviewPlotState = { initialized: false, layout: null };
         if (this.el.calReviewBackdrop) {
             this.el.calReviewBackdrop.classList.add("hidden");
             this.el.calReviewBackdrop.setAttribute("aria-hidden", "true");
         }
         this.el.body.classList.remove("calibration-review-active");
-        this.updateCalibrationReviewStartGuard();
+        this.updateReviewStartGuard();
     }
 
     getPendingReviewCellIds() {
@@ -4771,16 +4941,15 @@ class ViscometryDashboard {
         });
     }
 
-    getReviewCellEntry(cellId) {
-        const session = this.calibrationReviewSession;
+    getReviewCellEntry(cellId, session = this.calibrationReviewSession) {
         if (!session) {
             return null;
         }
         return session.cells?.[String(cellId)] || null;
     }
 
-    getMeasurementsForReviewCell(cellId) {
-        const entry = this.getReviewCellEntry(cellId);
+    getMeasurementsForReviewCell(cellId, session = this.calibrationReviewSession) {
+        const entry = this.getReviewCellEntry(cellId, session);
         const fromSession = entry?.measurements;
         if (Array.isArray(fromSession) && fromSession.length > 0) {
             return fromSession.map((m) => ({
@@ -4864,14 +5033,11 @@ class ViscometryDashboard {
         }
     }
 
-    renderCalibrationReviewPlot(cellId) {
-        const plotEl = this.el.calReviewPlot;
+    renderReviewDragPlot(plotEl, plotState, cellId, measurements, options = {}) {
         if (!plotEl || typeof Plotly === "undefined") {
             return;
         }
-        const measurements = this.getMeasurementsForReviewCell(cellId);
-        const entry = this.getReviewCellEntry(cellId);
-        const roughZ = entry ? Number(entry.rough_z) : NaN;
+        const roughZ = options.roughZ;
         const orderedRpms = this.expandRpmsWithObserved(this.getRpmsForCell(cellId), measurements);
         const floor = this._torqueFloorPctForLivePlots();
         const buckets = this.partitionMeasurementsByRpm(measurements, orderedRpms);
@@ -4886,31 +5052,33 @@ class ViscometryDashboard {
             })
             .filter(Boolean);
 
-        if (!this.calibrationReviewPlotInitialized) {
-            this.calibrationReviewPlotLayout = {
-                margin: { t: 28, r: 16, b: 44, l: 52 },
-                paper_bgcolor: "rgba(0,0,0,0)",
-                plot_bgcolor: "rgba(255,255,255,0.35)",
-                font: { family: "DM Sans, sans-serif", size: 11, color: "rgb(72, 84, 110)" },
-                xaxis: {
-                    title: "Z-Height (mm)",
-                    tickformat: ".3f",
-                    gridcolor: "rgba(180, 200, 230, 0.35)",
-                    zeroline: false,
-                },
-                yaxis: {
-                    title: "Rotational Drag (torque / RPM)",
-                    gridcolor: "rgba(180, 200, 230, 0.35)",
-                    zeroline: false,
-                },
-                showlegend: orderedRpms.length > 1,
-                legend: { orientation: "h", y: 1.12, font: { size: 10 } },
-            };
-            Plotly.newPlot(plotEl, traces, this.calibrationReviewPlotLayout, {
+        const baseLayout = {
+            margin: { t: 36, r: 20, b: 52, l: 58 },
+            paper_bgcolor: "rgba(0,0,0,0)",
+            plot_bgcolor: "rgba(255,255,255,0.35)",
+            font: { family: "DM Sans, sans-serif", size: 12, color: "rgb(72, 84, 110)" },
+            xaxis: {
+                title: "Z-Height (mm)",
+                tickformat: ".3f",
+                gridcolor: "rgba(180, 200, 230, 0.35)",
+                zeroline: false,
+            },
+            yaxis: {
+                title: "Rotational Drag (torque / RPM)",
+                gridcolor: "rgba(180, 200, 230, 0.35)",
+                zeroline: false,
+            },
+            showlegend: orderedRpms.length > 1,
+            legend: { orientation: "h", y: 1.14, font: { size: 11 } },
+        };
+
+        if (!plotState.initialized) {
+            plotState.layout = { ...baseLayout };
+            Plotly.newPlot(plotEl, traces, plotState.layout, {
                 responsive: true,
                 displayModeBar: false,
             });
-            this.calibrationReviewPlotInitialized = true;
+            plotState.initialized = true;
         } else {
             const shapes = Number.isFinite(roughZ)
                 ? [{
@@ -4923,13 +5091,25 @@ class ViscometryDashboard {
                     line: { color: "rgb(255, 59, 48)", width: 2, dash: "dash" },
                 }]
                 : [];
-            Plotly.react(
-                plotEl,
-                traces,
-                { ...this.calibrationReviewPlotLayout, shapes },
-                { responsive: true, displayModeBar: false }
-            );
+            plotState.layout = { ...baseLayout, shapes };
+            Plotly.react(plotEl, traces, plotState.layout, {
+                responsive: true,
+                displayModeBar: false,
+            });
         }
+    }
+
+    renderCalibrationReviewPlot(cellId) {
+        const measurements = this.getMeasurementsForReviewCell(cellId);
+        const entry = this.getReviewCellEntry(cellId);
+        const roughZ = entry ? Number(entry.rough_z) : NaN;
+        this.renderReviewDragPlot(
+            this.el.calReviewPlot,
+            this.calibrationReviewPlotState,
+            cellId,
+            measurements,
+            { roughZ: Number.isFinite(roughZ) ? roughZ : undefined }
+        );
     }
 
     postCalibrationReviewDecision(action) {
@@ -5033,6 +5213,325 @@ class ViscometryDashboard {
             this.pushStatusMessage("Calibration review complete — no cells saved");
         }
         this.isCalibrationRun = false;
+    }
+
+    getPendingExperimentReviewCellIds() {
+        const session = this.experimentReviewSession;
+        if (!session) {
+            return [];
+        }
+        const order = session.completion_order || [];
+        const cells = session.cells || {};
+        return order.filter((cellId) => {
+            const key = String(cellId);
+            const entry = cells[key];
+            return entry && entry.decision === "pending";
+        });
+    }
+
+    getExperimentReviewCellEntry(cellId) {
+        return this.getReviewCellEntry(cellId, this.experimentReviewSession);
+    }
+
+    syncExperimentReviewSession(session) {
+        if (!session || !session.session_id) {
+            return;
+        }
+        this.experimentReviewSession = session;
+        this.experimentReviewPending = true;
+        this.updateReviewStartGuard();
+        this.renderExperimentReviewTabs();
+        const pending = this.getPendingExperimentReviewCellIds();
+        if (pending.length === 0) {
+            this.commitExperimentReview();
+            return;
+        }
+        if (!pending.includes(this.experimentReviewActiveCellId)) {
+            this.experimentReviewActiveCellId = pending[0];
+        }
+        this.renderExperimentReviewCellView(this.experimentReviewActiveCellId);
+    }
+
+    openExperimentReview(session) {
+        if (!session || !session.session_id) {
+            return;
+        }
+        this.experimentReviewSession = session;
+        this.experimentReviewPending = true;
+        this.completedSaveLock = true;
+        this.updateReviewStartGuard();
+
+        const pending = this.getPendingExperimentReviewCellIds();
+        if (pending.length === 0) {
+            this.closeExperimentReviewModal();
+            return;
+        }
+        this.experimentReviewActiveCellId = pending[0];
+
+        if (this.el.expReviewBackdrop) {
+            this.el.expReviewBackdrop.classList.remove("hidden");
+            this.el.expReviewBackdrop.setAttribute("aria-hidden", "false");
+        }
+        this.el.body.classList.add("experiment-review-active");
+        this.renderExperimentReviewTabs();
+        this.renderExperimentReviewCellView(this.experimentReviewActiveCellId);
+        this.pushStatusMessage("Review experiment data — Save or Discard each cell");
+    }
+
+    closeExperimentReviewModal() {
+        this.experimentReviewPending = false;
+        this.experimentReviewSession = null;
+        this.experimentReviewActiveCellId = null;
+        this.experimentReviewPlotState = { initialized: false, layout: null };
+        if (this.el.expReviewBackdrop) {
+            this.el.expReviewBackdrop.classList.add("hidden");
+            this.el.expReviewBackdrop.setAttribute("aria-hidden", "true");
+        }
+        this.el.body.classList.remove("experiment-review-active");
+        this.updateReviewStartGuard();
+    }
+
+    renderExperimentReviewTabs() {
+        const tabsEl = this.el.expReviewTabs;
+        const session = this.experimentReviewSession;
+        if (!tabsEl || !session) {
+            return;
+        }
+        const order = session.completion_order || [];
+        const cells = session.cells || {};
+        tabsEl.innerHTML = "";
+        order.forEach((cellId) => {
+            const key = String(cellId);
+            const entry = cells[key];
+            if (!entry) {
+                return;
+            }
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "experiment-review-tab data-review-tab";
+            if (entry.decision !== "pending") {
+                btn.classList.add("resolved");
+            }
+            if (Number(cellId) === Number(this.experimentReviewActiveCellId)) {
+                btn.classList.add("active");
+            }
+            btn.textContent = `Cell ${cellId}`;
+            if (entry.decision === "pending") {
+                btn.addEventListener("click", () => {
+                    this.experimentReviewActiveCellId = Number(cellId);
+                    this.renderExperimentReviewTabs();
+                    this.renderExperimentReviewCellView(this.experimentReviewActiveCellId);
+                });
+            }
+            tabsEl.appendChild(btn);
+        });
+    }
+
+    _formatTerminationReason(reason) {
+        const raw = String(reason || "normal").trim();
+        if (!raw || raw === "normal") {
+            return "Normal completion";
+        }
+        return raw.replace(/_/g, " ");
+    }
+
+    renderExperimentReviewSummary(cellId) {
+        const box = this.el.expReviewSummary;
+        const entry = this.getExperimentReviewCellEntry(cellId);
+        if (!box || !entry) {
+            return;
+        }
+        const settings = this.runSettingsSnapshot || this.readControlSettings();
+        const label = settings.cell_content_map?.[cellId]
+            ?? settings.cell_content_map?.[String(cellId)]
+            ?? "";
+        const rpms = this.getRpmsForCell(cellId);
+        const rpmText = rpms.length ? rpms.map((r) => Number(r).toFixed(3)).join(", ") : "—";
+        const measurements = this.getMeasurementsForReviewCell(cellId, this.experimentReviewSession);
+        const sampleCount = measurements.length;
+        const title = label ? `Cell ${cellId} — ${label}` : `Cell ${cellId}`;
+        box.innerHTML = `
+            <div><strong>${title}</strong></div>
+            <div>RPMs tested: ${rpmText}</div>
+            <div>Termination: ${this._formatTerminationReason(entry.termination_reason)}</div>
+            <div>Samples: <strong>${sampleCount}</strong></div>
+        `;
+    }
+
+    renderExperimentReviewCellView(cellId) {
+        if (!Number.isFinite(cellId)) {
+            return;
+        }
+        this.renderExperimentReviewSummary(cellId);
+        this.renderExperimentReviewPlot(cellId);
+        const pending = this.getPendingExperimentReviewCellIds();
+        const isPending = pending.includes(cellId);
+        if (this.el.expReviewSave) {
+            this.el.expReviewSave.disabled = !isPending || this.experimentReviewDecisionInFlight;
+        }
+        if (this.el.expReviewDiscard) {
+            this.el.expReviewDiscard.disabled = !isPending || this.experimentReviewDecisionInFlight;
+        }
+    }
+
+    renderExperimentReviewPlot(cellId) {
+        const measurements = this.getMeasurementsForReviewCell(cellId, this.experimentReviewSession);
+        this.renderReviewDragPlot(
+            this.el.expReviewPlot,
+            this.experimentReviewPlotState,
+            cellId,
+            measurements,
+            {}
+        );
+    }
+
+    postExperimentReviewDecision(action) {
+        const session = this.experimentReviewSession;
+        const cellId = this.experimentReviewActiveCellId;
+        if (!session || !Number.isFinite(cellId) || this.experimentReviewDecisionInFlight) {
+            return Promise.resolve();
+        }
+        this.experimentReviewDecisionInFlight = true;
+        if (this.el.expReviewSave) {
+            this.el.expReviewSave.disabled = true;
+        }
+        if (this.el.expReviewDiscard) {
+            this.el.expReviewDiscard.disabled = true;
+        }
+        return fetch("/api/experiment/review/decision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                session_id: session.session_id,
+                cell_id: cellId,
+                action,
+            }),
+        })
+            .then((r) => r.json())
+            .then((result) => {
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                if (result.session) {
+                    this.syncExperimentReviewSession(result.session);
+                }
+            })
+            .catch((err) => {
+                this.pushStatusMessage(
+                    `Experiment review failed: ${err.message || "unknown error"}`
+                );
+            })
+            .finally(() => {
+                this.experimentReviewDecisionInFlight = false;
+                const pending = this.getPendingExperimentReviewCellIds();
+                if (pending.length === 0) {
+                    this.commitExperimentReview();
+                } else {
+                    this.experimentReviewActiveCellId = pending[0];
+                    this.renderExperimentReviewTabs();
+                    this.renderExperimentReviewCellView(this.experimentReviewActiveCellId);
+                }
+            });
+    }
+
+    onExperimentReviewSave() {
+        this.postExperimentReviewDecision("save");
+    }
+
+    onExperimentReviewDiscard() {
+        this.postExperimentReviewDecision("discard");
+    }
+
+    commitExperimentReview() {
+        const session = this.experimentReviewSession;
+        if (!session?.session_id) {
+            this.closeExperimentReviewModal();
+            return;
+        }
+        fetch("/api/experiment/review/commit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: session.session_id }),
+        })
+            .then((r) => r.json())
+            .then((result) => {
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                this.onExperimentReviewCommitted(result);
+            })
+            .catch((err) => {
+                this.pushStatusMessage(
+                    `Failed to save experiment data: ${err.message || "unknown error"}`
+                );
+            });
+    }
+
+    onExperimentReviewCommitted(payload) {
+        this.closeExperimentReviewModal();
+        this.completedSaveLock = true;
+        const entry = payload?.experiment;
+        const savedIds = (payload?.saved_cells || [])
+            .map((n) => Number(n))
+            .filter((n) => Number.isInteger(n) && n > 0)
+            .sort((a, b) => a - b);
+        if (entry) {
+            this.experimentHistory.unshift(entry);
+            this.experimentHistory = this.experimentHistory.slice(0, 40);
+            this.renderExperimentCards();
+            if (this.experimentHistory.length > 0) {
+                this.selectExperiment(this.experimentHistory[0].id);
+            }
+            if (savedIds.length > 0) {
+                this.showExperimentSavedModal(savedIds, entry, payload?.csv_filename);
+                this.pushStatusMessage(`Experiment data saved for cell(s): ${savedIds.join(", ")}`);
+            } else {
+                this.pushStatusMessage("Experiment data saved to summary");
+            }
+        } else {
+            this.pushStatusMessage("Experiment review complete — no cells saved");
+        }
+        this.runSettingsSnapshot = null;
+    }
+
+    showExperimentSavedModal(cellIds, experiment, csvFilename) {
+        if (!this.el.expSavedBackdrop || !this.el.expSavedBody) {
+            return;
+        }
+        const settings = experiment?.settings || {};
+        const labelMap = settings.cell_content_map || {};
+        const rpms = Array.isArray(experiment?.rpms) ? experiment.rpms : [];
+        const rpmText = rpms.length
+            ? rpms.map((r) => Number(r).toFixed(3)).join(", ")
+            : null;
+        const items = cellIds
+            .map((id) => {
+                const label = labelMap[id] ?? labelMap[String(id)] ?? "";
+                const labelPart = label ? ` — ${this._escapeHtml(label)}` : "";
+                return `<li>Cell ${id}${labelPart}</li>`;
+            })
+            .join("");
+        const csvNote = csvFilename
+            ? `<p class="experiment-saved-csv-note">CSV: <code>${this._escapeHtml(String(csvFilename))}</code></p>`
+            : "";
+        const rpmNote = rpmText
+            ? `<p>RPMs in saved run: ${this._escapeHtml(rpmText)}</p>`
+            : "";
+        this.el.expSavedBody.innerHTML = `
+            <p>The following cells were saved to the experiment summary and CSV:</p>
+            <ul>${items}</ul>
+            ${rpmNote}
+            ${csvNote}
+        `;
+        this.el.expSavedBackdrop.classList.remove("hidden");
+        this.el.expSavedBackdrop.setAttribute("aria-hidden", "false");
+    }
+
+    hideExperimentSavedModal() {
+        if (this.el.expSavedBackdrop) {
+            this.el.expSavedBackdrop.classList.add("hidden");
+            this.el.expSavedBackdrop.setAttribute("aria-hidden", "true");
+        }
     }
 
     showCalibrationSavedModal(cellIds, savedCells) {

@@ -80,9 +80,9 @@ WASH_STATION2_Z = -67    # -67 is the contact point, so -10 is safely above that
 
 # Row configurations: each row has different Z-parameters and BASE_X position
 ROWS = [
-    {'row_number': 1, 'base_x': 10, 'safe_z': -65.5, 'max_z_travel': -66.500},
-    {'row_number': 2, 'base_x': 85, 'safe_z': -65.5, 'max_z_travel': -66.500},
-    {'row_number': 3, 'base_x': 309, 'safe_z': -64.5, 'max_z_travel': -65.500}
+    {'row_number': 1, 'base_x': 10, 'safe_z': -65.5, 'max_z_travel': -67.00},
+    {'row_number': 2, 'base_x': 85, 'safe_z': -65.5, 'max_z_travel': -67.00},
+    {'row_number': 3, 'base_x': 309, 'safe_z': -64.5, 'max_z_travel': -67.00}
 ]
 
 # Array of RPMs to test at each Z-position (similar to analysis_methods.py)
@@ -782,6 +782,13 @@ def measure_torque_at_rpm(
                                 liquid_hunt_stop = True
                             else:
                                 hunt_contact_confirmed = True
+                        if liquid_hunt_stop:
+                            print(
+                                f"      [LIQUID CONTACT] Sample at {elapsed_since_start:.2f}s "
+                                f"{tp:.2f}% < {hunting_first_contact_min_pct:.2f}% — "
+                                "skipping this RPM at this Z (try next RPM)"
+                            )
+                            break
                         measurement = {
                             "timestamp": current_time,
                             "elapsed_time": elapsed_since_start,
@@ -802,13 +809,6 @@ def measure_torque_at_rpm(
                             rpm=rpm,
                             cell_id=web_interface.current_cell,
                         )
-                        if liquid_hunt_stop:
-                            print(
-                                f"      [LIQUID CONTACT] Sample at {elapsed_since_start:.2f}s "
-                                f"{tp:.2f}% < {hunting_first_contact_min_pct:.2f}% — "
-                                "stopping this Z-level sample early"
-                            )
-                            break
                         hunting_unresolved = (
                             hunting_first_contact_min_pct is not None and not hunt_contact_confirmed
                         )
@@ -873,6 +873,32 @@ def _torque_should_drop_rpm(measurements: Optional[List[Dict]]) -> Tuple[bool, s
     return False, ""
 
 
+def _rpm_liquid_contact_established(
+    measurements: Optional[List[Dict]],
+    threshold_pct: float,
+) -> bool:
+    """True if a sample at elapsed >= SAMPLE_INTERVAL met the torque floor."""
+    if not measurements:
+        return False
+    for row in measurements:
+        try:
+            elapsed = float(row.get("elapsed_time", 0))
+            torque = float(row.get("torque_percent", 0))
+        except (TypeError, ValueError):
+            continue
+        if elapsed >= SAMPLE_INTERVAL and torque >= threshold_pct:
+            return True
+    return False
+
+
+_RPM_DATA_META_KEYS = frozenset({
+    "_metrics",
+    "_liquid_skipped_z",
+    "_liquid_skip_torque_label",
+    "_liquid_skip_probe_at_z",
+})
+
+
 def _mark_rpm_torque_dropped(
     rpm: float,
     dropped_torque_rpms: Set[float],
@@ -896,13 +922,15 @@ def test_dynamic_analysis_at_z(
     dropped_torque_rpms: Optional[Set[float]] = None,
     liquid_skip_enabled: bool = False,
     liquid_threshold_pct: float = 20.0,
-    liquid_contact_established_box: Optional[List[bool]] = None,
 ) -> Tuple[Dict[float, Optional[List[Dict]]], bool, bool]:
     """Test active RPMs at a specific Z-height.
 
     Returns ``(rpm_torque_data, first_rpm_exceeded_threshold, z_skipped_due_to_liquid)``.
     The second value is retained for API compatibility and is always ``False`` (cells no longer
     terminate on first-RPM torque limit). Dropped RPMs are recorded in ``dropped_torque_rpms``.
+
+    When liquid_skip_enabled, each RPM is probed at this Z: if the first sample at
+    SAMPLE_INTERVAL is below the floor, that RPM is skipped and the next RPM is tried.
     """
     dropped: Set[float] = dropped_torque_rpms if dropped_torque_rpms is not None else set()
     rpm_torque_data: Dict[float, Optional[List[Dict]]] = {}
@@ -919,76 +947,45 @@ def test_dynamic_analysis_at_z(
         f"    Testing {len(active_rpms)} active RPM(s) at Z={z_height:.3f} "
         f"({len(dropped)} dropped)"
     )
-    box = liquid_contact_established_box
-    measured_this_z: Set[float] = set()
+    if liquid_skip_enabled:
+        rpm_torque_data["_liquid_skip_probe_at_z"] = True
 
-    if liquid_skip_enabled and box is not None and (not box[0]):
-        hunt_rpms = list(active_rpms)
-        for hunt_rpm in hunt_rpms:
-            if hunt_rpm in dropped:
-                continue
+    for rpm in active_rpms:
+        if liquid_skip_enabled:
             measurements = measure_torque_at_rpm(
                 client,
-                hunt_rpm,
+                rpm,
                 z_height,
                 hunting_first_contact_min_pct=liquid_threshold_pct,
             )
-            measured_this_z.add(hunt_rpm)
-            if measurements is None or len(measurements) == 0:
-                should_drop, reason = _torque_should_drop_rpm(measurements)
-                if should_drop:
-                    _mark_rpm_torque_dropped(
-                        hunt_rpm, dropped, cell_rpms, global_cell, reason
-                    )
-                    continue
+            if not _rpm_liquid_contact_established(measurements, liquid_threshold_pct):
                 print(
-                    f"      [LIQUID CONTACT] No valid torque samples at Z={z_height:.3f} "
-                    "— skipping Z-level"
+                    f"      [LIQUID CONTACT] RPM {rpm}: below floor after first interval "
+                    f"(≥ {SAMPLE_INTERVAL:.1f}s) at Z={z_height:.3f} — skip RPM, try next"
                 )
-                for r in cell_rpms:
-                    rpm_torque_data[r] = None
-                return rpm_torque_data, False, True
+                rpm_torque_data[rpm] = None
+                continue
+        else:
+            measurements = measure_torque_at_rpm(client, rpm, z_height)
 
-            post_interval = next(
-                (m for m in measurements if float(m.get("elapsed_time", 0)) >= SAMPLE_INTERVAL),
-                None,
-            )
-            if post_interval is not None:
-                t_gate = float(post_interval["torque_percent"])
-                if t_gate < liquid_threshold_pct:
-                    print(
-                        f"      [LIQUID CONTACT] Post-interval torque {t_gate:.2f}% (first sample at "
-                        f"elapsed ≥ {SAMPLE_INTERVAL:.1f}s) < {liquid_threshold_pct:.2f}% — "
-                        "skipping Z-level (no hit-point inputs, no further RPMs)"
-                    )
-                    for r in cell_rpms:
-                        rpm_torque_data[r] = None
-                    return rpm_torque_data, False, True
-            else:
-                print(
-                    f"      [LIQUID CONTACT] No sample with elapsed ≥ {SAMPLE_INTERVAL:.1f}s — "
-                    "cannot evaluate air gap; treating as liquid contact at this Z"
-                )
-            box[0] = True
-            rpm_torque_data[hunt_rpm] = measurements
-            should_drop, reason = _torque_should_drop_rpm(measurements)
-            if should_drop:
-                _mark_rpm_torque_dropped(hunt_rpm, dropped, cell_rpms, global_cell, reason)
-            break
-
-    for rpm in cell_rpms:
-        if rpm in dropped:
-            rpm_torque_data[rpm] = None
-            continue
-        if rpm in measured_this_z:
-            continue
-        measurements = measure_torque_at_rpm(client, rpm, z_height)
         rpm_torque_data[rpm] = measurements
         should_drop, reason = _torque_should_drop_rpm(measurements)
         if should_drop:
             _mark_rpm_torque_dropped(rpm, dropped, cell_rpms, global_cell, reason)
 
-    return rpm_torque_data, False, False
+    z_liquid_skipped = False
+    if liquid_skip_enabled and active_rpms:
+        if all(rpm_torque_data.get(r) is None for r in active_rpms):
+            z_liquid_skipped = True
+            tlab = _liquid_skip_torque_label(liquid_threshold_pct)
+            rpm_torque_data["_liquid_skipped_z"] = True
+            rpm_torque_data["_liquid_skip_torque_label"] = tlab
+            print(
+                f"  Z={z_height:.3f}: no RPM met liquid-contact floor "
+                f"({liquid_threshold_pct:.2f}%) — hit-point logic skipped for this Z"
+            )
+
+    return rpm_torque_data, False, z_liquid_skipped
 
 def test_cell_dynamic_z_series(
     cnc: CNC_Machine,
@@ -1045,13 +1042,12 @@ def test_cell_dynamic_z_series(
         and (not CALIBRATION_MODE)
         and (not RECALIBRATE_INDIVIDUAL_CELLS)
     )
-    liquid_contact_established_box: Optional[List[bool]] = [False] if use_liquid_z_skip else None
     if use_liquid_z_skip:
         print(
-            f"  Liquid-contact hunt enabled (regular run): skip Z-rows when first torque sample at "
-            f"elapsed ≥ {SAMPLE_INTERVAL:.1f}s is < "
-            f"{LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (otherwise continue); skipped rows use torque "
-            f"{_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
+            f"  Liquid-contact hunt enabled (regular run): per RPM at each Z, skip RPM when first "
+            f"sample at elapsed ≥ {SAMPLE_INTERVAL:.1f}s is < "
+            f"{LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% and try next RPM; SKIPPED rows use "
+            f"{_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)}"
         )
     
     # Determine starting Z: custom_starting_z > RECALIBRATE_INDIVIDUAL_CELLS > CALIBRATION_MODE > normal
@@ -1134,7 +1130,6 @@ def test_cell_dynamic_z_series(
                     dropped_torque_rpms=dropped_torque_rpms,
                     liquid_skip_enabled=use_liquid_z_skip,
                     liquid_threshold_pct=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT,
-                    liquid_contact_established_box=liquid_contact_established_box,
                 )
                 cell_z_rpm_data[z_rounded] = rpm_data
 
@@ -1651,9 +1646,11 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
             csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = {WEIGHT_2ND_DERIV_DRAG}/{WEIGHT_2ND_DERIV_CV}/{WEIGHT_2ND_DERIV_SLOPE}, R2(Drag/CV/Slope) = {WEIGHT_R2_DRAG}/{WEIGHT_R2_CV}/{WEIGHT_R2_SLOPE}"])
         if LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED:
             csv_writer.writerow([
-                f"# Low-torque liquid-contact hunt: skip Z-rows when first sample at elapsed >= "
-                f"{SAMPLE_INTERVAL:.1f}s is < {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
-                f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
+                f"# Low-torque liquid-contact hunt: per RPM at each Z, skip RPM when first sample at "
+                f"elapsed >= {SAMPLE_INTERVAL:.1f}s is < "
+                f"{LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
+                f"skipped RPM rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} "
+                "and SKIPPED metrics"
             ])
         csv_writer.writerow([f"# WARNING: Experiment was terminated early - these are partial results"])
         _append_predicted_viscosity_csv_metadata(csv_writer)
@@ -1683,18 +1680,22 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
             for z_height in z_heights:
                 if z_height in cell_data:
                     rpm_data = cell_data[z_height]
-                    _md_keys = {"_metrics", "_liquid_skipped_z", "_liquid_skip_torque_label"}
-                    if rpm_data.get("_liquid_skipped_z"):
-                        tlab = rpm_data.get(
-                            "_liquid_skip_torque_label",
-                            _liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT),
-                        )
-                        for rpm in sorted(k for k in rpm_data.keys() if k not in _md_keys):
-                            csv_writer.writerow(_liquid_skip_csv_row(row_number, global_cell, z_height, rpm, tlab))
-                        continue
+                    liquid_probe = bool(rpm_data.get("_liquid_skip_probe_at_z"))
+                    tlab = rpm_data.get(
+                        "_liquid_skip_torque_label",
+                        _liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT),
+                    )
                     metrics_data = cell_data[z_height].get("_metrics", {})
-                    for rpm in sorted(k for k in rpm_data.keys() if k not in _md_keys):
+                    for rpm in sorted(k for k in rpm_data.keys() if k not in _RPM_DATA_META_KEYS):
                         measurements = rpm_data.get(rpm)
+                        if measurements is None:
+                            if liquid_probe:
+                                csv_writer.writerow(
+                                    _liquid_skip_csv_row(
+                                        row_number, global_cell, z_height, rpm, tlab
+                                    )
+                                )
+                            continue
                         if measurements is not None:
                             # Get metrics for this RPM at this Z-height
                             rpm_metrics = metrics_data.get(rpm, {
@@ -1787,9 +1788,11 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = {WEIGHT_2ND_DERIV_DRAG}/{WEIGHT_2ND_DERIV_CV}/{WEIGHT_2ND_DERIV_SLOPE}, R2(Drag/CV/Slope) = {WEIGHT_R2_DRAG}/{WEIGHT_R2_CV}/{WEIGHT_R2_SLOPE}"])
         if LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED:
             csv_writer.writerow([
-                f"# Low-torque liquid-contact hunt: skip Z-rows when first sample at elapsed >= "
-                f"{SAMPLE_INTERVAL:.1f}s is < {LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
-                f"skipped rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} and SKIPPED metrics"
+                f"# Low-torque liquid-contact hunt: per RPM at each Z, skip RPM when first sample at "
+                f"elapsed >= {SAMPLE_INTERVAL:.1f}s is < "
+                f"{LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
+                f"skipped RPM rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} "
+                "and SKIPPED metrics"
             ])
         _append_predicted_viscosity_csv_metadata(csv_writer)
         
@@ -1818,18 +1821,22 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             for z_height in z_heights:
                 if z_height in cell_data:
                     rpm_data = cell_data[z_height]
-                    _md_keys = {"_metrics", "_liquid_skipped_z", "_liquid_skip_torque_label"}
-                    if rpm_data.get("_liquid_skipped_z"):
-                        tlab = rpm_data.get(
-                            "_liquid_skip_torque_label",
-                            _liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT),
-                        )
-                        for rpm in sorted(k for k in rpm_data.keys() if k not in _md_keys):
-                            csv_writer.writerow(_liquid_skip_csv_row(row_number, global_cell, z_height, rpm, tlab))
-                        continue
+                    liquid_probe = bool(rpm_data.get("_liquid_skip_probe_at_z"))
+                    tlab = rpm_data.get(
+                        "_liquid_skip_torque_label",
+                        _liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT),
+                    )
                     metrics_data = cell_data[z_height].get("_metrics", {})
-                    for rpm in sorted(k for k in rpm_data.keys() if k not in _md_keys):
+                    for rpm in sorted(k for k in rpm_data.keys() if k not in _RPM_DATA_META_KEYS):
                         measurements = rpm_data.get(rpm)
+                        if measurements is None:
+                            if liquid_probe:
+                                csv_writer.writerow(
+                                    _liquid_skip_csv_row(
+                                        row_number, global_cell, z_height, rpm, tlab
+                                    )
+                                )
+                            continue
                         if measurements is not None:
                             # Get metrics for this RPM at this Z-height
                             rpm_metrics = metrics_data.get(rpm, {
@@ -2181,6 +2188,19 @@ def main():
                             web_interface.update_status(f"Recalibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                         # NO washing in calibration/recalibration mode — move directly to next cell
                     else:
+                        snapshot = [
+                            m for m in web_interface.measurement_data
+                            if isinstance(m, dict) and int(m.get("cell_id", -1)) == int(global_cell)
+                        ]
+                        web_interface.add_experiment_review_cell(
+                            global_cell,
+                            snapshot,
+                            termination_reason=termination_by_cell.get(global_cell, "normal"),
+                        )
+                        web_interface.add_completed_cell(
+                            global_cell,
+                            termination_reason=termination_by_cell.get(global_cell, "normal"),
+                        )
                         if VISCOSITY_PREDICTION_MODE != "off":
                             run_predicted_viscosity_for_cell(
                                 global_cell, cell_rpms, feedback_summary
@@ -2188,7 +2208,6 @@ def main():
                         # Normal run: perform washing only after successful CNC retract
                         if pump and feedback_summary.get("cnc_retracted_ok"):
                             perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)
-                            web_interface.add_completed_cell(global_cell, termination_reason=termination_by_cell.get(global_cell, "normal"))
                         elif pump:
                             print(
                                 f"Wash skipped for Cell {global_cell}: CNC safe retract failed "
@@ -2204,18 +2223,18 @@ def main():
 
                 except Exception as e:
                     print(f"Error during testing of Cell {global_cell}: {e}")
-                    print(f"Saving partial results and terminating...")
                     traceback.print_exc()
-                    # Save partial data before exiting
-                    if all_data:
-                        save_partial_data(
-                            all_data,
-                            timestamp,
-                            mode,
-                            completed_cells,
-                            run_experiment_name,
-                            termination_by_cell=termination_by_cell,
-                        )
+                    if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                        print("Saving partial results and terminating...")
+                        if all_data:
+                            save_partial_data(
+                                all_data,
+                                timestamp,
+                                mode,
+                                completed_cells,
+                                run_experiment_name,
+                                termination_by_cell=termination_by_cell,
+                            )
                     raise  # Re-raise to trigger cleanup
         
             # All testing completed successfully
@@ -2223,19 +2242,17 @@ def main():
             print(f"Tested {len(completed_cells)} cells: {completed_cells}")
             print(f"Saving final results...")
             
-            web_interface.update_status("Saving final results...")
-
-            csv_filename = save_dynamic_analysis_data(
-                all_data,
-                timestamp,
-                mode,
-                run_experiment_name,
-                termination_by_cell=termination_by_cell,
-            )
-            print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
-            print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
             if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                web_interface.update_status("Saving final results...")
+                csv_filename = save_dynamic_analysis_data(
+                    all_data,
+                    timestamp,
+                    mode,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                )
+                print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
+                print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 review_type = "recalibration" if RECALIBRATE_INDIVIDUAL_CELLS else "calibration"
                 if web_interface.open_calibration_review_if_needed(
                     review_type, calibration_offset=CALIBRATION_OFFSET
@@ -2246,45 +2263,123 @@ def main():
                 else:
                     web_interface.update_status("Experiment completed successfully")
             else:
-                web_interface.update_status("Experiment completed successfully")
+                web_interface.sync_experiment_review_cells_from_run(
+                    all_data,
+                    termination_by_cell,
+                    default_termination="normal",
+                )
+                web_interface.set_experiment_review_run_context(
+                    all_data,
+                    timestamp,
+                    mode,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                    completed_cells=completed_cells,
+                )
+                if web_interface.open_experiment_review_if_needed():
+                    web_interface.update_status(
+                        "Run finished — review experiment data (Save or Discard each cell)"
+                    )
+                else:
+                    web_interface.update_status("Saving final results...")
+                    csv_filename = save_dynamic_analysis_data(
+                        all_data,
+                        timestamp,
+                        mode,
+                        run_experiment_name,
+                        termination_by_cell=termination_by_cell,
+                    )
+                    print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
+                    web_interface.update_status("Experiment completed successfully")
+                print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
         except KeyboardInterrupt:
             print(f"\nExperiment interrupted by user")
             web_interface.update_status("Experiment interrupted by user")
-            if all_data:
-                print("Saving partial results...")
-                save_partial_data(
-                    all_data,
-                    timestamp,
-                    mode,
-                    completed_cells,
-                    run_experiment_name,
-                    termination_by_cell=termination_by_cell,
-                )
             if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                if all_data:
+                    print("Saving partial results...")
+                    save_partial_data(
+                        all_data,
+                        timestamp,
+                        mode,
+                        completed_cells,
+                        run_experiment_name,
+                        termination_by_cell=termination_by_cell,
+                    )
                 review_type = "recalibration" if RECALIBRATE_INDIVIDUAL_CELLS else "calibration"
                 web_interface.open_calibration_review_if_needed(
                     review_type, calibration_offset=CALIBRATION_OFFSET
                 )
+            else:
+                web_interface.sync_experiment_review_cells_from_run(
+                    all_data,
+                    termination_by_cell,
+                    default_termination="user_stop",
+                )
+                web_interface.set_experiment_review_run_context(
+                    all_data,
+                    timestamp,
+                    mode,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                    completed_cells=completed_cells,
+                )
+                if not web_interface.open_experiment_review_if_needed():
+                    if all_data:
+                        print("Saving partial results...")
+                        save_partial_data(
+                            all_data,
+                            timestamp,
+                            mode,
+                            completed_cells,
+                            run_experiment_name,
+                            termination_by_cell=termination_by_cell,
+                        )
         except Exception as e:
             print(f"Critical error during experiment: {e}")
             traceback.print_exc()
             web_interface.update_status(f"Error: {str(e)}")
-            if all_data:
-                print("Saving partial results...")
-                save_partial_data(
-                    all_data,
-                    timestamp,
-                    mode,
-                    completed_cells,
-                    run_experiment_name,
-                    termination_by_cell=termination_by_cell,
-                )
             if CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS:
+                if all_data:
+                    print("Saving partial results...")
+                    save_partial_data(
+                        all_data,
+                        timestamp,
+                        mode,
+                        completed_cells,
+                        run_experiment_name,
+                        termination_by_cell=termination_by_cell,
+                    )
                 review_type = "recalibration" if RECALIBRATE_INDIVIDUAL_CELLS else "calibration"
                 web_interface.open_calibration_review_if_needed(
                     review_type, calibration_offset=CALIBRATION_OFFSET
                 )
+            else:
+                web_interface.sync_experiment_review_cells_from_run(
+                    all_data,
+                    termination_by_cell,
+                    default_termination="error",
+                )
+                web_interface.set_experiment_review_run_context(
+                    all_data,
+                    timestamp,
+                    mode,
+                    run_experiment_name,
+                    termination_by_cell=termination_by_cell,
+                    completed_cells=completed_cells,
+                )
+                if not web_interface.open_experiment_review_if_needed():
+                    if all_data:
+                        print("Saving partial results...")
+                        save_partial_data(
+                            all_data,
+                            timestamp,
+                            mode,
+                            completed_cells,
+                            run_experiment_name,
+                            termination_by_cell=termination_by_cell,
+                        )
         finally:
             # Cleanup hardware
             print("Cleaning up hardware...")
