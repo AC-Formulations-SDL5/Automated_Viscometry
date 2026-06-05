@@ -953,7 +953,7 @@ class ViscometryWebInterface:
                 "completed_cells": [int(c) for c in (completed_cells or [])],
                 "run_start_ts": self.experiment_start_ts,
                 "runtime_settings": settings,
-                "predicted_viscosity_results": self._copy_predicted_viscosity_results(),
+                "predicted_viscosity_results": self._copy_predicted_viscosity_results_unlocked(),
             }
 
     def _build_experiment_review_session_from_pending(self) -> Optional[dict]:
@@ -1624,9 +1624,12 @@ class ViscometryWebInterface:
             'slope_sd2_calibrated': slope_sd2_calibrated,
         })
 
+    def _copy_predicted_viscosity_results_unlocked(self) -> Dict:
+        return json.loads(json.dumps(self.predicted_viscosity_results))
+
     def _copy_predicted_viscosity_results(self) -> Dict:
         with self.control_lock:
-            return json.loads(json.dumps(self.predicted_viscosity_results))
+            return self._copy_predicted_viscosity_results_unlocked()
 
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
