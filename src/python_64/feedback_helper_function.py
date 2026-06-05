@@ -222,7 +222,9 @@ class RotationalDragFeedbackController:
             self.z_rpm_drag_data[z_height] = {}
         
         for rpm, measurements in rpm_measurements.items():
-            if measurements is None:
+            if not isinstance(rpm, (int, float)):
+                continue
+            if measurements is None or not isinstance(measurements, list):
                 continue
                 
             # Calculate rotational drag for each measurement

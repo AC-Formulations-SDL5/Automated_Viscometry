@@ -788,6 +788,17 @@ def measure_torque_at_rpm(
                                 f"{tp:.2f}% < {hunting_first_contact_min_pct:.2f}% — "
                                 "skipping this RPM at this Z (try next RPM)"
                             )
+                            web_interface.update_live_torque(
+                                torque_percent=tp,
+                                rpm=rpm,
+                                elapsed=elapsed_since_start,
+                            )
+                            web_interface.add_measurement_point(
+                                height=z_height,
+                                rotational_drag=abs(tp) / rpm if rpm > 0 else 0.0,
+                                rpm=rpm,
+                                cell_id=web_interface.current_cell,
+                            )
                             break
                         measurement = {
                             "timestamp": current_time,
@@ -1151,7 +1162,10 @@ def test_cell_dynamic_z_series(
                 
                 if FEEDBACK_CONTROL_ENABLED and rpm_data:
                     print(f"  Rotational Drag Analysis:")
-                    feedback_controller.add_measurements_at_z(z_rounded, rpm_data)
+                    rpm_data_for_feedback = {
+                        k: v for k, v in rpm_data.items() if k not in _RPM_DATA_META_KEYS
+                    }
+                    feedback_controller.add_measurements_at_z(z_rounded, rpm_data_for_feedback)
                     
                     fail_safe_floor = HIT_POINT_CONFIDENCE_THRESHOLD * 0.75
 

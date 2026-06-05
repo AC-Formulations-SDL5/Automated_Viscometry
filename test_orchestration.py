@@ -61,6 +61,26 @@ class TestR2ConfidenceValidity(unittest.TestCase):
         self.assertLess(trend["hit_confidence"], 0.6)
 
 
+class TestFeedbackMetadataKeys(unittest.TestCase):
+    def test_add_measurements_at_z_ignores_metadata_keys(self):
+        ctrl = RotationalDragFeedbackController(
+            feedback_enabled=True,
+            min_data_points=3,
+        )
+        z = -65.0
+        ctrl.add_measurements_at_z(z, {
+            "_liquid_skip_probe_at_z": True,
+            "_liquid_skipped_z": True,
+            "_liquid_skip_torque_label": "<10%",
+            "_metrics": {},
+            0.8: [{"torque_percent": 12.0}],
+        })
+        self.assertIn(z, ctrl.z_rpm_drag_data)
+        self.assertIn(0.8, ctrl.z_rpm_drag_data[z])
+        self.assertNotIn("_liquid_skip_probe_at_z", ctrl.z_rpm_drag_data[z])
+        self.assertAlmostEqual(ctrl.z_rpm_drag_data[z][0.8]["latest_drag"], 15.0)
+
+
 class TestVirtualCNCRetract(unittest.TestCase):
     def setUp(self):
         os.chdir(_ROOT)
