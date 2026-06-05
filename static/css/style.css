@@ -1693,6 +1693,12 @@ h2 {
     border-radius: var(--radius-sm);
 }
 
+.plot-shell canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
 .drag-z-with-sidebar {
     display: flex;
     flex-direction: row;

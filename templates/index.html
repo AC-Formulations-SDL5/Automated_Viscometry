@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 </head>
 <body class="theme-light loading">
@@ -637,7 +638,9 @@
                     </div>
                     <div id="graph-cell-tabs" class="graph-cell-tabs"></div>
                     <div class="drag-z-with-sidebar">
-                        <div id="z-sparkline-plot" class="plot-shell drag-z-plot-area"></div>
+                        <div id="z-sparkline-plot" class="plot-shell drag-z-plot-area">
+                            <canvas id="z-sparkline-canvas" aria-label="Live rotational drag vs Z-height"></canvas>
+                        </div>
                         <aside class="drag-z-sidebar" id="drag-z-sidebar">
                             <div class="sidebar-section sidebar-rpm-legend-section">
                                 <div class="sidebar-label">RPM colors</div>
@@ -703,7 +706,9 @@
                     <div class="card-title-row">
                         <h2>Torque vs Z-Height</h2>
                     </div>
-                    <div id="torque-z-plot" class="plot-shell"></div>
+                    <div id="torque-z-plot" class="plot-shell">
+                        <canvas id="torque-z-canvas" aria-label="Torque vs Z-height"></canvas>
+                    </div>
                     <div id="torque-z-empty" class="plot-empty">No data yet</div>
                     <div class="skeleton-lines">
                         <div class="skeleton-line"></div>

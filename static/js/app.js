@@ -189,6 +189,13 @@ class ViscometryDashboard {
         this.gaugeAnimationFrame = null;
         this.zPlotInitialized = false;
         this.torquePlotInitialized = false;
+        this.charts = { drag: null, torque: null };
+        this._mapVisualCache = new Map();
+        this._stationActive = null;
+        this._mapVisualSyncTimer = null;
+        this._renderPaused = false;
+        this._liveChartsDirty = false;
+        this._mapVisualsDirty = false;
         this.timerInterval = null;
         this.experimentStart = null;
         this.cellStart = null;
@@ -306,8 +313,10 @@ class ViscometryDashboard {
             summaryPredictedViscosity: document.getElementById("summary-predicted-viscosity"),
             statusLog: document.getElementById("status-log"),
             zSparklinePlot: document.getElementById("z-sparkline-plot"),
+            zSparklineCanvas: document.getElementById("z-sparkline-canvas"),
             zSparklineEmpty: document.getElementById("z-sparkline-empty"),
             torqueZPlot: document.getElementById("torque-z-plot"),
+            torqueZCanvas: document.getElementById("torque-z-canvas"),
             torqueZEmpty: document.getElementById("torque-z-empty"),
             graphCellTabs: document.getElementById("graph-cell-tabs"),
             experimentName: document.getElementById("experiment-name"),
@@ -544,7 +553,9 @@ class ViscometryDashboard {
             }
         });
 
-        window.addEventListener("resize", () => this.applyArmPosition());
+        window.addEventListener("resize", () => this.handleWindowResize());
+
+        document.addEventListener("visibilitychange", () => this.handleVisibilityChange());
 
         const settingsForm = document.getElementById("run-settings-form");
         if (settingsForm) {
@@ -901,15 +912,108 @@ class ViscometryDashboard {
         }
 
         this.applyArmPosition();
+        this._resetMapVisualCache();
+        this.syncMapVisuals({ force: true });
     }
 
-    updateCellNode(cellId) {
+    updateCellNode(cellId, state, title) {
         const node = document.getElementById(`cell-node-${cellId}`);
         if (!node) {
             return;
         }
-        const state = this.cellStates.get(cellId) || "pending";
-        node.className = `pg-cell state-${state}`;
+        const resolvedState = state || this.cellStates.get(cellId) || "pending";
+        node.className = `pg-cell state-${resolvedState}`;
+        if (title !== undefined) {
+            node.title = title;
+        }
+    }
+
+    _resolveMapVisualContext() {
+        const statusLower = (this.statusLog[0] || "").toLowerCase();
+        const hasErrorStatus = statusLower.includes("error") || statusLower.includes("fail") || statusLower.includes("critical");
+        let activeStation = null;
+        if (statusLower.includes("wash station 1") || statusLower.includes("motor 1") || statusLower.includes("pump 1")) {
+            activeStation = "WASH";
+        } else if (statusLower.includes("wash station 2") || statusLower.includes("motor 2") || statusLower.includes("pump 2")) {
+            activeStation = "DRY";
+        }
+
+        const desiredStates = new Map();
+        this.platform.cells.forEach((cell) => {
+            let state = this.cellStates.get(cell.id) || "pending";
+
+            if (this.currentCell === cell.id && hasErrorStatus) {
+                state = "error";
+            } else if (this.currentCell === cell.id && this.currentRPM > 0) {
+                state = "measuring";
+            } else if (this.currentCell === cell.id && this.currentRPM === 0) {
+                state = "active";
+            } else if (this.washingCell === cell.id) {
+                state = "washing";
+            } else if (this.completedCells.has(cell.id)) {
+                state = "completed";
+            }
+
+            this.cellStates.set(cell.id, state);
+            desiredStates.set(cell.id, state);
+        });
+
+        return { desiredStates, activeStation };
+    }
+
+    _cellMapTitle(cell) {
+        const torque = this.latestTorqueByCell?.get(cell.id);
+        if (torque !== undefined) {
+            return `${cell.label} - last torque ${torque.toFixed(2)}%`;
+        }
+        return cell.label;
+    }
+
+    _resetMapVisualCache() {
+        this._mapVisualCache.clear();
+        this._stationActive = null;
+    }
+
+    _scheduleMapVisualSync() {
+        if (this._mapVisualSyncTimer) {
+            window.clearTimeout(this._mapVisualSyncTimer);
+        }
+        this._mapVisualSyncTimer = window.setTimeout(() => {
+            this._mapVisualSyncTimer = null;
+            this.syncMapVisuals();
+        }, 200);
+    }
+
+    syncMapVisuals({ force = false } = {}) {
+        if (this._renderPaused && !force) {
+            this._mapVisualsDirty = true;
+            return;
+        }
+
+        const { desiredStates, activeStation } = this._resolveMapVisualContext();
+
+        this.platform.cells.forEach((cell) => {
+            const state = desiredStates.get(cell.id) || "pending";
+            const title = this._cellMapTitle(cell);
+            const cached = this._mapVisualCache.get(cell.id);
+            if (!cached || cached.state !== state || cached.title !== title) {
+                this.updateCellNode(cell.id, state, title);
+                this._mapVisualCache.set(cell.id, { state, title });
+            }
+        });
+
+        if (this._stationActive !== activeStation) {
+            ["WASH", "DRY"].forEach((id) => {
+                const node = document.getElementById(`station-${id}`);
+                if (!node) {
+                    return;
+                }
+                node.classList.toggle("station-active", activeStation === id);
+            });
+            this._stationActive = activeStation;
+        }
+
+        this._mapVisualsDirty = false;
     }
 
     applyArmPosition() {
@@ -975,42 +1079,164 @@ class ViscometryDashboard {
     }
 
     initPlot() {
-        this.zSparklineLayout = this._buildLivePlotLayout({
-            yTitle: "Rotational Drag (torque / RPM)",
-            xReversed: false,
-        });
-        this.torqueZLayout = this._buildLivePlotLayout({
-            yTitle: "Torque (%)",
-            xReversed: false,
-            showLegend: true,
-        });
+        this.initLiveCharts();
+    }
 
-        const config = {
-            responsive: true,
-            displaylogo: false,
-            modeBarButtonsToAdd: [
-                {
-                    name: "Export CSV",
-                    icon: Plotly.Icons.disk,
-                    click: () => this.exportCSV()
-                }
-            ],
-            modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d"]
+    _getLiveChartTheme() {
+        const isDark = this.el?.body?.classList?.contains("theme-dark");
+        return {
+            text: isDark ? "rgb(200, 210, 230)" : "rgb(72, 84, 110)",
+            grid: isDark ? "rgba(120, 140, 180, 0.35)" : "rgba(180, 200, 230, 0.45)",
+            tick: isDark ? "rgb(160, 170, 190)" : "rgb(138, 150, 175)",
+            border: isDark ? "rgba(120, 140, 180, 0.50)" : "rgba(150, 175, 215, 0.60)",
         };
+    }
 
-        if (this.el.zSparklinePlot) {
-            Plotly.newPlot(this.el.zSparklinePlot, [], this.zSparklineLayout, config).then(() => {
-                this.zPlotInitialized = true;
-                this.refreshLivePlots();
-            });
+    _buildLiveChartOptions({ yTitle, theme, isDragChart }) {
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 0 },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: () => "",
+                        label: (context) => {
+                            const rpmLabel = context.dataset.label || "";
+                            const point = context.raw;
+                            const lines = [rpmLabel, `Z ${Number(point.x).toFixed(3)} mm`];
+                            if (isDragChart) {
+                                lines.push(`Drag ${Number(point.y).toFixed(4)}`);
+                                if (point.torque != null) {
+                                    lines.push(`Torque ${Number(point.torque).toFixed(2)}%`);
+                                }
+                            } else {
+                                lines.push(`Torque ${Number(point.y).toFixed(2)}%`);
+                            }
+                            return lines;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    type: "linear",
+                    title: {
+                        display: true,
+                        text: "Z-Height (mm)",
+                        color: theme.text,
+                        font: { family: '"DM Sans", sans-serif', size: 12 },
+                    },
+                    ticks: {
+                        color: theme.tick,
+                        font: { family: '"DM Sans", sans-serif', size: 11 },
+                    },
+                    grid: { color: theme.grid },
+                    border: { color: theme.border },
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: yTitle,
+                        color: theme.text,
+                        font: { family: '"DM Sans", sans-serif', size: 12 },
+                    },
+                    ticks: {
+                        color: theme.tick,
+                        font: { family: '"DM Sans", sans-serif', size: 11 },
+                    },
+                    grid: { color: theme.grid },
+                    border: { color: theme.border },
+                },
+            },
+        };
+    }
+
+    initLiveCharts() {
+        if (typeof Chart === "undefined") {
+            console.warn("Chart.js not loaded; live charts unavailable");
+            return;
         }
 
-        if (this.el.torqueZPlot) {
-            Plotly.newPlot(this.el.torqueZPlot, [], this.torqueZLayout, config).then(() => {
-                this.torquePlotInitialized = true;
-                this.refreshLivePlots();
+        const theme = this._getLiveChartTheme();
+
+        if (this.el.zSparklineCanvas) {
+            this.charts.drag = new Chart(this.el.zSparklineCanvas, {
+                type: "scatter",
+                data: { datasets: [] },
+                options: this._buildLiveChartOptions({
+                    yTitle: "Rotational Drag (torque / RPM)",
+                    theme,
+                    isDragChart: true,
+                }),
             });
+            this.zPlotInitialized = true;
         }
+
+        if (this.el.torqueZCanvas) {
+            this.charts.torque = new Chart(this.el.torqueZCanvas, {
+                type: "scatter",
+                data: { datasets: [] },
+                options: this._buildLiveChartOptions({
+                    yTitle: "Torque (%)",
+                    theme,
+                    isDragChart: false,
+                }),
+            });
+            this.torquePlotInitialized = true;
+        }
+
+        this.refreshLivePlots();
+    }
+
+    updateLiveChartTheme() {
+        if (!this.charts.drag && !this.charts.torque) {
+            return;
+        }
+        const theme = this._getLiveChartTheme();
+        if (this.charts.drag) {
+            this.charts.drag.options = this._buildLiveChartOptions({
+                yTitle: "Rotational Drag (torque / RPM)",
+                theme,
+                isDragChart: true,
+            });
+            this.charts.drag.update("none");
+        }
+        if (this.charts.torque) {
+            this.charts.torque.options = this._buildLiveChartOptions({
+                yTitle: "Torque (%)",
+                theme,
+                isDragChart: false,
+            });
+            this.charts.torque.update("none");
+        }
+    }
+
+    handleWindowResize() {
+        this.applyArmPosition();
+        if (this.charts.drag) {
+            this.charts.drag.resize();
+        }
+        if (this.charts.torque) {
+            this.charts.torque.resize();
+        }
+    }
+
+    handleVisibilityChange() {
+        if (document.hidden) {
+            this._renderPaused = true;
+            return;
+        }
+        this._renderPaused = false;
+        if (this._liveChartsDirty) {
+            this.refreshLivePlots();
+        }
+        if (this._mapVisualsDirty) {
+            this.syncMapVisuals({ force: true });
+        }
+        this._liveChartsDirty = false;
+        this._mapVisualsDirty = false;
     }
 
     initGauge() {
@@ -1554,6 +1780,7 @@ class ViscometryDashboard {
         this.socket.on("rpm_update", (data) => {
             this.currentRPM = Number(data.current_rpm) || 0;
             this.updateGauge(this.currentRPM);
+            this._scheduleMapVisualSync();
         });
 
         this.socket.on("new_measurement", (data) => {
@@ -1796,6 +2023,11 @@ class ViscometryDashboard {
             window.clearTimeout(this._tableRefreshTimer);
             this._tableRefreshTimer = null;
         }
+        if (this._mapVisualSyncTimer) {
+            window.clearTimeout(this._mapVisualSyncTimer);
+            this._mapVisualSyncTimer = null;
+        }
+        this._resetMapVisualCache();
 
         if (this.el.statusLog) {
             this.el.statusLog.innerHTML = "";
@@ -1843,7 +2075,7 @@ class ViscometryDashboard {
         this.platform.cells.forEach((cell) => this.cellStates.set(cell.id, "pending"));
         this.renderMap();
         this.updateCellDisplay();
-        this.updateCellVisuals();
+        this.syncMapVisuals({ force: true });
         this.updateCompletionBar();
         this.updateGauge(0);
         this.updateTorqueBar(0);
@@ -2095,43 +2327,7 @@ class ViscometryDashboard {
     }
 
     updateCellVisuals() {
-        const statusLower = (this.statusLog[0] || "").toLowerCase();
-        const hasErrorStatus = statusLower.includes("error") || statusLower.includes("fail") || statusLower.includes("critical");
-        let activeStation = null;
-        if (statusLower.includes("wash station 1") || statusLower.includes("motor 1") || statusLower.includes("pump 1")) {
-            activeStation = "WASH";
-        } else if (statusLower.includes("wash station 2") || statusLower.includes("motor 2") || statusLower.includes("pump 2")) {
-            activeStation = "DRY";
-        }
-
-        this.platform.cells.forEach((cell) => {
-            const overrideState = this.cellStates.get(cell.id);
-            let state = overrideState || "pending";
-
-            if (this.currentCell === cell.id && hasErrorStatus) {
-                state = "error";
-            } else if (this.currentCell === cell.id && this.currentRPM > 0) {
-                state = "measuring";
-            } else if (this.currentCell === cell.id && this.currentRPM === 0) {
-                state = "active";
-            } else if (this.washingCell === cell.id) {
-                state = "washing";
-            } else if (this.completedCells.has(cell.id)) {
-                state = "completed";
-            }
-
-            this.cellStates.set(cell.id, state);
-        });
-
-        this.renderMap();
-
-        ["WASH", "DRY"].forEach((id) => {
-            const node = document.getElementById(`station-${id}`);
-            if (!node) {
-                return;
-            }
-            node.classList.toggle("station-active", activeStation === id);
-        });
+        this.syncMapVisuals();
     }
 
     getProtocolRunMode() {
@@ -2367,7 +2563,7 @@ class ViscometryDashboard {
 
         this._schedulePlotRefresh();
         this._scheduleTableRefresh();
-        this.updateCellVisuals();
+        this._scheduleMapVisualSync();
     }
 
     updateZFilterButtons() {
@@ -2591,6 +2787,49 @@ class ViscometryDashboard {
         };
     }
 
+    _buildDragDatasetForRpm(rpm, points, torqueFloor, orderedRpms) {
+        const rpmColor = this.getLiveRpmColor(rpm, orderedRpms);
+        const sorted = [...points].sort((a, b) => Number(a.height) - Number(b.height));
+        const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor);
+        const rpmLabel = Number(rpm).toFixed(3);
+        return {
+            label: `RPM ${rpmLabel}`,
+            data: sorted.map((m) => ({
+                x: Number(m.height),
+                y: Number(m.rotational_drag),
+                torque: Number(m.torque_percent),
+            })),
+            showLine: this.zConnectDots,
+            borderColor: this.zConnectDots ? rpmColor : "transparent",
+            borderWidth: this.zConnectDots ? 1.5 : 0,
+            pointBackgroundColor: markerPalette.map((p) => p.fill),
+            pointBorderColor: markerPalette.map((p) => p.line),
+            pointBorderWidth: 1,
+            pointRadius: 5,
+            pointHoverRadius: 6,
+        };
+    }
+
+    _buildTorqueDatasetForRpm(rpm, points, torqueFloor, orderedRpms) {
+        const rpmColor = this.getLiveRpmColor(rpm, orderedRpms);
+        const sorted = [...points].sort((a, b) => Number(a.height) - Number(b.height));
+        const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor);
+        const rpmLabel = Number(rpm).toFixed(3);
+        return {
+            label: `RPM ${rpmLabel}`,
+            data: sorted.map((m) => ({
+                x: Number(m.height),
+                y: Number(m.torque_percent),
+            })),
+            showLine: false,
+            pointBackgroundColor: markerPalette.map((p) => p.fill),
+            pointBorderColor: markerPalette.map((p) => p.line),
+            pointBorderWidth: 1,
+            pointRadius: 5,
+            pointHoverRadius: 6,
+        };
+    }
+
     renderDragZRpmLegend(cellId, orderedRpms) {
         const listEl = this.el.dragZRpmLegend;
         if (!listEl) {
@@ -2643,57 +2882,76 @@ class ViscometryDashboard {
             zData = [...latestByHeightRpm.values()];
         }
 
-        let orderedRpms = activeCell ? this.expandRpmsWithObserved(this.getRpmsForCell(activeCell), zData) : [];
+        const orderedRpms = activeCell ? this.expandRpmsWithObserved(this.getRpmsForCell(activeCell), zData) : [];
         const buckets = this.partitionMeasurementsByRpm(zData, orderedRpms);
 
-        if (this.zPlotInitialized && this.el.zSparklinePlot) {
-            const zTraces = orderedRpms
-                .map((rpm) => {
-                    const key = Number(rpm).toFixed(3);
-                    const points = buckets.get(key) || [];
-                    if (points.length === 0) {
-                        return null;
-                    }
-                    return this._buildDragTraceForRpm(rpm, points, torqueFloor, orderedRpms);
-                })
-                .filter(Boolean);
+        const dragDatasets = orderedRpms
+            .map((rpm) => {
+                const key = Number(rpm).toFixed(3);
+                const points = buckets.get(key) || [];
+                if (points.length === 0) {
+                    return null;
+                }
+                return this._buildDragDatasetForRpm(rpm, points, torqueFloor, orderedRpms);
+            })
+            .filter(Boolean);
 
-            const layout = this.zSparklineLayout || undefined;
-            Plotly.react(this.el.zSparklinePlot, zTraces, layout, { responsive: true, displayModeBar: false });
+        const torqueDatasets = orderedRpms
+            .map((rpm) => {
+                const key = Number(rpm).toFixed(3);
+                const points = buckets.get(key) || [];
+                if (points.length === 0) {
+                    return null;
+                }
+                return this._buildTorqueDatasetForRpm(rpm, points, torqueFloor, orderedRpms);
+            })
+            .filter(Boolean);
+
+        if (this.zPlotInitialized && this.charts.drag) {
+            this.charts.drag.data.datasets = dragDatasets;
             if (this.el.zSparklineEmpty) {
-                this.el.zSparklineEmpty.classList.toggle("hidden", zTraces.length > 0);
+                this.el.zSparklineEmpty.classList.toggle("hidden", dragDatasets.length > 0);
             }
             this.renderDragZRpmLegend(activeCell, orderedRpms);
         }
 
-        if (this.torquePlotInitialized && this.el.torqueZPlot) {
-            const torqueTraces = orderedRpms
-                .map((rpm) => {
-                    const key = Number(rpm).toFixed(3);
-                    const points = buckets.get(key) || [];
-                    if (points.length === 0) {
-                        return null;
-                    }
-                    return this._buildTorqueTraceForRpm(rpm, points, torqueFloor, orderedRpms);
-                })
-                .filter(Boolean);
-
-            Plotly.react(
-                this.el.torqueZPlot,
-                torqueTraces,
-                this.torqueZLayout || undefined,
-                { responsive: true, displayModeBar: false }
-            );
+        if (this.torquePlotInitialized && this.charts.torque) {
+            this.charts.torque.data.datasets = torqueDatasets;
             if (this.el.torqueZEmpty) {
-                this.el.torqueZEmpty.classList.toggle("hidden", torqueTraces.length > 0);
+                this.el.torqueZEmpty.classList.toggle("hidden", torqueDatasets.length > 0);
             }
         }
+
+        if (this._renderPaused) {
+            this._liveChartsDirty = true;
+            return;
+        }
+
+        if (this.charts.drag) {
+            this.charts.drag.update("none");
+        }
+        if (this.charts.torque) {
+            this.charts.torque.update("none");
+        }
+        this._liveChartsDirty = false;
     }
 
     updateGauge(targetRPM) {
         const clamped = Math.max(0, Math.min(100, targetRPM));
         if (this.gaugeAnimationFrame) {
             cancelAnimationFrame(this.gaugeAnimationFrame);
+        }
+
+        if (this._renderPaused) {
+            this.gaugeDisplayRPM = clamped;
+            const pct = clamped / 200;
+            const offset = this.gaugeArcLength * (1 - pct);
+            const angle = -135 + 270 * pct;
+            this.el.gaugeValue.style.strokeDashoffset = String(offset);
+            this.el.gaugeNeedle.style.transform = `rotate(${angle}deg)`;
+            this.el.gaugeText.textContent = clamped.toFixed(1);
+            this.el.body.classList.toggle("spinning", clamped > 0.5);
+            return;
         }
 
         const start = this.gaugeDisplayRPM;
@@ -4428,7 +4686,7 @@ class ViscometryDashboard {
             this.washingCell = null;
             this._pendingCompletedCell = null;
             this.updateCompletionBar();
-            this.renderMap();
+            this.syncMapVisuals({ force: true });
         }
     }
 
@@ -4788,7 +5046,7 @@ class ViscometryDashboard {
             this.el.statusLog.appendChild(li);
         });
 
-        this.updateCellVisuals();
+        this._scheduleMapVisualSync();
     }
 
     showDisconnectedBanner(show) {
@@ -4820,6 +5078,7 @@ class ViscometryDashboard {
             this.el.body.classList.add("theme-dark");
             this.el.themeToggle.textContent = "Light";
         }
+        this.updateLiveChartTheme();
     }
 
     exportCSV() {
