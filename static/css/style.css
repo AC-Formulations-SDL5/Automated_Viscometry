@@ -546,6 +546,26 @@ body.running .header-sweep {
     display: none !important;
 }
 
+.tab-signature {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-top: 28px;
+    padding: 10px 0 2px;
+    text-align: center;
+    pointer-events: none;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.tab-signature-copy {
+    font-family: var(--font-body);
+    font-size: 0.68rem;
+    font-weight: 300;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    opacity: 0.42;
+}
+
 /* Preserve each tab's layout when active (.tab-panel.active { display:block } broke grid/flex gap) */
 #layout-tab.tab-panel.active {
     display: grid !important;
