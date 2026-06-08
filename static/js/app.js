@@ -378,6 +378,9 @@ class ViscometryDashboard {
             gaugeValue: document.getElementById("gauge-value"),
             gaugeNeedle: document.getElementById("gauge-needle"),
             gaugeText: document.getElementById("gauge-rpm"),
+            calGaugeValue: document.getElementById("cal-gauge-value"),
+            calGaugeNeedle: document.getElementById("cal-gauge-needle"),
+            calGaugeText: document.getElementById("cal-gauge-rpm"),
             xyzX: document.getElementById("xyz-x"),
             xyzY: document.getElementById("xyz-y"),
             xyzZ: document.getElementById("xyz-z"),
@@ -386,6 +389,7 @@ class ViscometryDashboard {
             rotationalDragDisplay: document.getElementById("rotational-drag-display"),
             dragLiveBox: document.getElementById("drag-live-box"),
             zMeasuringDisplay: document.getElementById("z-measuring-display"),
+            calZMeasuringDisplay: document.getElementById("cal-z-measuring-display"),
             sidebarRpm: document.getElementById("sidebar-rpm"),
             sidebarSecondDerivDrag: document.getElementById("sidebar-2nd-deriv-drag"),
             sidebarSecondDerivCv: document.getElementById("sidebar-2nd-deriv-cv"),
@@ -406,6 +410,8 @@ class ViscometryDashboard {
             dragZRpmLegendNote: document.getElementById("drag-z-rpm-legend-note"),
             elapsed: document.getElementById("elapsed"),
             elapsedCell: document.getElementById("elapsed-cell"),
+            calElapsed: document.getElementById("cal-elapsed"),
+            calElapsedCell: document.getElementById("cal-elapsed-cell"),
             tableBody: document.getElementById("measurement-table"),
             zFilterAll: document.getElementById("z-filter-all"),
             zFilterLatest: document.getElementById("z-filter-latest"),
@@ -455,11 +461,15 @@ class ViscometryDashboard {
             calApplyInterval: document.getElementById("cal-apply-interval"),
             calApplyAll: document.getElementById("cal-apply-all-recommended"),
             calExistingInfo: document.getElementById("cal-existing-info"),
+            calExistingEmpty: document.getElementById("cal-existing-empty"),
+            calExistingContent: document.getElementById("cal-existing-content"),
             calExistingSelect: document.getElementById("cal-existing-select"),
             calExistingDetail: document.getElementById("cal-existing-detail"),
             calClearBtn: document.getElementById("cal-clear-btn"),
             calStartBtn: document.getElementById("cal-start-btn"),
             calStartRecalibrationBtn: document.getElementById("cal-start-recalibration-btn"),
+            calStopBtn: document.getElementById("cal-stop-btn"),
+            calTerminateCurrentCell: document.getElementById("cal-terminate-current-cell"),
             calRecalibrateIndividual: document.getElementById("cal-recalibrate-individual"),
             calRecalibrationIgnoreMaxZ: document.getElementById("cal-recalibration-ignore-max-z"),
             calCellSelectorContainer: document.getElementById("cal-cell-selector-container"),
@@ -718,6 +728,12 @@ class ViscometryDashboard {
         if (this.el.calStartRecalibrationBtn) {
             this.el.calStartRecalibrationBtn.addEventListener("click", () => this.startRecalibrationRun());
         }
+        if (this.el.calStopBtn) {
+            this.el.calStopBtn.addEventListener("click", () => this.stopCalibrationFromUI());
+        }
+        if (this.el.calTerminateCurrentCell) {
+            this.el.calTerminateCurrentCell.addEventListener("click", () => this.terminateCalibrationCellFromUI());
+        }
 
         if (this.el.calReviewSave) {
             this.el.calReviewSave.addEventListener("click", () => this.onCalibrationReviewSave());
@@ -743,6 +759,7 @@ class ViscometryDashboard {
         if (this.el.expSavedOk) {
             this.el.expSavedOk.addEventListener("click", () => this.hideExperimentSavedModal());
         }
+        this.updateRunControlButtons();
         this.bindTestingControls();
     }
 
@@ -1324,8 +1341,15 @@ class ViscometryDashboard {
     initGauge() {
         const circumference = 2 * Math.PI * 72;
         this.gaugeArcLength = circumference * 0.75;
-        this.el.gaugeValue.style.strokeDasharray = `${this.gaugeArcLength} ${circumference}`;
-        this.el.gaugeValue.style.strokeDashoffset = `${this.gaugeArcLength}`;
+        const initGaugeArc = (gaugeValue) => {
+            if (!gaugeValue) {
+                return;
+            }
+            gaugeValue.style.strokeDasharray = `${this.gaugeArcLength} ${circumference}`;
+            gaugeValue.style.strokeDashoffset = `${this.gaugeArcLength}`;
+        };
+        initGaugeArc(this.el.gaugeValue);
+        initGaugeArc(this.el.calGaugeValue);
         this.updateGauge(0);
     }
 
@@ -1768,20 +1792,44 @@ class ViscometryDashboard {
             });
     }
 
-    stopRunFromUI() {
+    _requestRunStop(statusMessageFallback = "Stop requested") {
         this.setUiState("idle");
-        fetch("/api/run/stop", {
+        return fetch("/api/run/stop", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({})
         })
             .then((response) => response.json())
             .then((result) => {
-                this.setControlStatus(result.status_message || "Stop requested");
-            })
-            .catch(() => {
-                this.setControlStatus("Failed to stop run");
+                const message = result.status_message || statusMessageFallback;
+                this.setControlStatus(message);
+                return result;
             });
+    }
+
+    _requestTerminateCurrentCell() {
+        return fetch("/api/run/terminate_current_cell", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+        }).then((response) => response.json());
+    }
+
+    stopRunFromUI() {
+        this._requestRunStop("Stop requested").catch(() => {
+            this.setControlStatus("Failed to stop run");
+        });
+    }
+
+    stopCalibrationFromUI() {
+        if (!this.isRunning || !this._isCalibrationLikeProtocolMode()) {
+            this.pushStatusMessage("Stop is only available during an active calibration or recalibration run");
+            return;
+        }
+        const label = this.recalibrationModeActive ? "Recalibration" : "Calibration";
+        this._requestRunStop(`${label} stop requested`).catch(() => {
+            this.setControlStatus(`Failed to stop ${label.toLowerCase()}`);
+        });
     }
 
     terminateCurrentCellFromUI() {
@@ -1794,21 +1842,41 @@ class ViscometryDashboard {
             return;
         }
         this.manualTerminateQueued = true;
-        this.updateManualTerminateControl();
-        fetch("/api/run/terminate_current_cell", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({})
-        })
-            .then((response) => response.json())
+        this.updateRunControlButtons();
+        this._requestTerminateCurrentCell()
             .then((result) => {
                 this.setControlStatus(result.status_message || "Manual current-cell termination queued");
                 this.pushStatusMessage(result.status_message || "Manual current-cell termination queued");
             })
             .catch(() => {
                 this.manualTerminateQueued = false;
-                this.updateManualTerminateControl();
+                this.updateRunControlButtons();
                 this.setControlStatus("Failed to queue manual current-cell termination");
+            });
+    }
+
+    terminateCalibrationCellFromUI() {
+        if (!this.isRunning || !this._isCalibrationLikeProtocolMode()) {
+            this.pushStatusMessage("Stop in this cell is only available during calibration or recalibration");
+            return;
+        }
+        if (this.manualTerminateQueued) {
+            this.pushStatusMessage("Stop in this cell already queued");
+            return;
+        }
+        this.manualTerminateQueued = true;
+        this.updateRunControlButtons();
+        this._requestTerminateCurrentCell()
+            .then((result) => {
+                const fallback = this.recalibrationModeActive
+                    ? "Recalibration in this cell stop queued"
+                    : "Calibration in this cell stop queued";
+                this.pushStatusMessage(result.status_message || fallback);
+            })
+            .catch(() => {
+                this.manualTerminateQueued = false;
+                this.updateRunControlButtons();
+                this.pushStatusMessage("Failed to queue stop in this cell");
             });
     }
 
@@ -1900,9 +1968,6 @@ class ViscometryDashboard {
         });
 
         this.socket.on("z_update", (data) => {
-            if (this.activeTabId !== "controls-tab") {
-                return;
-            }
             const currentZ = Number(data.current_z);
             if (!Number.isNaN(currentZ)) {
                 this.updateMeasuringZDisplay(currentZ);
@@ -1936,6 +2001,9 @@ class ViscometryDashboard {
             if (this.el.elapsed) {
                 this.el.elapsed.textContent = "00:00:00";
             }
+            if (this.el.calElapsed) {
+                this.el.calElapsed.textContent = "00:00:00";
+            }
         });
 
         this.socket.on("experiment_stop", () => {
@@ -1964,12 +2032,12 @@ class ViscometryDashboard {
             this.updateCompletionBar();
             this.updateCellVisuals();
             this.updateLiveTerminationBadge();
-            this.updateManualTerminateControl();
+            this.updateRunControlButtons();
         });
 
         this.socket.on("manual_terminate_current_cell_update", (data) => {
             this.manualTerminateQueued = Boolean(data?.requested);
-            this.updateManualTerminateControl();
+            this.updateRunControlButtons();
         });
 
         this.socket.on("instrument_status_update", (status) => {
@@ -1999,6 +2067,7 @@ class ViscometryDashboard {
                 this.updateCellVisuals();
                 this.renderProtocolUI();
                 this.updateRunTabAvailability();
+                this.updateRunControlButtons();
             }
         });
 
@@ -2138,11 +2207,20 @@ class ViscometryDashboard {
         if (this.el.elapsed) {
             this.el.elapsed.textContent = "00:00:00";
         }
+        if (this.el.calElapsed) {
+            this.el.calElapsed.textContent = "00:00:00";
+        }
         if (this.el.elapsedCell) {
             this.el.elapsedCell.textContent = "Cell 00:00:00";
         }
+        if (this.el.calElapsedCell) {
+            this.el.calElapsedCell.textContent = "Cell 00:00:00";
+        }
         if (this.el.zMeasuringDisplay) {
             this.el.zMeasuringDisplay.textContent = "-";
+        }
+        if (this.el.calZMeasuringDisplay) {
+            this.el.calZMeasuringDisplay.textContent = "-";
         }
         if (this.el.rotationalDragDisplay) {
             this.el.rotationalDragDisplay.textContent = "0.000";
@@ -2179,6 +2257,9 @@ class ViscometryDashboard {
         this.updateLiveRotationalDragDisplay(0);
         if (this.el.zMeasuringDisplay) {
             this.el.zMeasuringDisplay.textContent = "-";
+        }
+        if (this.el.calZMeasuringDisplay) {
+            this.el.calZMeasuringDisplay.textContent = "-";
         }
         this.updateGraphCellTabs();
         this.updateCalGraphCellTabs();
@@ -2241,7 +2322,7 @@ class ViscometryDashboard {
         }
         if (status.manual_terminate_current_cell_requested !== undefined) {
             this.manualTerminateQueued = Boolean(status.manual_terminate_current_cell_requested);
-            this.updateManualTerminateControl();
+            this.updateRunControlButtons();
         }
         if (status.recalibration_mode_active !== undefined) {
             this.recalibrationModeActive = Boolean(status.recalibration_mode_active);
@@ -3160,20 +3241,48 @@ class ViscometryDashboard {
         }
     }
 
+    _gaugeElementSets() {
+        const sets = [];
+        if (this.el.gaugeValue && this.el.gaugeNeedle && this.el.gaugeText) {
+            sets.push({
+                gaugeValue: this.el.gaugeValue,
+                gaugeNeedle: this.el.gaugeNeedle,
+                gaugeText: this.el.gaugeText,
+            });
+        }
+        if (this.el.calGaugeValue && this.el.calGaugeNeedle && this.el.calGaugeText) {
+            sets.push({
+                gaugeValue: this.el.calGaugeValue,
+                gaugeNeedle: this.el.calGaugeNeedle,
+                gaugeText: this.el.calGaugeText,
+            });
+        }
+        return sets;
+    }
+
+    _applyGaugeToElements(value, elements) {
+        const pct = value / 200;
+        const offset = this.gaugeArcLength * (1 - pct);
+        const angle = -135 + 270 * pct;
+        elements.gaugeValue.style.strokeDashoffset = String(offset);
+        elements.gaugeNeedle.style.transform = `rotate(${angle}deg)`;
+        elements.gaugeText.textContent = value.toFixed(1);
+    }
+
     updateGauge(targetRPM) {
         const clamped = Math.max(0, Math.min(100, targetRPM));
+        const gaugeSets = this._gaugeElementSets();
+        if (!gaugeSets.length) {
+            return;
+        }
+
         if (this.gaugeAnimationFrame) {
             cancelAnimationFrame(this.gaugeAnimationFrame);
         }
 
         if (this._renderPaused) {
             this.gaugeDisplayRPM = clamped;
-            const pct = clamped / 200;
-            const offset = this.gaugeArcLength * (1 - pct);
-            const angle = -135 + 270 * pct;
-            this.el.gaugeValue.style.strokeDashoffset = String(offset);
-            this.el.gaugeNeedle.style.transform = `rotate(${angle}deg)`;
-            this.el.gaugeText.textContent = clamped.toFixed(1);
+            gaugeSets.forEach((elements) => this._applyGaugeToElements(clamped, elements));
             this.el.body.classList.toggle("spinning", clamped > 0.5);
             return;
         }
@@ -3190,13 +3299,7 @@ class ViscometryDashboard {
             const value = start + delta * eased;
 
             this.gaugeDisplayRPM = value;
-            const pct = value / 200;
-            const offset = this.gaugeArcLength * (1 - pct);
-            const angle = -135 + 270 * pct;
-
-            this.el.gaugeValue.style.strokeDashoffset = String(offset);
-            this.el.gaugeNeedle.style.transform = `rotate(${angle}deg)`;
-            this.el.gaugeText.textContent = value.toFixed(1);
+            gaugeSets.forEach((elements) => this._applyGaugeToElements(value, elements));
 
             if (progress < 1) {
                 this.gaugeAnimationFrame = requestAnimationFrame(animate);
@@ -3329,7 +3432,7 @@ class ViscometryDashboard {
             startBtn.disabled = true;
             stopBtn.disabled = false;
         }
-        this.updateManualTerminateControl();
+        this.updateRunControlButtons();
     }
 
     _terminationDisplayMeta(reason) {
@@ -3363,6 +3466,45 @@ class ViscometryDashboard {
             : "Stop Measurement in current cell";
         btn.classList.toggle("is-active", isRegularRunning && !this.manualTerminateQueued);
         btn.classList.toggle("is-idle", !isRegularRunning || this.manualTerminateQueued);
+    }
+
+    updateCalibrationStopControls() {
+        const isCalRun = this.isRunning && this._isCalibrationLikeProtocolMode();
+        const isRecal = Boolean(this.recalibrationModeActive);
+        const stopLabel = isRecal ? "Stop Recalibration" : "Stop Calibration";
+        const cellStopLabel = isRecal
+            ? "Stop recalibration in this cell"
+            : "Stop calibration in this cell";
+        const cellStopQueuedLabel = isRecal
+            ? "Stop recalibration in this cell (queued)"
+            : "Stop calibration in this cell (queued)";
+
+        if (this.el.calStopBtn) {
+            this.el.calStopBtn.classList.toggle("hidden", !isCalRun);
+            this.el.calStopBtn.disabled = !isCalRun;
+            this.el.calStopBtn.textContent = stopLabel;
+            this.el.calStopBtn.classList.toggle("is-active", isCalRun);
+            this.el.calStopBtn.classList.toggle("is-idle", !isCalRun);
+        }
+        if (this.el.calTerminateCurrentCell) {
+            this.el.calTerminateCurrentCell.classList.toggle("hidden", !isCalRun);
+            this.el.calTerminateCurrentCell.disabled = !isCalRun || this.manualTerminateQueued;
+            this.el.calTerminateCurrentCell.textContent = this.manualTerminateQueued
+                ? cellStopQueuedLabel
+                : cellStopLabel;
+            this.el.calTerminateCurrentCell.classList.toggle("is-active", isCalRun && !this.manualTerminateQueued);
+            this.el.calTerminateCurrentCell.classList.toggle("is-idle", !isCalRun || this.manualTerminateQueued);
+        }
+        const blocked = Boolean(this.calibrationReviewPending || this.experimentReviewPending);
+        if (this.el.calStartBtn) {
+            this.el.calStartBtn.disabled = this.isRunning || !this.calChecksComplete || blocked;
+        }
+        this.updateRecalibrationButtonState();
+    }
+
+    updateRunControlButtons() {
+        this.updateManualTerminateControl();
+        this.updateCalibrationStopControls();
     }
 
     updateLiveTerminationBadge() {
@@ -3456,14 +3598,12 @@ class ViscometryDashboard {
         const empty = this.el.calCheckEmpty?.checked || false;
         this.calChecksComplete = empty;
 
-        if (this.el.calStartBtn) {
-            this.el.calStartBtn.disabled = !this.calChecksComplete || this.isRunning;
-        }
         if (this.el.calActionHint) {
             this.el.calActionHint.textContent = this.calChecksComplete
                 ? "Ready to calibrate all 18 cells"
                 : "Complete the checklist above to enable calibration";
         }
+        this.updateCalibrationStopControls();
     }
 
     applyCalibrationStatus(summary) {
@@ -3492,11 +3632,13 @@ class ViscometryDashboard {
                 : "No Z-Height Per-Cell Calibration Performed";
         }
 
-        // Existing calibration info block
-        const infoBlock = this.el.calExistingInfo;
+        // Existing calibration info block (column always visible)
         const detail = this.el.calExistingDetail;
-        if (infoBlock) {
-            infoBlock.classList.toggle("hidden", !isOk);
+        if (this.el.calExistingEmpty) {
+            this.el.calExistingEmpty.classList.toggle("hidden", isOk);
+        }
+        if (this.el.calExistingContent) {
+            this.el.calExistingContent.classList.toggle("hidden", !isOk);
         }
         if (isOk && summary.cells) {
             this.renderCalibrationDropdown(summary);
@@ -3508,6 +3650,7 @@ class ViscometryDashboard {
 
         // Re-validate checklist (running state may have changed)
         this.validateCalibrationChecklist();
+        this.updateCalibrationStopControls();
     }
 
     renderCalibrationDropdown(summary) {
@@ -3649,8 +3792,10 @@ class ViscometryDashboard {
             }
         });
         const hasSelected = selectedCells.length > 0;
+        const blocked = Boolean(this.calibrationReviewPending || this.experimentReviewPending);
         if (this.el.calStartRecalibrationBtn) {
-            this.el.calStartRecalibrationBtn.disabled = !hasSelected || this.isRunning || !this.calChecksComplete;
+            this.el.calStartRecalibrationBtn.disabled =
+                !hasSelected || this.isRunning || !this.calChecksComplete || blocked;
         }
     }
 
@@ -3728,8 +3873,12 @@ class ViscometryDashboard {
 
     updateMeasuringZDisplay(value) {
         this.currentMeasuringZ = value;
+        const text = `${value.toFixed(3)} mm`;
         if (this.el.zMeasuringDisplay) {
-            this.el.zMeasuringDisplay.textContent = `${value.toFixed(3)} mm`;
+            this.el.zMeasuringDisplay.textContent = text;
+        }
+        if (this.el.calZMeasuringDisplay) {
+            this.el.calZMeasuringDisplay.textContent = text;
         }
     }
 
@@ -3808,9 +3957,12 @@ class ViscometryDashboard {
             if (this.el.elapsed) {
                 this.el.elapsed.textContent = "00:00:00";
             }
+            if (this.el.calElapsed) {
+                this.el.calElapsed.textContent = "00:00:00";
+            }
             this.setControlStatus("Run active");
             this.manualTerminateQueued = false;
-            this.updateManualTerminateControl();
+            this.updateRunControlButtons();
         }
 
         if (isRunning && this.uiState !== "running") {
@@ -3831,7 +3983,7 @@ class ViscometryDashboard {
         if (!isRunning) {
             this.washingCell = null;
             this.manualTerminateQueued = false;
-            this.updateManualTerminateControl();
+            this.updateRunControlButtons();
             if (previous) {
                 this.playChime(720, 0.14);
                 this.setControlStatus("Run stopped");
@@ -3860,14 +4012,7 @@ class ViscometryDashboard {
             this.isCalibrationRun = false;
         }
 
-        if (this.el.calStartBtn) {
-            this.el.calStartBtn.disabled = isRunning || !this.calChecksComplete;
-        }
-
-        // Update recalibration button state based on running status
-        if (this.el.calStartRecalibrationBtn) {
-            this.updateRecalibrationButtonState();
-        }
+        this.updateCalibrationStopControls();
         this.updateLiveTerminationBadge();
     }
 
@@ -4869,11 +5014,23 @@ class ViscometryDashboard {
         const now = Date.now();
 
         if (this.experimentStart !== null && this.isRunning) {
-            this.el.elapsed.textContent = this.formatDuration(now - this.experimentStart);
+            const elapsedText = this.formatDuration(now - this.experimentStart);
+            if (this.el.elapsed) {
+                this.el.elapsed.textContent = elapsedText;
+            }
+            if (this.el.calElapsed) {
+                this.el.calElapsed.textContent = elapsedText;
+            }
         }
 
         if (this.cellStart !== null && this.isRunning) {
-            this.el.elapsedCell.textContent = `Cell ${this.formatDuration(now - this.cellStart)}`;
+            const cellElapsedText = `Cell ${this.formatDuration(now - this.cellStart)}`;
+            if (this.el.elapsedCell) {
+                this.el.elapsedCell.textContent = cellElapsedText;
+            }
+            if (this.el.calElapsedCell) {
+                this.el.calElapsedCell.textContent = cellElapsedText;
+            }
         }
     }
 
@@ -5420,15 +5577,7 @@ class ViscometryDashboard {
         if (this.el.startRun && this.uiState === "ready") {
             this.el.startRun.disabled = blocked;
         }
-        if (this.el.calStartBtn) {
-            this.el.calStartBtn.disabled = blocked || !this.calChecksComplete || this.isRunning;
-        }
-        if (this.el.calStartRecalibrationBtn) {
-            this.updateRecalibrationButtonState();
-            if (blocked && this.el.calStartRecalibrationBtn) {
-                this.el.calStartRecalibrationBtn.disabled = true;
-            }
-        }
+        this.updateCalibrationStopControls();
     }
 
     updateCalibrationReviewStartGuard() {

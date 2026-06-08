@@ -145,16 +145,8 @@
                             </div>
                         </div>
 
-                        <div id="cal-panel-body" class="cal-panel-body cal-panel-body-compact">
-                            <div class="cal-checklist">
-                                <p class="cal-checklist-title">Pre-Calibration Checklist</p>
-                                <label class="cal-check-item">
-                                    <input type="checkbox" id="cal-check-empty" class="cal-checkbox">
-                                    <span>All cells are <strong>empty and clean</strong> — no sample loaded in any cell</span>
-                                </label>
-                            </div>
-
-                            <div class="cal-auto-settings-info card cal-info-banner">
+                        <div id="cal-panel-body" class="cal-panel-body">
+                            <div class="cal-auto-settings-info cal-info-banner">
                                 <p class="cal-info-banner-title">Automatic settings during calibration</p>
                                 <p class="cal-info-banner-text">When you start a calibration or recalibration run, the following experiment settings are applied automatically and restored to your previous values when the run ends:</p>
                                 <ul class="cal-info-banner-list">
@@ -166,38 +158,51 @@
                                 </ul>
                             </div>
 
-                            <div class="cal-recommended-settings">
-                                <p class="cal-section-label">Recommended Settings for Fast Calibration</p>
-                                <div class="cal-settings-grid">
-                                    <div class="cal-setting-item">
-                                        <span class="cal-setting-label">Z Step Size</span>
-                                        <span class="cal-setting-value">−0.02 mm</span>
-                                        <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-z-step">Apply</button>
+                            <div class="cal-top-row">
+                                <div class="cal-top-col cal-checklist">
+                                    <p class="cal-checklist-title">Pre-Calibration Checklist</p>
+                                    <label class="cal-check-item">
+                                        <input type="checkbox" id="cal-check-empty" class="cal-checkbox">
+                                        <span>All cells are <strong>empty and clean</strong> — no sample loaded in any cell</span>
+                                    </label>
+                                </div>
+
+                                <div class="cal-top-col cal-recommended-settings">
+                                    <p class="cal-section-label">Recommended Settings for Fast Calibration</p>
+                                    <div class="cal-settings-grid">
+                                        <div class="cal-setting-item">
+                                            <span class="cal-setting-label">Z Step Size</span>
+                                            <span class="cal-setting-value">−0.02 mm</span>
+                                            <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-z-step">Apply</button>
+                                        </div>
+                                        <div class="cal-setting-item">
+                                            <span class="cal-setting-label">RPM</span>
+                                            <span class="cal-setting-value">1</span>
+                                            <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-rpm">Apply</button>
+                                        </div>
+                                        <div class="cal-setting-item">
+                                            <span class="cal-setting-label">Measurement Duration</span>
+                                            <span class="cal-setting-value">6 s</span>
+                                            <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-duration">Apply</button>
+                                        </div>
+                                        <div class="cal-setting-item">
+                                            <span class="cal-setting-label">Sample Interval</span>
+                                            <span class="cal-setting-value">3 s</span>
+                                            <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-interval">Apply</button>
+                                        </div>
                                     </div>
-                                    <div class="cal-setting-item">
-                                        <span class="cal-setting-label">RPM</span>
-                                        <span class="cal-setting-value">1</span>
-                                        <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-rpm">Apply</button>
-                                    </div>
-                                    <div class="cal-setting-item">
-                                        <span class="cal-setting-label">Measurement Duration</span>
-                                        <span class="cal-setting-value">6 s</span>
-                                        <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-duration">Apply</button>
-                                    </div>
-                                    <div class="cal-setting-item">
-                                        <span class="cal-setting-label">Sample Interval</span>
-                                        <span class="cal-setting-value">3 s</span>
-                                        <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-interval">Apply</button>
+                                    <button type="button" class="btn subtle" id="cal-apply-all-recommended">Apply All Recommended Settings</button>
+                                </div>
+
+                                <div class="cal-top-col cal-calibrated-info" id="cal-existing-info">
+                                    <p class="cal-section-label">Current Calibration Data</p>
+                                    <div id="cal-existing-empty" class="cal-existing-empty">No calibration saved yet.</div>
+                                    <div id="cal-existing-content" class="cal-existing-content hidden">
+                                        <select id="cal-existing-select" class="cal-existing-select"></select>
+                                        <div id="cal-existing-detail" class="cal-existing-detail"></div>
+                                        <button type="button" class="btn subtle" id="cal-clear-btn">Clear Calibration Data</button>
                                     </div>
                                 </div>
-                                <button type="button" class="btn subtle" id="cal-apply-all-recommended">Apply All Recommended Settings</button>
-                            </div>
-
-                            <div class="cal-calibrated-info hidden" id="cal-existing-info">
-                                <p class="cal-section-label">Current Calibration Data</p>
-                                <select id="cal-existing-select" class="cal-existing-select"></select>
-                                <div id="cal-existing-detail" class="cal-existing-detail"></div>
-                                <button type="button" class="btn subtle" id="cal-clear-btn">Clear Calibration Data</button>
                             </div>
 
                             <div class="cal-recalibration-section">
@@ -254,14 +259,45 @@
                                 </div>
                             </div>
 
-                            <div class="cal-actions">
+                            <div class="cal-actions cal-actions-four">
                                 <button type="button" id="cal-start-btn" class="btn cal-start-btn" disabled title="Check all items above before starting">
                                     Start Calibration (All 18 Cells)
                                 </button>
                                 <button type="button" id="cal-start-recalibration-btn" class="btn cal-start-btn hidden" disabled title="Select at least one cell to recalibrate">
                                     Start Recalibration
                                 </button>
-                                <span id="cal-action-hint" class="cal-action-hint">Complete the checklist above to enable calibration</span>
+                                <button type="button" id="cal-stop-btn" class="btn btn-stop control-btn control-btn-stop hidden">Stop Calibration</button>
+                                <button type="button" id="cal-terminate-current-cell" class="btn control-btn control-btn-stop terminate-current-cell-btn hidden">Stop calibration in this cell</button>
+                            </div>
+                            <span id="cal-action-hint" class="cal-action-hint">Complete the checklist above to enable calibration</span>
+                        </div>
+                    </section>
+
+                    <section class="card cal-tracking-card">
+                        <div class="card-title-row">
+                            <h2>Live Tracking</h2>
+                        </div>
+                        <div class="cal-mini-tracking-row">
+                            <div class="cal-mini-tracking-col status-block status-block-compact gauge-block">
+                                <div class="status-label">RPM Gauge</div>
+                                <svg id="cal-rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
+                                    <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
+                                    <circle id="cal-gauge-value" cx="110" cy="110" r="72" class="gauge-value"></circle>
+                                    <line id="cal-gauge-needle" x1="110" y1="110" x2="110" y2="44" class="gauge-needle"></line>
+                                    <circle cx="110" cy="110" r="5" class="gauge-core"></circle>
+                                    <text id="cal-gauge-rpm" x="110" y="118" text-anchor="middle" class="gauge-text">0.0</text>
+                                    <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
+                                </svg>
+                            </div>
+                            <div class="cal-mini-tracking-col status-block status-block-compact measuring-z-block">
+                                <div class="status-label">Measuring Z</div>
+                                <div class="mono measuring-z-value" id="cal-z-measuring-display">0.000 mm</div>
+                                <div class="status-subtext">Active Z under sampling</div>
+                            </div>
+                            <div class="cal-mini-tracking-col status-block status-block-compact">
+                                <div class="status-label">Elapsed</div>
+                                <div id="cal-elapsed" class="mono">00:00:00</div>
+                                <div id="cal-elapsed-cell" class="status-subtext">Cell 00:00:00</div>
                             </div>
                         </div>
                     </section>

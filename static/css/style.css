@@ -624,20 +624,49 @@ body.running .header-sweep {
     width: 100%;
 }
 
-.cal-panel-body-compact {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 12px 16px;
-    align-items: start;
+.cal-panel-body {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
 }
 
-.cal-panel-body-compact .cal-checklist,
-.cal-panel-body-compact .cal-auto-settings-info,
-.cal-panel-body-compact .cal-recommended-settings,
-.cal-panel-body-compact .cal-calibrated-info,
-.cal-panel-body-compact .cal-recalibration-section,
-.cal-panel-body-compact .cal-actions {
-    grid-column: 1 / -1;
+.cal-top-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.cal-top-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 100%;
+    padding: 14px;
+    border-radius: var(--radius-card);
+    background: rgba(255, 255, 255, 0.42);
+    border: 1px solid var(--glass-border-subtle);
+    box-shadow: var(--shadow-glass);
+}
+
+.cal-top-col.cal-checklist {
+    background: rgba(255, 59, 48, 0.06);
+    border-color: var(--color-red-border);
+}
+
+.cal-existing-empty {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.cal-existing-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .cal-info-banner {
@@ -686,7 +715,7 @@ body.running .header-sweep {
 .load-old-experiment-header-row {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-start;
+    align-items: center;
     gap: 12px 16px;
     width: 100%;
 }
@@ -694,6 +723,42 @@ body.running .header-sweep {
 .load-old-experiment-header-row .load-old-experiment-card {
     flex: 1 1 280px;
     min-width: 0;
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.load-old-experiment-header-row .calibration-cells-status-pill {
+    align-self: auto;
+    flex-shrink: 0;
+}
+
+.cal-mini-tracking-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.cal-mini-tracking-col {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    min-height: 100%;
+    padding: 10px 12px;
+    border-radius: var(--radius-card);
+    background: rgba(255, 255, 255, 0.42);
+    border: 1px solid var(--glass-border-subtle);
+    box-shadow: var(--shadow-glass);
+}
+
+.cal-mini-tracking-col.gauge-block {
+    align-items: center;
+}
+
+.cal-mini-tracking-col .rpm-gauge {
+    max-width: 140px;
 }
 
 .calibration-cells-status-pill {
@@ -707,7 +772,6 @@ body.running .header-sweep {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     white-space: nowrap;
-    align-self: center;
     transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
 }
 
@@ -3481,6 +3545,14 @@ body.loading .skeleton-lines {
         max-height: none;
         overflow: visible;
     }
+
+    .cal-top-row {
+        grid-template-columns: 1fr;
+    }
+
+    .cal-actions.cal-actions-four {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 760px) {
@@ -3616,25 +3688,11 @@ body.loading .skeleton-lines {
     padding: 0;
 }
 
-/* Panel body */
-.cal-panel-body {
-    margin-top: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
 /* Checklist */
 .cal-checklist {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 12px;
-    border-radius: var(--radius-card);
-    background: rgba(255, 59, 48, 0.08);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid var(--color-red-border);
 }
 
 .cal-checklist-title {
@@ -3782,6 +3840,19 @@ body.experiment-name-prompt-active {
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+}
+
+.cal-actions.cal-actions-four {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    align-items: stretch;
+}
+
+.cal-actions.cal-actions-four .cal-start-btn,
+.cal-actions.cal-actions-four .control-btn {
+    width: 100%;
+    min-height: 40px;
 }
 
 .cal-start-btn {

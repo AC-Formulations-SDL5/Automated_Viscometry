@@ -1468,10 +1468,7 @@ def test_cell_dynamic_z_series(
                 
                 # Always store metrics alongside RPM data for consistent CSV structure
                 cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
-                if (
-                    not (CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS)
-                    and web_interface.should_terminate_current_cell()
-                ):
+                if web_interface.should_terminate_current_cell():
                     web_interface.clear_terminate_current_cell_request()
                     cell_exit_reason = "manual_terminate"
                     web_interface.update_status(
