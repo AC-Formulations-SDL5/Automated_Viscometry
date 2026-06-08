@@ -50,6 +50,8 @@ BASELINE_Z_THRESHOLD = 5.0
 # ===============================================
 SETTLE_TIME = 1.0                   # Time to wait after moving before taking measurements
 TORQUE_READ_TIMEOUT = 2.0
+CALIBRATION_READ_RETRIES_PER_SLOT = 3
+CALIBRATION_READ_RETRY_DELAY_S = 0.5
 SPINDLE_SETTLE_TIME = 1.0           # Time to wait after setting spindle speed before taking measurements
 NUM_CELLS = 6
 BASE_Y = 62
@@ -116,6 +118,12 @@ RECALIBRATION_CELLS = {}  # Dict[cell_id, optional_starting_z] for individual re
 RECALIBRATION_IGNORE_MAX_Z_TRAVEL = False  # Recalibration only: use global floor instead of row max_z_travel
 RECALIBRATION_ABSOLUTE_MAX_Z_TRAVEL = -66.800  # Global Z floor when override is enabled (mm)
 CALIBRATION_OFFSET = 0.4         # mm above rough hitpoint to use as safe_z
+
+
+def _is_calibration_like_run() -> bool:
+    """True during full calibration or individual-cell recalibration runs."""
+    return bool(CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS)
+
 
 # ========== TESTING MODE CONFIGURATION ==========
 # Set the testing mode and parameters here (no runtime input required)
@@ -730,16 +738,50 @@ def _drain_station1(pump: PumpESP32):
     except KeyboardInterrupt:
         print("[CONCURRENT] Station 1 drain cancelled due to stop request.")
 
+
+def _read_valid_torque_packet(
+    client: ViscometerClient,
+    *,
+    max_attempts: int = 1,
+    retry_delay_s: float = CALIBRATION_READ_RETRY_DELAY_S,
+) -> Optional[Dict]:
+    """Read viscometer data; retry within a single sample slot when max_attempts > 1."""
+    attempts = max(1, int(max_attempts))
+    for attempt in range(1, attempts + 1):
+        raise_if_stop_requested()
+        try:
+            data = client.read_single(timeout=TORQUE_READ_TIMEOUT)
+            if data and data.get("torque_valid") and data.get("torque_percent") is not None:
+                return data
+            if attempt == 1:
+                torque_valid = data.get("torque_valid") if data else None
+                torque_percent = data.get("torque_percent") if data else None
+                print(
+                    f"      Invalid torque read: valid={torque_valid}, "
+                    f"value={torque_percent}"
+                )
+        except Exception as e:
+            if attempt == 1:
+                print(f"      Torque read error: {e}")
+        if attempt < attempts:
+            sleep_with_stop(retry_delay_s)
+    return None
+
+
 def measure_torque_at_rpm(
     client: ViscometerClient,
     rpm: float,
     z_height: float,
     hunting_first_contact_min_pct: Optional[float] = None,
+    read_retries_per_slot: int = 1,
 ) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps.
 
     Recorded samples (and live web points) occur only on a fixed grid every ``SAMPLE_INTERVAL``
     seconds from the start of the measurement window (after dwell)—no off-grid immediate read.
+
+    ``read_retries_per_slot``: viscometer read attempts per scheduled sample slot (calibration
+    runs typically pass 3; regular runs use the default of 1).
 
     If ``hunting_first_contact_min_pct`` is set (liquid-contact hunt at first Z after spindle starts):
     on the **first** recorded sample, if torque is **strictly less than** that threshold, sampling
@@ -769,8 +811,12 @@ def measure_torque_at_rpm(
             
             if current_time >= next_sample_time:
                 try:
-                    data = client.read_single(timeout=TORQUE_READ_TIMEOUT)
-                    if data and data.get("torque_valid") and data.get("torque_percent") is not None:
+                    data = _read_valid_torque_packet(
+                        client,
+                        max_attempts=read_retries_per_slot,
+                        retry_delay_s=CALIBRATION_READ_RETRY_DELAY_S,
+                    )
+                    if data:
                         tp = float(data["torque_percent"])
                         elapsed_since_start = current_time - measurement_start_time
                         liquid_hunt_stop = False
@@ -938,11 +984,15 @@ def test_dynamic_analysis_at_z(
 
     Returns ``(rpm_torque_data, first_rpm_exceeded_threshold, z_skipped_due_to_liquid)``.
     The second value is retained for API compatibility and is always ``False`` (cells no longer
-    terminate on first-RPM torque limit). Dropped RPMs are recorded in ``dropped_torque_rpms``.
+    terminate on first-RPM torque limit). Dropped RPMs are recorded in ``dropped_torque_rpms``
+    for regular runs only (not calibration or recalibration).
 
     When liquid_skip_enabled, each RPM is probed at this Z: if the first sample at
     SAMPLE_INTERVAL is below the floor, that RPM is skipped and the next RPM is tried.
     """
+    read_retries_per_slot = (
+        CALIBRATION_READ_RETRIES_PER_SLOT if _is_calibration_like_run() else 1
+    )
     dropped: Set[float] = dropped_torque_rpms if dropped_torque_rpms is not None else set()
     rpm_torque_data: Dict[float, Optional[List[Dict]]] = {}
     for r in cell_rpms:
@@ -968,6 +1018,7 @@ def test_dynamic_analysis_at_z(
                 rpm,
                 z_height,
                 hunting_first_contact_min_pct=liquid_threshold_pct,
+                read_retries_per_slot=read_retries_per_slot,
             )
             if not _rpm_liquid_contact_established(measurements, liquid_threshold_pct):
                 print(
@@ -977,12 +1028,21 @@ def test_dynamic_analysis_at_z(
                 rpm_torque_data[rpm] = None
                 continue
         else:
-            measurements = measure_torque_at_rpm(client, rpm, z_height)
+            measurements = measure_torque_at_rpm(
+                client,
+                rpm,
+                z_height,
+                read_retries_per_slot=read_retries_per_slot,
+            )
 
         rpm_torque_data[rpm] = measurements
         should_drop, reason = _torque_should_drop_rpm(measurements)
-        if should_drop:
+        if should_drop and not _is_calibration_like_run():
             _mark_rpm_torque_dropped(rpm, dropped, cell_rpms, global_cell, reason)
+        elif should_drop:
+            print(
+                f"      [CAL] RPM {rpm}: would drop ({reason}) — continuing for calibration"
+            )
 
     z_liquid_skipped = False
     if liquid_skip_enabled and active_rpms:
