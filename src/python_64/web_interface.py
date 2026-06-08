@@ -5,6 +5,7 @@ Provides real-time monitoring and control interface
 
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
+import copy
 import threading
 import time
 import os
@@ -19,6 +20,53 @@ from calibration_store import (
     save_calibration,
     update_calibration_for_cells,
 )
+
+_ALL_DATA_Z_META_KEYS = frozenset({
+    "_metrics",
+    "_liquid_skipped_z",
+    "_liquid_skip_torque_label",
+    "_liquid_skip_probe_at_z",
+})
+
+
+def _coerce_all_data_keys(all_data: dict) -> dict:
+    """Restore int/float dict keys after any JSON serialization round-trip."""
+    if not isinstance(all_data, dict):
+        return {}
+    out: Dict = {}
+    for cell_key, cell_data in all_data.items():
+        if not isinstance(cell_data, dict):
+            continue
+        try:
+            cell_id = int(cell_key)
+        except (TypeError, ValueError):
+            continue
+        z_out: Dict = {}
+        for z_key, z_data in cell_data.items():
+            if not isinstance(z_data, dict):
+                continue
+            if isinstance(z_key, str) and z_key in _ALL_DATA_Z_META_KEYS:
+                z_out[z_key] = z_data
+                continue
+            try:
+                z_height = float(z_key)
+            except (TypeError, ValueError):
+                continue
+            rpm_out: Dict = {}
+            for rpm_key, measurements in z_data.items():
+                if isinstance(rpm_key, str) and rpm_key in _ALL_DATA_Z_META_KEYS:
+                    rpm_out[rpm_key] = measurements
+                    continue
+                try:
+                    rpm = float(rpm_key)
+                except (TypeError, ValueError):
+                    rpm_out[rpm_key] = measurements
+                    continue
+                rpm_out[rpm] = measurements
+            z_out[z_height] = rpm_out
+        out[cell_id] = z_out
+    return out
+
 
 class ViscometryWebInterface:
     def __init__(self, port=5001):
@@ -941,8 +989,12 @@ class ViscometryWebInterface:
                     settings[key] = dict(value)
                 else:
                     settings[key] = value
+            try:
+                all_data_copy = copy.deepcopy(all_data) if all_data else {}
+            except Exception as e:
+                raise ValueError(f"Failed to stash experiment run data: {e}") from e
             self._experiment_review_run_context = {
-                "all_data": json.loads(json.dumps(all_data)) if all_data else {},
+                "all_data": all_data_copy,
                 "timestamp": str(timestamp),
                 "mode": str(mode),
                 "experiment_name": str(experiment_name or ""),
@@ -1183,27 +1235,26 @@ class ViscometryWebInterface:
                 )
             queued = session.get("queued_saves") or {}
             saved_cell_ids = sorted(int(k) for k in queued.keys())
-            run_context = dict(self._experiment_review_run_context or {})
+            run_context = copy.deepcopy(self._experiment_review_run_context or {})
             session_copy = {
                 "session_id": session.get("session_id"),
                 "completion_order": list(session.get("completion_order") or []),
                 "cells": {k: dict(v) for k, v in cells.items()},
                 "queued_saves": dict(queued),
             }
-            self.experiment_review_session = None
-            self._experiment_review_run_context = None
 
         csv_filename = None
         experiment_entry = None
-        if saved_cell_ids and run_context:
-            all_data = run_context.get("all_data") or {}
-            filtered_all_data = {
-                int(k): all_data[k]
-                for k in all_data.keys()
-                if int(k) in saved_cell_ids
-            }
-            if filtered_all_data:
-                try:
+        partial_csv_path = None
+        try:
+            if saved_cell_ids and run_context:
+                all_data = run_context.get("all_data") or {}
+                filtered_all_data = _coerce_all_data_keys({
+                    int(k): all_data[k]
+                    for k in all_data.keys()
+                    if int(k) in saved_cell_ids
+                })
+                if filtered_all_data:
                     from all_cells_with_rotational_drag_feedback import save_dynamic_analysis_data
                     csv_filename = save_dynamic_analysis_data(
                         filtered_all_data,
@@ -1216,15 +1267,29 @@ class ViscometryWebInterface:
                             if int(k) in saved_cell_ids
                         },
                     )
-                except Exception as e:
-                    raise ValueError(f"Failed to write experiment CSV: {e}") from e
-            experiment_entry = self._build_experiment_history_entry_from_review(
-                session_copy, run_context, saved_cell_ids
-            )
-            if experiment_entry:
-                if csv_filename:
-                    experiment_entry["csv_filename"] = csv_filename
-                self.add_experiment_history_entry(experiment_entry)
+                    partial_csv_path = csv_filename
+                experiment_entry = self._build_experiment_history_entry_from_review(
+                    session_copy, run_context, saved_cell_ids
+                )
+                if experiment_entry:
+                    if csv_filename:
+                        experiment_entry["csv_filename"] = csv_filename
+                    self.add_experiment_history_entry(experiment_entry)
+        except Exception as e:
+            if partial_csv_path and os.path.isfile(partial_csv_path):
+                try:
+                    os.remove(partial_csv_path)
+                except OSError:
+                    pass
+            raise ValueError(f"Failed to write experiment CSV: {e}") from e
+
+        with self.control_lock:
+            if (
+                self.experiment_review_session
+                and self.experiment_review_session.get("session_id") == session_id
+            ):
+                self.experiment_review_session = None
+                self._experiment_review_run_context = None
 
         payload = {
             "saved_cells": [int(c) for c in saved_cell_ids],

@@ -259,11 +259,13 @@ class ViscometryDashboard {
         this.calibrationReviewPending = false;
         this.calibrationReviewPlotState = { initialized: false, layout: null };
         this.calibrationReviewDecisionInFlight = false;
+        this.calibrationReviewCommitInFlight = false;
         this.experimentReviewSession = null;
         this.experimentReviewActiveCellId = null;
         this.experimentReviewPending = false;
         this.experimentReviewPlotState = { initialized: false, layout: null };
         this.experimentReviewDecisionInFlight = false;
+        this.experimentReviewCommitInFlight = false;
 
         this.initElements();
         this.bindUI();
@@ -5137,10 +5139,6 @@ class ViscometryDashboard {
         this.updateReviewStartGuard();
         this.renderCalibrationReviewTabs();
         const pending = this.getPendingReviewCellIds();
-        if (pending.length === 0) {
-            this.commitCalibrationReview();
-            return;
-        }
         if (!pending.includes(this.calibrationReviewActiveCellId)) {
             this.calibrationReviewActiveCellId = pending[0];
         }
@@ -5428,10 +5426,13 @@ class ViscometryDashboard {
 
     commitCalibrationReview() {
         const session = this.calibrationReviewSession;
-        if (!session?.session_id) {
-            this.closeCalibrationReviewModal();
+        if (!session?.session_id || this.calibrationReviewCommitInFlight) {
+            if (!session?.session_id) {
+                this.closeCalibrationReviewModal();
+            }
             return;
         }
+        this.calibrationReviewCommitInFlight = true;
         fetch("/api/calibration/review/commit", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -5448,6 +5449,9 @@ class ViscometryDashboard {
                 this.pushStatusMessage(
                     `Failed to save calibration file: ${err.message || "unknown error"}`
                 );
+            })
+            .finally(() => {
+                this.calibrationReviewCommitInFlight = false;
             });
     }
 
@@ -5501,10 +5505,6 @@ class ViscometryDashboard {
         this.updateReviewStartGuard();
         this.renderExperimentReviewTabs();
         const pending = this.getPendingExperimentReviewCellIds();
-        if (pending.length === 0) {
-            this.commitExperimentReview();
-            return;
-        }
         if (!pending.includes(this.experimentReviewActiveCellId)) {
             this.experimentReviewActiveCellId = pending[0];
         }
@@ -5703,10 +5703,13 @@ class ViscometryDashboard {
 
     commitExperimentReview() {
         const session = this.experimentReviewSession;
-        if (!session?.session_id) {
-            this.closeExperimentReviewModal();
+        if (!session?.session_id || this.experimentReviewCommitInFlight) {
+            if (!session?.session_id) {
+                this.closeExperimentReviewModal();
+            }
             return;
         }
+        this.experimentReviewCommitInFlight = true;
         fetch("/api/experiment/review/commit", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -5723,6 +5726,12 @@ class ViscometryDashboard {
                 this.pushStatusMessage(
                     `Failed to save experiment data: ${err.message || "unknown error"}`
                 );
+                if (Number.isFinite(this.experimentReviewActiveCellId)) {
+                    this.renderExperimentReviewCellView(this.experimentReviewActiveCellId);
+                }
+            })
+            .finally(() => {
+                this.experimentReviewCommitInFlight = false;
             });
     }
 
