@@ -456,6 +456,7 @@ class ViscometryWebInterface:
                 payload = request.get_json(silent=True) or {}
                 # Force calibration_mode flag into settings before starting
                 payload['calibration_mode'] = True
+                payload.update(self._calibration_safe_runtime_overrides())
                 self.update_runtime_settings(payload)
                 self.calibration_mode = True
                 self.request_start()
@@ -474,6 +475,7 @@ class ViscometryWebInterface:
                 # Force individual cell recalibration flags
                 payload['recalibrate_individual_cells'] = True
                 payload['calibration_mode'] = False  # Not full calibration, individual only
+                payload.update(self._calibration_safe_runtime_overrides())
                 self.update_runtime_settings(payload)
                 self.calibration_mode = True  # Mark as in calibration-like mode for UI purposes
                 self.request_start()
@@ -1326,6 +1328,18 @@ class ViscometryWebInterface:
                     print(f"Warning: Failed to copy runtime setting '{key}': {e}")
                     settings[key] = value  # Fallback to direct assignment
             return settings
+
+    @staticmethod
+    def _calibration_safe_runtime_overrides() -> Dict:
+        """Settings forced during full calibration and individual recalibration runs."""
+        return {
+            'feedback_control_enabled': True,
+            'smart_early_exit_enabled': False,
+            'fail_safe_enabled': False,
+            'low_torque_liquid_contact_skip_enabled': False,
+            'viscosity_prediction_mode': 'off',
+            'predicted_viscosity_enabled': False,
+        }
 
     def update_runtime_settings(self, settings: Dict) -> Dict:
         """Update runtime settings from UI input."""

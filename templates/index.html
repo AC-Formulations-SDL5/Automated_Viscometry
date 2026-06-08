@@ -64,7 +64,8 @@
         <!-- Tab Navigation -->
         <nav class="tab-nav">
             <button class="tab-button active" data-tab="layout-tab">Layout & Timeline</button>
-            <button class="tab-button" data-tab="controls-tab">Perform Experiment</button>
+            <button class="tab-button" data-tab="calibrate-tab" id="calibrate-tab-button">Calibrate</button>
+            <button class="tab-button" data-tab="controls-tab" id="controls-tab-button">Perform Experiment</button>
             <button class="tab-button" data-tab="data-processing-tab">Data and Processing</button>
             <button class="tab-button" data-tab="testing-tab" id="testing-tab-button">Testing</button>
             <button class="tab-button" data-tab="summary-tab">Experimental Summary</button>
@@ -129,10 +130,170 @@
                 </section>
             </div>
 
-            <!-- Tab 2: Parameters & Tracking -->
+            <!-- Tab 2: Calibrate -->
+            <div id="calibrate-tab" class="tab-panel">
+                <div class="calibrate-stack">
+                    <section id="calibration-panel-section" class="card calibration-card">
+                        <div class="card-title-row">
+                            <h2>Per-Cell Z-Height Calibration</h2>
+                            <div id="cal-status-pill" class="cal-status-pill cal-status-none">
+                                <span id="cal-status-dot" class="cal-status-dot"></span>
+                                <span id="cal-status-text">No Z-Height Calibration Performed</span>
+                            </div>
+                        </div>
+
+                        <div id="cal-panel-body" class="cal-panel-body cal-panel-body-compact">
+                            <div class="cal-checklist">
+                                <p class="cal-checklist-title">Pre-Calibration Checklist</p>
+                                <label class="cal-check-item">
+                                    <input type="checkbox" id="cal-check-empty" class="cal-checkbox">
+                                    <span>All cells are <strong>empty and clean</strong> — no sample loaded in any cell</span>
+                                </label>
+                            </div>
+
+                            <div class="cal-auto-settings-info card cal-info-banner">
+                                <p class="cal-info-banner-title">Automatic settings during calibration</p>
+                                <p class="cal-info-banner-text">When you start a calibration or recalibration run, the following experiment settings are applied automatically and restored to your previous values when the run ends:</p>
+                                <ul class="cal-info-banner-list">
+                                    <li><strong>Feedback control</strong> — enabled</li>
+                                    <li><strong>Smart Early Exit</strong> — disabled</li>
+                                    <li><strong>Fail-Safe</strong> — disabled</li>
+                                    <li><strong>Viscosity predictions</strong> — off</li>
+                                    <li><strong>Z-torque liquid-contact skip</strong> — disabled</li>
+                                </ul>
+                            </div>
+
+                            <div class="cal-recommended-settings">
+                                <p class="cal-section-label">Recommended Settings for Fast Calibration</p>
+                                <div class="cal-settings-grid">
+                                    <div class="cal-setting-item">
+                                        <span class="cal-setting-label">Z Step Size</span>
+                                        <span class="cal-setting-value">−0.02 mm</span>
+                                        <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-z-step">Apply</button>
+                                    </div>
+                                    <div class="cal-setting-item">
+                                        <span class="cal-setting-label">RPM</span>
+                                        <span class="cal-setting-value">1</span>
+                                        <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-rpm">Apply</button>
+                                    </div>
+                                    <div class="cal-setting-item">
+                                        <span class="cal-setting-label">Measurement Duration</span>
+                                        <span class="cal-setting-value">6 s</span>
+                                        <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-duration">Apply</button>
+                                    </div>
+                                    <div class="cal-setting-item">
+                                        <span class="cal-setting-label">Sample Interval</span>
+                                        <span class="cal-setting-value">3 s</span>
+                                        <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-interval">Apply</button>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn subtle" id="cal-apply-all-recommended">Apply All Recommended Settings</button>
+                            </div>
+
+                            <div class="cal-calibrated-info hidden" id="cal-existing-info">
+                                <p class="cal-section-label">Current Calibration Data</p>
+                                <select id="cal-existing-select" class="cal-existing-select"></select>
+                                <div id="cal-existing-detail" class="cal-existing-detail"></div>
+                                <button type="button" class="btn subtle" id="cal-clear-btn">Clear Calibration Data</button>
+                            </div>
+
+                            <div class="cal-recalibration-section">
+                                <label class="cal-recalibration-toggle ui-switch-row">
+                                    <span class="ui-switch">
+                                        <input type="checkbox" id="cal-recalibrate-individual" class="cal-checkbox">
+                                        <span class="ui-switch-track" aria-hidden="true"></span>
+                                    </span>
+                                    <span class="ui-switch-label">Recalibrate Individual Cells</span>
+                                </label>
+                                <div id="cal-cell-selector-container" class="cal-cell-selector-container hidden">
+                                    <p class="cal-section-label">Select Cells to Recalibrate</p>
+                                    <div class="cal-cell-grid">
+                                        <div class="cal-cell-row">
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="1"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 1</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="2"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 2</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="3"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 3</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="4"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 4</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="5"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 5</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="6"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 6</span></label>
+                                        </div>
+                                        <div class="cal-cell-row">
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="7"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 7</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="8"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 8</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="9"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 9</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="10"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 10</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="11"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 11</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="12"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 12</span></label>
+                                        </div>
+                                        <div class="cal-cell-row">
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="13"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 13</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="14"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 14</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="15"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 15</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="16"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 16</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="17"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 17</span></label>
+                                            <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="18"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 18</span></label>
+                                        </div>
+                                    </div>
+                                    <div id="cal-custom-z-container" class="cal-custom-z-container">
+                                        <p class="cal-section-label">Custom Starting Z-Height (Optional)</p>
+                                        <p class="cal-custom-z-hint">Leave empty to auto-detect. Enter custom Z value to start recalibration from a specific height.</p>
+                                        <div id="cal-cell-z-inputs" class="cal-cell-z-inputs"></div>
+                                    </div>
+                                    <label class="cal-recalibration-toggle cal-recalibration-max-z-toggle ui-switch-row">
+                                        <span class="ui-switch">
+                                            <input type="checkbox" id="cal-recalibration-ignore-max-z" class="cal-checkbox">
+                                            <span class="ui-switch-track" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="ui-switch-label">Ignore row max-Z-travel (use global floor −66.8 mm)</span>
+                                    </label>
+                                    <p class="cal-custom-z-hint cal-recalibration-max-z-hint">
+                                        Recalibration only — not full calibration or regular runs. Use when the hitpoint may be below the row max-Z limit.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="cal-actions">
+                                <button type="button" id="cal-start-btn" class="btn cal-start-btn" disabled title="Check all items above before starting">
+                                    Start Calibration (All 18 Cells)
+                                </button>
+                                <button type="button" id="cal-start-recalibration-btn" class="btn cal-start-btn hidden" disabled title="Select at least one cell to recalibrate">
+                                    Start Recalibration
+                                </button>
+                                <span id="cal-action-hint" class="cal-action-hint">Complete the checklist above to enable calibration</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="card plot-card skeleton-host">
+                        <div class="card-title-row">
+                            <div>
+                                <h2>Live Rotational Drag</h2>
+                                <span id="cal-drag-z-cell-label" class="chart-subtitle">All Cells</span>
+                            </div>
+                            <div class="plot-tools">
+                                <button id="cal-z-connect-dots" class="btn subtle">Connect Dots: Off</button>
+                            </div>
+                        </div>
+                        <div id="cal-graph-cell-tabs" class="graph-cell-tabs"></div>
+                        <div class="drag-z-with-sidebar">
+                            <div id="cal-z-sparkline-plot" class="plot-shell drag-z-plot-area">
+                                <canvas id="cal-z-sparkline-canvas" aria-label="Calibration live rotational drag vs Z-height"></canvas>
+                            </div>
+                            <aside class="drag-z-sidebar" id="cal-drag-z-sidebar">
+                                <div class="sidebar-section sidebar-rpm-legend-section">
+                                    <div class="sidebar-label">RPM colors</div>
+                                    <div id="cal-drag-z-rpm-legend" class="rpm-legend-list"></div>
+                                </div>
+                            </aside>
+                        </div>
+                        <div id="cal-z-sparkline-empty" class="plot-empty">No data yet</div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- Tab 3: Perform Experiment -->
             <div id="controls-tab" class="tab-panel">
-                <div class="controls-tracking-grid">
-                    <section class="card parameters-card">
+                <div class="controls-experiment-stack">
+                    <div class="load-old-experiment-header-row">
                         <section id="load-old-experiment" class="load-old-experiment-card">
                             <details id="load-old-experiment-details" class="load-old-experiment-details">
                                 <summary class="load-old-experiment-summary">Load old experiment</summary>
@@ -144,10 +305,16 @@
                                 <p id="load-old-experiment-status" class="load-old-experiment-status" role="status"></p>
                             </details>
                         </section>
+                        <div id="calibration-cells-status-pill" class="calibration-cells-status-pill cal-cells-status-none">
+                            <span id="calibration-cells-status-text">0/18 cells calibrated</span>
+                        </div>
+                    </div>
+
+                    <section class="card parameters-card">
                         <div class="card-title-row">
                             <h2>Design Experiment</h2>
                         </div>
-                        <form id="run-settings-form" class="run-settings-form">
+                        <form id="run-settings-form" class="run-settings-form run-settings-form-grid">
                             <label>
                                 <span>Experiment Name</span>
                                 <input id="experiment-name" name="experiment_name" type="text" value="" placeholder="e.g. Honey batch A - Apr 17">
@@ -359,184 +526,15 @@
                                     </div>
                                 </div>
                             </details>
-                            <div class="control-actions">
+                            <div class="control-actions control-actions-four">
                                 <button type="button" id="apply-settings" class="btn control-btn control-btn-neutral">Apply Settings</button>
                                 <button type="button" id="start-run" class="btn btn-start control-btn control-btn-start">Start Run</button>
                                 <button type="button" id="stop-run" class="btn btn-stop control-btn control-btn-stop">Stop Experiment</button>
+                                <button type="button" id="terminate-current-cell" class="btn control-btn control-btn-stop terminate-current-cell-btn hidden">Stop Measurement in current cell</button>
                             </div>
-                            <button type="button" id="terminate-current-cell" class="btn control-btn control-btn-stop terminate-current-cell-btn hidden">
-                                Stop Measurement in current cell
-                            </button>
                             <div id="control-status" class="control-status">Ready</div>
                         </form>
                     </section>
-
-                            <div class="controls-right-stack">
-                            <!-- ===== CALIBRATION PANEL ===== -->
-                            <section id="calibration-panel-section" class="card calibration-card">
-                                <div class="card-title-row">
-                                    <h2>Per-Cell Z-Height Calibration</h2>
-                                    <!-- Status pill: toggled between .cal-status-ok and .cal-status-none by JS -->
-                                    <div id="cal-status-pill" class="cal-status-pill cal-status-none">
-                                        <span id="cal-status-dot" class="cal-status-dot"></span>
-                                        <span id="cal-status-text">No Z-Height Calibration Performed</span>
-                                    </div>
-                                </div>
-
-                                <details id="cal-panel-details" class="feedback-params-section cal-panel-details">
-                                    <summary class="feedback-params-toggle">
-                                        Calibration Options
-                                        <span class="feedback-params-hint">(expand to configure and run)</span>
-                                    </summary>
-
-                                <div id="cal-panel-body" class="cal-panel-body">
-
-                                    <div class="cal-checklist">
-                                        <p class="cal-checklist-title">⚠ Pre-Calibration Checklist</p>
-                                        <label class="cal-check-item">
-                                            <input type="checkbox" id="cal-check-empty" class="cal-checkbox">
-                                            <span>All cells are <strong>empty and clean</strong> — no sample loaded in any cell</span>
-                                        </label>
-                                        <label class="cal-check-item">
-                                            <input type="checkbox" id="cal-check-feedback" class="cal-checkbox">
-                                            <span>Feedback (hit-point detection) is <strong>enabled</strong> in the experiment settings above</span>
-                                        </label>
-                                        <label class="cal-check-item">
-                                            <input type="checkbox" id="cal-check-smart-exit" class="cal-checkbox">
-                                            <span>Smart Early Exit is <strong>disabled</strong> (unchecked above)</span>
-                                        </label>
-                                        <label class="cal-check-item">
-                                            <input type="checkbox" id="cal-check-fail-safe-off" class="cal-checkbox">
-                                            <span>Fail-Safe is <strong>disabled</strong> (unchecked above)</span>
-                                        </label>
-                                        <label class="cal-check-item">
-                                            <input type="checkbox" id="cal-check-liquid-skip-off" class="cal-checkbox">
-                                            <span>Skip Z-levels until liquid contact is <strong>disabled</strong> (unchecked above)</span>
-                                        </label>
-                                        <label class="cal-check-item">
-                                            <input type="checkbox" id="cal-check-viscosity-off" class="cal-checkbox">
-                                            <span>Viscosity prediction is <strong>Off</strong> (selected above)</span>
-                                        </label>
-                                    </div>
-
-                                    <div class="cal-recommended-settings">
-                                        <p class="cal-section-label">Recommended Settings for Fast Calibration</p>
-                                        <div class="cal-settings-grid">
-                                            <div class="cal-setting-item">
-                                                <span class="cal-setting-label">Z Step Size</span>
-                                                <span class="cal-setting-value">−0.02 mm</span>
-                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-z-step">Apply</button>
-                                            </div>
-                                            <div class="cal-setting-item">
-                                                <span class="cal-setting-label">RPM</span>
-                                                <span class="cal-setting-value">1</span>
-                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-rpm">Apply</button>
-                                            </div>
-                                            <div class="cal-setting-item">
-                                                <span class="cal-setting-label">Measurement Duration</span>
-                                                <span class="cal-setting-value">6 s</span>
-                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-duration">Apply</button>
-                                            </div>
-                                            <div class="cal-setting-item">
-                                                <span class="cal-setting-label">Sample Interval</span>
-                                                <span class="cal-setting-value">3 s</span>
-                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-interval">Apply</button>
-                                            </div>
-                                        </div>
-                                        <button type="button" class="btn subtle" id="cal-apply-all-recommended" style="margin-top:8px;">
-                                            Apply All Recommended Settings
-                                        </button>
-                                    </div>
-
-                                    <div class="cal-calibrated-info hidden" id="cal-existing-info">
-                                        <p class="cal-section-label">Current Calibration Data</p>
-                                        <select id="cal-existing-select" class="cal-existing-select"></select>
-                                        <div id="cal-existing-detail" class="cal-existing-detail"></div>
-                                        <button type="button" class="btn subtle" id="cal-clear-btn" style="margin-top:6px;">
-                                            Clear Calibration Data
-                                        </button>
-                                    </div>
-
-                                    <!-- Recalibration Mode Toggle and Cell Selector -->
-                                    <div class="cal-recalibration-section">
-                                        <label class="cal-recalibration-toggle ui-switch-row">
-                                            <span class="ui-switch">
-                                                <input type="checkbox" id="cal-recalibrate-individual" class="cal-checkbox">
-                                                <span class="ui-switch-track" aria-hidden="true"></span>
-                                            </span>
-                                            <span class="ui-switch-label">Recalibrate Individual Cells</span>
-                                        </label>
-                                        <div id="cal-cell-selector-container" class="cal-cell-selector-container hidden">
-                                            <p class="cal-section-label">Select Cells to Recalibrate</p>
-                                            <div class="cal-cell-grid">
-                                                <div class="cal-cell-row">
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="1"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 1</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="2"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 2</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="3"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 3</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="4"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 4</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="5"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 5</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="6"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 6</span></label>
-                                                </div>
-                                                <div class="cal-cell-row">
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="7"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 7</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="8"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 8</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="9"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 9</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="10"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 10</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="11"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 11</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="12"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 12</span></label>
-                                                </div>
-                                                <div class="cal-cell-row">
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="13"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 13</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="14"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 14</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="15"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 15</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="16"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 16</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="17"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 17</span></label>
-                                                    <label class="cal-cell-checkbox ui-switch-row"><span class="ui-switch ui-switch--compact ui-switch--accent-blue"><input type="checkbox" class="cal-cell-check" value="18"><span class="ui-switch-track" aria-hidden="true"></span></span><span class="ui-switch-label">Cell 18</span></label>
-                                                </div>
-                                            </div>
-                                            <div id="cal-custom-z-container" class="cal-custom-z-container">
-                                                <p class="cal-section-label">Custom Starting Z-Height (Optional)</p>
-                                                <p class="cal-custom-z-hint">Leave empty to auto-detect. Enter custom Z value to start recalibration from a specific height.</p>
-                                                <div id="cal-cell-z-inputs" class="cal-cell-z-inputs"></div>
-                                            </div>
-                                            <label class="cal-recalibration-toggle cal-recalibration-max-z-toggle ui-switch-row">
-                                                <span class="ui-switch">
-                                                    <input type="checkbox" id="cal-recalibration-ignore-max-z" class="cal-checkbox">
-                                                    <span class="ui-switch-track" aria-hidden="true"></span>
-                                                </span>
-                                                <span class="ui-switch-label">Ignore row max-Z-travel (use global floor −66.8 mm)</span>
-                                            </label>
-                                            <p class="cal-custom-z-hint cal-recalibration-max-z-hint">
-                                                Recalibration only — not full calibration or regular runs. Use when the hitpoint may be below the row max-Z limit.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div class="cal-actions">
-                                        <button
-                                            type="button"
-                                            id="cal-start-btn"
-                                            class="btn cal-start-btn"
-                                            disabled
-                                            title="Check all items above before starting">
-                                            Start Calibration (All 18 Cells)
-                                        </button>
-                                        <button
-                                            type="button"
-                                            id="cal-start-recalibration-btn"
-                                            class="btn cal-start-btn hidden"
-                                            disabled
-                                            title="Select at least one cell to recalibrate">
-                                            Start Recalibration
-                                        </button>
-                                        <span id="cal-action-hint" class="cal-action-hint">
-                                            Complete the checklist above to enable calibration
-                                        </span>
-                                    </div>
-                                </div>
-                                </details>
-                            </section>
-                            <!-- ===== END CALIBRATION PANEL ===== -->
 
                     <section class="card tracking-card">
                         <div class="card-title-row">
@@ -598,30 +596,7 @@
                         </div>
                     </section>
 
-                    <section class="card live-viscosity-card">
-                        <div class="card-title-row">
-                            <h2>Live Viscosity Predictions</h2>
-                        </div>
-                        <div class="table-wrap">
-                            <table class="duration-table live-viscosity-table">
-                                <thead>
-                                    <tr>
-                                        <th>Cell No.</th>
-                                        <th>Cell Label</th>
-                                        <th>RPM</th>
-                                        <th>Predicted Viscosity (kCp)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="live-viscosity-table-body"></tbody>
-                            </table>
-                            <p id="live-viscosity-empty" class="plot-empty">No predictions yet.</p>
-                        </div>
-                    </section>
-                    </div>
-                </div>
-
-                <div class="controls-charts-stack">
-                <section class="card plot-card skeleton-host">
+                    <section class="card plot-card skeleton-host">
                     <div class="card-title-row">
                         <div>
                             <h2>Live Rotational Drag</h2>
@@ -715,10 +690,30 @@
                         <div class="skeleton-line"></div>
                     </div>
                 </section>
+
+                    <section class="card live-viscosity-card">
+                        <div class="card-title-row">
+                            <h2>Live Viscosity Predictions</h2>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="duration-table live-viscosity-table">
+                                <thead>
+                                    <tr>
+                                        <th>Cell No.</th>
+                                        <th>Cell Label</th>
+                                        <th>RPM</th>
+                                        <th>Predicted Viscosity (kCp)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="live-viscosity-table-body"></tbody>
+                            </table>
+                            <p id="live-viscosity-empty" class="plot-empty">No predictions yet.</p>
+                        </div>
+                    </section>
                 </div>
             </div>
 
-            <!-- Tab 3: Data and Processing -->
+            <!-- Tab 4: Data and Processing -->
             <div id="data-processing-tab" class="tab-panel">
                 <section class="card predicted-viscosity-info-card">
                     <div class="card-title-row">

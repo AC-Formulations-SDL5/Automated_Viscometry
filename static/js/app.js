@@ -180,6 +180,11 @@ class ViscometryDashboard {
         this.selectedGraphCell = null;
         this.zLatestOnly = false;
         this.zConnectDots = false;
+        this.zCalConnectDots = false;
+        this.selectedCalGraphCell = null;
+        this.activeTabId = "layout-tab";
+        this._preCalibrationSettingsSnapshot = null;
+        this._wasCalibrationLikeRun = false;
         this.currentPhase = 0;
         this.protocolRunMode = "idle";
         this.protocolCurrentStepId = "idle";
@@ -189,7 +194,8 @@ class ViscometryDashboard {
         this.gaugeAnimationFrame = null;
         this.zPlotInitialized = false;
         this.torquePlotInitialized = false;
-        this.charts = { drag: null, torque: null };
+        this.calDragPlotInitialized = false;
+        this.charts = { drag: null, torque: null, calDrag: null };
         this._mapVisualCache = new Map();
         this._stationActive = null;
         this._mapVisualSyncTimer = null;
@@ -428,17 +434,21 @@ class ViscometryDashboard {
             testingStatusDryingRotor: document.getElementById("testing-status-drying-rotor"),
             testingStatusFillingPump: document.getElementById("testing-status-filling-pump"),
             testingStatusDrainingPump: document.getElementById("testing-status-draining-pump"),
+            calibrateTabButton: document.getElementById("calibrate-tab-button"),
+            controlsTabButton: document.getElementById("controls-tab-button"),
+            calibrationCellsStatusPill: document.getElementById("calibration-cells-status-pill"),
+            calibrationCellsStatusText: document.getElementById("calibration-cells-status-text"),
             calPanelSection: document.getElementById("calibration-panel-section"),
             calStatusPill: document.getElementById("cal-status-pill"),
             calStatusText: document.getElementById("cal-status-text"),
-            calPanelDetails: document.getElementById("cal-panel-details"),
             calPanelBody: document.getElementById("cal-panel-body"),
             calCheckEmpty: document.getElementById("cal-check-empty"),
-            calCheckFeedback: document.getElementById("cal-check-feedback"),
-            calCheckSmartExit: document.getElementById("cal-check-smart-exit"),
-            calCheckFailSafeOff: document.getElementById("cal-check-fail-safe-off"),
-            calCheckLiquidSkipOff: document.getElementById("cal-check-liquid-skip-off"),
-            calCheckViscosityOff: document.getElementById("cal-check-viscosity-off"),
+            calZSparklineCanvas: document.getElementById("cal-z-sparkline-canvas"),
+            calZSparklineEmpty: document.getElementById("cal-z-sparkline-empty"),
+            calZConnectDots: document.getElementById("cal-z-connect-dots"),
+            calGraphCellTabs: document.getElementById("cal-graph-cell-tabs"),
+            calDragZRpmLegend: document.getElementById("cal-drag-z-rpm-legend"),
+            calDragZCellLabel: document.getElementById("cal-drag-z-cell-label"),
             calApplyZStep: document.getElementById("cal-apply-z-step"),
             calApplyRpm: document.getElementById("cal-apply-rpm"),
             calApplyDuration: document.getElementById("cal-apply-duration"),
@@ -599,25 +609,18 @@ class ViscometryDashboard {
             });
         });
 
-        // Calibration panel (compact details dropdown)
-        if (this.el.calPanelDetails) {
-            this.el.calPanelDetails.open = false;
-            this.el.calPanelDetails.addEventListener("toggle", () => {
-                this.calibrationPanelOpen = this.el.calPanelDetails.open;
+        if (this.el.calZConnectDots) {
+            this.el.calZConnectDots.addEventListener("click", () => {
+                this.zCalConnectDots = !this.zCalConnectDots;
+                this.el.calZConnectDots.textContent = `Connect Dots: ${this.zCalConnectDots ? "On" : "Off"}`;
+                this.el.calZConnectDots.classList.toggle("dots-on", this.zCalConnectDots);
+                this.refreshCalibrationLivePlots();
             });
         }
 
-        // Checklist validation
-        [
-            this.el.calCheckEmpty,
-            this.el.calCheckFeedback,
-            this.el.calCheckSmartExit,
-            this.el.calCheckFailSafeOff,
-            this.el.calCheckLiquidSkipOff,
-            this.el.calCheckViscosityOff,
-        ].forEach((cb) => {
-            if (cb) cb.addEventListener("change", () => this.validateCalibrationChecklist());
-        });
+        if (this.el.calCheckEmpty) {
+            this.el.calCheckEmpty.addEventListener("change", () => this.validateCalibrationChecklist());
+        }
 
         if (this.el.experimentNamePromptProceed) {
             this.el.experimentNamePromptProceed.addEventListener("click", () => {
@@ -743,9 +746,18 @@ class ViscometryDashboard {
         this.bindTestingControls();
     }
 
-    switchTab(tabId) {
-        if (tabId === "testing-tab" && this.isRunning) {
+    switchTab(tabId, options = {}) {
+        const force = Boolean(options.force);
+        if (!force && tabId === "testing-tab" && this.isRunning) {
             this.pushStatusMessage("Testing is disabled while a viscometry run is active");
+            return;
+        }
+        if (!force && tabId === "controls-tab" && this._isPerformExperimentTabLocked()) {
+            this.pushStatusMessage("Perform Experiment is disabled during calibration or recalibration");
+            return;
+        }
+        if (!force && tabId === "calibrate-tab" && this._isCalibrateTabLocked()) {
+            this.pushStatusMessage("Calibrate is disabled during an active experiment run");
             return;
         }
         // Remove active class from all buttons and panels
@@ -761,6 +773,7 @@ class ViscometryDashboard {
             activePanel.classList.add("active");
         }
 
+        this.activeTabId = tabId;
         // Store active tab in localStorage
         localStorage.setItem("activeTab", tabId);
 
@@ -771,6 +784,44 @@ class ViscometryDashboard {
         }
         if (tabId === "testing-tab") {
             this.fetchTestingStatus();
+        }
+        if (tabId === "calibrate-tab") {
+            this.updateCalGraphCellTabs();
+            this.refreshCalibrationLivePlots();
+        } else if (tabId === "controls-tab") {
+            this.refreshLivePlots();
+            this.renderLiveViscosityPredictionsTable();
+        }
+    }
+
+    _isCalibrationLikeProtocolMode() {
+        const mode = this.getProtocolRunMode();
+        return mode === "calibration" || mode === "recalibration";
+    }
+
+    _isPerformExperimentTabLocked() {
+        return this.isRunning && this._isCalibrationLikeProtocolMode();
+    }
+
+    _isCalibrateTabLocked() {
+        return this.isRunning && this.getProtocolRunMode() === "regular";
+    }
+
+    updateRunTabAvailability() {
+        const performLocked = this._isPerformExperimentTabLocked();
+        const calibrateLocked = this._isCalibrateTabLocked();
+        if (this.el.controlsTabButton) {
+            this.el.controlsTabButton.classList.toggle("is-disabled", performLocked);
+            this.el.controlsTabButton.disabled = performLocked;
+        }
+        if (this.el.calibrateTabButton) {
+            this.el.calibrateTabButton.classList.toggle("is-disabled", calibrateLocked);
+            this.el.calibrateTabButton.disabled = calibrateLocked;
+        }
+        if (performLocked && this.activeTabId === "controls-tab") {
+            this.switchTab("calibrate-tab", { force: true });
+        } else if (calibrateLocked && this.activeTabId === "calibrate-tab") {
+            this.switchTab("controls-tab", { force: true });
         }
     }
 
@@ -1189,11 +1240,25 @@ class ViscometryDashboard {
             this.torquePlotInitialized = true;
         }
 
+        if (this.el.calZSparklineCanvas) {
+            this.charts.calDrag = new Chart(this.el.calZSparklineCanvas, {
+                type: "scatter",
+                data: { datasets: [] },
+                options: this._buildLiveChartOptions({
+                    yTitle: "Rotational Drag (torque / RPM)",
+                    theme,
+                    isDragChart: true,
+                }),
+            });
+            this.calDragPlotInitialized = true;
+        }
+
         this.refreshLivePlots();
+        this.refreshCalibrationLivePlots();
     }
 
     updateLiveChartTheme() {
-        if (!this.charts.drag && !this.charts.torque) {
+        if (!this.charts.drag && !this.charts.torque && !this.charts.calDrag) {
             return;
         }
         const theme = this._getLiveChartTheme();
@@ -1213,6 +1278,14 @@ class ViscometryDashboard {
             });
             this.charts.torque.update("none");
         }
+        if (this.charts.calDrag) {
+            this.charts.calDrag.options = this._buildLiveChartOptions({
+                yTitle: "Rotational Drag (torque / RPM)",
+                theme,
+                isDragChart: true,
+            });
+            this.charts.calDrag.update("none");
+        }
     }
 
     handleWindowResize() {
@@ -1223,6 +1296,9 @@ class ViscometryDashboard {
         if (this.charts.torque) {
             this.charts.torque.resize();
         }
+        if (this.charts.calDrag) {
+            this.charts.calDrag.resize();
+        }
     }
 
     handleVisibilityChange() {
@@ -1232,7 +1308,11 @@ class ViscometryDashboard {
         }
         this._renderPaused = false;
         if (this._liveChartsDirty) {
-            this.refreshLivePlots();
+            if (this.activeTabId === "calibrate-tab") {
+                this.refreshCalibrationLivePlots();
+            } else if (this.activeTabId === "controls-tab") {
+                this.refreshLivePlots();
+            }
         }
         if (this._mapVisualsDirty) {
             this.syncMapVisuals({ force: true });
@@ -1794,15 +1874,20 @@ class ViscometryDashboard {
                 data.timestamp,
                 data.hit_detected
             );
-            const torquePercent = Number.isFinite(Number(data.torque_percent))
-                ? Number(data.torque_percent)
-                : (Number(data.rotational_drag) || 0) * (Number(data.rpm) || 0);
-            this.updateTorqueBar(torquePercent);
-            this.updateLiveTorqueDisplay(torquePercent);
-            this.updateLiveRotationalDragDisplay(data.rotational_drag);
+            if (this.activeTabId === "controls-tab") {
+                const torquePercent = Number.isFinite(Number(data.torque_percent))
+                    ? Number(data.torque_percent)
+                    : (Number(data.rotational_drag) || 0) * (Number(data.rpm) || 0);
+                this.updateTorqueBar(torquePercent);
+                this.updateLiveTorqueDisplay(torquePercent);
+                this.updateLiveRotationalDragDisplay(data.rotational_drag);
+            }
         });
 
         this.socket.on("torque_update", (data) => {
+            if (this.activeTabId !== "controls-tab") {
+                return;
+            }
             const torquePercent = Number(data.torque_percent);
             if (!Number.isNaN(torquePercent)) {
                 this.updateTorqueBar(torquePercent);
@@ -1815,6 +1900,9 @@ class ViscometryDashboard {
         });
 
         this.socket.on("z_update", (data) => {
+            if (this.activeTabId !== "controls-tab") {
+                return;
+            }
             const currentZ = Number(data.current_z);
             if (!Number.isNaN(currentZ)) {
                 this.updateMeasuringZDisplay(currentZ);
@@ -1910,6 +1998,7 @@ class ViscometryDashboard {
                 this.updateCompletionBar();
                 this.updateCellVisuals();
                 this.renderProtocolUI();
+                this.updateRunTabAvailability();
             }
         });
 
@@ -2001,6 +2090,7 @@ class ViscometryDashboard {
         this.washingCell = null;
         this._pendingCompletedCell = null;
         this.selectedGraphCell = null;
+        this.selectedCalGraphCell = null;
         this.sparklineData = [];
         this.position = { x: 0, y: 0, z: 0 };
         this.currentCell = null;
@@ -2020,6 +2110,10 @@ class ViscometryDashboard {
         if (this._plotRefreshTimer) {
             window.clearTimeout(this._plotRefreshTimer);
             this._plotRefreshTimer = null;
+        }
+        if (this._calPlotRefreshTimer) {
+            window.clearTimeout(this._calPlotRefreshTimer);
+            this._calPlotRefreshTimer = null;
         }
         if (this._tableRefreshTimer) {
             window.clearTimeout(this._tableRefreshTimer);
@@ -2087,7 +2181,9 @@ class ViscometryDashboard {
             this.el.zMeasuringDisplay.textContent = "-";
         }
         this.updateGraphCellTabs();
+        this.updateCalGraphCellTabs();
         this.refreshLivePlots();
+        this.refreshCalibrationLivePlots();
         this.updateTable();
     }
 
@@ -2498,12 +2594,29 @@ class ViscometryDashboard {
     }
 
     _schedulePlotRefresh() {
+        if (this.activeTabId === "calibrate-tab") {
+            this._scheduleCalibrationPlotRefresh();
+            return;
+        }
+        if (this.activeTabId !== "controls-tab") {
+            return;
+        }
         if (this._plotRefreshTimer) {
             window.clearTimeout(this._plotRefreshTimer);
         }
         this._plotRefreshTimer = window.setTimeout(() => {
             this._plotRefreshTimer = null;
             this.refreshLivePlots();
+        }, 110);
+    }
+
+    _scheduleCalibrationPlotRefresh() {
+        if (this._calPlotRefreshTimer) {
+            window.clearTimeout(this._calPlotRefreshTimer);
+        }
+        this._calPlotRefreshTimer = window.setTimeout(() => {
+            this._calPlotRefreshTimer = null;
+            this.refreshCalibrationLivePlots();
         }, 110);
     }
 
@@ -2551,7 +2664,7 @@ class ViscometryDashboard {
 
         this.latestTorqueByCell.set(measurement.cell_id, measurement.torque_percent);
 
-        if (this.currentCell === measurement.cell_id) {
+        if (this.currentCell === measurement.cell_id && this.activeTabId === "controls-tab") {
             this.updateTorqueBar(measurement.torque_percent);
             this.updateLiveTorqueDisplay(measurement.torque_percent);
             this.updateLiveRotationalDragDisplay(measurement.rotational_drag);
@@ -2561,6 +2674,7 @@ class ViscometryDashboard {
         if (nextTabKey !== this._graphTabIdsKey) {
             this._graphTabIdsKey = nextTabKey;
             this.updateGraphCellTabs();
+            this.updateCalGraphCellTabs();
         }
 
         this._schedulePlotRefresh();
@@ -2728,8 +2842,11 @@ class ViscometryDashboard {
         return buckets;
     }
 
-    _markerColorsForRpmTrace(measurements, floorPct, rpmColor) {
+    _markerColorsForRpmTrace(measurements, floorPct, rpmColor, skipFloorColoring = false) {
         return measurements.map((m) => {
+            if (skipFloorColoring) {
+                return { fill: rpmColor, line: this._shadeHexColor(rpmColor, 0.82), below: false };
+            }
             const tp = Number(m.torque_percent);
             const below = Number.isFinite(tp) && tp < floorPct;
             const fill = below ? LIVE_PLOT_BELOW_FILL : rpmColor;
@@ -2789,10 +2906,12 @@ class ViscometryDashboard {
         };
     }
 
-    _buildDragDatasetForRpm(rpm, points, torqueFloor, orderedRpms) {
+    _buildDragDatasetForRpm(rpm, points, torqueFloor, orderedRpms, options = {}) {
+        const connectDots = options.connectDots != null ? options.connectDots : this.zConnectDots;
+        const skipFloorColoring = Boolean(options.skipFloorColoring);
         const rpmColor = this.getLiveRpmColor(rpm, orderedRpms);
         const sorted = [...points].sort((a, b) => Number(a.height) - Number(b.height));
-        const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor);
+        const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor, skipFloorColoring);
         const rpmLabel = Number(rpm).toFixed(3);
         return {
             label: `RPM ${rpmLabel}`,
@@ -2801,9 +2920,9 @@ class ViscometryDashboard {
                 y: Number(m.rotational_drag),
                 torque: Number(m.torque_percent),
             })),
-            showLine: this.zConnectDots,
-            borderColor: this.zConnectDots ? rpmColor : "transparent",
-            borderWidth: this.zConnectDots ? 1.5 : 0,
+            showLine: connectDots,
+            borderColor: connectDots ? rpmColor : "transparent",
+            borderWidth: connectDots ? 1.5 : 0,
             pointBackgroundColor: markerPalette.map((p) => p.fill),
             pointBorderColor: markerPalette.map((p) => p.line),
             pointBorderWidth: 1,
@@ -2938,6 +3057,109 @@ class ViscometryDashboard {
         this._liveChartsDirty = false;
     }
 
+    getActiveCalGraphCellId() {
+        if (this.selectedCalGraphCell !== null) {
+            return this.selectedCalGraphCell;
+        }
+        if (this.currentCell) {
+            return this.currentCell;
+        }
+        const ids = this.getGraphCellIds();
+        return ids.length ? ids[ids.length - 1] : null;
+    }
+
+    updateCalGraphCellTabs() {
+        if (!this.el.calGraphCellTabs) {
+            return;
+        }
+        const ids = this.getGraphCellIds();
+        this.el.calGraphCellTabs.innerHTML = "";
+
+        const currentBtn = document.createElement("button");
+        currentBtn.className = `cell-tab${this.selectedCalGraphCell === null ? " active" : ""}`;
+        currentBtn.textContent = "Current Cell";
+        currentBtn.addEventListener("click", () => {
+            this.selectedCalGraphCell = null;
+            this.updateCalGraphCellTabs();
+            this.refreshCalibrationLivePlots();
+        });
+        this.el.calGraphCellTabs.appendChild(currentBtn);
+
+        ids.forEach((cellId) => {
+            const btn = document.createElement("button");
+            btn.className = `cell-tab${this.selectedCalGraphCell === cellId ? " active" : ""}`;
+            btn.textContent = `Cell ${cellId}`;
+            btn.addEventListener("click", () => {
+                this.selectedCalGraphCell = cellId;
+                this.updateCalGraphCellTabs();
+                this.refreshCalibrationLivePlots();
+            });
+            this.el.calGraphCellTabs.appendChild(btn);
+        });
+    }
+
+    renderCalDragZRpmLegend(cellId, orderedRpms) {
+        const listEl = this.el.calDragZRpmLegend;
+        if (!listEl) {
+            return;
+        }
+        if (!Number.isFinite(cellId) || !orderedRpms.length) {
+            listEl.innerHTML = '<div class="rpm-legend-note">No RPMs configured</div>';
+            return;
+        }
+        listEl.innerHTML = orderedRpms.map((rpm) => {
+            const color = this.getLiveRpmColor(rpm, orderedRpms);
+            const label = Number(rpm).toFixed(3);
+            return (
+                `<div class="rpm-legend-row">`
+                + `<span class="rpm-legend-swatch" style="background:${color}"></span>`
+                + `<span class="rpm-legend-label">RPM ${label}</span>`
+                + `</div>`
+            );
+        }).join("");
+    }
+
+    refreshCalibrationLivePlots() {
+        const activeCell = this.getActiveCalGraphCellId();
+        const source = activeCell ? (this.measurementsByCell.get(activeCell) || []) : [];
+        const orderedRpms = activeCell ? this.expandRpmsWithObserved(this.getRpmsForCell(activeCell), source) : [];
+        const buckets = this.partitionMeasurementsByRpm(source, orderedRpms);
+
+        const dragDatasets = orderedRpms
+            .map((rpm) => {
+                const key = Number(rpm).toFixed(3);
+                const points = buckets.get(key) || [];
+                if (points.length === 0) {
+                    return null;
+                }
+                return this._buildDragDatasetForRpm(rpm, points, 0, orderedRpms, {
+                    connectDots: this.zCalConnectDots,
+                    skipFloorColoring: true,
+                });
+            })
+            .filter(Boolean);
+
+        if (this.calDragPlotInitialized && this.charts.calDrag) {
+            this.charts.calDrag.data.datasets = dragDatasets;
+            if (this.el.calZSparklineEmpty) {
+                this.el.calZSparklineEmpty.classList.toggle("hidden", dragDatasets.length > 0);
+            }
+            this.renderCalDragZRpmLegend(activeCell, orderedRpms);
+        }
+        if (this.el.calDragZCellLabel) {
+            this.el.calDragZCellLabel.textContent = activeCell ? `Cell ${activeCell}` : "All Cells";
+        }
+
+        if (this._renderPaused) {
+            this._liveChartsDirty = true;
+            return;
+        }
+
+        if (this.charts.calDrag) {
+            this.charts.calDrag.update("none");
+        }
+    }
+
     updateGauge(targetRPM) {
         const clamped = Math.max(0, Math.min(100, targetRPM));
         if (this.gaugeAnimationFrame) {
@@ -3020,6 +3242,9 @@ class ViscometryDashboard {
     }
 
     updateDragZSidebar(data) {
+        if (this.activeTabId !== "controls-tab") {
+            return;
+        }
         if (this.el.sidebarRpm) {
             this.el.sidebarRpm.textContent = data.rpm != null ? `${Number(data.rpm).toFixed(2)} RPM` : "-";
         }
@@ -3156,28 +3381,80 @@ class ViscometryDashboard {
     }
 
     toggleCalibrationPanel(forceOpen = null) {
-        if (!this.el.calPanelDetails) return;
-
         if (forceOpen === true) {
-            this.el.calPanelDetails.open = true;
-        } else if (forceOpen === false) {
-            this.el.calPanelDetails.open = false;
-        } else {
-            this.el.calPanelDetails.open = !this.el.calPanelDetails.open;
+            this.switchTab("calibrate-tab", { force: true });
         }
+        this.calibrationPanelOpen = true;
+    }
 
-        this.calibrationPanelOpen = this.el.calPanelDetails.open;
+    _snapshotPreCalibrationSettings() {
+        this._preCalibrationSettingsSnapshot = this.readControlSettings();
+    }
+
+    _applyCalibrationRunSettingsToDom() {
+        if (this.el.feedbackEnabled) {
+            this.el.feedbackEnabled.checked = true;
+        }
+        if (this.el.smartEarlyExitEnabled) {
+            this.el.smartEarlyExitEnabled.checked = false;
+        }
+        if (this.el.failSafeEnabled) {
+            this.el.failSafeEnabled.checked = false;
+        }
+        if (this.el.lowTorqueLiquidContactSkipEnabled) {
+            this.el.lowTorqueLiquidContactSkipEnabled.checked = false;
+        }
+        this._setViscosityPredictionModeUI("off");
+        this._updatePredictedViscosityChartsCardVisibility(false);
+    }
+
+    _buildCalibrationRunSettings() {
+        this._snapshotPreCalibrationSettings();
+        this._applyCalibrationRunSettingsToDom();
+        const settings = this.readControlSettings();
+        settings.feedback_control_enabled = true;
+        settings.smart_early_exit_enabled = false;
+        settings.fail_safe_enabled = false;
+        settings.low_torque_liquid_contact_skip_enabled = false;
+        settings.viscosity_prediction_mode = "off";
+        settings.predicted_viscosity_enabled = false;
+        return settings;
+    }
+
+    restorePreCalibrationSettings() {
+        if (!this._preCalibrationSettingsSnapshot) {
+            return Promise.resolve();
+        }
+        const snapshot = this._preCalibrationSettingsSnapshot;
+        this._preCalibrationSettingsSnapshot = null;
+        this.populateControlSettings(snapshot);
+        if (this.uiState === "ready") {
+            return this.applyControlSettings(true).catch(() => undefined);
+        }
+        return Promise.resolve();
+    }
+
+    updateCalibrationCellsStatusPill(summary) {
+        const pill = this.el.calibrationCellsStatusPill;
+        const text = this.el.calibrationCellsStatusText;
+        if (!pill || !text) {
+            return;
+        }
+        const count = Number(summary?.cell_count) || 0;
+        text.textContent = `${count}/18 cells calibrated`;
+        pill.classList.remove("cal-cells-status-all", "cal-cells-status-partial", "cal-cells-status-none");
+        if (count >= 18) {
+            pill.classList.add("cal-cells-status-all");
+        } else if (count > 0) {
+            pill.classList.add("cal-cells-status-partial");
+        } else {
+            pill.classList.add("cal-cells-status-none");
+        }
     }
 
     validateCalibrationChecklist() {
         const empty = this.el.calCheckEmpty?.checked || false;
-        const feedback = this.el.calCheckFeedback?.checked || false;
-        const noSmartExit = this.el.calCheckSmartExit?.checked || false;
-        const failSafeOff = this.el.calCheckFailSafeOff?.checked || false;
-        const liquidSkipOff = this.el.calCheckLiquidSkipOff?.checked || false;
-        const viscosityOff = this.el.calCheckViscosityOff?.checked || false;
-        this.calChecksComplete =
-            empty && feedback && noSmartExit && failSafeOff && liquidSkipOff && viscosityOff;
+        this.calChecksComplete = empty;
 
         if (this.el.calStartBtn) {
             this.el.calStartBtn.disabled = !this.calChecksComplete || this.isRunning;
@@ -3192,6 +3469,7 @@ class ViscometryDashboard {
     applyCalibrationStatus(summary) {
         if (!summary) return;
         this.calibrationSummary = summary;
+        this.updateCalibrationCellsStatusPill(summary);
         const isOk = Boolean(summary.is_calibrated);
         const section = this.el.calPanelSection;
         const pill = this.el.calStatusPill;
@@ -3285,12 +3563,12 @@ class ViscometryDashboard {
             return;
         }
 
-        // Build settings — apply recommended values if not already set
-        const settings = this.readControlSettings();
+        const settings = this._buildCalibrationRunSettings();
         settings.calibration_mode = true;
         settings.testing_mode = "full";  // Always all 18 cells
 
         this.isCalibrationRun = true;
+        this._wasCalibrationLikeRun = true;
         this.setUiState("running");
         fetch("/api/run/start_calibration", {
             method: "POST",
@@ -3303,6 +3581,8 @@ class ViscometryDashboard {
             })
             .catch(() => {
                 this.isCalibrationRun = false;
+                this._wasCalibrationLikeRun = false;
+                this.restorePreCalibrationSettings();
                 this.setUiState("idle");
                 this.pushStatusMessage("Failed to start calibration run");
             });
@@ -3370,13 +3650,17 @@ class ViscometryDashboard {
         });
         const hasSelected = selectedCells.length > 0;
         if (this.el.calStartRecalibrationBtn) {
-            this.el.calStartRecalibrationBtn.disabled = !hasSelected || this.isRunning;
+            this.el.calStartRecalibrationBtn.disabled = !hasSelected || this.isRunning || !this.calChecksComplete;
         }
     }
 
     startRecalibrationRun() {
         if (this.calibrationReviewPending || this.experimentReviewPending) {
             this.pushStatusMessage("Finish the data save review before starting a new run");
+            return;
+        }
+        if (!this.calChecksComplete) {
+            this.pushStatusMessage("Complete the calibration checklist before starting");
             return;
         }
         const selectedCells = [];
@@ -3404,8 +3688,7 @@ class ViscometryDashboard {
             recalibrationCells[cellId] = customZ;  // null means auto-detect
         });
 
-        // Build settings
-        const settings = this.readControlSettings();
+        const settings = this._buildCalibrationRunSettings();
         settings.recalibrate_individual_cells = true;
         settings.recalibration_cells = recalibrationCells;
         settings.recalibration_ignore_max_z_travel = Boolean(
@@ -3416,6 +3699,7 @@ class ViscometryDashboard {
         settings.selected_cells = selectedCells;
 
         this.isCalibrationRun = true;
+        this._wasCalibrationLikeRun = true;
         this.setUiState("running");
         fetch("/api/run/start_recalibration", {
             method: "POST",
@@ -3428,6 +3712,8 @@ class ViscometryDashboard {
             })
             .catch(() => {
                 this.isCalibrationRun = false;
+                this._wasCalibrationLikeRun = false;
+                this.restorePreCalibrationSettings();
                 this.setUiState("idle");
                 this.pushStatusMessage("Failed to start recalibration run");
             });
@@ -3531,8 +3817,15 @@ class ViscometryDashboard {
             this.setUiState("running");
         }
         this.updateTestingTabAvailability();
+        this.updateRunTabAvailability();
         if (isRunning && !previous) {
             this.warnAndStopTestingForRunTransition();
+            const mode = this.getProtocolRunMode();
+            if (mode === "calibration" || mode === "recalibration") {
+                this.switchTab("calibrate-tab", { force: true });
+            } else if (mode === "regular") {
+                this.switchTab("controls-tab", { force: true });
+            }
         }
 
         if (!isRunning) {
@@ -3560,6 +3853,11 @@ class ViscometryDashboard {
             if (this.uiState === "running") {
                 this.setUiState("idle");
             }
+            if (this._wasCalibrationLikeRun) {
+                this.restorePreCalibrationSettings();
+                this._wasCalibrationLikeRun = false;
+            }
+            this.isCalibrationRun = false;
         }
 
         if (this.el.calStartBtn) {
@@ -4740,8 +5038,12 @@ class ViscometryDashboard {
             this.predictedViscosityData[cellId] = {};
         }
         this.predictedViscosityData[cellId][rpm] = payload;
-        this.renderPredictedViscosityCharts();
-        this.renderLiveViscosityPredictionsTable();
+        if (this.activeTabId === "data-processing-tab") {
+            this.renderPredictedViscosityCharts();
+        }
+        if (this.activeTabId === "controls-tab") {
+            this.renderLiveViscosityPredictionsTable();
+        }
     }
 
     _fmtPredictedViscosity3(value) {
@@ -4750,6 +5052,9 @@ class ViscometryDashboard {
     }
 
     renderLiveViscosityPredictionsTable() {
+        if (this.activeTabId !== "controls-tab") {
+            return;
+        }
         const tbody = this.el.liveViscosityTableBody;
         if (!tbody) {
             return;

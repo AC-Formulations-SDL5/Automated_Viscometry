@@ -555,9 +555,15 @@ body.running .header-sweep {
     gap: var(--controls-block-gap);
 }
 
+#calibrate-tab.tab-panel.active {
+    display: flex !important;
+    flex-direction: column;
+    gap: var(--controls-block-gap);
+}
+
 #controls-tab.tab-panel.active {
-    display: grid !important;
-    grid-template-rows: auto auto;
+    display: flex !important;
+    flex-direction: column;
     gap: var(--controls-block-gap);
 }
 
@@ -584,11 +590,148 @@ body.running .header-sweep {
     gap: var(--controls-block-gap);
 }
 
+/* Calibrate Tab */
+#calibrate-tab {
+    display: flex;
+    flex-direction: column;
+    gap: var(--controls-block-gap);
+}
+
+.calibrate-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--controls-block-gap);
+    width: 100%;
+}
+
+.cal-panel-body-compact {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px 16px;
+    align-items: start;
+}
+
+.cal-panel-body-compact .cal-checklist,
+.cal-panel-body-compact .cal-auto-settings-info,
+.cal-panel-body-compact .cal-recommended-settings,
+.cal-panel-body-compact .cal-calibrated-info,
+.cal-panel-body-compact .cal-recalibration-section,
+.cal-panel-body-compact .cal-actions {
+    grid-column: 1 / -1;
+}
+
+.cal-info-banner {
+    padding: 14px 16px;
+    background: rgba(94, 161, 255, 0.08);
+    border: 1px solid rgba(94, 161, 255, 0.28);
+    box-shadow: var(--shadow-glass);
+}
+
+.cal-info-banner-title {
+    margin: 0 0 6px 0;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.cal-info-banner-text {
+    margin: 0 0 8px 0;
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.cal-info-banner-list {
+    margin: 0;
+    padding-left: 1.2rem;
+    font-size: 0.76rem;
+    color: var(--text-primary);
+    line-height: 1.55;
+}
+
 /* Controls Tab */
 #controls-tab {
-    display: grid;
-    grid-template-rows: auto auto;
+    display: flex;
+    flex-direction: column;
     gap: var(--controls-block-gap);
+}
+
+.controls-experiment-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--controls-block-gap);
+    width: 100%;
+}
+
+.load-old-experiment-header-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px 16px;
+    width: 100%;
+}
+
+.load-old-experiment-header-row .load-old-experiment-card {
+    flex: 1 1 280px;
+    min-width: 0;
+}
+
+.calibration-cells-status-pill {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    white-space: nowrap;
+    align-self: center;
+    transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+
+.calibration-cells-status-pill.cal-cells-status-none {
+    background: rgba(255, 59, 48, 0.10);
+    border-color: rgba(255, 59, 48, 0.32);
+    color: var(--color-red-text);
+}
+
+.calibration-cells-status-pill.cal-cells-status-partial {
+    background: rgba(245, 166, 35, 0.12);
+    border-color: rgba(245, 166, 35, 0.35);
+    color: #9a6200;
+}
+
+.calibration-cells-status-pill.cal-cells-status-all {
+    background: rgba(48, 209, 88, 0.14);
+    border-color: rgba(48, 209, 88, 0.40);
+    color: var(--color-green-text);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.70),
+        0 0 0 3px rgba(48,209,88,0.10),
+        0 4px 16px rgba(48,209,88,0.20);
+    animation: calGlowGreen 2.4s ease-in-out infinite alternate;
+}
+
+.run-settings-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px 14px;
+    align-items: start;
+}
+
+.run-settings-form-grid .dual-fields,
+.run-settings-form-grid .cell-rpm-panel,
+.run-settings-form-grid #viscosity-predictions-panel,
+.run-settings-form-grid .feedback-params-section,
+.run-settings-form-grid .control-actions,
+.run-settings-form-grid .control-status {
+    grid-column: 1 / -1;
+}
+
+.control-actions-four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .controls-charts-stack > .plot-card:first-child {
@@ -2506,12 +2649,14 @@ body.spinning .gauge-value {
 }
 
 .terminate-current-cell-btn {
-    width: 100%;
-    margin-top: 8px;
     background: rgb(185, 28, 18);
     color: rgb(255, 255, 255);
     border-color: rgb(185, 28, 18);
     box-shadow: 0 0 16px rgba(185, 28, 18, 0.35);
+    font-size: 0.78rem;
+    line-height: 1.2;
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
 .terminate-current-cell-btn.is-active {
@@ -3330,6 +3475,10 @@ body.loading .skeleton-lines {
     .controls-tracking-grid,
     .tracking-grid {
         grid-template-columns: 1fr;
+    }
+
+    .control-actions-four {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .tracking-row-primary,
