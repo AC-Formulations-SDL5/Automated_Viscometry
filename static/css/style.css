@@ -799,19 +799,65 @@ body.running .header-sweep {
 }
 
 .run-settings-form-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+}
+
+.run-settings-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 10px 14px;
+    align-items: start;
+    width: 100%;
+    min-width: 0;
+}
+
+.run-settings-primary-row {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.run-settings-cell-panels-row {
+    grid-template-columns: 1fr 1fr;
+}
+
+.run-settings-cell-panels-row > .cell-rpm-panel {
+    margin-top: 0;
+    min-width: 0;
+}
+
+.run-settings-toggles-row {
+    grid-template-columns: 1fr minmax(220px, 0.9fr);
+    align-items: stretch;
+}
+
+.run-settings-toggles-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.run-settings-toggles-row .viscosity-predictions-panel {
+    align-self: stretch;
+    height: 100%;
+    margin-top: 0;
+}
+
+.run-settings-advanced-params-row {
+    grid-template-columns: 1fr 1fr;
     align-items: start;
 }
 
+.run-settings-advanced-params-row > .feedback-params-section {
+    margin-top: 0;
+    min-width: 0;
+}
+
 .run-settings-form-grid .dual-fields,
-.run-settings-form-grid .cell-rpm-panel,
-.run-settings-form-grid #viscosity-predictions-panel,
-.run-settings-form-grid .feedback-params-section,
 .run-settings-form-grid .control-actions,
 .run-settings-form-grid .control-status {
-    grid-column: 1 / -1;
+    width: 100%;
 }
 
 .control-actions-four {
@@ -3553,6 +3599,10 @@ body.loading .skeleton-lines {
     .cal-actions.cal-actions-four {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .run-settings-primary-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 760px) {
@@ -3571,6 +3621,13 @@ body.loading .skeleton-lines {
 
     .control-actions-four {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .run-settings-primary-row,
+    .run-settings-cell-panels-row,
+    .run-settings-toggles-row,
+    .run-settings-advanced-params-row {
+        grid-template-columns: 1fr;
     }
 
     .tracking-row-primary,
