@@ -115,6 +115,18 @@ def _experiment_history_entry_rank(entry: dict) -> tuple:
     return (has_csv, count, created)
 
 
+def _string_key_cell_termination_reasons(reasons) -> Dict[str, str]:
+    if not isinstance(reasons, dict):
+        return {}
+    out: Dict[str, str] = {}
+    for key, value in reasons.items():
+        try:
+            out[str(int(key))] = str(value or "normal")
+        except (TypeError, ValueError):
+            out[str(key)] = str(value or "normal")
+    return out
+
+
 def _dedupe_experiment_history_list(entries: List[dict]) -> List[dict]:
     if not isinstance(entries, list):
         return []
@@ -1205,8 +1217,7 @@ class ViscometryWebInterface:
             key = str(int(cell_id))
             entry = cells_dict.get(key) or {}
             term = str(entry.get("termination_reason") or "normal")
-            termination_map[cell_id] = term
-            termination_map[str(cell_id)] = term
+            termination_map[key] = term
             for row in entry.get("measurements") or []:
                 if not isinstance(row, dict):
                     continue
@@ -1256,7 +1267,7 @@ class ViscometryWebInterface:
         csv_rows = []
         for m in run_data:
             iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(m["timestamp"])))
-            term = termination_map.get(int(m["cell_id"]), "normal")
+            term = termination_map.get(str(int(m["cell_id"])), "normal")
             csv_rows.append(
                 f"{iso},{m['cell_id']},{m['height']},{m['torque_percent']},"
                 f"{m['rotational_drag']},{m['rpm']},{term}"
@@ -1873,6 +1884,11 @@ class ViscometryWebInterface:
             return
 
         incoming_run_start = _finite_run_start_ts(entry)
+        if "cell_termination_reasons" in entry:
+            entry = dict(entry)
+            entry["cell_termination_reasons"] = _string_key_cell_termination_reasons(
+                entry.get("cell_termination_reasons")
+            )
 
         with self.control_lock:
             filtered = []

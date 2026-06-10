@@ -9,11 +9,14 @@ from unittest.mock import MagicMock, patch
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_ROOT, "src", "python_64"))
 
+from flask import Flask, jsonify
+
 from web_interface import (
     ViscometryWebInterface,
     _coerce_all_data_keys,
     _dedupe_experiment_history_list,
     _experiment_history_id_for_run,
+    _string_key_cell_termination_reasons,
 )
 
 
@@ -139,6 +142,9 @@ class TestExperimentReviewCommit(unittest.TestCase):
         self.assertIsNotNone(entry)
         self.assertEqual(entry["id"], "exp-1700000000000")
         self.assertEqual(entry["runStartTsSec"], 1_700_000_000.0)
+        terms = entry["cell_termination_reasons"]
+        self.assertEqual(terms, {"1": "normal"})
+        self.assertEqual(set(type(k).__name__ for k in terms), {"str"})
 
     @patch("all_cells_with_rotational_drag_feedback.save_dynamic_analysis_data")
     def test_commit_happy_path_clears_session(self, mock_save):
@@ -170,6 +176,27 @@ class TestExperimentReviewCommit(unittest.TestCase):
             self.iface.experiment_review_session.get("session_id"),
             self.session_id,
         )
+
+
+class TestExperimentHistoryJsonSafe(unittest.TestCase):
+    def test_string_key_cell_termination_reasons_normalizes_mixed_keys(self):
+        normalized = _string_key_cell_termination_reasons({1: "normal", "1": "user_stop"})
+        self.assertEqual(normalized, {"1": "user_stop"})
+
+    def test_add_entry_jsonify_safe_after_commit(self):
+        iface = ViscometryWebInterface(port=5096)
+        iface.socketio = MagicMock()
+        iface.experiment_history = []
+        iface._persist_experiment_history = MagicMock()
+        iface.add_experiment_history_entry({
+            "id": "exp-test",
+            "created_at": 1,
+            "runStartTsSec": 1_700_000_000.0,
+            "cell_termination_reasons": {1: "normal", "1": "normal"},
+        })
+        app = Flask(__name__)
+        with app.app_context():
+            jsonify(iface.get_experiment_history())
 
 
 class TestExperimentHistoryDedupe(unittest.TestCase):
