@@ -420,5 +420,30 @@ class TestSaveDynamicPartialFilename(unittest.TestCase):
         self.assertIn("Completed cells: [1]", content)
 
 
+class TestViscosityPredictionModeNormalization(unittest.TestCase):
+    def test_legacy_newtonian_maps_to_on(self):
+        from predicted_viscosity import normalize_viscosity_prediction_mode
+
+        self.assertEqual(normalize_viscosity_prediction_mode("Newtonian"), "on")
+        self.assertEqual(normalize_viscosity_prediction_mode("Non-Newtonian"), "on")
+        self.assertEqual(normalize_viscosity_prediction_mode("on"), "on")
+        self.assertEqual(normalize_viscosity_prediction_mode("off"), "off")
+
+    def test_web_interface_normalizes_legacy_settings(self):
+        iface = ViscometryWebInterface(port=5100)
+        mode = iface._normalize_viscosity_prediction_mode(
+            {"viscosity_prediction_mode": "Newtonian", "predicted_viscosity_enabled": False}
+        )
+        self.assertEqual(mode, "on")
+
+    def test_legacy_enabled_flag_maps_to_on(self):
+        from predicted_viscosity import normalize_viscosity_prediction_mode
+
+        self.assertEqual(
+            normalize_viscosity_prediction_mode(None, legacy_enabled=True),
+            "on",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

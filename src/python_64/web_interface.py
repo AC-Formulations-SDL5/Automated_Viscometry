@@ -1218,12 +1218,12 @@ class ViscometryWebInterface:
         return public
 
     def _normalize_viscosity_prediction_mode(self, settings: Dict) -> str:
-        mode = str(settings.get("viscosity_prediction_mode", "off") or "off").strip()
-        if mode in ("off", "Newtonian", "Non-Newtonian"):
-            return mode
-        if settings.get("predicted_viscosity_enabled"):
-            return "Newtonian"
-        return "off"
+        from predicted_viscosity import normalize_viscosity_prediction_mode
+
+        return normalize_viscosity_prediction_mode(
+            settings.get("viscosity_prediction_mode"),
+            legacy_enabled=settings.get("predicted_viscosity_enabled"),
+        )
 
     def _predicted_viscosity_has_data(self, pred_data: Dict) -> bool:
         if not isinstance(pred_data, dict):
@@ -1321,7 +1321,7 @@ class ViscometryWebInterface:
 
         pred_mode = self._normalize_viscosity_prediction_mode(settings)
         if pred_mode == "off" and self._predicted_viscosity_has_data(pred_filtered):
-            pred_mode = "Newtonian"
+            pred_mode = "on"
 
         return {
             "id": _experiment_history_id_for_run(run_start_ts),
@@ -1559,15 +1559,12 @@ class ViscometryWebInterface:
                 normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
             if 'fail_safe_enabled' in settings:
                 normalized['fail_safe_enabled'] = bool(settings['fail_safe_enabled'])
-            if 'viscosity_prediction_mode' in settings:
-                mode = str(settings.get('viscosity_prediction_mode', 'off') or 'off').strip()
-                normalized['viscosity_prediction_mode'] = (
-                    mode if mode in ('off', 'Newtonian', 'Non-Newtonian') else 'off'
-                )
-            elif 'predicted_viscosity_enabled' in settings:
-                normalized['viscosity_prediction_mode'] = (
-                    'Newtonian' if bool(settings['predicted_viscosity_enabled']) else 'off'
-                )
+            from predicted_viscosity import normalize_viscosity_prediction_mode
+
+            normalized['viscosity_prediction_mode'] = normalize_viscosity_prediction_mode(
+                settings.get('viscosity_prediction_mode'),
+                legacy_enabled=settings.get('predicted_viscosity_enabled'),
+            )
             if 'low_torque_liquid_contact_skip_enabled' in settings:
                 normalized['low_torque_liquid_contact_skip_enabled'] = bool(
                     settings['low_torque_liquid_contact_skip_enabled']
@@ -1884,6 +1881,22 @@ class ViscometryWebInterface:
             self.socketio.emit('predicted_viscosity_update', payload)
         except Exception as e:
             print(f"Warning: Failed to emit predicted viscosity: {e}")
+
+    def emit_predicted_viscosity_summary(self, cell_id: int, summary: Dict):
+        """Store and broadcast cell-level rheology summary."""
+        try:
+            from rheology_live_adapter import SUMMARY_KEY
+
+            cell_key = str(int(cell_id))
+            payload = dict(summary) if isinstance(summary, dict) else {}
+            payload['cell_id'] = int(cell_id)
+            with self.control_lock:
+                if cell_key not in self.predicted_viscosity_results:
+                    self.predicted_viscosity_results[cell_key] = {}
+                self.predicted_viscosity_results[cell_key][SUMMARY_KEY] = payload
+            self.socketio.emit('predicted_viscosity_summary_update', payload)
+        except Exception as e:
+            print(f"Warning: Failed to emit predicted viscosity summary: {e}")
 
     def _load_experiment_history(self):
         """Load shared experiment history from disk if available."""

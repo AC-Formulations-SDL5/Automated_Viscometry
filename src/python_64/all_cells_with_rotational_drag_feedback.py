@@ -15,7 +15,8 @@ from viscometer_client import ViscometerClient
 from move_to_locations import PumpESP32
 from feedback_helper_function import RotationalDragFeedbackController
 from web_interface import web_interface
-from predicted_viscosity import predict_viscosity
+from predicted_viscosity import normalize_viscosity_prediction_mode, predict_viscosity
+from rheology_live_adapter import SUMMARY_KEY
 from calibration_store import (
     is_calibrated, load_calibration, get_safe_z_for_cell, get_calibration_summary, clear_calibration
 )
@@ -109,7 +110,7 @@ FAIL_SAFE_CONSECUTIVE_STEPS = 5
 LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = True
 LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 25.0
 VISCOSITY_PREDICTION_MODE = "off"
-CELL_VISCOSITY_RESULTS: Dict[int, Dict[float, dict]] = {}
+CELL_VISCOSITY_RESULTS: Dict[int, Dict] = {}
 
 # ========== CALIBRATION MODE CONFIGURATION ==========
 CALIBRATION_MODE = False          # Set to True when a calibration run is requested
@@ -242,15 +243,10 @@ def apply_runtime_settings_from_web():
     LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = float(
         settings.get('low_torque_liquid_contact_threshold_pct', LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)
     )
-    if 'viscosity_prediction_mode' in settings:
-        mode = str(settings.get('viscosity_prediction_mode', 'off') or 'off').strip()
-        VISCOSITY_PREDICTION_MODE = mode if mode in ('off', 'Newtonian', 'Non-Newtonian') else 'off'
-    elif 'predicted_viscosity_enabled' in settings:
-        VISCOSITY_PREDICTION_MODE = (
-            'Newtonian' if bool(settings.get('predicted_viscosity_enabled')) else 'off'
-        )
-    else:
-        VISCOSITY_PREDICTION_MODE = VISCOSITY_PREDICTION_MODE
+    VISCOSITY_PREDICTION_MODE = normalize_viscosity_prediction_mode(
+        settings.get('viscosity_prediction_mode'),
+        legacy_enabled=settings.get('predicted_viscosity_enabled'),
+    )
     # Parse recalibration cells: expect dict {cell_id: optional_starting_z}
     # JSON object keys arrive as strings; normalize to int keys for runtime lookup.
     raw_recalibration_cells = settings.get('recalibration_cells', {})
@@ -1582,8 +1578,11 @@ def run_predicted_viscosity_for_cell(
     rpms: List[float],
     feedback_summary: Dict,
 ) -> None:
-    """Fit hyperbolic viscosity per RPM after a cell completes; emit to dashboard."""
+    """Fit unified rheology per RPM and cell summary after a cell completes."""
     global CELL_VISCOSITY_RESULTS
+
+    if normalize_viscosity_prediction_mode(VISCOSITY_PREDICTION_MODE) == "off":
+        return
 
     hit_z = feedback_summary.get('hit_point_z')
     if hit_z is not None:
@@ -1595,23 +1594,24 @@ def run_predicted_viscosity_for_cell(
     if cell_id not in CELL_VISCOSITY_RESULTS:
         CELL_VISCOSITY_RESULTS[cell_id] = {}
 
-    for rpm in rpms:
+    rpm_list = [float(r) for r in rpms]
+    for rpm in rpm_list:
         try:
             result = predict_viscosity(
                 cell_id,
-                float(rpm),
+                rpm,
                 web_interface.measurement_data,
                 torque_floor_pct=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT,
                 hit_point_z=hit_z,
                 viscosity_prediction_mode=VISCOSITY_PREDICTION_MODE,
             )
-            CELL_VISCOSITY_RESULTS[cell_id][float(rpm)] = result
-            web_interface.emit_predicted_viscosity(cell_id, float(rpm), result)
+            CELL_VISCOSITY_RESULTS[cell_id][rpm] = result
+            web_interface.emit_predicted_viscosity(cell_id, rpm, result)
             if result.get('success'):
                 print(
                     f"  Predicted viscosity Cell {cell_id} @ {rpm} RPM: "
                     f"{result.get('viscosity_kcp'):.3f} kCp "
-                    f"(flow_index={result.get('flow_index')}, pts={result.get('n_points_used')})"
+                    f"(R²={result.get('R2')}, pts={result.get('n_points_used')})"
                 )
             else:
                 print(
@@ -1620,6 +1620,30 @@ def run_predicted_viscosity_for_cell(
                 )
         except Exception as e:
             print(f"  Warning: predicted viscosity failed for Cell {cell_id} RPM {rpm}: {e}")
+
+    try:
+        from predicted_viscosity import predict_cell_viscosity
+
+        cell_results = predict_cell_viscosity(
+            cell_id,
+            rpm_list,
+            web_interface.measurement_data,
+            torque_floor_pct=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT,
+            hit_point_z=hit_z,
+            viscosity_prediction_mode=VISCOSITY_PREDICTION_MODE,
+        )
+        summary = cell_results.get(SUMMARY_KEY) or {}
+        CELL_VISCOSITY_RESULTS[cell_id][SUMMARY_KEY] = summary
+        web_interface.emit_predicted_viscosity_summary(cell_id, summary)
+        if summary.get('success'):
+            print(
+                f"  Cell {cell_id} rheology summary: {summary.get('regime')} "
+                f"n={summary.get('n')} η={summary.get('viscosity_kcp')} kCp"
+            )
+        elif summary.get('error'):
+            print(f"  Cell {cell_id} rheology summary failed: {summary.get('error')}")
+    except Exception as e:
+        print(f"  Warning: cell rheology summary failed for Cell {cell_id}: {e}")
 
 
 def extract_rough_hitpoint(cell_z_rpm_data: dict) -> Optional[float]:
@@ -1674,25 +1698,30 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
         return
     csv_writer.writerow(["# Predicted Viscosity Results"])
     csv_writer.writerow([
-        "# Cell,Cell_Label,RPM,Viscosity_kCp,a,b,flow_index,n_points_used,fit_success"
+        "# Cell,Cell_Label,RPM,Viscosity_kCp,A,B,R2,regime,n,n_points_used,fit_success"
     ])
     for global_cell in sorted(CELL_VISCOSITY_RESULTS.keys()):
         rpm_map = CELL_VISCOSITY_RESULTS[global_cell]
         label = CELL_CONTENT_MAP.get(global_cell, "")
-        for rpm in sorted(rpm_map.keys()):
+        summary = rpm_map.get(SUMMARY_KEY) if isinstance(rpm_map, dict) else {}
+        cell_regime = summary.get("regime") if isinstance(summary, dict) else ""
+        cell_n = summary.get("n") if isinstance(summary, dict) else ""
+        for rpm in sorted(k for k in rpm_map.keys() if k != SUMMARY_KEY):
             result = rpm_map[rpm]
             if not isinstance(result, dict):
                 continue
             visc = result.get("viscosity_kcp")
-            a_val = result.get("a")
-            b_val = result.get("b")
-            flow_index = result.get("flow_index")
+            a_val = result.get("A")
+            b_val = result.get("B")
+            r2_val = result.get("R2")
             csv_writer.writerow([
                 f"# {global_cell},{label},{rpm},"
                 f"{'' if visc is None else visc},"
                 f"{'' if a_val is None else a_val},"
                 f"{'' if b_val is None else b_val},"
-                f"{'' if flow_index is None else flow_index},"
+                f"{'' if r2_val is None else r2_val},"
+                f"{cell_regime},"
+                f"{'' if cell_n is None else cell_n},"
                 f"{result.get('n_points_used', 0)},"
                 f"{bool(result.get('success'))}",
             ])
@@ -2319,7 +2348,7 @@ def main():
                             global_cell,
                             termination_reason=cell_term,
                         )
-                        if VISCOSITY_PREDICTION_MODE != "off":
+                        if normalize_viscosity_prediction_mode(VISCOSITY_PREDICTION_MODE) != "off":
                             run_predicted_viscosity_for_cell(
                                 global_cell, cell_rpms, feedback_summary
                             )

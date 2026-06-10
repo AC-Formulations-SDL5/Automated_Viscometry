@@ -1,4 +1,9 @@
 """
+DEPRECATED: Legacy hyperbola fit for offline/batch analysis only.
+
+The live measurement path uses rheology_prediction.fit_drag (D = A/(h+h_c)+B).
+This module remains for results/auto_runs helpers until those are migrated.
+
 Power-law modified hyperbola for rotational drag vs gap height.
 
 Model: D(h) = a / |h - b|^n
