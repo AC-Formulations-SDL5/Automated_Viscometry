@@ -1920,6 +1920,47 @@ h2 {
     box-shadow: 0 0 14px rgba(255, 159, 10, 0.22);
 }
 
+.review-partial-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    border-radius: var(--radius-pill);
+    border: 1px solid rgba(255, 159, 10, 0.5);
+    padding: 2px 8px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-yellow-text);
+    background: rgba(255, 159, 10, 0.16);
+    vertical-align: middle;
+}
+
+.experiment-review-subtitle {
+    margin: 6px 0 0;
+    font-size: 0.88rem;
+    color: var(--color-muted-text, rgba(255, 255, 255, 0.65));
+}
+
+.experiment-review-subtitle.hidden {
+    display: none;
+}
+
+.experiment-review-tab .review-partial-badge {
+    margin-left: 4px;
+    font-size: 0.62rem;
+    padding: 1px 6px;
+}
+
+.experiment-review-summary .review-termination-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+    padding: 3px 9px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
 .termination-normal {
     color: var(--color-green-text);
     background: var(--color-green-badge-bg);

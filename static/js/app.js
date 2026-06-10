@@ -489,6 +489,8 @@ class ViscometryDashboard {
             calReviewDiscard: document.getElementById("calibration-review-discard"),
             expReviewBackdrop: document.getElementById("experiment-review-backdrop"),
             expReviewModal: document.getElementById("experiment-review-modal"),
+            expReviewTitle: document.getElementById("experiment-review-title"),
+            expReviewSubtitle: document.getElementById("experiment-review-subtitle"),
             expReviewTabs: document.getElementById("experiment-review-tabs"),
             expReviewPlot: document.getElementById("experiment-review-plot"),
             expReviewSummary: document.getElementById("experiment-review-summary"),
@@ -6029,6 +6031,7 @@ class ViscometryDashboard {
         this.experimentReviewSession = session;
         this.experimentReviewPending = true;
         this.updateReviewStartGuard();
+        this.updateExperimentReviewHeader(session);
         this.renderExperimentReviewTabs();
         const pending = this.getPendingExperimentReviewCellIds();
         if (!pending.includes(this.experimentReviewActiveCellId)) {
@@ -6057,10 +6060,30 @@ class ViscometryDashboard {
             this.el.expReviewBackdrop.classList.remove("hidden");
             this.el.expReviewBackdrop.setAttribute("aria-hidden", "false");
         }
+        this.updateExperimentReviewHeader(session);
         this.el.body.classList.add("experiment-review-active");
         this.renderExperimentReviewTabs();
         this.renderExperimentReviewCellView(this.experimentReviewActiveCellId);
         this.pushStatusMessage("Review experiment data — Save or Discard each cell");
+    }
+
+    updateExperimentReviewHeader(session) {
+        const runEndedEarly = Boolean(session?.run_ended_early);
+        if (this.el.expReviewTitle) {
+            this.el.expReviewTitle.textContent = runEndedEarly
+                ? "Save experiment data"
+                : "Save Data";
+        }
+        if (this.el.expReviewSubtitle) {
+            if (runEndedEarly) {
+                this.el.expReviewSubtitle.textContent =
+                    "Run ended early — saved output uses final point per Z×RPM";
+                this.el.expReviewSubtitle.classList.remove("hidden");
+            } else {
+                this.el.expReviewSubtitle.textContent = "";
+                this.el.expReviewSubtitle.classList.add("hidden");
+            }
+        }
     }
 
     closeExperimentReviewModal() {
@@ -6101,6 +6124,12 @@ class ViscometryDashboard {
                 btn.classList.add("active");
             }
             btn.textContent = `Cell ${cellId}`;
+            if (entry.is_partial) {
+                const badge = document.createElement("span");
+                badge.className = "review-partial-badge";
+                badge.textContent = "Partial results";
+                btn.appendChild(badge);
+            }
             if (entry.decision === "pending") {
                 btn.addEventListener("click", () => {
                     this.experimentReviewActiveCellId = Number(cellId);
@@ -6132,14 +6161,24 @@ class ViscometryDashboard {
             ?? "";
         const rpms = this.getRpmsForCell(cellId);
         const rpmText = rpms.length ? rpms.map((r) => Number(r).toFixed(3)).join(", ") : "—";
-        const measurements = this.getMeasurementsForReviewCell(cellId, this.experimentReviewSession);
-        const sampleCount = measurements.length;
+        const zLevelCount = Number(entry.z_level_count);
+        const zLevelsText = Number.isFinite(zLevelCount) && zLevelCount > 0
+            ? String(zLevelCount)
+            : "—";
         const title = label ? `Cell ${cellId} — ${label}` : `Cell ${cellId}`;
+        const tMeta = this._terminationDisplayMeta(entry.termination_reason);
+        const partialBadge = entry.is_partial
+            ? '<span class="review-partial-badge">Partial results</span>'
+            : "";
+        const runEndedNote = this.experimentReviewSession?.run_ended_early
+            ? '<div class="experiment-review-early-note">Run ended early</div>'
+            : "";
         box.innerHTML = `
-            <div><strong>${title}</strong></div>
+            <div><strong>${title}</strong> ${partialBadge}</div>
+            ${runEndedNote}
             <div>RPMs tested: ${rpmText}</div>
-            <div>Termination: ${this._formatTerminationReason(entry.termination_reason)}</div>
-            <div>Samples: <strong>${sampleCount}</strong></div>
+            <div>Termination: <span class="review-termination-chip summary-termination-chip ${tMeta.cls}">${tMeta.text}</span></div>
+            <div>Z levels collected: <strong>${zLevelsText}</strong></div>
         `;
     }
 
@@ -6299,11 +6338,15 @@ class ViscometryDashboard {
         const rpmText = rpms.length
             ? rpms.map((r) => Number(r).toFixed(3)).join(", ")
             : null;
+        const partialFlags = experiment?.cell_partial_flags || {};
         const items = cellIds
             .map((id) => {
                 const label = labelMap[id] ?? labelMap[String(id)] ?? "";
                 const labelPart = label ? ` — ${this._escapeHtml(label)}` : "";
-                return `<li>Cell ${id}${labelPart}</li>`;
+                const partialNote = partialFlags[id] || partialFlags[String(id)]
+                    ? ' <span class="review-partial-badge">partial results</span>'
+                    : "";
+                return `<li>Cell ${id}${labelPart}${partialNote}</li>`;
             })
             .join("");
         const csvNote = csvFilename

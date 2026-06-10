@@ -1523,7 +1523,23 @@ def test_cell_dynamic_z_series(
             cell_exit_reason,
             start_wash_prefill=False,
         )
-        raise
+        if FEEDBACK_CONTROL_ENABLED:
+            feedback_summary = feedback_controller.get_summary()
+        else:
+            feedback_summary = {
+                'hit_point_detected': False,
+                'hit_point_z': None,
+                'hit_point_confidence': None,
+                'total_z_levels': len(cell_z_rpm_data),
+                'feedback_enabled': False,
+            }
+        feedback_summary['exit_reason'] = cell_exit_reason
+        feedback_summary['cnc_retracted_ok'] = cnc_retracted_ok
+        print(
+            f"Cell {global_cell} stopped early: "
+            f"{len(cell_z_rpm_data)} Z-positions collected"
+        )
+        return cell_z_rpm_data, _fill_thread, feedback_summary
 
     _fill_thread, cnc_retracted_ok, cell_exit_reason = _finish_cell_measurement(
         cnc,
@@ -1683,168 +1699,200 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
     csv_writer.writerow([])
 
 
+PARTIAL_TERMINATION_REASONS = frozenset({"user_stop", "manual_terminate"})
+
+
+def is_partial_termination(reason: str) -> bool:
+    """True when a cell ended before completing its full Z sweep."""
+    return str(reason or "").strip().lower() in PARTIAL_TERMINATION_REASONS
+
+
+def _z_keys_from_cell_data(cell_data: dict) -> List[float]:
+    """Numeric Z-height keys from a cell's all_data entry (excludes metadata)."""
+    out: List[float] = []
+    for key in cell_data.keys():
+        if isinstance(key, str):
+            continue
+        try:
+            out.append(float(key))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def count_z_levels(all_data: Dict, cell_id: int) -> int:
+    """Count Z levels with structured data for a cell in all_data."""
+    cell_data = all_data.get(cell_id)
+    if cell_data is None:
+        try:
+            cell_data = all_data.get(int(cell_id))
+        except (TypeError, ValueError):
+            cell_data = None
+    if not isinstance(cell_data, dict):
+        return 0
+    return len(_z_keys_from_cell_data(cell_data))
+
+
+def extract_latest_points_from_all_data(
+    all_data: Dict,
+    cell_ids: List[int],
+    run_start_ts: Optional[float] = None,
+) -> List[Dict]:
+    """
+    Extract the latest measurement per Z×RPM from all_data for experiment history.
+    """
+    points: List[Dict] = []
+    for cell_id in cell_ids:
+        cell_data = all_data.get(cell_id)
+        if cell_data is None:
+            try:
+                cell_data = all_data.get(int(cell_id))
+            except (TypeError, ValueError):
+                cell_data = None
+        if not isinstance(cell_data, dict):
+            continue
+        for z_height in sorted(_z_keys_from_cell_data(cell_data), reverse=True):
+            rpm_data = cell_data.get(z_height)
+            if not isinstance(rpm_data, dict):
+                continue
+            for rpm in sorted(k for k in rpm_data.keys() if k not in _RPM_DATA_META_KEYS):
+                measurements = rpm_data.get(rpm)
+                if not measurements:
+                    continue
+                latest = measurements[-1]
+                torque_percent = float(latest.get("torque_percent") or 0)
+                rpm_f = float(rpm)
+                rotational_drag = abs(torque_percent) / rpm_f if rpm_f > 0 else 0.0
+                ts = latest.get("timestamp")
+                if ts is None:
+                    elapsed = latest.get("elapsed_time")
+                    if run_start_ts is not None and elapsed is not None:
+                        try:
+                            ts = float(run_start_ts) + float(elapsed)
+                        except (TypeError, ValueError):
+                            ts = time.time()
+                    else:
+                        ts = time.time()
+                else:
+                    try:
+                        ts = float(ts)
+                    except (TypeError, ValueError):
+                        ts = time.time()
+                points.append({
+                    "timestamp": ts,
+                    "cell_id": int(cell_id),
+                    "height": float(z_height),
+                    "torque_percent": torque_percent,
+                    "rotational_drag": rotational_drag,
+                    "rpm": rpm_f,
+                    "is_final_save": True,
+                })
+    return points
+
+
+def _finalize_regular_experiment_run(
+    all_data: Dict,
+    timestamp: str,
+    mode: str,
+    run_experiment_name: str,
+    termination_by_cell: Dict[int, str],
+    completed_cells: List[int],
+    selected_cells: List[int],
+    run_ended_early: bool = False,
+    default_termination: str = "normal",
+) -> Optional[str]:
+    """Sync review state, open review modal, or auto-save when review is not needed."""
+    partial_by_cell = {
+        str(int(k)): is_partial_termination(v)
+        for k, v in termination_by_cell.items()
+    }
+    if not run_ended_early:
+        run_ended_early = any(partial_by_cell.values()) or len(completed_cells) < len(selected_cells)
+
+    web_interface.sync_experiment_review_cells_from_run(
+        all_data,
+        termination_by_cell,
+        default_termination=default_termination,
+    )
+    web_interface.set_experiment_review_run_context(
+        all_data,
+        timestamp,
+        mode,
+        run_experiment_name,
+        termination_by_cell=termination_by_cell,
+        completed_cells=completed_cells,
+        partial_by_cell=partial_by_cell,
+        run_ended_early=run_ended_early,
+        selected_cell_count=len(selected_cells),
+    )
+    if web_interface.open_experiment_review_if_needed():
+        if run_ended_early:
+            web_interface.update_status(
+                "Run ended early — review experiment data (Save or Discard each cell)"
+            )
+        else:
+            web_interface.update_status(
+                "Run finished — review experiment data (Save or Discard each cell)"
+            )
+        return None
+
+    web_interface.update_status("Saving final results...")
+    csv_filename = save_dynamic_analysis_data(
+        all_data,
+        timestamp,
+        mode,
+        run_experiment_name,
+        termination_by_cell=termination_by_cell,
+        partial=run_ended_early,
+        completed_cells=completed_cells,
+    )
+    print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
+    web_interface.update_status("Experiment completed successfully")
+    return csv_filename
+
+
 def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
                      timestamp: str, mode: str, completed_cells: List[int], experiment_name: str,
                      termination_by_cell: Optional[Dict[int, str]] = None) -> str:
-    """Save partial results when experiment is terminated early"""
-    if not all_data:
-        print("No data collected to save.")
-        return ""
-    
-    print(f"\nSAVING PARTIAL RESULTS...")
-    print(f"Completed cells: {completed_cells}")
-    
-    # Create partial CSV filename with timestamp
-    csv_filename = f"dynamic_analysis_{_sanitize_experiment_slug(experiment_name)}_{mode}_PARTIAL_{timestamp}.csv"
-    
-    with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
-        csv_writer = csv.writer(csvfile)
-        
-        # Write metadata header
-        csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()} (PARTIAL RESULTS)"])
-        csv_writer.writerow([f"# Experiment Name: {experiment_name}"])
-        csv_writer.writerow([f"# Test RPMs (global fallback): {TEST_RPMS}"])
-        if TESTING_MODE == "custom" and CELL_RPM_MAP:
-            csv_writer.writerow([f"# Per-cell RPM overrides: {CELL_RPM_MAP}"])
-        if CELL_CONTENT_MAP:
-            csv_writer.writerow([f"# Per-cell sample labels: {CELL_CONTENT_MAP}"])
-        csv_writer.writerow([f"# Timestamp: {timestamp}"])
-        csv_writer.writerow([f"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"])
-        csv_writer.writerow([f"# Completed cells: {completed_cells}"])
-        csv_writer.writerow([f"# Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}"])
-        if FEEDBACK_CONTROL_ENABLED:
-            csv_writer.writerow([f"# Feedback R2 Thresholds: Drag = {R2_DRAG_MIN}, CV = {R2_CV_MIN}, Slope = {R2_SLOPE_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
-            csv_writer.writerow([f"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = {WEIGHT_2ND_DERIV_DRAG}/{WEIGHT_2ND_DERIV_CV}/{WEIGHT_2ND_DERIV_SLOPE}, R2(Drag/CV/Slope) = {WEIGHT_R2_DRAG}/{WEIGHT_R2_CV}/{WEIGHT_R2_SLOPE}"])
-        if LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED:
-            csv_writer.writerow([
-                f"# Low-torque liquid-contact hunt: per RPM at each Z, skip RPM when first sample at "
-                f"elapsed >= {SAMPLE_INTERVAL:.1f}s is < "
-                f"{LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT:.2f}% (regular runs only); "
-                f"skipped RPM rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} "
-                "and SKIPPED metrics"
-            ])
-        csv_writer.writerow([f"# WARNING: Experiment was terminated early - these are partial results"])
-        _append_predicted_viscosity_csv_metadata(csv_writer)
-        
-        # Write column headers with Rotational_Drag and metrics columns
-        headers = [
-            "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
-            "Cell_Termination_Method",
-            "CV", "R_2", "Trend_Slope", "Second_derivative",
-            "Second_derivative_drag", "Second_derivative_cv", "Second_derivative_slope",
-            "R_2_drag", "R_2_cv", "R_2_slope",
-            "Hit_2nd_Deriv_Drag", "Hit_2nd_Deriv_CV", "Hit_2nd_Deriv_Slope",
-            "Hit_R_2_Drag", "Hit_R_2_CV", "Hit_R_2_Slope",
-            "Samples_Collected_At_Z",
-            "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
-        ]
-        csv_writer.writerow(headers)
-        
-        # Write all individual measurements for completed cells with calculated rotational drag
-        for global_cell in sorted(all_data.keys()):
-            row_number, local_cell = global_cell_to_row_and_local(global_cell)
-            cell_data = all_data[global_cell]
-            
-            # Sort Z heights from highest to lowest
-            z_heights = sorted(cell_data.keys(), reverse=True)
-            
-            for z_height in z_heights:
-                if z_height in cell_data:
-                    rpm_data = cell_data[z_height]
-                    liquid_probe = bool(rpm_data.get("_liquid_skip_probe_at_z"))
-                    tlab = rpm_data.get(
-                        "_liquid_skip_torque_label",
-                        _liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT),
-                    )
-                    metrics_data = cell_data[z_height].get("_metrics", {})
-                    for rpm in sorted(k for k in rpm_data.keys() if k not in _RPM_DATA_META_KEYS):
-                        measurements = rpm_data.get(rpm)
-                        if measurements is None:
-                            if liquid_probe:
-                                csv_writer.writerow(
-                                    _liquid_skip_csv_row(
-                                        row_number, global_cell, z_height, rpm, tlab
-                                    )
-                                )
-                            continue
-                        if measurements is not None:
-                            # Get metrics for this RPM at this Z-height
-                            rpm_metrics = metrics_data.get(rpm, {
-                                'CV': 0.0,
-                                'R2': 0.0,
-                                'Trend_Slope': 0.0,
-                                'Second_derivative': 0.0,
-                                'Second_derivative_drag': 0.0,
-                                'Second_derivative_cv': 0.0,
-                                'Second_derivative_slope': 0.0,
-                                'R2_drag': 0.0,
-                                'R2_cv': 0.0,
-                                'R2_slope': 0.0,
-                                'Hit_2nd_Deriv_Drag': False,
-                                'Hit_2nd_Deriv_CV': False,
-                                'Hit_2nd_Deriv_Slope': False,
-                                'Hit_R2_Drag': False,
-                                'Hit_R2_CV': False,
-                                'Hit_R2_Slope': False,
-                                'Hit_Point_Confidence': 0.0,
-                                'Hit_Detected': False,
-                                'Hit_Reasons': ''
-                            })
-                            
-                            for measurement in measurements:
-                                # Calculate rotational drag for this measurement
-                                torque_percent = measurement['torque_percent']
-                                rotational_drag = abs(torque_percent) / rpm if rpm > 0 else float('inf')
-                                
-                                data_row = [
-                                    str(row_number),                              # row
-                                    str(global_cell),                            # cell (global numbering)
-                                    CELL_CONTENT_MAP.get(global_cell, ''),       # Cell_Label
-                                    f"{z_height:.3f}",                          # Z_Height_mm
-                                    f"{rpm:.1f}",                               # RPM
-                                    f"{measurement['elapsed_time']:.2f}",        # Elapsed_Time_s
-                                    f"{measurement['torque_percent']:.3f}",      # Torque_%
-                                    f"{rotational_drag:.6f}",                   # Rotational_Drag
-                                    str((termination_by_cell or {}).get(global_cell, "normal")),
-                                    f"{rpm_metrics['CV']:.6f}",                 # CV
-                                    f"{rpm_metrics['R2']:.6f}",                 # R2
-                                    f"{rpm_metrics['Trend_Slope']:.6f}",        # Trend_Slope
-                                    f"{rpm_metrics['Second_derivative']:.6f}",   # Second_derivative
-                                    f"{rpm_metrics.get('Second_derivative_drag', 0.0):.6f}",
-                                    f"{rpm_metrics.get('Second_derivative_cv', 0.0):.6f}",
-                                    f"{rpm_metrics.get('Second_derivative_slope', 0.0):.6f}",
-                                    f"{rpm_metrics.get('R2_drag', 0.0):.6f}",
-                                    f"{rpm_metrics.get('R2_cv', 0.0):.6f}",
-                                    f"{rpm_metrics.get('R2_slope', 0.0):.6f}",
-                                    str(bool(rpm_metrics.get('Hit_2nd_Deriv_Drag', False))),
-                                    str(bool(rpm_metrics.get('Hit_2nd_Deriv_CV', False))),
-                                    str(bool(rpm_metrics.get('Hit_2nd_Deriv_Slope', False))),
-                                    str(bool(rpm_metrics.get('Hit_R2_Drag', False))),
-                                    str(bool(rpm_metrics.get('Hit_R2_CV', False))),
-                                    str(bool(rpm_metrics.get('Hit_R2_Slope', False))),
-                                    str(len(measurements)),
-                                    f"{rpm_metrics['Hit_Point_Confidence']:.6f}", # Hit_Point_Confidence
-                                    str(bool(rpm_metrics['Hit_Detected'])),       # Hit_Detected
-                                    str(rpm_metrics['Hit_Reasons'])               # Hit_Reasons
-                                ]
-                                csv_writer.writerow(data_row)
-    
-    print(f"Partial results saved to: {csv_filename}")
-    return csv_filename
+    """Deprecated wrapper — use save_dynamic_analysis_data(..., partial=True)."""
+    return save_dynamic_analysis_data(
+        all_data,
+        timestamp,
+        mode,
+        experiment_name,
+        termination_by_cell=termination_by_cell,
+        partial=True,
+        completed_cells=completed_cells,
+    )
+
 
 def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
                               timestamp: str, mode: str, experiment_name: str,
-                              termination_by_cell: Optional[Dict[int, str]] = None) -> str:
-    """Save dynamic analysis data - single CSV file for entire run with columns including metrics"""
-    
-    # Create single CSV filename
-    csv_filename = f"dynamic_analysis_{_sanitize_experiment_slug(experiment_name)}_{mode}_{timestamp}.csv"
-    
+                              termination_by_cell: Optional[Dict[int, str]] = None,
+                              partial: bool = False,
+                              completed_cells: Optional[List[int]] = None) -> str:
+    """Save dynamic analysis data — latest measurement per Z×RPM."""
+    if not all_data:
+        print("No data collected to save.")
+        return ""
+
+    slug = _sanitize_experiment_slug(experiment_name)
+    if partial:
+        print(f"\nSAVING PARTIAL RESULTS...")
+        if completed_cells is not None:
+            print(f"Completed cells: {completed_cells}")
+        csv_filename = f"dynamic_analysis_{slug}_{mode}_PARTIAL_{timestamp}.csv"
+    else:
+        csv_filename = f"dynamic_analysis_{slug}_{mode}_{timestamp}.csv"
+
     with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
         csv_writer = csv.writer(csvfile)
 
         # Write metadata header
-        csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()}"])
+        if partial:
+            csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()} (PARTIAL RESULTS)"])
+        else:
+            csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()}"])
         csv_writer.writerow([f"# Experiment Name: {experiment_name}"])
         csv_writer.writerow([f"# Test RPMs (global fallback): {TEST_RPMS}"])
         if TESTING_MODE == "custom" and CELL_RPM_MAP:
@@ -1853,6 +1901,8 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             csv_writer.writerow([f"# Per-cell sample labels: {CELL_CONTENT_MAP}"])
         csv_writer.writerow([f"# Timestamp: {timestamp}"])
         csv_writer.writerow([f"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"])
+        if partial and completed_cells is not None:
+            csv_writer.writerow([f"# Completed cells: {completed_cells}"])
         csv_writer.writerow([f"# Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}"])
         if FEEDBACK_CONTROL_ENABLED:
             csv_writer.writerow([f"# Feedback R2 Thresholds: Drag = {R2_DRAG_MIN}, CV = {R2_CV_MIN}, Slope = {R2_SLOPE_MIN}, Confidence = {HIT_POINT_CONFIDENCE_THRESHOLD}"])
@@ -1865,9 +1915,12 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                 f"skipped RPM rows use {_liquid_skip_torque_label(LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT)} "
                 "and SKIPPED metrics"
             ])
+        if partial:
+            csv_writer.writerow([
+                "# WARNING: Experiment was terminated early - these are partial results"
+            ])
         _append_predicted_viscosity_csv_metadata(csv_writer)
-        
-        # Write column headers with Rotational_Drag and metrics columns
+
         headers = [
             "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
             "Cell_Termination_Method",
@@ -1880,14 +1933,11 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
         ]
         csv_writer.writerow(headers)
-        
-        # Write all individual measurements with calculated rotational drag and metrics (LATEST ONLY)
+
         for global_cell in sorted(all_data.keys()):
             row_number, local_cell = global_cell_to_row_and_local(global_cell)
             cell_data = all_data[global_cell]
-            
-            # Sort Z heights from highest to lowest
-            z_heights = sorted(cell_data.keys(), reverse=True)
+            z_heights = sorted(_z_keys_from_cell_data(cell_data), reverse=True)
             
             for z_height in z_heights:
                 if z_height in cell_data:
@@ -1933,20 +1983,10 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                             })
                             
                             # Use LATEST measurement only (as requested by user)
-                            latest_measurement = measurements[-1]  # Take the last measurement
+                            latest_measurement = measurements[-1]
                             torque_percent = latest_measurement['torque_percent']
                             rotational_drag = abs(torque_percent) / rpm if rpm > 0 else float('inf')
-                            
-                            # Add measurement to web interface
-                            web_interface.add_measurement_point(
-                                height=z_height,
-                                rotational_drag=rotational_drag,
-                                rpm=rpm,
-                                cell_id=global_cell,
-                                hit_detected=bool(rpm_metrics.get('Hit_Detected', False)),
-                                sample_count=len(measurements),
-                            )
-                            
+
                             data_row = [
                                 str(row_number),                              # row
                                 str(global_cell),                            # cell (global numbering)
@@ -1979,8 +2019,11 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 str(rpm_metrics['Hit_Reasons'])               # Hit_Reasons
                             ]
                             csv_writer.writerow(data_row)
-    
-    print(f"All data saved to: {csv_filename}")
+
+    if partial:
+        print(f"Partial results saved to: {csv_filename}")
+    else:
+        print(f"All data saved to: {csv_filename}")
     return csv_filename
 
 def main():
@@ -2150,6 +2193,7 @@ def main():
         
             # Go through each selected cell
             calibration_cells: dict[int, float] = {}  # Populated during calibration runs
+            run_ended_early = False
             for i, global_cell in enumerate(selected_cells):
                 raise_if_stop_requested()
                 _fill_thread: Optional[threading.Thread] = None
@@ -2259,6 +2303,7 @@ def main():
                             web_interface.update_status(f"Recalibrated cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                         # NO washing in calibration/recalibration mode — move directly to next cell
                     else:
+                        cell_term = termination_by_cell.get(global_cell, "normal")
                         snapshot = [
                             m for m in web_interface.measurement_data
                             if isinstance(m, dict) and int(m.get("cell_id", -1)) == int(global_cell)
@@ -2266,16 +2311,25 @@ def main():
                         web_interface.add_experiment_review_cell(
                             global_cell,
                             snapshot,
-                            termination_reason=termination_by_cell.get(global_cell, "normal"),
+                            termination_reason=cell_term,
+                            is_partial=is_partial_termination(cell_term),
+                            z_level_count=count_z_levels(all_data, global_cell),
                         )
                         web_interface.add_completed_cell(
                             global_cell,
-                            termination_reason=termination_by_cell.get(global_cell, "normal"),
+                            termination_reason=cell_term,
                         )
                         if VISCOSITY_PREDICTION_MODE != "off":
                             run_predicted_viscosity_for_cell(
                                 global_cell, cell_rpms, feedback_summary
                             )
+                        if cell_term == "user_stop":
+                            run_ended_early = True
+                            print(
+                                f"Experiment stop requested during Cell {global_cell} — "
+                                "ending run after saving cell data"
+                            )
+                            break
                         # Normal run: perform washing only after successful CNC retract
                         if pump and feedback_summary.get("cnc_retracted_ok"):
                             perform_washing_sequence(cnc, pump, global_cell, fill_thread=_fill_thread)
@@ -2334,34 +2388,16 @@ def main():
                 else:
                     web_interface.update_status("Experiment completed successfully")
             else:
-                web_interface.sync_experiment_review_cells_from_run(
-                    all_data,
-                    termination_by_cell,
-                    default_termination="normal",
-                )
-                web_interface.set_experiment_review_run_context(
+                _finalize_regular_experiment_run(
                     all_data,
                     timestamp,
                     mode,
                     run_experiment_name,
-                    termination_by_cell=termination_by_cell,
-                    completed_cells=completed_cells,
+                    termination_by_cell,
+                    completed_cells,
+                    selected_cells,
+                    run_ended_early=run_ended_early,
                 )
-                if web_interface.open_experiment_review_if_needed():
-                    web_interface.update_status(
-                        "Run finished — review experiment data (Save or Discard each cell)"
-                    )
-                else:
-                    web_interface.update_status("Saving final results...")
-                    csv_filename = save_dynamic_analysis_data(
-                        all_data,
-                        timestamp,
-                        mode,
-                        run_experiment_name,
-                        termination_by_cell=termination_by_cell,
-                    )
-                    print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
-                    web_interface.update_status("Experiment completed successfully")
                 print(f"\nDynamic analysis experiment completed successfully at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
         except KeyboardInterrupt:
@@ -2383,30 +2419,17 @@ def main():
                     review_type, calibration_offset=CALIBRATION_OFFSET
                 )
             else:
-                web_interface.sync_experiment_review_cells_from_run(
-                    all_data,
-                    termination_by_cell,
-                    default_termination="user_stop",
-                )
-                web_interface.set_experiment_review_run_context(
+                _finalize_regular_experiment_run(
                     all_data,
                     timestamp,
                     mode,
                     run_experiment_name,
-                    termination_by_cell=termination_by_cell,
-                    completed_cells=completed_cells,
+                    termination_by_cell,
+                    completed_cells,
+                    selected_cells,
+                    run_ended_early=True,
+                    default_termination="user_stop",
                 )
-                if not web_interface.open_experiment_review_if_needed():
-                    if all_data:
-                        print("Saving partial results...")
-                        save_partial_data(
-                            all_data,
-                            timestamp,
-                            mode,
-                            completed_cells,
-                            run_experiment_name,
-                            termination_by_cell=termination_by_cell,
-                        )
         except Exception as e:
             print(f"Critical error during experiment: {e}")
             traceback.print_exc()
@@ -2427,30 +2450,17 @@ def main():
                     review_type, calibration_offset=CALIBRATION_OFFSET
                 )
             else:
-                web_interface.sync_experiment_review_cells_from_run(
-                    all_data,
-                    termination_by_cell,
-                    default_termination="error",
-                )
-                web_interface.set_experiment_review_run_context(
+                _finalize_regular_experiment_run(
                     all_data,
                     timestamp,
                     mode,
                     run_experiment_name,
-                    termination_by_cell=termination_by_cell,
-                    completed_cells=completed_cells,
+                    termination_by_cell,
+                    completed_cells,
+                    selected_cells,
+                    run_ended_early=True,
+                    default_termination="error",
                 )
-                if not web_interface.open_experiment_review_if_needed():
-                    if all_data:
-                        print("Saving partial results...")
-                        save_partial_data(
-                            all_data,
-                            timestamp,
-                            mode,
-                            completed_cells,
-                            run_experiment_name,
-                            termination_by_cell=termination_by_cell,
-                        )
         finally:
             # Cleanup hardware
             print("Cleaning up hardware...")
