@@ -959,14 +959,23 @@ class ViscometryWebInterface:
         with self.control_lock:
             self._experiment_review_pending = {"completion_order": [], "cells": {}}
 
+    @staticmethod
+    def _is_partial_termination(reason: str) -> bool:
+        return str(reason or "").strip().lower() in ("user_stop", "manual_terminate")
+
     def add_experiment_review_cell(
         self,
         cell_id: int,
         measurements: Optional[List[dict]] = None,
         termination_reason: str = "normal",
+        is_partial: Optional[bool] = None,
+        z_level_count: Optional[int] = None,
     ) -> None:
         """Queue a completed regular-run cell for post-run data review."""
         key = str(int(cell_id))
+        term = str(termination_reason or "normal")
+        if is_partial is None:
+            is_partial = self._is_partial_termination(term)
         snapshot = []
         if measurements:
             for row in measurements:
@@ -986,7 +995,9 @@ class ViscometryWebInterface:
             pending["cells"][key] = {
                 "cell_id": int(cell_id),
                 "measurements": snapshot,
-                "termination_reason": str(termination_reason or "normal"),
+                "termination_reason": term,
+                "is_partial": bool(is_partial),
+                "z_level_count": int(z_level_count) if z_level_count is not None else 0,
             }
 
     def _snapshot_measurements_for_cell(self, cell_id: int) -> List[dict]:
@@ -1022,34 +1033,31 @@ class ViscometryWebInterface:
         termination_by_cell: Optional[Dict[int, str]] = None,
         default_termination: str = "normal",
     ) -> None:
-        """Queue any cell with run data or live measurements for post-run review."""
+        """Queue cells that have structured all_data for post-run review."""
+        from all_cells_with_rotational_drag_feedback import count_z_levels
+
         all_data = all_data or {}
         termination_by_cell = termination_by_cell or {}
         cell_ids = set()
         for key in all_data.keys():
             try:
-                cell_ids.add(int(key))
+                cell_id = int(key)
             except (TypeError, ValueError):
                 continue
-        for row in self.measurement_data:
-            if not isinstance(row, dict):
-                continue
-            try:
-                cell_ids.add(int(row.get("cell_id")))
-            except (TypeError, ValueError):
-                continue
+            if self._cell_all_data_has_content(all_data.get(key)):
+                cell_ids.add(cell_id)
         for cell_id in sorted(cell_ids):
             snapshot = self._snapshot_measurements_for_cell(cell_id)
-            has_all_data = self._cell_all_data_has_content(all_data.get(cell_id))
-            if not snapshot and not has_all_data:
-                continue
             term = termination_by_cell.get(cell_id)
             if term is None:
                 term = termination_by_cell.get(str(cell_id), default_termination)
+            term_str = str(term or default_termination)
             self.add_experiment_review_cell(
                 cell_id,
                 snapshot,
-                termination_reason=str(term or default_termination),
+                termination_reason=term_str,
+                is_partial=self._is_partial_termination(term_str),
+                z_level_count=count_z_levels(all_data, cell_id),
             )
 
     def set_experiment_review_run_context(
@@ -1060,6 +1068,9 @@ class ViscometryWebInterface:
         experiment_name: str,
         termination_by_cell: Optional[Dict[int, str]] = None,
         completed_cells: Optional[List[int]] = None,
+        partial_by_cell: Optional[Dict[str, bool]] = None,
+        run_ended_early: bool = False,
+        selected_cell_count: Optional[int] = None,
     ) -> None:
         """Stash run outputs until experiment review commit writes filtered CSV/history."""
         with self.control_lock:
@@ -1075,16 +1086,26 @@ class ViscometryWebInterface:
                 all_data_copy = copy.deepcopy(all_data) if all_data else {}
             except Exception as e:
                 raise ValueError(f"Failed to stash experiment run data: {e}") from e
+            term_map = {
+                str(int(k)): str(v)
+                for k, v in (termination_by_cell or {}).items()
+            }
+            partial_map = dict(partial_by_cell or {})
+            if not partial_map:
+                partial_map = {
+                    k: self._is_partial_termination(v)
+                    for k, v in term_map.items()
+                }
             self._experiment_review_run_context = {
                 "all_data": all_data_copy,
                 "timestamp": str(timestamp),
                 "mode": str(mode),
                 "experiment_name": str(experiment_name or ""),
-                "termination_by_cell": {
-                    str(int(k)): str(v)
-                    for k, v in (termination_by_cell or {}).items()
-                },
+                "termination_by_cell": term_map,
                 "completed_cells": [int(c) for c in (completed_cells or [])],
+                "partial_by_cell": partial_map,
+                "run_ended_early": bool(run_ended_early),
+                "selected_cell_count": int(selected_cell_count) if selected_cell_count is not None else None,
                 "run_start_ts": self.experiment_start_ts,
                 "runtime_settings": settings,
                 "predicted_viscosity_results": self._copy_predicted_viscosity_results_unlocked(),
@@ -1107,15 +1128,23 @@ class ViscometryWebInterface:
                     "cell_id": int(entry["cell_id"]),
                     "measurements": list(entry.get("measurements") or []),
                     "termination_reason": str(entry.get("termination_reason") or "normal"),
+                    "is_partial": bool(entry.get("is_partial")),
+                    "z_level_count": int(entry.get("z_level_count") or 0),
                     "decision": "pending",
                 }
             if not cells_out:
                 return None
+            run_ended_early = False
+            if self._experiment_review_run_context:
+                run_ended_early = bool(
+                    self._experiment_review_run_context.get("run_ended_early")
+                )
             session = {
                 "session_id": str(uuid.uuid4()),
                 "completion_order": [int(c) for c in order if str(c) in cells_out],
                 "cells": cells_out,
                 "queued_saves": {},
+                "run_ended_early": run_ended_early,
             }
             self.experiment_review_session = session
             self._experiment_review_pending = {"completion_order": [], "cells": {}}
@@ -1128,11 +1157,15 @@ class ViscometryWebInterface:
         cells = {}
         for key, cell in (session.get("cells") or {}).items():
             cells[key] = dict(cell)
+        run_ended_early = session.get("run_ended_early")
+        if run_ended_early is None and self._experiment_review_run_context:
+            run_ended_early = self._experiment_review_run_context.get("run_ended_early", False)
         return {
             "session_id": session.get("session_id"),
             "completion_order": list(session.get("completion_order") or []),
             "cells": cells,
             "queued_saves": dict(session.get("queued_saves") or {}),
+            "run_ended_early": bool(run_ended_early),
         }
 
     def get_experiment_review_session(self) -> Optional[dict]:
@@ -1185,12 +1218,12 @@ class ViscometryWebInterface:
         return public
 
     def _normalize_viscosity_prediction_mode(self, settings: Dict) -> str:
-        mode = str(settings.get("viscosity_prediction_mode", "off") or "off").strip()
-        if mode in ("off", "Newtonian", "Non-Newtonian"):
-            return mode
-        if settings.get("predicted_viscosity_enabled"):
-            return "Newtonian"
-        return "off"
+        from predicted_viscosity import normalize_viscosity_prediction_mode
+
+        return normalize_viscosity_prediction_mode(
+            settings.get("viscosity_prediction_mode"),
+            legacy_enabled=settings.get("predicted_viscosity_enabled"),
+        )
 
     def _predicted_viscosity_has_data(self, pred_data: Dict) -> bool:
         if not isinstance(pred_data, dict):
@@ -1208,33 +1241,39 @@ class ViscometryWebInterface:
     ) -> Optional[dict]:
         if not saved_cell_ids:
             return None
+        from all_cells_with_rotational_drag_feedback import extract_latest_points_from_all_data
+
         settings = dict(run_context.get("runtime_settings") or {})
         cells_sorted = sorted(int(c) for c in saved_cell_ids)
-        run_data = []
         termination_map = {}
+        partial_flags = {}
         cells_dict = session.get("cells") or {}
+        partial_by_cell = run_context.get("partial_by_cell") or {}
         for cell_id in cells_sorted:
             key = str(int(cell_id))
             entry = cells_dict.get(key) or {}
-            term = str(entry.get("termination_reason") or "normal")
+            term = str(
+                entry.get("termination_reason")
+                or (run_context.get("termination_by_cell") or {}).get(key)
+                or "normal"
+            )
             termination_map[key] = term
-            for row in entry.get("measurements") or []:
-                if not isinstance(row, dict):
-                    continue
-                ts = row.get("timestamp")
-                try:
-                    ts_num = float(ts) if ts is not None else None
-                except (TypeError, ValueError):
-                    ts_num = None
-                run_data.append({
-                    "timestamp": ts_num if ts_num is not None else time.time(),
-                    "cell_id": int(cell_id),
-                    "height": float(row.get("height") or 0),
-                    "torque_percent": float(row.get("torque_percent") or 0),
-                    "rotational_drag": float(row.get("rotational_drag") or 0),
-                    "rpm": float(row.get("rpm") or 0),
-                    "is_final_save": False,
-                })
+            is_partial = entry.get("is_partial")
+            if is_partial is None:
+                is_partial = partial_by_cell.get(key, self._is_partial_termination(term))
+            partial_flags[key] = bool(is_partial)
+
+        all_data = _coerce_all_data_keys(run_context.get("all_data") or {})
+        filtered_all_data = {
+            int(k): all_data[k]
+            for k in all_data.keys()
+            if int(k) in cells_sorted
+        }
+        run_data = extract_latest_points_from_all_data(
+            filtered_all_data,
+            cells_sorted,
+            run_start_ts=run_context.get("run_start_ts"),
+        )
         if not run_data:
             return None
 
@@ -1282,7 +1321,7 @@ class ViscometryWebInterface:
 
         pred_mode = self._normalize_viscosity_prediction_mode(settings)
         if pred_mode == "off" and self._predicted_viscosity_has_data(pred_filtered):
-            pred_mode = "Newtonian"
+            pred_mode = "on"
 
         return {
             "id": _experiment_history_id_for_run(run_start_ts),
@@ -1297,6 +1336,7 @@ class ViscometryWebInterface:
             "runEndTsSec": latest,
             "csv": csv_header + "\n".join(csv_rows),
             "cell_termination_reasons": termination_map,
+            "cell_partial_flags": partial_flags,
             "viscosity_prediction_mode": pred_mode,
             "predicted_viscosity": pred_filtered,
         }
@@ -1347,6 +1387,8 @@ class ViscometryWebInterface:
                             for k, v in (run_context.get("termination_by_cell") or {}).items()
                             if int(k) in saved_cell_ids
                         },
+                        partial=bool(run_context.get("run_ended_early")),
+                        completed_cells=run_context.get("completed_cells"),
                     )
                     partial_csv_path = csv_filename
                 experiment_entry = self._build_experiment_history_entry_from_review(
@@ -1517,15 +1559,12 @@ class ViscometryWebInterface:
                 normalized['smart_early_exit_enabled'] = bool(settings['smart_early_exit_enabled'])
             if 'fail_safe_enabled' in settings:
                 normalized['fail_safe_enabled'] = bool(settings['fail_safe_enabled'])
-            if 'viscosity_prediction_mode' in settings:
-                mode = str(settings.get('viscosity_prediction_mode', 'off') or 'off').strip()
-                normalized['viscosity_prediction_mode'] = (
-                    mode if mode in ('off', 'Newtonian', 'Non-Newtonian') else 'off'
-                )
-            elif 'predicted_viscosity_enabled' in settings:
-                normalized['viscosity_prediction_mode'] = (
-                    'Newtonian' if bool(settings['predicted_viscosity_enabled']) else 'off'
-                )
+            from predicted_viscosity import normalize_viscosity_prediction_mode
+
+            normalized['viscosity_prediction_mode'] = normalize_viscosity_prediction_mode(
+                settings.get('viscosity_prediction_mode'),
+                legacy_enabled=settings.get('predicted_viscosity_enabled'),
+            )
             if 'low_torque_liquid_contact_skip_enabled' in settings:
                 normalized['low_torque_liquid_contact_skip_enabled'] = bool(
                     settings['low_torque_liquid_contact_skip_enabled']
@@ -1842,6 +1881,22 @@ class ViscometryWebInterface:
             self.socketio.emit('predicted_viscosity_update', payload)
         except Exception as e:
             print(f"Warning: Failed to emit predicted viscosity: {e}")
+
+    def emit_predicted_viscosity_summary(self, cell_id: int, summary: Dict):
+        """Store and broadcast cell-level rheology summary."""
+        try:
+            from rheology_live_adapter import SUMMARY_KEY
+
+            cell_key = str(int(cell_id))
+            payload = dict(summary) if isinstance(summary, dict) else {}
+            payload['cell_id'] = int(cell_id)
+            with self.control_lock:
+                if cell_key not in self.predicted_viscosity_results:
+                    self.predicted_viscosity_results[cell_key] = {}
+                self.predicted_viscosity_results[cell_key][SUMMARY_KEY] = payload
+            self.socketio.emit('predicted_viscosity_summary_update', payload)
+        except Exception as e:
+            print(f"Warning: Failed to emit predicted viscosity summary: {e}")
 
     def _load_experiment_history(self):
         """Load shared experiment history from disk if available."""

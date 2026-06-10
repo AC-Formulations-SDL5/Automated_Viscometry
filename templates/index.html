@@ -468,13 +468,15 @@
                                 <div id="viscosity-predictions-panel" class="viscosity-predictions-panel" data-mode="off">
                                     <div class="viscosity-predictions-header">
                                         <span class="form-label">Viscosity predictions</span>
-                                        <span class="viscosity-predictions-hint">Hyperbola fit after each cell</span>
+                                        <span class="viscosity-predictions-hint">Unified rheology fit after each cell</span>
                                     </div>
-                                    <div class="viscosity-predictions-buttons segmented viscosity-predictions-segmented" role="group" aria-label="Viscosity predictions">
-                                        <button type="button" class="btn viscosity-mode-btn viscosity-mode-newtonian" data-mode="Newtonian" aria-pressed="false">Newtonian fluid</button>
-                                        <button type="button" class="btn viscosity-mode-btn viscosity-mode-nonnewtonian" data-mode="Non-Newtonian" aria-pressed="false">Non-Newtonian</button>
-                                        <button type="button" class="btn viscosity-mode-btn viscosity-mode-off active" data-mode="off" aria-pressed="true">off</button>
-                                    </div>
+                                    <label class="ui-switch-row viscosity-prediction-toggle-row">
+                                        <span class="ui-switch">
+                                            <input id="viscosity-prediction-enabled" name="viscosity_prediction_enabled" type="checkbox">
+                                            <span class="ui-switch-track" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="ui-switch-label">Enable viscosity predictions</span>
+                                    </label>
                                 </div>
                             </div>
                             <label>
@@ -758,6 +760,8 @@
                                         <th>Cell Label</th>
                                         <th>RPM</th>
                                         <th>Predicted Viscosity (kCp)</th>
+                                        <th>R²</th>
+                                        <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="live-viscosity-table-body"></tbody>
@@ -778,12 +782,11 @@
                         <h2>Predicted Viscosity</h2>
                     </div>
                     <div class="predicted-viscosity-explainer">
-                        <p>Rotational drag <em>D</em> (torque % divided by spindle speed ω) follows a hyperbolic relationship with gap height <em>h</em>:</p>
-                        <p class="predicted-viscosity-formula">(D/ω) = η·K / (h + h₀)</p>
-                        <p><strong>Newtonian:</strong> <em>D(h) = a / (h − b)</em> (flow index <em>n = 1</em>).</p>
-                        <p><strong>Non-Newtonian (shear-thinning):</strong> <em>D(h) = a / |h − b|<sup>n</sup></em> with <em>n &lt; 1</em>. The absolute value prevents complex results when <em>n</em> is fractional.</p>
-                        <p>The geometry constant <em>K</em> (scale factor <strong>M<sub>HYP</sub> = 2.330</strong>) maps the fitted coefficient <em>a</em> to viscosity: <em>η (kCp) = |a| × M<sub>HYP</sub></em>.</p>
-                        <p>Points below the torque floor and at/after the detected hit point are excluded before a statistical middle-segment trim and <code>curve_fit</code>. Choose the mode under Design Experiment → Viscosity predictions.</p>
+                        <p>Rotational drag <em>D = T%/RPM</em> is fit at each spindle speed as:</p>
+                        <p class="predicted-viscosity-formula">D(h) = A / (h + h<sub>c</sub>) + B</p>
+                        <p>with a universal geometric offset <em>h<sub>c</sub></em> and silicone-oil calibration <em>A = k·μ<sup>p</sup></em> to recover apparent viscosity.</p>
+                        <p><strong>Single RPM:</strong> Newtonian estimate (one η). <strong>Multiple RPMs:</strong> power-law flow curve with automatic regime classification (Newtonian, shear-thinning, shear-thickening).</p>
+                        <p>Points below the torque floor and at/below the detected hit point are excluded before fitting. Sweeps with fit <em>R² &lt; 0.70</em> are rejected.</p>
                     </div>
                 </section>
 
@@ -973,6 +976,7 @@
         >
             <header class="data-review-header experiment-review-header">
                 <h2 id="experiment-review-title">Save Data</h2>
+                <p id="experiment-review-subtitle" class="experiment-review-subtitle hidden"></p>
             </header>
             <nav id="experiment-review-tabs" class="data-review-tabs experiment-review-tabs" aria-label="Cells to review"></nav>
             <div class="data-review-body experiment-review-body">

@@ -3,6 +3,7 @@
 
 import os
 import sys
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -50,6 +51,26 @@ def _native_all_data_fixture():
     }
 
 
+def _two_cell_all_data_fixture():
+    return {
+        10: {
+            65.5: {
+                95.0: [
+                    {"torque_percent": 40.0, "elapsed_time": 5.0, "timestamp": 1_700_000_100.0},
+                    {"torque_percent": 41.0, "elapsed_time": 6.0, "timestamp": 1_700_000_101.0},
+                ]
+            }
+        },
+        11: {
+            66.0: {
+                1.4: [
+                    {"torque_percent": 30.0, "elapsed_time": 8.0, "timestamp": 1_700_000_200.0},
+                ]
+            }
+        },
+    }
+
+
 class TestCoerceAllDataKeys(unittest.TestCase):
     def test_stringified_keys_coerced_to_numeric(self):
         coerced = _coerce_all_data_keys(_stringified_all_data_fixture())
@@ -93,10 +114,13 @@ class TestExperimentReviewCommit(unittest.TestCase):
                         }
                     ],
                     "termination_reason": "normal",
+                    "is_partial": False,
+                    "z_level_count": 1,
                     "decision": "saved",
                 }
             },
             "queued_saves": {"1": True},
+            "run_ended_early": False,
         }
         self.iface._experiment_review_run_context = {
             "all_data": _native_all_data_fixture(),
@@ -104,7 +128,9 @@ class TestExperimentReviewCommit(unittest.TestCase):
             "mode": "custom",
             "experiment_name": "unit_test",
             "termination_by_cell": {"1": "normal"},
+            "partial_by_cell": {"1": False},
             "completed_cells": [1],
+            "run_ended_early": False,
             "run_start_ts": 1_700_000_000.0,
             "runtime_settings": {},
             "predicted_viscosity_results": {},
@@ -162,6 +188,114 @@ class TestExperimentReviewCommit(unittest.TestCase):
         self.assertIn(0.8, saved_all_data[1][65.5])
         self.assertEqual(len(self.iface.experiment_history), 1)
         self.assertEqual(self.iface.experiment_history[0]["id"], "exp-1700000000000")
+
+    def test_history_built_from_all_data_not_snapshots(self):
+        session = {
+            "cells": {
+                "10": {
+                    "termination_reason": "normal",
+                    "is_partial": False,
+                    "measurements": [],
+                },
+                "11": {
+                    "termination_reason": "user_stop",
+                    "is_partial": True,
+                    "measurements": [],
+                },
+            }
+        }
+        run_context = {
+            "all_data": _two_cell_all_data_fixture(),
+            "run_start_ts": 1_700_000_000.0,
+            "termination_by_cell": {"10": "normal", "11": "user_stop"},
+            "partial_by_cell": {"10": False, "11": True},
+            "runtime_settings": {},
+            "predicted_viscosity_results": {},
+        }
+        entry = self.iface._build_experiment_history_entry_from_review(
+            session, run_context, [10, 11]
+        )
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["cells"], [10, 11])
+        self.assertEqual(entry["measurement_count"], 2)
+        self.assertEqual(entry["cell_partial_flags"], {"10": False, "11": True})
+        latest = entry["latestPerZ"]
+        self.assertEqual(len(latest), 2)
+        cell_ids = {int(p["cell_id"]) for p in latest}
+        self.assertEqual(cell_ids, {10, 11})
+        cell10 = next(p for p in latest if p["cell_id"] == 10)
+        self.assertAlmostEqual(cell10["torque_percent"], 41.0)
+
+    @patch("all_cells_with_rotational_drag_feedback.save_dynamic_analysis_data")
+    def test_commit_two_cells_after_user_stop(self, mock_save):
+        mock_save.return_value = "dynamic_analysis_unit_test_custom_PARTIAL_20260608_120000.csv"
+        self.iface.experiment_review_session = {
+            "session_id": self.session_id,
+            "completion_order": [10, 11],
+            "cells": {
+                "10": {
+                    "cell_id": 10,
+                    "measurements": [],
+                    "termination_reason": "normal",
+                    "is_partial": False,
+                    "z_level_count": 1,
+                    "decision": "saved",
+                },
+                "11": {
+                    "cell_id": 11,
+                    "measurements": [],
+                    "termination_reason": "user_stop",
+                    "is_partial": True,
+                    "z_level_count": 1,
+                    "decision": "saved",
+                },
+            },
+            "queued_saves": {"10": True, "11": True},
+            "run_ended_early": True,
+        }
+        self.iface._experiment_review_run_context = {
+            "all_data": _two_cell_all_data_fixture(),
+            "timestamp": "20260608_120000",
+            "mode": "custom",
+            "experiment_name": "unit_test",
+            "termination_by_cell": {"10": "normal", "11": "user_stop"},
+            "partial_by_cell": {"10": False, "11": True},
+            "completed_cells": [10, 11],
+            "run_ended_early": True,
+            "run_start_ts": 1_700_000_000.0,
+            "runtime_settings": {},
+            "predicted_viscosity_results": {},
+        }
+        result = self.iface.commit_experiment_review(self.session_id)
+        self.assertEqual(result["saved_cells"], [10, 11])
+        mock_save.assert_called_once()
+        saved_all_data = mock_save.call_args[0][0]
+        self.assertIn(10, saved_all_data)
+        self.assertIn(11, saved_all_data)
+        self.assertTrue(mock_save.call_args[1]["partial"])
+        self.assertEqual(result["experiment"]["cell_partial_flags"]["11"], True)
+
+    def test_sync_does_not_queue_measurement_only_cell(self):
+        iface = ViscometryWebInterface(port=5095)
+        iface.socketio = MagicMock()
+        iface.measurement_data = [
+            {
+                "cell_id": 12,
+                "height": 65.0,
+                "rotational_drag": 1.0,
+                "torque_percent": 1.0,
+                "rpm": 0.8,
+                "timestamp": 1_700_000_000.0,
+            }
+        ]
+        iface.sync_experiment_review_cells_from_run(
+            all_data={},
+            termination_by_cell={},
+            default_termination="user_stop",
+        )
+        pending = iface._experiment_review_pending
+        self.assertEqual(pending["completion_order"], [])
+        self.assertEqual(pending["cells"], {})
 
     @patch("all_cells_with_rotational_drag_feedback.save_dynamic_analysis_data")
     def test_commit_failure_retains_session(self, mock_save):
@@ -258,6 +392,57 @@ class TestExperimentHistoryDedupe(unittest.TestCase):
         self.assertEqual(len(deduped), 1)
         self.assertEqual(deduped[0]["id"], "exp-1780426159429")
         self.assertEqual(deduped[0]["csv_filename"], "dynamic_analysis_polymer.csv")
+
+
+class TestSaveDynamicPartialFilename(unittest.TestCase):
+    def test_partial_filename_and_warning_header(self):
+        from all_cells_with_rotational_drag_feedback import save_dynamic_analysis_data
+
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = os.getcwd()
+            try:
+                os.chdir(tmp)
+                path = save_dynamic_analysis_data(
+                    _native_all_data_fixture(),
+                    "20260608_120000",
+                    "custom",
+                    "unit_test",
+                    partial=True,
+                    completed_cells=[1],
+                )
+                self.assertIn("_PARTIAL_", path)
+                with open(path, encoding="utf-8") as f:
+                    content = f.read()
+            finally:
+                os.chdir(prev)
+        self.assertIn("PARTIAL RESULTS", content)
+        self.assertIn("terminated early", content)
+        self.assertIn("Completed cells: [1]", content)
+
+
+class TestViscosityPredictionModeNormalization(unittest.TestCase):
+    def test_legacy_newtonian_maps_to_on(self):
+        from predicted_viscosity import normalize_viscosity_prediction_mode
+
+        self.assertEqual(normalize_viscosity_prediction_mode("Newtonian"), "on")
+        self.assertEqual(normalize_viscosity_prediction_mode("Non-Newtonian"), "on")
+        self.assertEqual(normalize_viscosity_prediction_mode("on"), "on")
+        self.assertEqual(normalize_viscosity_prediction_mode("off"), "off")
+
+    def test_web_interface_normalizes_legacy_settings(self):
+        iface = ViscometryWebInterface(port=5100)
+        mode = iface._normalize_viscosity_prediction_mode(
+            {"viscosity_prediction_mode": "Newtonian", "predicted_viscosity_enabled": False}
+        )
+        self.assertEqual(mode, "on")
+
+    def test_legacy_enabled_flag_maps_to_on(self):
+        from predicted_viscosity import normalize_viscosity_prediction_mode
+
+        self.assertEqual(
+            normalize_viscosity_prediction_mode(None, legacy_enabled=True),
+            "on",
+        )
 
 
 if __name__ == "__main__":
