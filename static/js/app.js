@@ -4230,7 +4230,8 @@ class ViscometryDashboard {
         fetch("/api/experiment_history")
             .then((response) => response.json())
             .then((history) => {
-                this.experimentHistory = Array.isArray(history) ? history : [];
+                const loaded = Array.isArray(history) ? history : [];
+                this.experimentHistory = this._dedupeExperimentHistoryList(loaded);
                 this.renderExperimentCards();
                 this.renderLoadOldExperimentList();
             })
@@ -4601,6 +4602,78 @@ class ViscometryDashboard {
         );
     }
 
+    _experimentHistoryIdForRun(runStartTsSec) {
+        const ts = Number(runStartTsSec);
+        if (Number.isFinite(ts) && ts > 0) {
+            return `exp-${Math.floor(ts * 1000)}`;
+        }
+        return `exp-${Date.now()}`;
+    }
+
+    _runStartTsMatches(a, b, eps = 0.001) {
+        const fa = Number(a);
+        const fb = Number(b);
+        return Number.isFinite(fa) && Number.isFinite(fb) && fa > 0 && fb > 0 && Math.abs(fa - fb) < eps;
+    }
+
+    _experimentHistoryEntryRank(entry) {
+        const hasCsv = entry?.csv_filename ? 1 : 0;
+        const count = Number(entry?.measurement_count) || 0;
+        const created = Number(entry?.created_at) || 0;
+        return [hasCsv, count, created];
+    }
+
+    _dedupeExperimentHistoryList(entries) {
+        if (!Array.isArray(entries)) {
+            return [];
+        }
+        const noRunKey = [];
+        const byRunStart = new Map();
+        entries.forEach((entry) => {
+            if (!entry || typeof entry !== "object") {
+                return;
+            }
+            const runStart = Number(entry.runStartTsSec);
+            if (!Number.isFinite(runStart) || runStart <= 0) {
+                noRunKey.push(entry);
+                return;
+            }
+            const key = runStart.toFixed(3);
+            const existing = byRunStart.get(key);
+            if (!existing) {
+                byRunStart.set(key, entry);
+                return;
+            }
+            const rankNew = this._experimentHistoryEntryRank(entry);
+            const rankOld = this._experimentHistoryEntryRank(existing);
+            if (rankNew[0] > rankOld[0]
+                || (rankNew[0] === rankOld[0] && rankNew[1] > rankOld[1])
+                || (rankNew[0] === rankOld[0] && rankNew[1] === rankOld[1] && rankNew[2] > rankOld[2])) {
+                byRunStart.set(key, entry);
+            }
+        });
+        const merged = [...byRunStart.values(), ...noRunKey];
+        merged.sort((a, b) => (Number(b.created_at) || 0) - (Number(a.created_at) || 0));
+        return merged.slice(0, 40);
+    }
+
+    _upsertExperimentHistoryEntry(entry) {
+        const id = entry?.id;
+        const runStart = Number(entry?.runStartTsSec);
+        this.experimentHistory = this.experimentHistory.filter((e) => {
+            if (id && e.id === id) {
+                return false;
+            }
+            if (Number.isFinite(runStart) && runStart > 0
+                && this._runStartTsMatches(e.runStartTsSec, runStart)) {
+                return false;
+            }
+            return true;
+        });
+        this.experimentHistory.unshift(entry);
+        this.experimentHistory = this.experimentHistory.slice(0, 40);
+    }
+
     saveCompletedExperiment() {
         if (this.completedSaveLock) {
             return;
@@ -4653,7 +4726,7 @@ class ViscometryDashboard {
         const hasPredictedViscosityData = this._predictedViscosityEntryHasData(predictedViscosity);
 
         const exp = {
-            id: `exp-${Date.now()}`,
+            id: this._experimentHistoryIdForRun(runStartTsSec),
             created_at: Date.now(),
             measurement_count: runData.length,
             cells,
@@ -4672,8 +4745,7 @@ class ViscometryDashboard {
         };
 
         this.runSettingsSnapshot = null;
-        this.experimentHistory.unshift(exp);
-        this.experimentHistory = this.experimentHistory.slice(0, 40);
+        this._upsertExperimentHistoryEntry(exp);
         this.saveExperimentHistoryEntry(exp).catch(() => {
             this.pushStatusMessage("Warning: failed to sync experiment history to server");
         });
@@ -6198,11 +6270,12 @@ class ViscometryDashboard {
             .filter((n) => Number.isInteger(n) && n > 0)
             .sort((a, b) => a - b);
         if (entry) {
-            this.experimentHistory.unshift(entry);
-            this.experimentHistory = this.experimentHistory.slice(0, 40);
+            const previousSelectedId = this.selectedExperimentId;
+            this._upsertExperimentHistoryEntry(entry);
             this.renderExperimentCards();
-            if (this.experimentHistory.length > 0) {
-                this.selectExperiment(this.experimentHistory[0].id);
+            const selectId = entry.id || (this.experimentHistory[0] && this.experimentHistory[0].id);
+            if (selectId && (previousSelectedId === selectId || this.experimentHistory.length > 0)) {
+                this.selectExperiment(selectId);
             }
             if (savedIds.length > 0) {
                 this.showExperimentSavedModal(savedIds, entry, payload?.csv_filename);

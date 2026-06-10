@@ -861,7 +861,18 @@ body.running .header-sweep {
 }
 
 .control-actions-four {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: 1fr 1fr minmax(0, 2fr);
+}
+
+.control-stop-pair {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+}
+
+.control-stop-pair > .btn {
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .controls-charts-stack > .plot-card:first-child {
@@ -905,6 +916,67 @@ body.running .header-sweep {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.tracking-stack-narrow {
+    max-width: 320px;
+    margin: 0;
+    gap: 8px;
+}
+
+.tracking-band {
+    width: 100%;
+    min-width: 0;
+}
+
+.tracking-band-full > .status-block {
+    width: 100%;
+}
+
+.tracking-band-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.tracking-stack-narrow .status-block-compact {
+    padding: 6px 8px;
+    margin-bottom: 0;
+}
+
+.tracking-stack-narrow .gauge-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.tracking-stack-narrow .rpm-gauge {
+    max-width: 130px;
+}
+
+.tracking-stack-narrow .torque-value-large {
+    font-size: 0.92rem;
+    margin-bottom: 2px;
+}
+
+.tracking-stack-narrow .drag-box {
+    padding: 4px 6px;
+    font-size: 0.72rem;
+}
+
+.tracking-stack-narrow .measuring-z-value {
+    font-size: 0.88rem;
+}
+
+.tracking-stack-narrow .tracking-compact-subtext {
+    font-size: 0.58rem;
+    line-height: 1.2;
+}
+
+.tracking-stack-narrow .cell-flip {
+    font-size: 1.4rem;
 }
 
 .tracking-row {
@@ -3620,7 +3692,15 @@ body.loading .skeleton-lines {
     }
 
     .control-actions-four {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: 1fr;
+    }
+
+    .control-stop-pair {
+        flex-direction: row;
+    }
+
+    .tracking-band-split {
+        grid-template-columns: 1fr;
     }
 
     .run-settings-primary-row,

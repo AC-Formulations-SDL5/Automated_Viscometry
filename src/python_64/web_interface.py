@@ -68,6 +68,74 @@ def _coerce_all_data_keys(all_data: dict) -> dict:
     return out
 
 
+_RUN_START_TS_MATCH_EPS = 1e-3
+
+
+def _experiment_history_id_for_run(run_start_ts) -> str:
+    try:
+        ts = float(run_start_ts)
+        if ts > 0:
+            return f"exp-{int(ts * 1000)}"
+    except (TypeError, ValueError):
+        pass
+    return f"exp-{int(time.time() * 1000)}"
+
+
+def _finite_run_start_ts(entry: dict):
+    if not isinstance(entry, dict):
+        return None
+    try:
+        ts = float(entry.get("runStartTsSec"))
+        if math.isfinite(ts) and ts > 0:
+            return ts
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def _run_start_ts_matches(a, b, eps: float = _RUN_START_TS_MATCH_EPS) -> bool:
+    try:
+        fa = float(a)
+        fb = float(b)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(fa) and math.isfinite(fb) and fa > 0 and fb > 0 and abs(fa - fb) < eps
+
+
+def _experiment_history_entry_rank(entry: dict) -> tuple:
+    has_csv = 1 if entry.get("csv_filename") else 0
+    try:
+        count = int(entry.get("measurement_count") or 0)
+    except (TypeError, ValueError):
+        count = 0
+    try:
+        created = int(entry.get("created_at") or 0)
+    except (TypeError, ValueError):
+        created = 0
+    return (has_csv, count, created)
+
+
+def _dedupe_experiment_history_list(entries: List[dict]) -> List[dict]:
+    if not isinstance(entries, list):
+        return []
+    no_run_key: List[dict] = []
+    by_run_start: Dict[float, dict] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        run_start = _finite_run_start_ts(entry)
+        if run_start is None:
+            no_run_key.append(entry)
+            continue
+        key = round(run_start, 3)
+        existing = by_run_start.get(key)
+        if existing is None or _experiment_history_entry_rank(entry) > _experiment_history_entry_rank(existing):
+            by_run_start[key] = entry
+    merged = list(by_run_start.values()) + no_run_key
+    merged.sort(key=lambda e: int(e.get("created_at") or 0), reverse=True)
+    return merged[:200]
+
+
 class ViscometryWebInterface:
     def __init__(self, port=5001):
         # Set template and static folder paths relative to project root
@@ -1206,7 +1274,7 @@ class ViscometryWebInterface:
             pred_mode = "Newtonian"
 
         return {
-            "id": f"exp-{int(time.time() * 1000)}",
+            "id": _experiment_history_id_for_run(run_start_ts),
             "created_at": int(time.time() * 1000),
             "measurement_count": len(run_data),
             "cells": cells_sorted,
@@ -1771,9 +1839,13 @@ class ViscometryWebInterface:
             if os.path.exists(self.experiment_history_path):
                 with open(self.experiment_history_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    self.experiment_history = data if isinstance(data, list) else []
+                    loaded = data if isinstance(data, list) else []
             else:
-                self.experiment_history = []
+                loaded = []
+            deduped = _dedupe_experiment_history_list(loaded)
+            self.experiment_history = deduped
+            if deduped != loaded:
+                self._persist_experiment_history()
         except Exception as e:
             print(f"Warning: Failed to load experiment history: {e}")
             self.experiment_history = []
@@ -1800,10 +1872,21 @@ class ViscometryWebInterface:
         if not exp_id:
             return
 
+        incoming_run_start = _finite_run_start_ts(entry)
+
         with self.control_lock:
-            self.experiment_history = [e for e in self.experiment_history if str(e.get('id')) != exp_id]
-            self.experiment_history.insert(0, entry)
-            self.experiment_history = self.experiment_history[:200]
+            filtered = []
+            for existing in self.experiment_history:
+                if str(existing.get('id')) == exp_id:
+                    continue
+                if (
+                    incoming_run_start is not None
+                    and _run_start_ts_matches(existing.get('runStartTsSec'), incoming_run_start)
+                ):
+                    continue
+                filtered.append(existing)
+            filtered.insert(0, entry)
+            self.experiment_history = filtered[:200]
             self._persist_experiment_history()
 
     def delete_experiment_history_entry(self, experiment_id: str) -> bool:

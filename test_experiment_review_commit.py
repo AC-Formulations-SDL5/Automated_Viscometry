@@ -9,7 +9,12 @@ from unittest.mock import MagicMock, patch
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_ROOT, "src", "python_64"))
 
-from web_interface import ViscometryWebInterface, _coerce_all_data_keys
+from web_interface import (
+    ViscometryWebInterface,
+    _coerce_all_data_keys,
+    _dedupe_experiment_history_list,
+    _experiment_history_id_for_run,
+)
 
 
 def _stringified_all_data_fixture():
@@ -125,6 +130,16 @@ class TestExperimentReviewCommit(unittest.TestCase):
         rpm = 0.8
         self.assertTrue(rpm > 0)
 
+    def test_history_id_uses_run_start_ts(self):
+        entry = self.iface._build_experiment_history_entry_from_review(
+            self.iface.experiment_review_session,
+            self.iface._experiment_review_run_context,
+            [1],
+        )
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["id"], "exp-1700000000000")
+        self.assertEqual(entry["runStartTsSec"], 1_700_000_000.0)
+
     @patch("all_cells_with_rotational_drag_feedback.save_dynamic_analysis_data")
     def test_commit_happy_path_clears_session(self, mock_save):
         mock_save.return_value = "dynamic_analysis_unit_test_custom_20260608_120000.csv"
@@ -134,10 +149,13 @@ class TestExperimentReviewCommit(unittest.TestCase):
         self.assertIsNone(self.iface._experiment_review_run_context)
         self.assertEqual(result["saved_cells"], [1])
         self.assertEqual(result["csv_filename"], mock_save.return_value)
+        self.assertEqual(result["experiment"]["id"], "exp-1700000000000")
         mock_save.assert_called_once()
         saved_all_data = mock_save.call_args[0][0]
         self.assertIn(1, saved_all_data)
         self.assertIn(0.8, saved_all_data[1][65.5])
+        self.assertEqual(len(self.iface.experiment_history), 1)
+        self.assertEqual(self.iface.experiment_history[0]["id"], "exp-1700000000000")
 
     @patch("all_cells_with_rotational_drag_feedback.save_dynamic_analysis_data")
     def test_commit_failure_retains_session(self, mock_save):
@@ -152,6 +170,67 @@ class TestExperimentReviewCommit(unittest.TestCase):
             self.iface.experiment_review_session.get("session_id"),
             self.session_id,
         )
+
+
+class TestExperimentHistoryDedupe(unittest.TestCase):
+    def setUp(self):
+        self.iface = ViscometryWebInterface(port=5097)
+        self.iface.socketio = MagicMock()
+        self.iface.experiment_history = []
+        self.iface._persist_experiment_history = MagicMock()
+
+    def test_experiment_history_id_for_run(self):
+        self.assertEqual(
+            _experiment_history_id_for_run(1_700_000_000.0),
+            "exp-1700000000000",
+        )
+
+    def test_add_entry_replaces_same_run_start(self):
+        run_start = 1_780_416_587.1392233
+        draft = {
+            "id": "exp-draft-old",
+            "created_at": 100,
+            "runStartTsSec": run_start,
+            "measurement_count": 100,
+            "cells": [10, 11],
+        }
+        committed = {
+            "id": "exp-1780416587139",
+            "created_at": 200,
+            "runStartTsSec": run_start,
+            "measurement_count": 4000,
+            "cells": [10, 11],
+            "csv_filename": "dynamic_analysis_test.csv",
+        }
+        self.iface.add_experiment_history_entry(draft)
+        self.iface.add_experiment_history_entry(committed)
+        self.assertEqual(len(self.iface.experiment_history), 1)
+        self.assertEqual(self.iface.experiment_history[0]["id"], "exp-1780416587139")
+        self.assertEqual(self.iface.experiment_history[0]["csv_filename"], "dynamic_analysis_test.csv")
+
+    def test_load_dedupes_legacy_duplicates(self):
+        run_start = 1_780_416_587.1392233
+        entries = [
+            {
+                "id": "exp-1780426159206",
+                "created_at": 1780426159206,
+                "runStartTsSec": run_start,
+                "measurement_count": 4197,
+                "cells": [10, 11],
+            },
+            {
+                "id": "exp-1780426159429",
+                "created_at": 1780426159429,
+                "runStartTsSec": run_start,
+                "measurement_count": 1802,
+                "cells": [10, 11],
+                "csv_filename": "dynamic_analysis_polymer.csv",
+            },
+        ]
+        deduped = _dedupe_experiment_history_list(entries)
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["id"], "exp-1780426159429")
+        self.assertEqual(deduped[0]["csv_filename"], "dynamic_analysis_polymer.csv")
 
 
 if __name__ == "__main__":
