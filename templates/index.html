@@ -592,56 +592,60 @@
                         <div class="card-title-row">
                             <h2>Live Tracking</h2>
                         </div>
-                        <div class="tracking-grid-compact tracking-stack-narrow">
-                            <div class="tracking-band tracking-band-full">
-                                <div class="status-block status-block-compact gauge-block tracking-col-gauge">
-                                    <div class="status-label">RPM Gauge</div>
-                                    <svg id="rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
-                                        <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
-                                        <circle id="gauge-value" cx="110" cy="110" r="72" class="gauge-value"></circle>
-                                        <line id="gauge-needle" x1="110" y1="110" x2="110" y2="44" class="gauge-needle"></line>
-                                        <circle cx="110" cy="110" r="5" class="gauge-core"></circle>
-                                        <text id="gauge-rpm" x="110" y="118" text-anchor="middle" class="gauge-text">0.0</text>
-                                        <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
-                                    </svg>
-                                </div>
-                            </div>
-                            <div class="tracking-band tracking-band-split">
-                                <div class="status-block status-block-compact xyz-grid xyz-grid-compact mono">
-                                    <div class="xyz-item"><span>X</span><strong id="xyz-x">0.0</strong></div>
-                                    <div class="xyz-item"><span>Y</span><strong id="xyz-y">0.0</strong></div>
-                                    <div class="xyz-item"><span>Z</span><strong id="xyz-z">0.0</strong></div>
-                                </div>
-                                <div class="status-block status-block-compact measuring-z-block">
-                                    <div class="status-label">Measuring Z</div>
-                                    <div class="mono measuring-z-value" id="z-measuring-display">0.000 mm</div>
-                                    <div class="status-subtext tracking-compact-subtext">Active Z under sampling</div>
-                                </div>
-                            </div>
-                            <div class="tracking-band tracking-band-full">
-                                <div class="status-block status-block-compact tracking-col-torque">
-                                    <div class="status-label">Torque %</div>
-                                    <div class="torque-shell">
-                                        <div id="torque-fill" class="torque-fill"></div>
+                        <div class="tracking-grid-compact tracking-layout-sidebyside">
+                            <div class="tracking-col-major">
+                                <div class="tracking-band tracking-band-full">
+                                    <div class="status-block status-block-compact gauge-block tracking-col-gauge">
+                                        <div class="status-label">RPM Gauge</div>
+                                        <svg id="rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
+                                            <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
+                                            <circle id="gauge-value" cx="110" cy="110" r="72" class="gauge-value"></circle>
+                                            <line id="gauge-needle" x1="110" y1="110" x2="110" y2="44" class="gauge-needle"></line>
+                                            <circle cx="110" cy="110" r="5" class="gauge-core"></circle>
+                                            <text id="gauge-rpm" x="110" y="118" text-anchor="middle" class="gauge-text">0.0</text>
+                                            <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
+                                        </svg>
                                     </div>
-                                    <div id="torque-value" class="mono torque-value-large">0.00%</div>
-                                    <div id="drag-live-box" class="live-feed-item drag-box">
-                                        <span class="live-feed-label">Rotational Drag</span>
-                                        <span id="rotational-drag-display" class="live-feed-value mono">0.00</span>
-                                        <span class="live-feed-unit">torque / RPM</span>
+                                </div>
+                                <div class="tracking-band tracking-band-full">
+                                    <div class="status-block status-block-compact tracking-col-torque">
+                                        <div class="status-label">Torque %</div>
+                                        <div class="torque-shell">
+                                            <div id="torque-fill" class="torque-fill"></div>
+                                        </div>
+                                        <div id="torque-value" class="mono torque-value-large">0.00%</div>
+                                        <div id="drag-live-box" class="live-feed-item drag-box">
+                                            <span class="live-feed-label">Rotational Drag</span>
+                                            <span id="rotational-drag-display" class="live-feed-value mono">0.00</span>
+                                            <span class="live-feed-unit">torque / RPM</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="tracking-band tracking-band-split">
-                                <div class="status-block status-block-compact">
-                                    <div class="status-label">Current Cell</div>
-                                    <div id="cell-flip" class="cell-flip" data-cell="-">-</div>
-                                    <div id="cell-meta" class="status-subtext">Row -, local -</div>
+                            <div class="tracking-col-minor">
+                                <div class="tracking-band tracking-band-split">
+                                    <div class="status-block status-block-compact xyz-grid xyz-grid-compact mono">
+                                        <div class="xyz-item"><span>X</span><strong id="xyz-x">0.0</strong></div>
+                                        <div class="xyz-item"><span>Y</span><strong id="xyz-y">0.0</strong></div>
+                                        <div class="xyz-item"><span>Z</span><strong id="xyz-z">0.0</strong></div>
+                                    </div>
+                                    <div class="status-block status-block-compact measuring-z-block">
+                                        <div class="status-label">Measuring Z</div>
+                                        <div class="mono measuring-z-value" id="z-measuring-display">0.000 mm</div>
+                                        <div class="status-subtext tracking-compact-subtext">Active Z under sampling</div>
+                                    </div>
                                 </div>
-                                <div class="status-block status-block-compact">
-                                    <div class="status-label">Elapsed</div>
-                                    <div id="elapsed" class="mono">00:00:00</div>
-                                    <div id="elapsed-cell" class="status-subtext">Cell 00:00:00</div>
+                                <div class="tracking-band tracking-band-split">
+                                    <div class="status-block status-block-compact">
+                                        <div class="status-label">Current Cell</div>
+                                        <div id="cell-flip" class="cell-flip" data-cell="-">-</div>
+                                        <div id="cell-meta" class="status-subtext">Row -, local -</div>
+                                    </div>
+                                    <div class="status-block status-block-compact">
+                                        <div class="status-label">Elapsed</div>
+                                        <div id="elapsed" class="mono">00:00:00</div>
+                                        <div id="elapsed-cell" class="status-subtext">Cell 00:00:00</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
