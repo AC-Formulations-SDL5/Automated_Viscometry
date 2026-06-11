@@ -17,6 +17,7 @@ from feedback_helper_function import RotationalDragFeedbackController
 from web_interface import web_interface
 from predicted_viscosity import normalize_viscosity_prediction_mode, predict_viscosity
 from rheology_live_adapter import SUMMARY_KEY
+from hitpoint import extract_hitpoint, extract_rough_hitpoint
 from calibration_store import (
     is_calibrated, load_calibration, get_safe_z_for_cell, get_calibration_summary, clear_calibration
 )
@@ -1349,7 +1350,12 @@ def test_cell_dynamic_z_series(
                                 'Hit_Detected': False,
                                 'Hit_Reasons': 'no_measurements'
                             }
-                            
+
+                    cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
+                    hitpoint_z = extract_hitpoint(cell_z_rpm_data)
+                    if hitpoint_z is not None:
+                        feedback_controller.hit_point_z = hitpoint_z
+
                     feedback_controller.evaluate_hit_point_detection(cell_rpms)
 
                     # Persistent trigger: require confidence >= 0.80 for 3 consecutive Z-steps.
@@ -1386,7 +1392,6 @@ def test_cell_dynamic_z_series(
                         hit_z_msg = f" at Z={summary['hit_point_z']:.3f}" if summary.get('hit_point_z') is not None else ""
                         web_interface.update_status(f"Cell {global_cell} terminated early - hit-point detected{hit_z_msg}")
                         # Store metrics before breaking
-                        cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
                         cell_exit_reason = "hit_detected"
                         break
 
@@ -1576,6 +1581,7 @@ def test_cell_dynamic_z_series(
 def run_predicted_viscosity_for_cell(
     cell_id: int,
     rpms: List[float],
+    cell_z_rpm_data: dict,
     feedback_summary: Dict,
 ) -> None:
     """Fit unified rheology per RPM and cell summary after a cell completes."""
@@ -1584,12 +1590,9 @@ def run_predicted_viscosity_for_cell(
     if normalize_viscosity_prediction_mode(VISCOSITY_PREDICTION_MODE) == "off":
         return
 
-    hit_z = feedback_summary.get('hit_point_z')
+    hit_z = extract_hitpoint(cell_z_rpm_data)
     if hit_z is not None:
-        try:
-            hit_z = float(hit_z)
-        except (TypeError, ValueError):
-            hit_z = None
+        print(f"  Viscosity trim hitpoint Z: {hit_z:.3f}")
 
     if cell_id not in CELL_VISCOSITY_RESULTS:
         CELL_VISCOSITY_RESULTS[cell_id] = {}
@@ -1645,50 +1648,6 @@ def run_predicted_viscosity_for_cell(
     except Exception as e:
         print(f"  Warning: cell rheology summary failed for Cell {cell_id}: {e}")
 
-
-def extract_rough_hitpoint(cell_z_rpm_data: dict) -> Optional[float]:
-    """
-    Extract the rough hitpoint Z from a completed cell's measurement data.
-
-    The rough hitpoint is defined as the LAST z-level (in descent order)
-    where Hit_Detected == False, provided that it is immediately followed by
-    at least 3 consecutive z-levels where Hit_Detected == True.
-
-    Returns the Z-height (float) or None if no reliable hitpoint was found.
-    """
-    # Sort from highest (start of descent) to lowest (end of descent)
-    # safe_z is least negative, max_z_travel is most negative
-    # Sorted descending by value: -65.5, -65.52, -65.54, ... -66.5
-    z_levels = sorted(
-        [k for k in cell_z_rpm_data.keys() if k != '_metrics'],
-        reverse=True
-    )
-
-    # Build a list of (z, any_hit_detected) tuples in descent order
-    hit_sequence = []
-    for z in z_levels:
-        rpm_data = cell_z_rpm_data[z]
-        metrics = rpm_data.get('_metrics', {})
-        any_hit = any(
-            bool(metrics.get(rpm, {}).get('Hit_Detected', False))
-            for rpm in metrics
-        )
-        hit_sequence.append((z, any_hit))
-
-    # Find last z where hit==False AND at least 3 subsequent z-levels are all True
-    rough_hitpoint = None
-    n = len(hit_sequence)
-    for i in range(n - 3):
-        z_val, is_hit = hit_sequence[i]
-        if not is_hit:
-            # Check next 3 are all True
-            next_three_true = all(
-                hit_sequence[j][1] for j in range(i + 1, min(i + 4, n))
-            )
-            if next_three_true:
-                rough_hitpoint = z_val  # Keep updating — we want the LAST such point
-
-    return rough_hitpoint
 
 def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
     """Write predicted viscosity summary rows into CSV metadata comments."""
@@ -2350,7 +2309,7 @@ def main():
                         )
                         if normalize_viscosity_prediction_mode(VISCOSITY_PREDICTION_MODE) != "off":
                             run_predicted_viscosity_for_cell(
-                                global_cell, cell_rpms, feedback_summary
+                                global_cell, cell_rpms, cell_data, feedback_summary
                             )
                         if cell_term == "user_stop":
                             run_ended_early = True

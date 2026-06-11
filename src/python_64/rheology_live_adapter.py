@@ -97,7 +97,8 @@ def _apply_pretrims(
     for h, d, torque in rows:
         if math.isfinite(torque) and torque < float(torque_floor_pct):
             continue
-        if hit_point_z is not None and h <= float(hit_point_z):
+        # Descent decreases Z: keep hitpoint and deeper (h <= hitpoint_z); drop shallower air.
+        if hit_point_z is not None and h > float(hit_point_z):
             continue
         kept.append((h, d, torque))
 

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from calibration_store import save_calibration, update_calibration_for_cells
+from hitpoint import extract_hitpoint_from_sequence
 
 
 def _parse_rows(csv_path: Path) -> List[dict]:
@@ -64,20 +65,6 @@ def _build_hit_sequences(rows: Iterable[dict]) -> Dict[int, List[Tuple[float, bo
     return sequences
 
 
-def _extract_rough_hitpoint(hit_sequence: List[Tuple[float, bool]]) -> Optional[float]:
-    """
-    LAST False followed by 3 True.
-    """
-    rough_hitpoint = None
-    n = len(hit_sequence)
-    for i in range(n - 3):
-        z_val, is_hit = hit_sequence[i]
-        if not is_hit:
-            if all(hit_sequence[j][1] for j in range(i + 1, i + 4)):
-                rough_hitpoint = z_val
-    return rough_hitpoint
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Backfill per-cell calibration JSON from calibration CSV.")
     parser.add_argument("--csv", required=True, help="Path to calibration CSV file.")
@@ -100,7 +87,7 @@ def main() -> int:
     for cell_id, seq in sorted(sequences.items()):
         if any(is_hit for _, is_hit in seq):
             cells_with_any_hit += 1
-        rough = _extract_rough_hitpoint(seq)
+        rough = extract_hitpoint_from_sequence(seq)
         if rough is not None:
             calibration_cells[cell_id] = rough
 

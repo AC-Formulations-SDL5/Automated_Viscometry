@@ -72,17 +72,30 @@ class TestRheologyLiveAdapter(unittest.TestCase):
         self.assertEqual(len(h_norm), 10)
         self.assertTrue(np.all(torque_pct >= 25.0))
 
-    def test_hit_point_filter(self):
-        points = _sweep_rows(n_points=10, height_start=0.5, height_step=0.4)
-        h_all, _t, _d, _no, _pz, _pd = prepare_sweep_arrays(
+    def test_hit_point_filter_negative_z_keeps_deeper(self):
+        """Machine descent: shallower Z is larger; keep hitpoint and deeper (h <= hitpoint_z)."""
+        points = []
+        for i in range(10):
+            z = -65.20 - i * 0.02
+            points.append(
+                {
+                    "height": z,
+                    "rotational_drag": 1.0 + i * 0.05,
+                    "torque_percent": 50.0,
+                }
+            )
+        hitpoint_z = -65.28
+        h_all, _t, _d, _no, pre_z_all, _pd = prepare_sweep_arrays(
             points, torque_floor_pct=0.0, hit_point_z=None
         )
-        h_hit, _t2, _d2, _no2, _pz2, _pd2 = prepare_sweep_arrays(
-            points, torque_floor_pct=0.0, hit_point_z=1.5
+        h_hit, _t2, _d2, _no2, pre_z_hit, _pd2 = prepare_sweep_arrays(
+            points, torque_floor_pct=0.0, hit_point_z=hitpoint_z
         )
         self.assertEqual(len(h_all), 10)
-        self.assertLess(len(h_hit), len(h_all))
-        self.assertGreaterEqual(len(h_hit), 4)
+        self.assertEqual(len(h_hit), 6)
+        self.assertTrue(all(z <= hitpoint_z + 1e-9 for z in pre_z_hit))
+        self.assertAlmostEqual(max(pre_z_hit), hitpoint_z, places=2)
+        self.assertAlmostEqual(min(pre_z_hit), -65.38, places=2)
 
     def test_r2_gate_rejects_noisy_flat_sweep(self):
         h = np.linspace(0.5, 4.0, 10)

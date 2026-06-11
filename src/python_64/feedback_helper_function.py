@@ -452,14 +452,11 @@ class RotationalDragFeedbackController:
             self.hit_point_detected = True
             self.hit_point_confidence = avg_confidence
             
-            # Find the Z-height where hit was detected (most recent)
-            if self.z_rpm_drag_data:
-                self.hit_point_z = min(self.z_rpm_drag_data.keys())  # Most negative Z (lowest point)
-            
             print(f"    *** HIT POINT DETECTED *** ")
             print(f"    Hit ratio: {hit_ratio:.1%} ({len(hit_detections)}/{len(test_rpms)} RPMs)")
             print(f"    Confidence: {avg_confidence:.2f}")
-            print(f"    Estimated hit Z: {self.hit_point_z:.3f}")
+            if self.hit_point_z is not None:
+                print(f"    Estimated hit Z: {self.hit_point_z:.3f}")
             return True
         else:
             print(f"    No hit point detected (hit ratio: {hit_ratio:.1%}, confidence: {avg_confidence:.2f})")
