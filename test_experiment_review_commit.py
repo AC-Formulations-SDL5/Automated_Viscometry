@@ -420,6 +420,80 @@ class TestSaveDynamicPartialFilename(unittest.TestCase):
         self.assertIn("Completed cells: [1]", content)
 
 
+class TestSaveTimeseriesData(unittest.TestCase):
+    def test_timeseries_writes_all_samples(self):
+        from all_cells_with_rotational_drag_feedback import (
+            save_dynamic_analysis_data,
+            save_timeseries_data,
+        )
+
+        data = _two_cell_all_data_fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = os.getcwd()
+            try:
+                os.chdir(tmp)
+                summary = save_dynamic_analysis_data(
+                    data,
+                    "20260608_120000",
+                    "custom",
+                    "unit_test",
+                )
+                ts_path = save_timeseries_data(
+                    data,
+                    "20260608_120000",
+                    "custom",
+                    "unit_test",
+                )
+                with open(summary, encoding="utf-8") as f:
+                    summary_content = f.read()
+                with open(ts_path, encoding="utf-8") as f:
+                    ts_content = f.read()
+            finally:
+                os.chdir(prev)
+
+        ts_data_rows = [
+            ln for ln in ts_content.splitlines()
+            if ln.strip() and not ln.startswith("#") and not ln.startswith("row,")
+        ]
+        self.assertTrue(summary.endswith(".csv"))
+        self.assertTrue(ts_path.endswith("_timeseries.csv"))
+        self.assertIn("Save all sample data: ENABLED", ts_content)
+        self.assertEqual(len(ts_data_rows), 3)
+
+
+class TestRuntimeSettingsSaveAllAndZStart(unittest.TestCase):
+    def test_save_all_and_z_start_round_trip(self):
+        iface = ViscometryWebInterface(port=5101)
+        saved = iface.update_runtime_settings({
+            "save_all_sample_data": True,
+            "z_start_offset_mm": 0.15,
+        })
+        self.assertTrue(saved["save_all_sample_data"])
+        self.assertAlmostEqual(saved["z_start_offset_mm"], 0.15)
+
+    def test_invalid_z_start_offset_defaults(self):
+        iface = ViscometryWebInterface(port=5102)
+        saved = iface.update_runtime_settings({"z_start_offset_mm": 99})
+        self.assertAlmostEqual(saved["z_start_offset_mm"], 0.4)
+
+
+class TestZStartOffsetRuntime(unittest.TestCase):
+    def test_get_safe_z_uses_custom_offset(self):
+        from calibration_store import get_safe_z_for_cell
+
+        rough = -65.0
+        self.assertAlmostEqual(
+            get_safe_z_for_cell(99, -60.0, offset=0.15),
+            -60.0,
+        )
+        with patch("calibration_store.load_calibration") as mock_load:
+            mock_load.return_value = {"cells": {"1": rough}}
+            self.assertAlmostEqual(
+                get_safe_z_for_cell(1, -60.0, offset=0.15),
+                rough + 0.15,
+            )
+
+
 class TestViscosityPredictionModeNormalization(unittest.TestCase):
     def test_legacy_newtonian_maps_to_on(self):
         from predicted_viscosity import normalize_viscosity_prediction_mode

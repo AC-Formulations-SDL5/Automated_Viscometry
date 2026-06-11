@@ -195,12 +195,18 @@ class ViscometryDashboard {
         this.zPlotInitialized = false;
         this.torquePlotInitialized = false;
         this.calDragPlotInitialized = false;
-        this.charts = { drag: null, torque: null, calDrag: null };
+        this.dwellPlotInitialized = false;
+        this.charts = { drag: null, torque: null, calDrag: null, dwell: null };
+        this.dwellSeriesByCell = new Map();
+        this.dwellZVisibility = new Map();
+        this.runSaveAllSampleData = false;
         this._mapVisualCache = new Map();
         this._stationActive = null;
         this._mapVisualSyncTimer = null;
         this._renderPaused = false;
         this._liveChartsDirty = false;
+        this._dwellChartsDirty = false;
+        this._dwellPlotRefreshTimer = null;
         this._mapVisualsDirty = false;
         this.timerInterval = null;
         this.experimentStart = null;
@@ -350,8 +356,17 @@ class ViscometryDashboard {
             smartWindowSize: document.getElementById("smart-window-size"),
             lowTorqueLiquidContactSkipEnabled: document.getElementById("low-torque-liquid-contact-skip-enabled"),
             lowTorqueLiquidContactThresholdPct: document.getElementById("low-torque-liquid-contact-threshold-pct"),
-            viscosityPredictionsPanel: document.getElementById("viscosity-predictions-panel"),
+            viscosityPredictionToggleRow: document.getElementById("viscosity-prediction-toggle-row"),
             viscosityPredictionEnabled: document.getElementById("viscosity-prediction-enabled"),
+            saveAllSampleData: document.getElementById("save-all-sample-data"),
+            zStartOffsetRow: document.getElementById("z-start-offset-row"),
+            zStartOffsetMm: document.getElementById("z-start-offset-mm"),
+            controlsChartsDwellRow: document.getElementById("controls-charts-dwell-row"),
+            dwellTimeDragCard: document.getElementById("dwell-time-drag-card"),
+            dwellTimeCanvas: document.getElementById("dwell-time-canvas"),
+            dwellTimeEmpty: document.getElementById("dwell-time-empty"),
+            dwellZSections: document.getElementById("dwell-z-sections"),
+            dwellTimeCellLabel: document.getElementById("dwell-time-cell-label"),
             predictedViscosityChartsCard: document.getElementById("predicted-viscosity-charts-card"),
             liveViscosityTableBody: document.getElementById("live-viscosity-table-body"),
             liveViscosityEmpty: document.getElementById("live-viscosity-empty"),
@@ -517,6 +532,12 @@ class ViscometryDashboard {
                 const mode = this.el.viscosityPredictionEnabled.checked ? "on" : "off";
                 this._setViscosityPredictionModeUI(mode);
                 this._updatePredictedViscosityChartsCardVisibility(mode !== "off");
+                this.applyControlSettings(true);
+            });
+        }
+        if (this.el.saveAllSampleData) {
+            this.el.saveAllSampleData.addEventListener("change", () => {
+                this._updateSaveAllSampleDataUI(Boolean(this.el.saveAllSampleData.checked));
                 this.applyControlSettings(true);
             });
         }
@@ -1273,8 +1294,18 @@ class ViscometryDashboard {
             this.calDragPlotInitialized = true;
         }
 
+        if (this.el.dwellTimeCanvas) {
+            this.charts.dwell = new Chart(this.el.dwellTimeCanvas, {
+                type: "scatter",
+                data: { datasets: [] },
+                options: this._buildDwellChartOptions(theme),
+            });
+            this.dwellPlotInitialized = true;
+        }
+
         this.refreshLivePlots();
         this.refreshCalibrationLivePlots();
+        this.refreshDwellTimePlot();
     }
 
     updateLiveChartTheme() {
@@ -1306,6 +1337,10 @@ class ViscometryDashboard {
             });
             this.charts.calDrag.update("none");
         }
+        if (this.charts.dwell) {
+            this.charts.dwell.options = this._buildDwellChartOptions(theme);
+            this.charts.dwell.update("none");
+        }
     }
 
     handleWindowResize() {
@@ -1318,6 +1353,9 @@ class ViscometryDashboard {
         }
         if (this.charts.calDrag) {
             this.charts.calDrag.resize();
+        }
+        if (this.charts.dwell) {
+            this.charts.dwell.resize();
         }
     }
 
@@ -1334,10 +1372,14 @@ class ViscometryDashboard {
                 this.refreshLivePlots();
             }
         }
+        if (this._dwellChartsDirty && this.activeTabId === "controls-tab") {
+            this.refreshDwellTimePlot();
+        }
         if (this._mapVisualsDirty) {
             this.syncMapVisuals({ force: true });
         }
         this._liveChartsDirty = false;
+        this._dwellChartsDirty = false;
         this._mapVisualsDirty = false;
     }
 
@@ -1448,6 +1490,14 @@ class ViscometryDashboard {
         );
         this._setViscosityPredictionModeUI(mode);
         this._updatePredictedViscosityChartsCardVisibility(mode !== "off");
+        if (this.el.saveAllSampleData) {
+            this.el.saveAllSampleData.checked = Boolean(settings.save_all_sample_data);
+        }
+        if (this.el.zStartOffsetMm) {
+            this.el.zStartOffsetMm.value = settings.z_start_offset_mm ?? 0.4;
+        }
+        this._updateSaveAllSampleDataUI(Boolean(settings.save_all_sample_data));
+        this.updateZStartOffsetAvailability();
         if (this.el.r2DragMin) this.el.r2DragMin.value = settings.r2_drag_min ?? 0.975;
         if (this.el.r2CvMin) this.el.r2CvMin.value = settings.r2_cv_min ?? 0.975;
         if (this.el.r2SlopeMin) this.el.r2SlopeMin.value = settings.r2_slope_min ?? 0.975;
@@ -1484,6 +1534,7 @@ class ViscometryDashboard {
         this.rebuildCellRpmTable();
         this.rebuildCellContentTable();
         this._syncPlannedCells(settings);
+        this.updateZStartOffsetAvailability();
         this.latestControlSettings = JSON.parse(JSON.stringify(settings));
 
         this.setControlStatus("Settings loaded");
@@ -1678,6 +1729,8 @@ class ViscometryDashboard {
             baseline_z_threshold: Number(this.el.baselineZThreshold?.value ?? 5),
             feedback_control_enabled: this.el.feedbackEnabled.checked,
             viscosity_prediction_mode: this._getViscosityPredictionMode(),
+            save_all_sample_data: Boolean(this.el.saveAllSampleData?.checked),
+            z_start_offset_mm: Number(this.el.zStartOffsetMm?.value ?? 0.4),
             cell_rpm_map: this.buildCellRpmMapPayload(),
             cell_content_map: this.buildCellContentMapPayload(),
         };
@@ -2737,6 +2790,9 @@ class ViscometryDashboard {
                 ? true
                 : (rawMeasurement.hit_detected === false ? false : null),
             sample_count: sampleCount,
+            elapsed_time: Number.isFinite(Number(rawMeasurement.elapsed_time))
+                ? Number(rawMeasurement.elapsed_time)
+                : null,
         };
 
         if (!measurement.cell_id) {
@@ -2744,6 +2800,7 @@ class ViscometryDashboard {
         }
 
         this.measurements.push(measurement);
+        this._ingestDwellMeasurement(measurement);
 
         if (!this.measurementsByCell.has(measurement.cell_id)) {
             this.measurementsByCell.set(measurement.cell_id, []);
@@ -2816,6 +2873,7 @@ class ViscometryDashboard {
             this.selectedGraphCell = null;
             this.updateGraphCellTabs();
             this.refreshLivePlots();
+            this.refreshDwellTimePlot();
             this.updateLiveTerminationBadge();
         });
         this.el.graphCellTabs.appendChild(currentBtn);
@@ -2828,6 +2886,7 @@ class ViscometryDashboard {
                 this.selectedGraphCell = cellId;
                 this.updateGraphCellTabs();
                 this.refreshLivePlots();
+                this.refreshDwellTimePlot();
                 this.updateLiveTerminationBadge();
             });
             this.el.graphCellTabs.appendChild(btn);
@@ -3617,6 +3676,7 @@ class ViscometryDashboard {
         if (!summary) return;
         this.calibrationSummary = summary;
         this.updateCalibrationCellsStatusPill(summary);
+        this.updateZStartOffsetAvailability();
         const isOk = Boolean(summary.is_calibrated);
         const section = this.el.calPanelSection;
         const pill = this.el.calStatusPill;
@@ -3946,6 +4006,11 @@ class ViscometryDashboard {
         this.el.body.classList.toggle("running", isRunning);
 
         if (isRunning && !previous) {
+            const snapshot = this._getRunSettingsForHistorySave();
+            this.runSaveAllSampleData = Boolean(snapshot.save_all_sample_data);
+            this.dwellSeriesByCell.clear();
+            this.dwellZVisibility.clear();
+            this._updateSaveAllSampleDataUI(this.runSaveAllSampleData);
             this.cellStart = Date.now();
             this.isSavingFinalResults = false;
             this.measuredCells.clear();
@@ -3977,6 +4042,7 @@ class ViscometryDashboard {
         }
         this.updateTestingTabAvailability();
         this.updateRunTabAvailability();
+        this.updateZStartOffsetAvailability();
         if (isRunning && !previous) {
             this.warnAndStopTestingForRunTransition();
             const mode = this.getProtocolRunMode();
@@ -3988,6 +4054,8 @@ class ViscometryDashboard {
         }
 
         if (!isRunning) {
+            this.runSaveAllSampleData = false;
+            this._updateSaveAllSampleDataUI(Boolean(this.el.saveAllSampleData?.checked));
             this.washingCell = null;
             this.manualTerminateQueued = false;
             this.updateRunControlButtons();
@@ -4308,6 +4376,8 @@ class ViscometryDashboard {
             "min_data_points_for_trend",
             "viscosity_prediction_mode",
             "predicted_viscosity_enabled",
+            "save_all_sample_data",
+            "z_start_offset_mm",
             "cell_rpm_map",
             "cell_content_map",
         ]);
@@ -4852,11 +4922,23 @@ class ViscometryDashboard {
                 <div class="tile-detail">${detail}</div>
             </article>`;
 
+        const saveAllOn = Boolean(s.save_all_sample_data);
+        const saveAllDetail = saveAllOn
+            ? "All dwell samples saved to timeseries CSV"
+            : "Summary CSV uses final point per Z×RPM";
+
+        const zOffset = Number(s.z_start_offset_mm);
+        const zOffsetDetail = Number.isFinite(zOffset)
+            ? `Start Z = rough hitpoint + ${zOffset.toFixed(3)} mm (calibrated cells)`
+            : "Default 0.4 mm above rough hitpoint";
+
         return [
             tile("Feedback", feedbackOn, feedbackOn ? "On" : "Off", feedbackDetail),
             tile("Smart Early Exit", smartExitOn, smartExitOn ? "On" : "Off", smartDetail),
             tile("1st Sample Torque Floor", torqueFloorOn, torqueFloorOn ? "On" : "Off", torqueDetail),
             tile("Viscosity Prediction", predMode !== "off", predMode !== "off" ? "On" : "Off", viscosityDetail),
+            tile("Save All Sample Data", saveAllOn, saveAllOn ? "On" : "Off", saveAllDetail),
+            tile("Z-Start Offset", Number.isFinite(zOffset), Number.isFinite(zOffset) ? `${zOffset.toFixed(3)} mm` : "0.4 mm", zOffsetDetail),
         ].join("");
     }
 
@@ -5263,6 +5345,7 @@ class ViscometryDashboard {
         } else {
             this.plannedCells = Array.isArray(settings.selected_cells) ? settings.selected_cells : [];
         }
+        this.updateZStartOffsetAvailability();
     }
 
     _finalizePendingCompletedCell() {
@@ -5448,12 +5531,223 @@ class ViscometryDashboard {
     _setViscosityPredictionModeUI(mode, legacyEnabled) {
         const normalized = this._normalizeViscosityPredictionMode(mode, legacyEnabled);
         this.viscosityPredictionMode = normalized;
-        if (this.el.viscosityPredictionsPanel) {
-            this.el.viscosityPredictionsPanel.dataset.mode = normalized;
+        if (this.el.viscosityPredictionToggleRow) {
+            this.el.viscosityPredictionToggleRow.dataset.mode = normalized;
         }
         if (this.el.viscosityPredictionEnabled) {
             this.el.viscosityPredictionEnabled.checked = normalized === "on";
         }
+    }
+
+    _plannedCellsHaveCalibration() {
+        const cells = this.calibrationSummary?.cells || {};
+        const planned = this.plannedCells || [];
+        if (!planned.length) {
+            return false;
+        }
+        return planned.some((cellId) => {
+            const key = String(cellId);
+            return Object.prototype.hasOwnProperty.call(cells, key);
+        });
+    }
+
+    updateZStartOffsetAvailability() {
+        const row = this.el.zStartOffsetRow;
+        const input = this.el.zStartOffsetMm;
+        if (!row || !input) {
+            return;
+        }
+        const calibrationRun = this.isCalibrationRun
+            || this.calibrationModeActive
+            || this.recalibrationModeActive;
+        const enabled = !this.isRunning
+            && !calibrationRun
+            && Boolean(this.calibrationSummary?.is_calibrated)
+            && this._plannedCellsHaveCalibration();
+        row.classList.toggle("is-disabled", !enabled);
+        input.disabled = !enabled;
+    }
+
+    _updateSaveAllSampleDataUI(enabled) {
+        const active = Boolean(enabled);
+        if (this.el.controlsChartsDwellRow) {
+            this.el.controlsChartsDwellRow.classList.toggle("is-save-all-active", active);
+        }
+        if (this.el.dwellTimeDragCard) {
+            this.el.dwellTimeDragCard.classList.toggle("hidden", !active);
+        }
+        if (!active && this.charts.dwell) {
+            this.charts.dwell.data.datasets = [];
+            this.charts.dwell.update("none");
+        }
+    }
+
+    _isSaveAllSampleDataActive() {
+        if (this.isRunning) {
+            return Boolean(this.runSaveAllSampleData);
+        }
+        return Boolean(this.el.saveAllSampleData?.checked);
+    }
+
+    _dwellZVisibilityKey(cellId, zHeight) {
+        return `${Number(cellId)}|${Number(zHeight).toFixed(3)}`;
+    }
+
+    _ingestDwellMeasurement(measurement) {
+        if (!this._isSaveAllSampleDataActive()) {
+            return;
+        }
+        const elapsed = Number(measurement.elapsed_time);
+        if (!Number.isFinite(elapsed)) {
+            return;
+        }
+        const cellId = Number(measurement.cell_id);
+        const zHeight = Number(measurement.height);
+        const drag = Number(measurement.rotational_drag);
+        if (!Number.isFinite(cellId) || !Number.isFinite(zHeight) || !Number.isFinite(drag)) {
+            return;
+        }
+        if (!this.dwellSeriesByCell.has(cellId)) {
+            this.dwellSeriesByCell.set(cellId, new Map());
+        }
+        const byZ = this.dwellSeriesByCell.get(cellId);
+        const zKey = zHeight.toFixed(3);
+        if (!byZ.has(zKey)) {
+            byZ.set(zKey, []);
+            const visKey = this._dwellZVisibilityKey(cellId, zHeight);
+            if (!this.dwellZVisibility.has(visKey)) {
+                this.dwellZVisibility.set(visKey, true);
+            }
+        }
+        byZ.get(zKey).push({
+            x: elapsed,
+            y: drag,
+            rpm: Number(measurement.rpm) || 0,
+        });
+        this._scheduleDwellPlotRefresh();
+    }
+
+    _scheduleDwellPlotRefresh() {
+        if (!this._isSaveAllSampleDataActive() || this.activeTabId !== "controls-tab") {
+            return;
+        }
+        if (this._dwellPlotRefreshTimer) {
+            window.clearTimeout(this._dwellPlotRefreshTimer);
+        }
+        this._dwellPlotRefreshTimer = window.setTimeout(() => {
+            this._dwellPlotRefreshTimer = null;
+            this.refreshDwellTimePlot();
+        }, 110);
+    }
+
+    _buildDwellChartOptions(theme) {
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+                legend: { display: true, labels: { color: theme.text, boxWidth: 12 } },
+                tooltip: {
+                    callbacks: {
+                        label(context) {
+                            const y = Number(context.parsed.y);
+                            const x = Number(context.parsed.x);
+                            return `Z ${context.dataset.label}: ${y.toFixed(4)} drag @ ${x.toFixed(1)} s`;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    type: "linear",
+                    title: {
+                        display: true,
+                        text: "Elapsed time (s)",
+                        color: theme.text,
+                    },
+                    ticks: { color: theme.tick },
+                    grid: { color: theme.grid },
+                    border: { color: theme.border },
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: "Rotational Drag (torque / RPM)",
+                        color: theme.text,
+                    },
+                    ticks: { color: theme.tick },
+                    grid: { color: theme.grid },
+                    border: { color: theme.border },
+                },
+            },
+        };
+    }
+
+    refreshDwellTimePlot() {
+        if (!this._isSaveAllSampleDataActive() || !this.dwellPlotInitialized || !this.charts.dwell) {
+            return;
+        }
+        const activeCell = this.getActiveGraphCellId();
+        if (!Number.isFinite(activeCell)) {
+            return;
+        }
+        if (this.el.dwellTimeCellLabel) {
+            this.el.dwellTimeCellLabel.textContent = `Cell ${activeCell}`;
+        }
+        const byZ = this.dwellSeriesByCell.get(activeCell) || new Map();
+        const zKeys = [...byZ.keys()].sort((a, b) => Number(b) - Number(a));
+        const palette = LIVE_RPM_PASTEL_PALETTE;
+        const datasets = zKeys.map((zKey, idx) => {
+            const points = [...(byZ.get(zKey) || [])].sort((a, b) => a.x - b.x);
+            const visKey = this._dwellZVisibilityKey(activeCell, Number(zKey));
+            const visible = this.dwellZVisibility.get(visKey) !== false;
+            const color = palette[idx % palette.length];
+            return {
+                label: `Z ${zKey} mm`,
+                data: points,
+                showLine: true,
+                borderColor: color,
+                backgroundColor: color,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                hidden: !visible,
+            };
+        });
+        this.charts.dwell.data.datasets = datasets;
+        if (this.el.dwellTimeEmpty) {
+            this.el.dwellTimeEmpty.classList.toggle("hidden", datasets.length > 0);
+        }
+        this._renderDwellZSections(activeCell, zKeys);
+        if (this._renderPaused) {
+            this._dwellChartsDirty = true;
+            return;
+        }
+        this.charts.dwell.update("none");
+        this._dwellChartsDirty = false;
+    }
+
+    _renderDwellZSections(cellId, zKeys) {
+        const container = this.el.dwellZSections;
+        if (!container) {
+            return;
+        }
+        container.innerHTML = zKeys.map((zKey) => {
+            const visKey = this._dwellZVisibilityKey(cellId, Number(zKey));
+            const checked = this.dwellZVisibility.get(visKey) !== false;
+            return (
+                `<label class="dwell-z-toggle">`
+                + `<input type="checkbox" data-dwell-z-key="${visKey}" ${checked ? "checked" : ""}>`
+                + `<span>Z ${zKey} mm</span>`
+                + `</label>`
+            );
+        }).join("");
+        container.querySelectorAll("input[data-dwell-z-key]").forEach((input) => {
+            input.addEventListener("change", () => {
+                const key = input.getAttribute("data-dwell-z-key");
+                this.dwellZVisibility.set(key, Boolean(input.checked));
+                this.refreshDwellTimePlot();
+            });
+        });
     }
 
     renderPredictedViscosityCharts() {
@@ -6280,6 +6574,7 @@ class ViscometryDashboard {
             <div>RPMs tested: ${rpmText}</div>
             <div>Termination: <span class="review-termination-chip summary-termination-chip ${tMeta.cls}">${tMeta.text}</span></div>
             <div>Z levels collected: <strong>${zLevelsText}</strong></div>
+            ${settings.save_all_sample_data ? "<div>Save all sample data: <strong>enabled</strong> (timeseries CSV written on commit)</div>" : ""}
         `;
     }
 

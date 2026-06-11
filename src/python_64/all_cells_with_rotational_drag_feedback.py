@@ -112,6 +112,8 @@ LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = True
 LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT = 25.0
 VISCOSITY_PREDICTION_MODE = "off"
 CELL_VISCOSITY_RESULTS: Dict[int, Dict] = {}
+SAVE_ALL_SAMPLE_DATA = False
+Z_START_OFFSET_MM = 0.4
 
 # ========== CALIBRATION MODE CONFIGURATION ==========
 CALIBRATION_MODE = False          # Set to True when a calibration run is requested
@@ -193,6 +195,7 @@ def apply_runtime_settings_from_web():
     global RECALIBRATION_IGNORE_MAX_Z_TRAVEL
     global LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED, LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT
     global VISCOSITY_PREDICTION_MODE
+    global SAVE_ALL_SAMPLE_DATA, Z_START_OFFSET_MM
 
     settings = web_interface.get_runtime_settings()
 
@@ -248,6 +251,14 @@ def apply_runtime_settings_from_web():
         settings.get('viscosity_prediction_mode'),
         legacy_enabled=settings.get('predicted_viscosity_enabled'),
     )
+    SAVE_ALL_SAMPLE_DATA = bool(settings.get('save_all_sample_data', SAVE_ALL_SAMPLE_DATA))
+    try:
+        z_offset = float(settings.get('z_start_offset_mm', Z_START_OFFSET_MM))
+        if not (-1.0 <= z_offset <= 3.0):
+            z_offset = 0.4
+        Z_START_OFFSET_MM = z_offset
+    except (TypeError, ValueError):
+        Z_START_OFFSET_MM = 0.4
     # Parse recalibration cells: expect dict {cell_id: optional_starting_z}
     # JSON object keys arrive as strings; normalize to int keys for runtime lookup.
     raw_recalibration_cells = settings.get('recalibration_cells', {})
@@ -765,6 +776,34 @@ def _read_valid_torque_packet(
     return None
 
 
+def _publish_torque_sample_to_web(
+    z_height: float,
+    rpm: float,
+    torque_percent: float,
+    elapsed_since_start: float,
+    *,
+    emit_measurement_point: bool,
+    sample_count: int = 1,
+) -> None:
+    """Broadcast live torque and optionally persist a measurement point to the web UI."""
+    web_interface.update_live_torque(
+        torque_percent=torque_percent,
+        rpm=rpm,
+        elapsed=elapsed_since_start,
+    )
+    if not emit_measurement_point:
+        return
+    rotational_drag = abs(torque_percent) / rpm if rpm > 0 else 0.0
+    web_interface.add_measurement_point(
+        height=z_height,
+        rotational_drag=rotational_drag,
+        rpm=rpm,
+        cell_id=web_interface.current_cell,
+        elapsed_time=elapsed_since_start,
+        sample_count=sample_count,
+    )
+
+
 def measure_torque_at_rpm(
     client: ViscometerClient,
     rpm: float,
@@ -831,16 +870,13 @@ def measure_torque_at_rpm(
                                 f"{tp:.2f}% < {hunting_first_contact_min_pct:.2f}% — "
                                 "skipping this RPM at this Z (try next RPM)"
                             )
-                            web_interface.update_live_torque(
-                                torque_percent=tp,
-                                rpm=rpm,
-                                elapsed=elapsed_since_start,
-                            )
-                            web_interface.add_measurement_point(
-                                height=z_height,
-                                rotational_drag=abs(tp) / rpm if rpm > 0 else 0.0,
-                                rpm=rpm,
-                                cell_id=web_interface.current_cell,
+                            _publish_torque_sample_to_web(
+                                z_height,
+                                rpm,
+                                tp,
+                                elapsed_since_start,
+                                emit_measurement_point=True,
+                                sample_count=1,
                             )
                             break
                         measurement = {
@@ -852,16 +888,13 @@ def measure_torque_at_rpm(
                         measurements.append(measurement)
                         recent_torques.append(tp)
                         recent_torques = recent_torques[-SMART_WINDOW_SIZE:]
-                        web_interface.update_live_torque(
-                            torque_percent=tp,
-                            rpm=rpm,
-                            elapsed=elapsed_since_start,
-                        )
-                        web_interface.add_measurement_point(
-                            height=z_height,
-                            rotational_drag=abs(tp) / rpm if rpm > 0 else 0.0,
-                            rpm=rpm,
-                            cell_id=web_interface.current_cell,
+                        _publish_torque_sample_to_web(
+                            z_height,
+                            rpm,
+                            tp,
+                            elapsed_since_start,
+                            emit_measurement_point=SAVE_ALL_SAMPLE_DATA,
+                            sample_count=1,
                         )
                         hunting_unresolved = (
                             hunting_first_contact_min_pct is not None and not hunt_contact_confirmed
@@ -890,6 +923,17 @@ def measure_torque_at_rpm(
         client.stop()
         web_interface.set_current_rpm(0)
         sleep_with_stop(INTER_RPM_PAUSE)
+
+        if measurements and not SAVE_ALL_SAMPLE_DATA:
+            latest = measurements[-1]
+            _publish_torque_sample_to_web(
+                z_height,
+                rpm,
+                float(latest["torque_percent"]),
+                float(latest.get("elapsed_time", 0.0)),
+                emit_measurement_point=True,
+                sample_count=len(measurements),
+            )
         
         # Report measurement summary
         if measurements:
@@ -1122,8 +1166,18 @@ def test_cell_dynamic_z_series(
     if custom_starting_z is not None:
         current_z = custom_starting_z
     elif not (CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS):
-        safe_z = get_safe_z_for_cell(global_cell, safe_z, offset=CALIBRATION_OFFSET)
-        current_z = safe_z
+        from calibration_store import load_calibration
+        cal_cells = load_calibration().get("cells", {})
+        cal_key = str(int(global_cell))
+        if cal_key in cal_cells:
+            rough_z = float(cal_cells[cal_key])
+            current_z = rough_z + Z_START_OFFSET_MM
+            print(
+                f"  Calibrated Z-start: rough {rough_z:.3f} + {Z_START_OFFSET_MM:.3f} "
+                f"= {current_z:.3f} mm"
+            )
+        else:
+            current_z = get_safe_z_for_cell(global_cell, safe_z, offset=Z_START_OFFSET_MM)
     else:
         # In calibration or recalibration mode, use the provided safe_z
         current_z = safe_z
@@ -1834,6 +1888,15 @@ def _finalize_regular_experiment_run(
         partial=run_ended_early,
         completed_cells=completed_cells,
     )
+    maybe_save_timeseries_data(
+        all_data,
+        timestamp,
+        mode,
+        run_experiment_name,
+        termination_by_cell=termination_by_cell,
+        partial=run_ended_early,
+        completed_cells=completed_cells,
+    )
     print(f"\nFINAL RESULTS SAVED TO: {csv_filename}")
     web_interface.update_status("Experiment completed successfully")
     return csv_filename
@@ -1843,7 +1906,7 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
                      timestamp: str, mode: str, completed_cells: List[int], experiment_name: str,
                      termination_by_cell: Optional[Dict[int, str]] = None) -> str:
     """Deprecated wrapper — use save_dynamic_analysis_data(..., partial=True)."""
-    return save_dynamic_analysis_data(
+    csv_path = save_dynamic_analysis_data(
         all_data,
         timestamp,
         mode,
@@ -1852,6 +1915,16 @@ def save_partial_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[
         partial=True,
         completed_cells=completed_cells,
     )
+    maybe_save_timeseries_data(
+        all_data,
+        timestamp,
+        mode,
+        experiment_name,
+        termination_by_cell=termination_by_cell,
+        partial=True,
+        completed_cells=completed_cells,
+    )
+    return csv_path
 
 
 def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
@@ -2013,6 +2086,116 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
     else:
         print(f"All data saved to: {csv_filename}")
     return csv_filename
+
+
+def save_timeseries_data(
+    all_data: Dict[int, Dict[float, Dict[float, Optional[List[Dict]]]]],
+    timestamp: str,
+    mode: str,
+    experiment_name: str,
+    termination_by_cell: Optional[Dict[int, str]] = None,
+    partial: bool = False,
+    completed_cells: Optional[List[int]] = None,
+) -> str:
+    """Save every collected sample (one row per dwell reading) to a separate CSV."""
+    if not all_data:
+        return ""
+
+    slug = _sanitize_experiment_slug(experiment_name)
+    if partial:
+        csv_filename = f"dynamic_analysis_{slug}_{mode}_PARTIAL_{timestamp}_timeseries.csv"
+    else:
+        csv_filename = f"dynamic_analysis_{slug}_{mode}_{timestamp}_timeseries.csv"
+
+    with open(csv_filename, "w", newline="", encoding="utf-8") as csvfile:
+        csv_writer = csv.writer(csvfile)
+        if partial:
+            csv_writer.writerow([f"# Timeseries - Mode: {mode.upper()} (PARTIAL RESULTS)"])
+        else:
+            csv_writer.writerow([f"# Timeseries - Mode: {mode.upper()}"])
+        csv_writer.writerow([f"# Experiment Name: {experiment_name}"])
+        csv_writer.writerow([f"# Timestamp: {timestamp}"])
+        csv_writer.writerow(["# Save all sample data: ENABLED"])
+        csv_writer.writerow([f"# Sample interval (s): {SAMPLE_INTERVAL:.3f}"])
+        csv_writer.writerow([f"# Measurement duration (s): {MEASUREMENT_DURATION:.3f}"])
+        if partial and completed_cells is not None:
+            csv_writer.writerow([f"# Completed cells: {completed_cells}"])
+        if partial:
+            csv_writer.writerow([
+                "# WARNING: Experiment was terminated early - these are partial results"
+            ])
+
+        headers = [
+            "row", "cell", "Cell_Label", "Z_Height_mm", "RPM",
+            "Elapsed_Time_s", "Torque_%", "Rotational_Drag", "Cell_Termination_Method",
+        ]
+        csv_writer.writerow(headers)
+
+        for global_cell in sorted(all_data.keys()):
+            row_number, _local_cell = global_cell_to_row_and_local(global_cell)
+            cell_data = all_data[global_cell]
+            z_heights = sorted(_z_keys_from_cell_data(cell_data), reverse=True)
+            term = str((termination_by_cell or {}).get(global_cell, "normal"))
+            for z_height in z_heights:
+                rpm_data = cell_data.get(z_height)
+                if not isinstance(rpm_data, dict):
+                    continue
+                for rpm in sorted(k for k in rpm_data.keys() if k not in _RPM_DATA_META_KEYS):
+                    measurements = rpm_data.get(rpm)
+                    if not measurements:
+                        continue
+                    for sample in measurements:
+                        try:
+                            torque_percent = float(sample.get("torque_percent", 0))
+                            elapsed = float(sample.get("elapsed_time", 0))
+                        except (TypeError, ValueError):
+                            continue
+                        rpm_f = float(rpm)
+                        rotational_drag = abs(torque_percent) / rpm_f if rpm_f > 0 else 0.0
+                        csv_writer.writerow([
+                            str(row_number),
+                            str(global_cell),
+                            CELL_CONTENT_MAP.get(global_cell, ""),
+                            f"{float(z_height):.3f}",
+                            f"{rpm_f:.1f}",
+                            f"{elapsed:.2f}",
+                            f"{torque_percent:.3f}",
+                            f"{rotational_drag:.6f}",
+                            term,
+                        ])
+
+    print(f"Timeseries data saved to: {csv_filename}")
+    return csv_filename
+
+
+def maybe_save_timeseries_data(
+    all_data: Dict,
+    timestamp: str,
+    mode: str,
+    experiment_name: str,
+    termination_by_cell: Optional[Dict[int, str]] = None,
+    partial: bool = False,
+    completed_cells: Optional[List[int]] = None,
+    save_all: Optional[bool] = None,
+) -> str:
+    """Write timeseries CSV when save-all mode is enabled; never raises."""
+    enabled = SAVE_ALL_SAMPLE_DATA if save_all is None else bool(save_all)
+    if not enabled or not all_data:
+        return ""
+    try:
+        return save_timeseries_data(
+            all_data,
+            timestamp,
+            mode,
+            experiment_name,
+            termination_by_cell=termination_by_cell,
+            partial=partial,
+            completed_cells=completed_cells,
+        )
+    except Exception as e:
+        print(f"Warning: Failed to save timeseries CSV: {e}")
+        return ""
+
 
 def main():
     print("="*80)

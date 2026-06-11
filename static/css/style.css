@@ -827,8 +827,8 @@ body.running .header-sweep {
 }
 
 .run-settings-toggles-row {
-    grid-template-columns: 1fr minmax(220px, 0.9fr);
-    align-items: stretch;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
 }
 
 .run-settings-toggles-col {
@@ -838,10 +838,72 @@ body.running .header-sweep {
     min-width: 0;
 }
 
-.run-settings-toggles-row .viscosity-predictions-panel {
-    align-self: stretch;
-    height: 100%;
-    margin-top: 0;
+.run-settings-toggles-col-right {
+    gap: 8px;
+}
+
+.z-start-offset-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 2px;
+    font-size: 0.82rem;
+}
+
+.z-start-offset-row span {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.z-start-offset-row input {
+    width: 100%;
+    max-width: 10rem;
+}
+
+.z-start-offset-row.is-disabled {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.controls-charts-dwell-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--controls-block-gap);
+}
+
+.controls-charts-dwell-row.is-save-all-active {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+}
+
+.dwell-time-plot-area {
+    min-height: 280px;
+}
+
+.dwell-z-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-bottom: 8px;
+}
+
+.dwell-z-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.dwell-z-toggle input {
+    margin: 0;
+}
+
+.viscosity-prediction-toggle-row[data-mode="on"] .ui-switch-label {
+    color: var(--color-green-text, #1a7f37);
 }
 
 .run-settings-advanced-params-row {
@@ -3663,6 +3725,10 @@ body.loading .skeleton-lines {
 
     .protocol-flowchart {
         justify-content: flex-start;
+    }
+
+    .controls-charts-dwell-row.is-save-all-active {
+        grid-template-columns: 1fr;
     }
 
     .summary-meta-tiles {

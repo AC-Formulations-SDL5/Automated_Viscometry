@@ -457,6 +457,8 @@
                                         </span>
                                         <span class="ui-switch-label">Fail-Safe Termination (75% Confidence Threshold)</span>
                                     </label>
+                                </div>
+                                <div class="run-settings-toggles-col run-settings-toggles-col-right">
                                     <label class="ui-switch-row">
                                         <span class="ui-switch">
                                             <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox" checked>
@@ -464,18 +466,23 @@
                                         </span>
                                         <span class="ui-switch-label">Skip Z-levels until liquid contact </span>
                                     </label>
-                                </div>
-                                <div id="viscosity-predictions-panel" class="viscosity-predictions-panel" data-mode="off">
-                                    <div class="viscosity-predictions-header">
-                                        <span class="form-label">Viscosity predictions</span>
-                                        <span class="viscosity-predictions-hint">Unified rheology fit after each cell</span>
-                                    </div>
-                                    <label class="ui-switch-row viscosity-prediction-toggle-row">
+                                    <label id="viscosity-prediction-toggle-row" class="ui-switch-row viscosity-prediction-toggle-row" data-mode="off">
                                         <span class="ui-switch">
                                             <input id="viscosity-prediction-enabled" name="viscosity_prediction_enabled" type="checkbox">
                                             <span class="ui-switch-track" aria-hidden="true"></span>
                                         </span>
                                         <span class="ui-switch-label">Enable viscosity predictions</span>
+                                    </label>
+                                    <label class="ui-switch-row">
+                                        <span class="ui-switch">
+                                            <input id="save-all-sample-data" name="save_all_sample_data" type="checkbox">
+                                            <span class="ui-switch-track" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="ui-switch-label">Save all sample data</span>
+                                    </label>
+                                    <label id="z-start-offset-row" class="z-start-offset-row is-disabled">
+                                        <span>Z-start offset from rough hitpoint (mm)</span>
+                                        <input id="z-start-offset-mm" name="z_start_offset_mm" type="number" step="0.01" value="0.4" disabled title="Requires at least one calibrated cell in the planned run">
                                     </label>
                                 </div>
                             </div>
@@ -734,19 +741,35 @@
                     </div>
                 </section>
 
-                <section class="card plot-card skeleton-host">
-                    <div class="card-title-row">
-                        <h2>Torque vs Z-Height</h2>
-                    </div>
-                    <div id="torque-z-plot" class="plot-shell">
-                        <canvas id="torque-z-canvas" aria-label="Torque vs Z-height"></canvas>
-                    </div>
-                    <div id="torque-z-empty" class="plot-empty">No data yet</div>
-                    <div class="skeleton-lines">
-                        <div class="skeleton-line"></div>
-                        <div class="skeleton-line"></div>
-                    </div>
-                </section>
+                <div id="controls-charts-dwell-row" class="controls-charts-dwell-row">
+                    <section class="card plot-card skeleton-host">
+                        <div class="card-title-row">
+                            <h2>Torque vs Z-Height</h2>
+                        </div>
+                        <div id="torque-z-plot" class="plot-shell">
+                            <canvas id="torque-z-canvas" aria-label="Torque vs Z-height"></canvas>
+                        </div>
+                        <div id="torque-z-empty" class="plot-empty">No data yet</div>
+                        <div class="skeleton-lines">
+                            <div class="skeleton-line"></div>
+                            <div class="skeleton-line"></div>
+                        </div>
+                    </section>
+
+                    <section id="dwell-time-drag-card" class="card plot-card skeleton-host hidden">
+                        <div class="card-title-row">
+                            <div>
+                                <h2>Dwell-Time Rotational Drag</h2>
+                                <span id="dwell-time-cell-label" class="chart-subtitle">Active cell</span>
+                            </div>
+                        </div>
+                        <div id="dwell-z-sections" class="dwell-z-sections" aria-live="polite"></div>
+                        <div id="dwell-time-plot" class="plot-shell dwell-time-plot-area">
+                            <canvas id="dwell-time-canvas" aria-label="Rotational drag vs elapsed time per Z-height"></canvas>
+                        </div>
+                        <div id="dwell-time-empty" class="plot-empty">No dwell-time data yet</div>
+                    </section>
+                </div>
 
                     <section class="card live-viscosity-card">
                         <div class="card-title-row">

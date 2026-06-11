@@ -236,6 +236,8 @@ class ViscometryWebInterface:
             'low_torque_liquid_contact_skip_enabled': True,
             'low_torque_liquid_contact_threshold_pct': 25.0,
             'viscosity_prediction_mode': 'off',
+            'save_all_sample_data': False,
+            'z_start_offset_mm': 0.4,
         }
         self.predicted_viscosity_results: Dict = {}
         self.rpm_torque_status_by_cell: Dict[int, Dict[str, str]] = {}
@@ -1376,21 +1378,38 @@ class ViscometryWebInterface:
                     if int(k) in saved_cell_ids
                 })
                 if filtered_all_data:
-                    from all_cells_with_rotational_drag_feedback import save_dynamic_analysis_data
+                    from all_cells_with_rotational_drag_feedback import (
+                        maybe_save_timeseries_data,
+                        save_dynamic_analysis_data,
+                    )
+                    term_map = {
+                        int(k): str(v)
+                        for k, v in (run_context.get("termination_by_cell") or {}).items()
+                        if int(k) in saved_cell_ids
+                    }
                     csv_filename = save_dynamic_analysis_data(
                         filtered_all_data,
                         run_context.get("timestamp", ""),
                         run_context.get("mode", "custom"),
                         run_context.get("experiment_name", ""),
-                        termination_by_cell={
-                            int(k): str(v)
-                            for k, v in (run_context.get("termination_by_cell") or {}).items()
-                            if int(k) in saved_cell_ids
-                        },
+                        termination_by_cell=term_map,
                         partial=bool(run_context.get("run_ended_early")),
                         completed_cells=run_context.get("completed_cells"),
                     )
                     partial_csv_path = csv_filename
+                    runtime_settings = run_context.get("runtime_settings") or {}
+                    timeseries_path = maybe_save_timeseries_data(
+                        filtered_all_data,
+                        run_context.get("timestamp", ""),
+                        run_context.get("mode", "custom"),
+                        run_context.get("experiment_name", ""),
+                        termination_by_cell=term_map,
+                        partial=bool(run_context.get("run_ended_early")),
+                        completed_cells=run_context.get("completed_cells"),
+                        save_all=bool(runtime_settings.get("save_all_sample_data", False)),
+                    )
+                    if timeseries_path:
+                        print(f"Timeseries CSV saved: {timeseries_path}")
                 experiment_entry = self._build_experiment_history_entry_from_review(
                     session_copy, run_context, saved_cell_ids
                 )
@@ -1573,6 +1592,16 @@ class ViscometryWebInterface:
                 normalized['low_torque_liquid_contact_threshold_pct'] = float(
                     settings['low_torque_liquid_contact_threshold_pct']
                 )
+            if 'save_all_sample_data' in settings:
+                normalized['save_all_sample_data'] = bool(settings['save_all_sample_data'])
+            if 'z_start_offset_mm' in settings and settings['z_start_offset_mm'] not in (None, ''):
+                try:
+                    offset = float(settings['z_start_offset_mm'])
+                    if not (-1.0 <= offset <= 3.0):
+                        offset = 0.4
+                    normalized['z_start_offset_mm'] = offset
+                except (TypeError, ValueError):
+                    normalized['z_start_offset_mm'] = 0.4
             if 'calibration_mode' in settings:
                 normalized['calibration_mode'] = bool(settings['calibration_mode'])
             if 'recalibrate_individual_cells' in settings:
@@ -1981,11 +2010,13 @@ class ViscometryWebInterface:
         cell_id: int,
         hit_detected: Optional[bool] = None,
         sample_count: int = 1,
+        elapsed_time: Optional[float] = None,
     ):
         """Add a new measurement point.
 
         sample_count: viscometer torque samples represented by this point (e.g. one live
         stream row = 1; a single summary row for an RPM dwell = number of reads in that dwell).
+        elapsed_time: seconds since the start of the current RPM dwell (for dwell-time charts).
         """
         try:
             # Sanitize rotational_drag: replace inf with None for JSON serialization
@@ -2001,6 +2032,13 @@ class ViscometryWebInterface:
             if sc < 1:
                 sc = 1
 
+            safe_elapsed = None
+            if elapsed_time is not None:
+                try:
+                    safe_elapsed = float(elapsed_time)
+                except (TypeError, ValueError):
+                    safe_elapsed = None
+
             measurement = {
                 'timestamp': time.time(),
                 'height': height,
@@ -2010,6 +2048,7 @@ class ViscometryWebInterface:
                 'cell_id': cell_id,
                 'hit_detected': bool(hit_detected) if hit_detected is not None else None,
                 'sample_count': sc,
+                'elapsed_time': safe_elapsed,
             }
             self.measurement_data.append(measurement)
             
