@@ -16,22 +16,22 @@ from cnc_controller import CNC_Machine, CNCMotionError
 
 
 class TestFailSafeComparator(unittest.TestCase):
-    def test_sub_threshold_streak(self):
+    def test_above_floor_streak(self):
         threshold = 0.8 * 0.75
         self.assertAlmostEqual(threshold, 0.6)
-        confidences = [0.55, 0.58, 0.59, 0.57, 0.56]
+        confidences = [0.62, 0.65, 0.61, 0.63, 0.64]
         streak = 0
         for c in confidences:
-            if c < threshold:
+            if c >= threshold:
                 streak += 1
             else:
                 streak = 0
         self.assertEqual(streak, 5)
 
-    def test_at_threshold_does_not_streak(self):
+    def test_below_floor_does_not_streak(self):
         threshold = 0.6
-        self.assertFalse(0.60 < threshold)
-        self.assertTrue(0.59 < threshold)
+        self.assertTrue(0.60 >= threshold)
+        self.assertFalse(0.59 >= threshold)
 
 
 class TestR2ConfidenceValidity(unittest.TestCase):

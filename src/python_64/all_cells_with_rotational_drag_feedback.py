@@ -1300,10 +1300,7 @@ def test_cell_dynamic_z_series(
                             trend_analysis = feedback_controller.analyze_trend_for_rpm(rpm)
                             if trend_analysis['valid']:
                                 rpm_confidence = float(trend_analysis.get('hit_confidence', 0.0) or 0.0)
-                                rpm_fail_safe_active = (
-                                    rpm_confidence >= fail_safe_floor
-                                    and rpm_confidence < hit_confidence_threshold
-                                )
+                                rpm_fail_safe_active = rpm_confidence >= fail_safe_floor
                                 web_interface.emit_feedback_metrics(
                                     rpm=rpm,
                                     second_derivative_drag=trend_analysis.get('second_derivative_drag'),
@@ -1463,7 +1460,7 @@ def test_cell_dynamic_z_series(
                         cell_exit_reason = "hit_detected"
                         break
 
-                    # Fail-safe: confidence-window streak (requires feedback metrics above).
+                    # Fail-safe: sustained confidence above 75% of hit threshold (requires feedback metrics above).
                     if FAIL_SAFE_ENABLED:
                         fail_safe_floor = HIT_POINT_CONFIDENCE_THRESHOLD * 0.75
                         has_valid_fail_safe_metrics = (
@@ -1471,23 +1468,18 @@ def test_cell_dynamic_z_series(
                             and len(feedback_controller.z_rpm_drag_data) >= MIN_DATA_POINTS_FOR_TREND
                         )
                         if has_valid_fail_safe_metrics:
-                            in_fail_safe_window = (
-                                z_level_max_confidence >= fail_safe_floor
-                                and z_level_max_confidence < hit_confidence_threshold
-                            )
-                            if in_fail_safe_window:
+                            above_fail_safe_floor = z_level_max_confidence >= fail_safe_floor
+                            if above_fail_safe_floor:
                                 consecutive_fail_safe_steps += 1
                                 print(
                                     f"  Fail-safe streak: {consecutive_fail_safe_steps}/{FAIL_SAFE_CONSECUTIVE_STEPS} "
-                                    f"(window: {fail_safe_floor:.2f} <= max confidence={z_level_max_confidence:.2f} "
-                                    f"< {hit_confidence_threshold:.2f})"
+                                    f"(max confidence={z_level_max_confidence:.2f} >= floor={fail_safe_floor:.2f})"
                                 )
                             else:
                                 if consecutive_fail_safe_steps > 0:
                                     print(
                                         f"  Fail-safe streak reset at Z={z_rounded:.3f} "
-                                        f"(max confidence={z_level_max_confidence:.2f}, window {fail_safe_floor:.2f} "
-                                        f"to <{hit_confidence_threshold:.2f})"
+                                        f"(max confidence={z_level_max_confidence:.2f} < floor={fail_safe_floor:.2f})"
                                     )
                                 consecutive_fail_safe_steps = 0
 
@@ -1498,12 +1490,12 @@ def test_cell_dynamic_z_series(
                                 cell_z_rpm_data[z_rounded]['_metrics'] = metrics_data
                                 web_interface.update_status(
                                     f"Cell {global_cell}: fail-safe activated after "
-                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive confidence readings in window "
-                                    f"{fail_safe_floor:.2f} to <{hit_confidence_threshold:.2f}"
+                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive confidence readings "
+                                    f">= {fail_safe_floor:.2f} (75% of hit threshold)"
                                 )
                                 print(
                                     f"  *** FAIL-SAFE: terminating Cell {global_cell} after "
-                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive confidence-window Z-steps ***"
+                                    f"{FAIL_SAFE_CONSECUTIVE_STEPS} consecutive Z-steps above 75% confidence floor ***"
                                 )
                                 cell_exit_reason = "fail_safe"
                                 break

@@ -3944,13 +3944,13 @@ class ViscometryDashboard {
         const failSafeFloor = hitThreshold * 0.75;
         const confidenceRaw = Number(data.hit_confidence);
         const confidenceValid = Number.isFinite(confidenceRaw);
-        const confidenceInWindow = confidenceValid && confidenceRaw >= failSafeFloor && confidenceRaw < hitThreshold;
+        const confidenceAboveFailSafeFloor = confidenceValid && confidenceRaw >= failSafeFloor;
 
         if (this.el.sidebarConfidence) {
             this.el.sidebarConfidence.textContent = fmt(data.hit_confidence);
             if (confidenceValid && confidenceRaw >= hitThreshold) {
                 this.el.sidebarConfidence.className = "sidebar-value mono confidence-hit";
-            } else if (confidenceInWindow) {
+            } else if (confidenceAboveFailSafeFloor) {
                 this.el.sidebarConfidence.className = "sidebar-value mono confidence-failsafe";
             } else {
                 this.el.sidebarConfidence.className = "sidebar-value mono";
