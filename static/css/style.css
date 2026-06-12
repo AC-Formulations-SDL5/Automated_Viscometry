@@ -587,6 +587,12 @@ body.running .header-sweep {
     gap: var(--controls-block-gap);
 }
 
+#discovery-tab.tab-panel.active {
+    display: flex !important;
+    flex-direction: column;
+    gap: var(--controls-block-gap);
+}
+
 #data-processing-tab.tab-panel.active {
     display: flex !important;
     flex-direction: column;
@@ -4528,5 +4534,244 @@ body.experiment-review-active {
     margin-top: 14px;
     display: flex;
     justify-content: flex-end;
+}
+
+/* ── Discovery Mode (faint blue glass) ── */
+:root {
+    --discovery-tint: rgba(72, 132, 255, 0.04);
+    --discovery-glass: rgba(235, 242, 255, 0.72);
+    --discovery-glass-strong: rgba(228, 238, 255, 0.85);
+    --discovery-border: rgba(100, 150, 220, 0.22);
+    --discovery-accent: rgb(88, 140, 230);
+    --discovery-accent-subtle: rgba(88, 140, 230, 0.12);
+}
+
+body.discovery-active {
+    background:
+        radial-gradient(ellipse 90% 70% at 25% 0%, rgba(88, 140, 230, 0.07) 0%, transparent 55%),
+        radial-gradient(ellipse 70% 60% at 85% 100%, rgba(120, 170, 255, 0.05) 0%, transparent 60%),
+        var(--bg-secondary);
+    transition: background var(--duration-normal) var(--ease-smooth);
+}
+
+#discovery-tab {
+    position: relative;
+}
+
+#discovery-tab::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-card);
+    background: linear-gradient(160deg, var(--discovery-tint), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.discovery-experiment-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--controls-block-gap);
+    width: 100%;
+    position: relative;
+    z-index: 1;
+}
+
+.discovery-card {
+    background: var(--discovery-glass);
+    backdrop-filter: blur(var(--glass-blur)) saturate(170%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(170%);
+    border: 1px solid var(--discovery-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-glass), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    padding: 18px 20px;
+}
+
+.discovery-info-banner {
+    border-color: rgba(100, 150, 220, 0.28);
+}
+
+.discovery-info-title {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.discovery-info-text,
+.discovery-info-subtext {
+    margin: 0 0 6px;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.discovery-info-subtext {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0;
+}
+
+.discovery-header-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.discovery-valid-rpms-wrap {
+    flex: 1;
+    min-width: 200px;
+}
+
+.discovery-valid-rpms-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.discovery-valid-rpm-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 72px;
+    overflow-y: auto;
+}
+
+.discovery-rpm-chip {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--discovery-accent-subtle);
+    border: 1px solid var(--discovery-border);
+    color: var(--text-secondary);
+}
+
+.discovery-step-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    background: var(--discovery-accent-subtle);
+    border: 1px solid var(--discovery-border);
+    color: rgb(50, 90, 160);
+}
+
+.discovery-eta-panel {
+    border: 1px solid rgba(88, 140, 230, 0.28);
+    box-shadow: inset 0 0 0 1px rgba(88, 140, 230, 0.08);
+}
+
+.discovery-eta-input {
+    min-height: 44px;
+    font-size: 1rem;
+}
+
+.discovery-cell-badge {
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    margin-left: 8px;
+    font-weight: 600;
+}
+
+.discovery-cell-badge.calibrated {
+    background: var(--color-green-badge-bg);
+    color: var(--color-green-text);
+    border: 1px solid var(--color-green-border);
+}
+
+.discovery-cell-badge.uncalibrated {
+    background: var(--color-yellow-badge-bg);
+    color: var(--color-yellow-text);
+    border: 1px solid var(--color-yellow-border);
+}
+
+.discovery-cell-validation {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--color-red-text);
+    min-height: 1.2em;
+}
+
+.discovery-cell-row-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.btn-discovery-start {
+    background: linear-gradient(135deg, rgb(88, 140, 230), rgb(60, 110, 200));
+    border-color: rgba(60, 110, 200, 0.5);
+    color: var(--text-on-accent);
+}
+
+.btn-discovery-start:hover:not(:disabled) {
+    filter: brightness(1.05);
+}
+
+.tab-button-discovery.active {
+    background: var(--discovery-glass-strong);
+    border-color: var(--discovery-border);
+}
+
+.discovery-status-pill {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--discovery-border);
+    background: var(--discovery-accent-subtle);
+    color: var(--text-secondary);
+}
+
+.discovery-status-pill.converged {
+    background: var(--color-green-badge-bg);
+    border-color: var(--color-green-border);
+    color: var(--color-green-text);
+}
+
+.discovery-status-pill.failed {
+    background: var(--color-red-badge-bg);
+    border-color: var(--color-red-border);
+    color: var(--color-red-text);
+}
+
+.discovery-status-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.discovery-status-label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.discovery-live-hint {
+    margin: 12px 0 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.discovery-probe-table {
+    width: 100%;
+    font-size: 0.82rem;
+}
+
+.protocol-mode-badge.mode-discovery {
+    background: var(--discovery-accent-subtle);
+    border: 1px solid var(--discovery-border);
+    color: rgb(50, 90, 160);
 }
 

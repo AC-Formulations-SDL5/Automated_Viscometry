@@ -238,6 +238,9 @@ class ViscometryWebInterface:
             'viscosity_prediction_mode': 'off',
             'save_all_sample_data': False,
             'z_start_offset_mm': 0.4,
+            'discovery_mode_enabled': False,
+            'discovery_eta_guess_map': {},
+            'discovery_probe_duration_s': 12.0,
         }
         self.predicted_viscosity_results: Dict = {}
         self.rpm_torque_status_by_cell: Dict[int, Dict[str, str]] = {}
@@ -366,6 +369,37 @@ class ViscometryWebInterface:
                 return jsonify({'error': str(e)}), 400
             except Exception as e:
                 print(f"Error in api_run_start: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/run/start_discovery', methods=['POST'])
+        def api_run_start_discovery():
+            try:
+                payload = request.get_json(silent=True) or {}
+                self._start_discovery_run(payload)
+                self.update_status('Discovery run start command received')
+                return jsonify({'ok': True, 'status_message': self.status_message})
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
+            except Exception as e:
+                print(f"Error in api_run_start_discovery: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/discovery/config', methods=['GET'])
+        def api_discovery_config():
+            try:
+                from discovery_mode import load_discovery_config
+
+                cfg = load_discovery_config()
+                return jsonify({
+                    'k_bulk': cfg.k_bulk,
+                    'target_torque_bulk': cfg.target_torque,
+                    'torque_window_bulk': list(cfg.torque_window),
+                    'hit_point_offset_mm': cfg.hit_point_offset_mm,
+                    'valid_rpms': list(cfg.valid_rpms),
+                    'cold_start_rpm': cfg.cold_start_rpm,
+                })
+            except Exception as e:
+                print(f"Error in api_discovery_config: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/run/stop', methods=['POST'])
@@ -1602,6 +1636,32 @@ class ViscometryWebInterface:
                     normalized['z_start_offset_mm'] = offset
                 except (TypeError, ValueError):
                     normalized['z_start_offset_mm'] = 0.4
+            if 'discovery_mode_enabled' in settings:
+                normalized['discovery_mode_enabled'] = bool(settings['discovery_mode_enabled'])
+            if 'discovery_probe_duration_s' in settings and settings['discovery_probe_duration_s'] not in (None, ''):
+                try:
+                    normalized['discovery_probe_duration_s'] = float(settings['discovery_probe_duration_s'])
+                except (TypeError, ValueError):
+                    normalized['discovery_probe_duration_s'] = 12.0
+            if 'discovery_eta_guess_map' in settings:
+                raw_eta = settings['discovery_eta_guess_map']
+                if isinstance(raw_eta, dict):
+                    parsed_eta: Dict[str, Optional[float]] = {}
+                    for cell_key, eta_val in raw_eta.items():
+                        try:
+                            str_key = str(int(cell_key))
+                        except Exception:
+                            continue
+                        if eta_val in (None, ''):
+                            parsed_eta[str_key] = None
+                            continue
+                        try:
+                            parsed_eta[str_key] = float(eta_val)
+                        except (TypeError, ValueError):
+                            continue
+                    normalized['discovery_eta_guess_map'] = parsed_eta
+                else:
+                    normalized['discovery_eta_guess_map'] = {}
             if 'calibration_mode' in settings:
                 normalized['calibration_mode'] = bool(settings['calibration_mode'])
             if 'recalibrate_individual_cells' in settings:
@@ -1669,7 +1729,59 @@ class ViscometryWebInterface:
             'recalibrate_individual_cells': False,
             'recalibration_cells': {},
             'recalibration_ignore_max_z_travel': False,
+            'discovery_mode_enabled': False,
         }
+
+    def _validate_discovery_cells(self, selected_cells: List[int]) -> None:
+        """Raise ValueError if any cell lacks Z calibration."""
+        summary = get_calibration_summary()
+        calibrated = summary.get('cells', {}) if isinstance(summary, dict) else {}
+        if not isinstance(calibrated, dict):
+            calibrated = {}
+        missing = [c for c in selected_cells if str(int(c)) not in calibrated]
+        if missing:
+            raise ValueError(
+                f"Discovery requires calibrated cells only. Not calibrated: {sorted(missing)}"
+            )
+
+    def _parse_selected_cells_from_payload(self, payload: dict) -> List[int]:
+        raw = payload.get('selected_cells', self.runtime_settings.get('selected_cells', []))
+        if isinstance(raw, str):
+            parts = [p.strip() for p in raw.split(',') if p.strip()]
+            cells = [int(p) for p in parts]
+        elif isinstance(raw, list):
+            cells = [int(c) for c in raw]
+        else:
+            cells = []
+        return sorted({c for c in cells if 1 <= c <= 18})
+
+    def _start_discovery_run(self, payload: Optional[dict] = None) -> None:
+        """Apply settings for a Discovery Mode run and queue start."""
+        body = dict(payload or {})
+        selected = self._parse_selected_cells_from_payload(body)
+        if not selected:
+            raise ValueError('Discovery run requires at least one selected cell')
+        self._validate_discovery_cells(selected)
+
+        try:
+            from discovery_mode import load_discovery_config
+
+            dcfg = load_discovery_config()
+            z_offset = float(dcfg.hit_point_offset_mm)
+        except Exception:
+            z_offset = 0.35
+
+        merged = {
+            **body,
+            **self._regular_run_mode_clear_payload(),
+            'discovery_mode_enabled': True,
+            'testing_mode': 'custom',
+            'selected_cells': selected,
+            'low_torque_liquid_contact_skip_enabled': False,
+            'z_start_offset_mm': z_offset,
+        }
+        self.update_runtime_settings(merged)
+        self.request_start()
 
     def _start_regular_run(self, payload: Optional[dict] = None) -> None:
         """Apply settings for a normal (non-calibration) run and queue start."""
@@ -1926,6 +2038,13 @@ class ViscometryWebInterface:
             self.socketio.emit('predicted_viscosity_summary_update', payload)
         except Exception as e:
             print(f"Warning: Failed to emit predicted viscosity summary: {e}")
+
+    def emit_discovery_update(self, payload: Dict):
+        """Broadcast Discovery Mode probe / convergence status."""
+        try:
+            self.socketio.emit('discovery_update', payload)
+        except Exception as e:
+            print(f"Warning: Failed to emit discovery update: {e}")
 
     def _load_experiment_history(self):
         """Load shared experiment history from disk if available."""

@@ -123,6 +123,11 @@ RECALIBRATION_IGNORE_MAX_Z_TRAVEL = False  # Recalibration only: use global floo
 RECALIBRATION_ABSOLUTE_MAX_Z_TRAVEL = -66.800  # Global Z floor when override is enabled (mm)
 CALIBRATION_OFFSET = 0.4         # mm above rough hitpoint to use as safe_z
 
+# ========== DISCOVERY MODE CONFIGURATION ==========
+DISCOVERY_MODE_ENABLED = False
+DISCOVERY_ETA_GUESS_MAP: Dict[int, Optional[float]] = {}
+DISCOVERY_PROBE_DURATION_S = 12.0
+
 
 def _is_calibration_like_run() -> bool:
     """True during full calibration or individual-cell recalibration runs."""
@@ -196,6 +201,7 @@ def apply_runtime_settings_from_web():
     global LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED, LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT
     global VISCOSITY_PREDICTION_MODE
     global SAVE_ALL_SAMPLE_DATA, Z_START_OFFSET_MM
+    global DISCOVERY_MODE_ENABLED, DISCOVERY_ETA_GUESS_MAP, DISCOVERY_PROBE_DURATION_S
 
     settings = web_interface.get_runtime_settings()
 
@@ -259,6 +265,25 @@ def apply_runtime_settings_from_web():
         Z_START_OFFSET_MM = z_offset
     except (TypeError, ValueError):
         Z_START_OFFSET_MM = 0.4
+    DISCOVERY_MODE_ENABLED = bool(settings.get('discovery_mode_enabled', False))
+    DISCOVERY_PROBE_DURATION_S = float(settings.get('discovery_probe_duration_s', DISCOVERY_PROBE_DURATION_S))
+    raw_eta_map = settings.get('discovery_eta_guess_map', {})
+    DISCOVERY_ETA_GUESS_MAP = {}
+    if isinstance(raw_eta_map, dict):
+        for cell_key, eta_val in raw_eta_map.items():
+            try:
+                cell_id = int(cell_key)
+            except (TypeError, ValueError):
+                continue
+            if eta_val in (None, ''):
+                DISCOVERY_ETA_GUESS_MAP[cell_id] = None
+            else:
+                try:
+                    DISCOVERY_ETA_GUESS_MAP[cell_id] = float(eta_val)
+                except (TypeError, ValueError):
+                    continue
+    if DISCOVERY_MODE_ENABLED:
+        LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = False
     # Parse recalibration cells: expect dict {cell_id: optional_starting_z}
     # JSON object keys arrive as strings; normalize to int keys for runtime lookup.
     raw_recalibration_cells = settings.get('recalibration_cells', {})
@@ -2401,9 +2426,61 @@ def main():
                 try:
                     # Resolve per-cell RPMs before the cell test
                     cell_rpms = get_rpms_for_cell(global_cell)
-                    print(f"  RPMs for Cell {global_cell}: {cell_rpms}")
                     # Use resolved run mode (set once at run start) to avoid accidental drift in per-cell flags.
                     is_calibration_like_run = mode in ("calibration", "recalibration")
+
+                    if DISCOVERY_MODE_ENABLED and not is_calibration_like_run:
+                        try:
+                            from discovery_runner import run_discovery_for_cell
+
+                            eta_guess = DISCOVERY_ETA_GUESS_MAP.get(global_cell)
+                            if eta_guess is not None and eta_guess <= 0:
+                                eta_guess = None
+                            web_interface.update_status(
+                                f"Discovery: selecting RPM for Cell {global_cell}"
+                            )
+                            discovery_result, discovered_rpms = run_discovery_for_cell(
+                                global_cell,
+                                cnc,
+                                client,
+                                eta_guess=eta_guess,
+                                material_label=CELL_CONTENT_MAP.get(global_cell),
+                                move_fn=move_to_cell_position,
+                                measure_fn=measure_torque_at_rpm,
+                                row_resolver=global_cell_to_row_and_local,
+                                measure_module=sys.modules[__name__],
+                                probe_duration_s=DISCOVERY_PROBE_DURATION_S,
+                                web_emit=True,
+                            )
+                            if not discovered_rpms:
+                                status = discovery_result.get("status", "unknown")
+                                print(
+                                    f"  Discovery failed for Cell {global_cell}: {status} "
+                                    f"— skipping cell"
+                                )
+                                web_interface.update_status(
+                                    f"Cell {global_cell}: discovery failed ({status}) — skipped"
+                                )
+                                termination_by_cell[global_cell] = f"discovery_{status}"
+                                continue
+                            cell_rpms = discovered_rpms
+                            print(
+                                f"  Discovery converged for Cell {global_cell}: "
+                                f"RPM={cell_rpms[0]:.3f}, "
+                                f"status={discovery_result.get('status')}"
+                            )
+                        except Exception as discovery_exc:
+                            print(
+                                f"  Discovery error for Cell {global_cell}: {discovery_exc}"
+                            )
+                            traceback.print_exc()
+                            web_interface.update_status(
+                                f"Cell {global_cell}: discovery error — skipped"
+                            )
+                            termination_by_cell[global_cell] = "discovery_error"
+                            continue
+
+                    print(f"  RPMs for Cell {global_cell}: {cell_rpms}")
                     
                     # Determine status message and custom starting Z for recalibration
                     custom_z = None

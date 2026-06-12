@@ -66,6 +66,7 @@
             <button class="tab-button active" data-tab="layout-tab">Layout & Timeline</button>
             <button class="tab-button" data-tab="calibrate-tab" id="calibrate-tab-button">Calibrate</button>
             <button class="tab-button" data-tab="controls-tab" id="controls-tab-button">Perform Experiment</button>
+            <button class="tab-button tab-button-discovery" data-tab="discovery-tab" id="discovery-tab-button">Discovery</button>
             <button class="tab-button" data-tab="data-processing-tab">Data and Processing</button>
             <button class="tab-button" data-tab="testing-tab" id="testing-tab-button">Testing</button>
             <button class="tab-button" data-tab="summary-tab">Experimental Summary</button>
@@ -791,6 +792,183 @@
                             </table>
                             <p id="live-viscosity-empty" class="plot-empty">No predictions yet.</p>
                         </div>
+                    </section>
+                </div>
+                <footer class="tab-signature" aria-hidden="true">
+                    <span class="tab-signature-copy">&copy; Acceleration Consortium | Ian Ngunga | 2026</span>
+                </footer>
+            </div>
+
+            <!-- Tab: Discovery Mode -->
+            <div id="discovery-tab" class="tab-panel">
+                <div class="discovery-experiment-stack">
+                    <section class="discovery-card discovery-info-banner">
+                        <p class="discovery-info-title">Discovery Mode</p>
+                        <p class="discovery-info-text">Autonomous rheological analysis for materials of unknown viscosity. <strong>Step 1:</strong> smart RPM selection — the system probes each <em>calibrated</em> cell near the bulk offset (~0.35&nbsp;mm above rough hit-point) until torque lands in the <strong>25–35%</strong> window. <strong>Step 2:</strong> a full Z-height scan runs automatically at the discovered RPM (same pipeline as Perform Experiment).</p>
+                        <p class="discovery-info-subtext">Only Z-calibrated cells may be selected. Washing runs between cells as in a normal experiment.</p>
+                    </section>
+
+                    <div class="discovery-header-row">
+                        <div id="discovery-calibration-pill" class="calibration-cells-status-pill cal-cells-status-none">
+                            <span id="discovery-calibration-status-text">0/18 cells calibrated</span>
+                        </div>
+                        <div class="discovery-valid-rpms-wrap">
+                            <span class="discovery-valid-rpms-label">Valid spindle speeds</span>
+                            <div id="discovery-valid-rpm-chips" class="discovery-valid-rpm-chips" aria-label="Valid RPM list"></div>
+                        </div>
+                    </div>
+
+                    <section class="discovery-card parameters-card">
+                        <div class="card-title-row">
+                            <h2>Discovery Experiment</h2>
+                            <span class="discovery-step-badge">Step 1 — RPM</span>
+                        </div>
+                        <form id="discovery-run-settings-form" class="run-settings-form run-settings-form-grid">
+                            <div class="run-settings-row run-settings-primary-row">
+                                <label>
+                                    <span>Experiment Name</span>
+                                    <input id="discovery-experiment-name" name="experiment_name" type="text" value="" placeholder="e.g. Unknown silicone batch">
+                                </label>
+                                <label>
+                                    <span>Cells (custom)</span>
+                                    <input id="discovery-selected-cells" name="selected_cells" type="text" value="1" placeholder="7, 8">
+                                </label>
+                            </div>
+                            <p id="discovery-cell-validation" class="discovery-cell-validation" role="status"></p>
+                            <div class="run-settings-row run-settings-cell-panels-row">
+                                <div id="discovery-eta-panel" class="discovery-eta-panel cell-rpm-panel">
+                                    <div class="cell-rpm-header">
+                                        <span class="form-label">Viscosity guess (cP) — optional</span>
+                                        <span class="form-hint">Leave blank to cold-start near 5 RPM; provide cP for a smarter first probe</span>
+                                    </div>
+                                    <div id="discovery-eta-table" class="cell-rpm-table"></div>
+                                </div>
+                                <div id="discovery-content-panel" class="cell-rpm-panel">
+                                    <div class="cell-rpm-header">
+                                        <span class="form-label">Per-Cell Sample Labels</span>
+                                        <span class="form-hint">Optional labels for what each selected cell contains</span>
+                                    </div>
+                                    <div id="discovery-content-table" class="cell-rpm-table"></div>
+                                </div>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Z Step</span>
+                                    <input id="discovery-z-step-size" name="z_step_size" type="number" step="0.001" value="-0.02">
+                                </label>
+                                <label>
+                                    <span>Measure (s)</span>
+                                    <input id="discovery-measurement-duration" name="measurement_duration" type="number" step="1" value="40">
+                                </label>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Sample Interval</span>
+                                    <input id="discovery-sample-interval" name="sample_interval" type="number" step="0.1" value="5">
+                                </label>
+                                <label>
+                                    <span>Dwell (s)</span>
+                                    <input id="discovery-dwell-seconds" name="dwell_seconds" type="number" step="0.1" value="2">
+                                </label>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Inter-RPM Pause</span>
+                                    <input id="discovery-inter-rpm-pause" name="inter_rpm_pause" type="number" step="0.1" value="2">
+                                </label>
+                                <label>
+                                    <span>Torque Break %</span>
+                                    <input id="discovery-torque-break-threshold" name="torque_break_threshold" type="number" step="0.1" value="100">
+                                </label>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Discovery probe duration (s)</span>
+                                    <input id="discovery-probe-duration-s" name="discovery_probe_duration_s" type="number" step="1" min="5" value="12">
+                                </label>
+                                <label id="discovery-z-start-offset-row" class="z-start-offset-row is-disabled">
+                                    <span>Z-start offset from rough hitpoint (mm)</span>
+                                    <input id="discovery-z-start-offset-mm" name="z_start_offset_mm" type="number" step="0.01" value="0.35" disabled>
+                                </label>
+                            </div>
+                            <div class="run-settings-row run-settings-toggles-row">
+                                <div class="run-settings-toggles-col">
+                                    <label class="ui-switch-row">
+                                        <span class="ui-switch">
+                                            <input id="discovery-feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
+                                            <span class="ui-switch-track" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="ui-switch-label">Feedback control enabled</span>
+                                    </label>
+                                    <label class="ui-switch-row">
+                                        <span class="ui-switch">
+                                            <input id="discovery-smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox" checked>
+                                            <span class="ui-switch-track" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="ui-switch-label">Smart Early Exit</span>
+                                    </label>
+                                    <label class="ui-switch-row">
+                                        <span class="ui-switch">
+                                            <input id="discovery-fail-safe-enabled" name="fail_safe_enabled" type="checkbox" checked>
+                                            <span class="ui-switch-track" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="ui-switch-label">Fail-Safe Termination</span>
+                                    </label>
+                                </div>
+                                <div class="run-settings-toggles-col run-settings-toggles-col-right">
+                                    <label id="discovery-viscosity-prediction-toggle-row" class="ui-switch-row viscosity-prediction-toggle-row" data-mode="off">
+                                        <span class="ui-switch">
+                                            <input id="discovery-viscosity-prediction-enabled" name="viscosity_prediction_enabled" type="checkbox">
+                                            <span class="ui-switch-track" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="ui-switch-label">Enable viscosity predictions</span>
+                                    </label>
+                                    <label class="ui-switch-row">
+                                        <span class="ui-switch">
+                                            <input id="discovery-save-all-sample-data" name="save_all_sample_data" type="checkbox">
+                                            <span class="ui-switch-track" aria-hidden="true"></span>
+                                        </span>
+                                        <span class="ui-switch-label">Save all sample data</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="control-actions control-actions-four">
+                                <button type="button" id="discovery-apply-settings" class="btn control-btn control-btn-neutral">Apply Settings</button>
+                                <button type="button" id="discovery-start-run" class="btn btn-discovery-start control-btn control-btn-start">Start Discovery Run</button>
+                                <div class="control-stop-pair">
+                                    <button type="button" id="discovery-terminate-current-cell" class="btn control-btn control-btn-stop terminate-current-cell-btn hidden">Stop Measurement in current cell</button>
+                                    <button type="button" id="discovery-stop-run" class="btn btn-stop control-btn control-btn-stop">Stop Experiment</button>
+                                </div>
+                            </div>
+                            <div id="discovery-control-status" class="control-status">Ready</div>
+                        </form>
+                    </section>
+
+                    <section class="discovery-card discovery-rpm-status-card">
+                        <div class="card-title-row">
+                            <h2>RPM Discovery Progress</h2>
+                            <span id="discovery-status-pill" class="discovery-status-pill idle">Idle</span>
+                        </div>
+                        <div class="discovery-status-summary">
+                            <div><span class="discovery-status-label">Cell</span><strong id="discovery-status-cell">—</strong></div>
+                            <div><span class="discovery-status-label">Discovered RPM</span><strong id="discovery-status-rpm" class="mono">—</strong></div>
+                            <div><span class="discovery-status-label">η estimate (cP)</span><strong id="discovery-status-eta" class="mono">—</strong></div>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="duration-table discovery-probe-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>RPM</th>
+                                        <th>Torque %</th>
+                                        <th>η est (cP)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="discovery-probe-table-body"></tbody>
+                            </table>
+                            <p id="discovery-probe-empty" class="plot-empty">No discovery probes yet.</p>
+                        </div>
+                        <p class="discovery-live-hint">Live Z-scan charts update on the Perform Experiment tab during a discovery run.</p>
                     </section>
                 </div>
                 <footer class="tab-signature" aria-hidden="true">

@@ -127,6 +127,47 @@ const PROTOCOL_DEFINITIONS = {
             done: "save",
         },
     },
+    discovery: {
+        badge: "Discovery",
+        badgeClass: "mode-discovery",
+        steps: [
+            { id: "init", label: "Initialize hardware" },
+            { id: "move", label: "Move to cell" },
+            { id: "zero", label: "Auto-zero viscometer" },
+            { id: "discovery_rpm", label: "RPM discovery probes" },
+            { id: "measure", label: "Z-descent & measure" },
+            { id: "retract", label: "Retract to safe Z" },
+            { id: "wash_after", label: "Washing after cell" },
+            { id: "save", label: "Save results" },
+            { id: "cleanup", label: "Cleanup & homing" },
+            { id: "done", label: "Run complete" },
+        ],
+        flow: [
+            { id: "init", short: "Init" },
+            { id: "discovery_rpm", short: "RPM" },
+            { id: "measure", short: "Measure" },
+            { id: "wash1", short: "WS1" },
+            { id: "wash2", short: "WS2" },
+            { id: "save", short: "Save" },
+        ],
+        stepToFlow: {
+            init: "init",
+            move: "move",
+            zero: "zero",
+            discovery_rpm: "discovery_rpm",
+            measure: "measure",
+            retract: "retract",
+            wash_after: "wash1",
+            wash1_travel: "wash1",
+            wash1_scrub: "wash1",
+            wash1_drain: "wash1",
+            wash2_travel: "wash2",
+            wash2_scrub: "wash2",
+            save: "save",
+            cleanup: "save",
+            done: "save",
+        },
+    },
 };
 
 /** Ordered rules: first match wins. Tests receive normalized lowercase message. */
@@ -143,6 +184,7 @@ const PROTOCOL_STATUS_RULES = [
     { id: "wash1_travel", test: (m) => /wash station 1: travel/.test(m) },
     { id: "wash_after", test: (m) => /washing after cell/.test(m) },
     { id: "retract", test: (m) => /retracting to safe|cnc retract|wash skipped/.test(m) },
+    { id: "discovery_rpm", test: (m) => /discovery:/.test(m) },
     { id: "measure", test: (m) => /measuring at|testing cell|calibrating cell|recalibrating|terminated early|hit-point|hit point|surface detected|z-step|descending z/.test(m) },
     { id: "zero", test: (m) => /auto-zero|zeroing viscometer/.test(m) },
     { id: "move", test: (m) => /moving to cell/.test(m) },
@@ -232,6 +274,10 @@ class ViscometryDashboard {
         this.isSavingFinalResults = false;
         this.cellRpmMap = {};   // { cellId (number): [rpm, ...] }
         this.cellContentMap = {}; // { cellId (number): "sample label" }
+        this.discoveryEtaGuessMap = {}; // { cellId: viscosity cP or null }
+        this.discoveryContentMap = {};
+        this.discoveryModeActive = false;
+        this.discoveryConfig = null;
         this.latestControlSettings = {};
         /** Settings frozen at run start for experiment history (avoids stale latestControlSettings). */
         this.runSettingsSnapshot = null;
@@ -292,6 +338,9 @@ class ViscometryDashboard {
         this.loadControlSettings();
         this.rebuildCellRpmTable();
         this.rebuildCellContentTable();
+        this.rebuildDiscoveryEtaTable();
+        this.rebuildDiscoveryContentTable();
+        this.fetchDiscoveryConfig();
         this.loadExperimentHistory();
 
         // Restore active tab from localStorage
@@ -458,6 +507,28 @@ class ViscometryDashboard {
             testingStatusDrainingPump: document.getElementById("testing-status-draining-pump"),
             calibrateTabButton: document.getElementById("calibrate-tab-button"),
             controlsTabButton: document.getElementById("controls-tab-button"),
+            discoveryTabButton: document.getElementById("discovery-tab-button"),
+            discoveryExperimentName: document.getElementById("discovery-experiment-name"),
+            discoverySelectedCells: document.getElementById("discovery-selected-cells"),
+            discoveryEtaTable: document.getElementById("discovery-eta-table"),
+            discoveryContentTable: document.getElementById("discovery-content-table"),
+            discoveryCellValidation: document.getElementById("discovery-cell-validation"),
+            discoveryValidRpmChips: document.getElementById("discovery-valid-rpm-chips"),
+            discoveryCalibrationPill: document.getElementById("discovery-calibration-pill"),
+            discoveryCalibrationStatusText: document.getElementById("discovery-calibration-status-text"),
+            discoveryApplySettings: document.getElementById("discovery-apply-settings"),
+            discoveryStartRun: document.getElementById("discovery-start-run"),
+            discoveryStopRun: document.getElementById("discovery-stop-run"),
+            discoveryTerminateCurrentCell: document.getElementById("discovery-terminate-current-cell"),
+            discoveryControlStatus: document.getElementById("discovery-control-status"),
+            discoveryProbeTableBody: document.getElementById("discovery-probe-table-body"),
+            discoveryProbeEmpty: document.getElementById("discovery-probe-empty"),
+            discoveryStatusPill: document.getElementById("discovery-status-pill"),
+            discoveryStatusCell: document.getElementById("discovery-status-cell"),
+            discoveryStatusRpm: document.getElementById("discovery-status-rpm"),
+            discoveryStatusEta: document.getElementById("discovery-status-eta"),
+            discoveryZStartOffsetRow: document.getElementById("discovery-z-start-offset-row"),
+            discoveryZStartOffsetMm: document.getElementById("discovery-z-start-offset-mm"),
             calibrationCellsStatusPill: document.getElementById("calibration-cells-status-pill"),
             calibrationCellsStatusText: document.getElementById("calibration-cells-status-text"),
             calPanelSection: document.getElementById("calibration-panel-section"),
@@ -558,6 +629,25 @@ class ViscometryDashboard {
         this.el.stopRun.addEventListener("click", () => this.stopRunFromUI());
         if (this.el.terminateCurrentCell) {
             this.el.terminateCurrentCell.addEventListener("click", () => this.terminateCurrentCellFromUI());
+        }
+        if (this.el.discoveryApplySettings) {
+            this.el.discoveryApplySettings.addEventListener("click", () => this.applyDiscoverySettings());
+        }
+        if (this.el.discoveryStartRun) {
+            this.el.discoveryStartRun.addEventListener("click", () => this.startDiscoveryRunFromUI());
+        }
+        if (this.el.discoveryStopRun) {
+            this.el.discoveryStopRun.addEventListener("click", () => this.stopRunFromUI());
+        }
+        if (this.el.discoveryTerminateCurrentCell) {
+            this.el.discoveryTerminateCurrentCell.addEventListener("click", () => this.terminateCurrentCellFromUI());
+        }
+        if (this.el.discoverySelectedCells) {
+            this.el.discoverySelectedCells.addEventListener("input", () => {
+                this.validateDiscoveryCells();
+                this.rebuildDiscoveryEtaTable();
+                this.rebuildDiscoveryContentTable();
+            });
         }
         if (this.el.themeToggle) {
             this.el.themeToggle.addEventListener("click", () => this.toggleTheme());
@@ -801,6 +891,10 @@ class ViscometryDashboard {
             this.pushStatusMessage("Calibrate is disabled during an active experiment run");
             return;
         }
+        if (!force && tabId === "discovery-tab" && this._isDiscoveryTabLocked()) {
+            this.pushStatusMessage("Discovery is disabled during calibration or recalibration");
+            return;
+        }
         // Remove active class from all buttons and panels
         this.el.tabButtons.forEach(button => button.classList.remove("active"));
         this.el.tabPanels.forEach(panel => panel.classList.remove("active"));
@@ -818,6 +912,10 @@ class ViscometryDashboard {
         // Store active tab in localStorage
         localStorage.setItem("activeTab", tabId);
 
+        if (this.el.body) {
+            this.el.body.classList.toggle("discovery-active", tabId === "discovery-tab");
+        }
+
         if (tabId === "summary-tab") {
             this.startSummaryHistoryPolling();
         } else {
@@ -832,6 +930,12 @@ class ViscometryDashboard {
         } else if (tabId === "controls-tab") {
             this.refreshLivePlots();
             this.renderLiveViscosityPredictionsTable();
+        } else if (tabId === "discovery-tab") {
+            this.validateDiscoveryCells();
+            this.rebuildDiscoveryEtaTable();
+            this.rebuildDiscoveryContentTable();
+            this.updateDiscoveryZStartOffsetAvailability();
+            this.fetchDiscoveryConfig();
         }
     }
 
@@ -845,12 +949,18 @@ class ViscometryDashboard {
     }
 
     _isCalibrateTabLocked() {
-        return this.isRunning && this.getProtocolRunMode() === "regular";
+        const mode = this.getProtocolRunMode();
+        return this.isRunning && (mode === "regular" || mode === "discovery");
+    }
+
+    _isDiscoveryTabLocked() {
+        return this._isPerformExperimentTabLocked();
     }
 
     updateRunTabAvailability() {
         const performLocked = this._isPerformExperimentTabLocked();
         const calibrateLocked = this._isCalibrateTabLocked();
+        const discoveryLocked = this._isDiscoveryTabLocked();
         if (this.el.controlsTabButton) {
             this.el.controlsTabButton.classList.toggle("is-disabled", performLocked);
             this.el.controlsTabButton.disabled = performLocked;
@@ -859,7 +969,13 @@ class ViscometryDashboard {
             this.el.calibrateTabButton.classList.toggle("is-disabled", calibrateLocked);
             this.el.calibrateTabButton.disabled = calibrateLocked;
         }
+        if (this.el.discoveryTabButton) {
+            this.el.discoveryTabButton.classList.toggle("is-disabled", discoveryLocked);
+            this.el.discoveryTabButton.disabled = discoveryLocked;
+        }
         if (performLocked && this.activeTabId === "controls-tab") {
+            this.switchTab("calibrate-tab", { force: true });
+        } else if (discoveryLocked && this.activeTabId === "discovery-tab") {
             this.switchTab("calibrate-tab", { force: true });
         } else if (calibrateLocked && this.activeTabId === "calibrate-tab") {
             this.switchTab("controls-tab", { force: true });
@@ -1605,6 +1721,387 @@ class ViscometryDashboard {
         });
     }
 
+    _parseDiscoverySelectedCells() {
+        const raw = this.el.discoverySelectedCells ? this.el.discoverySelectedCells.value : "";
+        return raw.split(",")
+            .map((s) => parseInt(s.trim(), 10))
+            .filter((n) => !Number.isNaN(n) && n >= 1 && n <= 18);
+    }
+
+    _isCellCalibrated(cellId) {
+        const cells = this.calibrationSummary?.cells || {};
+        return Object.prototype.hasOwnProperty.call(cells, String(cellId));
+    }
+
+    validateDiscoveryCells() {
+        const all = this._parseDiscoverySelectedCells();
+        const valid = all.filter((id) => this._isCellCalibrated(id));
+        const invalid = all.filter((id) => !this._isCellCalibrated(id));
+        if (this.el.discoveryCellValidation) {
+            if (invalid.length > 0) {
+                this.el.discoveryCellValidation.textContent =
+                    `Cells ${invalid.join(", ")} are not calibrated and cannot be used for Discovery.`;
+            } else if (all.length === 0) {
+                this.el.discoveryCellValidation.textContent = "Select at least one calibrated cell.";
+            } else {
+                this.el.discoveryCellValidation.textContent = "";
+            }
+        }
+        if (invalid.length > 0 && this.el.discoverySelectedCells) {
+            this.el.discoverySelectedCells.value = valid.join(", ");
+        }
+        this.updateDiscoveryZStartOffsetAvailability(valid);
+        this.updateDiscoveryStartGuard(valid);
+        return valid;
+    }
+
+    updateDiscoveryZStartOffsetAvailability(cellsOverride = null) {
+        const cells = cellsOverride || this.validateDiscoveryCells();
+        const enabled = cells.length > 0 && cells.every((id) => this._isCellCalibrated(id));
+        if (this.el.discoveryZStartOffsetRow) {
+            this.el.discoveryZStartOffsetRow.classList.toggle("is-disabled", !enabled);
+        }
+        if (this.el.discoveryZStartOffsetMm) {
+            this.el.discoveryZStartOffsetMm.disabled = !enabled;
+        }
+    }
+
+    updateDiscoveryStartGuard(validCells = null) {
+        const cells = validCells || this.validateDiscoveryCells();
+        const nameOk = Boolean((this.el.discoveryExperimentName?.value || "").trim());
+        const blocked = cells.length === 0 || !nameOk;
+        if (this.el.discoveryStartRun && this.uiState === "ready") {
+            this.el.discoveryStartRun.disabled = blocked;
+        }
+    }
+
+    rebuildDiscoveryEtaTable() {
+        const table = this.el.discoveryEtaTable;
+        if (!table) return;
+
+        const cells = this._parseDiscoverySelectedCells();
+        table.innerHTML = "";
+
+        if (cells.length === 0) {
+            return;
+        }
+
+        cells.forEach((cellId) => {
+            const row = document.createElement("div");
+            row.className = "cell-rpm-row";
+            if (!this._isCellCalibrated(cellId)) {
+                row.classList.add("discovery-cell-row-disabled");
+            }
+
+            const label = document.createElement("span");
+            label.className = "cell-rpm-label";
+            label.textContent = `Cell ${cellId}`;
+            const badge = document.createElement("span");
+            badge.className = `discovery-cell-badge ${this._isCellCalibrated(cellId) ? "calibrated" : "uncalibrated"}`;
+            badge.textContent = this._isCellCalibrated(cellId) ? "Calibrated" : "Not calibrated";
+            label.appendChild(badge);
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.className = "cell-rpm-input discovery-eta-input";
+            input.placeholder = "e.g. 10000 (cP)";
+            input.dataset.cellId = String(cellId);
+            input.disabled = !this._isCellCalibrated(cellId);
+
+            const existing = this.discoveryEtaGuessMap[cellId];
+            if (existing != null && existing > 0) {
+                input.value = String(existing);
+            }
+
+            input.addEventListener("input", () => {
+                const text = String(input.value || "").trim();
+                if (!text) {
+                    delete this.discoveryEtaGuessMap[cellId];
+                    return;
+                }
+                const val = parseFloat(text);
+                if (!Number.isNaN(val) && val > 0) {
+                    this.discoveryEtaGuessMap[cellId] = val;
+                } else {
+                    delete this.discoveryEtaGuessMap[cellId];
+                }
+            });
+
+            row.appendChild(label);
+            row.appendChild(input);
+            table.appendChild(row);
+        });
+    }
+
+    rebuildDiscoveryContentTable() {
+        const table = this.el.discoveryContentTable;
+        if (!table) return;
+
+        const cells = this._parseDiscoverySelectedCells();
+        table.innerHTML = "";
+
+        cells.forEach((cellId) => {
+            const row = document.createElement("div");
+            row.className = "cell-content-row";
+
+            const label = document.createElement("span");
+            label.className = "cell-content-label";
+            label.textContent = `Cell ${cellId}`;
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.className = "cell-content-input";
+            input.placeholder = "e.g. unknown_silicone_A";
+            input.dataset.cellId = String(cellId);
+
+            const existing = this.discoveryContentMap[cellId];
+            if (existing) {
+                input.value = existing;
+            }
+
+            input.addEventListener("input", () => {
+                const text = String(input.value || "").trim();
+                if (text.length > 0) {
+                    this.discoveryContentMap[cellId] = text;
+                } else {
+                    delete this.discoveryContentMap[cellId];
+                }
+            });
+
+            row.appendChild(label);
+            row.appendChild(input);
+            table.appendChild(row);
+        });
+    }
+
+    fetchDiscoveryConfig() {
+        return fetch("/api/discovery/config")
+            .then((r) => r.json())
+            .then((cfg) => {
+                this.discoveryConfig = cfg;
+                this.renderDiscoveryValidRpmChips(cfg.valid_rpms || []);
+                if (this.el.discoveryZStartOffsetMm && cfg.hit_point_offset_mm != null) {
+                    this.el.discoveryZStartOffsetMm.value = Number(cfg.hit_point_offset_mm).toFixed(2);
+                }
+                return cfg;
+            })
+            .catch(() => undefined);
+    }
+
+    renderDiscoveryValidRpmChips(rpms) {
+        const wrap = this.el.discoveryValidRpmChips;
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        (rpms || []).forEach((rpm) => {
+            const chip = document.createElement("span");
+            chip.className = "discovery-rpm-chip";
+            chip.textContent = String(rpm);
+            wrap.appendChild(chip);
+        });
+    }
+
+    buildDiscoveryEtaGuessMapPayload() {
+        const payload = {};
+        Object.entries(this.discoveryEtaGuessMap).forEach(([cellId, eta]) => {
+            if (eta != null && eta > 0) {
+                payload[String(cellId)] = eta;
+            }
+        });
+        return payload;
+    }
+
+    buildDiscoveryContentMapPayload() {
+        const payload = {};
+        Object.entries(this.discoveryContentMap).forEach(([cellId, content]) => {
+            const text = String(content || "").trim();
+            if (text.length > 0) {
+                payload[String(cellId)] = text;
+            }
+        });
+        return payload;
+    }
+
+    readDiscoverySettings() {
+        const parseList = (value) => value.split(",").map((item) => item.trim()).filter(Boolean);
+        const getNum = (id, fallback) => {
+            const el = document.getElementById(id);
+            return el ? Number(el.value) : fallback;
+        };
+        const getBool = (id, fallback) => {
+            const el = document.getElementById(id);
+            return el ? Boolean(el.checked) : fallback;
+        };
+
+        return {
+            experiment_name: (this.el.discoveryExperimentName?.value || "").trim(),
+            testing_mode: "custom",
+            selected_cells: this.validateDiscoveryCells(),
+            discovery_mode_enabled: true,
+            discovery_eta_guess_map: this.buildDiscoveryEtaGuessMapPayload(),
+            discovery_probe_duration_s: getNum("discovery-probe-duration-s", 12),
+            low_torque_liquid_contact_skip_enabled: false,
+            z_step_size: getNum("discovery-z-step-size", -0.02),
+            measurement_duration: getNum("discovery-measurement-duration", 40),
+            sample_interval: getNum("discovery-sample-interval", 5),
+            dwell_seconds: getNum("discovery-dwell-seconds", 2),
+            inter_rpm_pause: getNum("discovery-inter-rpm-pause", 2),
+            torque_break_threshold: getNum("discovery-torque-break-threshold", 100),
+            smart_early_exit_enabled: getBool("discovery-smart-early-exit-enabled", true),
+            fail_safe_enabled: getBool("discovery-fail-safe-enabled", true),
+            feedback_control_enabled: getBool("discovery-feedback-control-enabled", true),
+            viscosity_prediction_mode: getBool("discovery-viscosity-prediction-enabled", false) ? "on" : "off",
+            save_all_sample_data: getBool("discovery-save-all-sample-data", false),
+            z_start_offset_mm: getNum("discovery-z-start-offset-mm", 0.35),
+            cell_content_map: this.buildDiscoveryContentMapPayload(),
+            r2_drag_min: Number(this.el.r2DragMin?.value ?? 0.975),
+            r2_cv_min: Number(this.el.r2CvMin?.value ?? 0.975),
+            r2_slope_min: Number(this.el.r2SlopeMin?.value ?? 0.975),
+            hit_point_confidence_threshold: Number(this.el.hitPointConfidenceThreshold?.value ?? 0.8),
+            weight_2nd_deriv_drag: Number(this.el.weight2ndDerivDrag?.value ?? 0.2),
+            weight_2nd_deriv_cv: Number(this.el.weight2ndDerivCv?.value ?? 0.2),
+            weight_2nd_deriv_slope: Number(this.el.weight2ndDerivSlope?.value ?? 0.2),
+            weight_r2_drag: Number(this.el.weightR2Drag?.value ?? 0.2),
+            weight_r2_cv: Number(this.el.weightR2Cv?.value ?? 0.2),
+            weight_r2_slope: Number(this.el.weightR2Slope?.value ?? 0.2),
+            baseline_n_calibration: Number(this.el.baselineNCalibration?.value ?? 10),
+            baseline_z_threshold: Number(this.el.baselineZThreshold?.value ?? 5),
+            smart_cv_threshold: Number(this.el.smartCvThreshold?.value ?? 0.005),
+            smart_window_size: Number(this.el.smartWindowSize?.value ?? 3),
+        };
+    }
+
+    setDiscoveryControlStatus(message) {
+        if (this.el.discoveryControlStatus) {
+            this.el.discoveryControlStatus.textContent = message;
+        }
+    }
+
+    applyDiscoverySettings(silent = false) {
+        const settings = this.readDiscoverySettings();
+        return fetch("/api/control_settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(settings),
+        })
+            .then((response) => response.json())
+            .then((saved) => {
+                if (!silent) {
+                    this.setDiscoveryControlStatus("Settings applied");
+                }
+                if (!silent && !this.isRunning) {
+                    this.setUiState("ready");
+                }
+                this.updateDiscoveryStartGuard();
+                return saved;
+            })
+            .catch(() => {
+                this.setDiscoveryControlStatus("Failed to apply settings");
+            });
+    }
+
+    startDiscoveryRunFromUI() {
+        if (this.calibrationReviewPending || this.experimentReviewPending) {
+            this.pushStatusMessage("Finish the data save review before starting a new run");
+            return;
+        }
+        if (this.uiState !== "ready") {
+            this.setDiscoveryControlStatus("Apply settings before starting");
+            return;
+        }
+        const name = (this.el.discoveryExperimentName?.value || "").trim();
+        if (!name) {
+            this.setDiscoveryControlStatus("Experiment name is required");
+            return;
+        }
+        const cells = this.validateDiscoveryCells();
+        if (cells.length === 0) {
+            this.setDiscoveryControlStatus("Select at least one calibrated cell");
+            return;
+        }
+        this.discoveryModeActive = true;
+        this.setUiState("running");
+        this.applyDiscoverySettings(true)
+            .then(() => {
+                const settings = this.readDiscoverySettings();
+                try {
+                    this.runSettingsSnapshot = JSON.parse(JSON.stringify(settings));
+                } catch {
+                    this.runSettingsSnapshot = settings;
+                }
+                this._syncPlannedCells(settings);
+                return fetch("/api/run/start_discovery", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(settings),
+                });
+            })
+            .then((response) => response.json())
+            .then((result) => {
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                this.setDiscoveryControlStatus("Discovery run started");
+                this.discoveryModeActive = true;
+            })
+            .catch((err) => {
+                this.discoveryModeActive = false;
+                this.setUiState("ready");
+                this.setDiscoveryControlStatus(err.message || "Failed to start discovery run");
+            });
+    }
+
+    ingestDiscoveryUpdate(payload) {
+        if (!payload) return;
+        const status = payload.status || "probing";
+        if (this.el.discoveryStatusPill) {
+            this.el.discoveryStatusPill.textContent = status;
+            this.el.discoveryStatusPill.className = "discovery-status-pill";
+            if (status === "converged" || status === "converged_by_stability") {
+                this.el.discoveryStatusPill.classList.add("converged");
+            } else if (status === "over_range" || status === "under_range" || status === "probe_failed") {
+                this.el.discoveryStatusPill.classList.add("failed");
+            }
+        }
+        if (this.el.discoveryStatusCell) {
+            this.el.discoveryStatusCell.textContent = payload.cell_id != null ? String(payload.cell_id) : "—";
+        }
+        if (this.el.discoveryStatusRpm) {
+            this.el.discoveryStatusRpm.textContent = payload.rpm != null ? Number(payload.rpm).toFixed(3) : "—";
+        }
+        if (this.el.discoveryStatusEta) {
+            this.el.discoveryStatusEta.textContent = payload.eta_estimate != null
+                ? Number(payload.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                : "—";
+        }
+        const probes = payload.probes || [];
+        if (this.el.discoveryProbeTableBody) {
+            this.el.discoveryProbeTableBody.innerHTML = probes.map((p, idx) => (
+                `<tr><td>${idx + 1}</td><td class="mono">${Number(p.rpm).toFixed(3)}</td>`
+                + `<td class="mono">${Number(p.torque).toFixed(2)}</td>`
+                + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`
+            )).join("");
+        }
+        if (this.el.discoveryProbeEmpty) {
+            this.el.discoveryProbeEmpty.classList.toggle("hidden", probes.length > 0);
+        }
+    }
+
+    updateDiscoveryCalibrationPill(summary) {
+        const pill = this.el.discoveryCalibrationPill;
+        const text = this.el.discoveryCalibrationStatusText;
+        if (!pill || !text) return;
+        const count = Number(summary?.cell_count) || 0;
+        text.textContent = `${count}/18 cells calibrated`;
+        pill.classList.remove("cal-cells-status-all", "cal-cells-status-partial", "cal-cells-status-none");
+        if (count >= 18) {
+            pill.classList.add("cal-cells-status-all");
+        } else if (count > 0) {
+            pill.classList.add("cal-cells-status-partial");
+        } else {
+            pill.classList.add("cal-cells-status-none");
+        }
+    }
+
     rebuildCellContentTable() {
         const panel = this.el.cellContentPanel;
         const table = this.el.cellContentTable;
@@ -1691,6 +2188,7 @@ class ViscometryDashboard {
             recalibrate_individual_cells: false,
             recalibration_cells: {},
             recalibration_ignore_max_z_travel: false,
+            discovery_mode_enabled: false,
         };
     }
 
@@ -1824,6 +2322,7 @@ class ViscometryDashboard {
     }
 
     _startRegularRunAfterNameCheck() {
+        this.discoveryModeActive = false;
         this.setUiState("running");
         this.applyControlSettings(true)
             .then((settings) => {
@@ -2008,6 +2507,10 @@ class ViscometryDashboard {
             }
         });
 
+        this.socket.on("discovery_update", (payload) => {
+            this.ingestDiscoveryUpdate(payload);
+        });
+
         this.socket.on("torque_update", (data) => {
             if (this.activeTabId !== "controls-tab") {
                 return;
@@ -2039,6 +2542,7 @@ class ViscometryDashboard {
             }
             if (!data.is_running && wasRunning) {
                 this.isRunning = false;
+                this.discoveryModeActive = false;
                 if (!this.experimentReviewPending && !this.calibrationReviewPending) {
                     this.saveCompletedExperiment();
                 }
@@ -2579,6 +3083,9 @@ class ViscometryDashboard {
         if (this.calibrationModeActive) {
             return "calibration";
         }
+        if (this.discoveryModeActive) {
+            return "discovery";
+        }
         return "regular";
     }
 
@@ -2592,10 +3099,10 @@ class ViscometryDashboard {
             if (!rule.test(normalized)) {
                 continue;
             }
-            if (mode !== "regular" && /^wash/.test(rule.id)) {
+            if (mode !== "regular" && mode !== "discovery" && /^wash/.test(rule.id)) {
                 continue;
             }
-            if ((mode === "regular") && rule.id === "review") {
+            if ((mode === "regular" || mode === "discovery") && rule.id === "review") {
                 continue;
             }
             return rule.id;
@@ -3469,34 +3976,39 @@ class ViscometryDashboard {
         const applyBtn = this.el.applySettings;
         const startBtn = this.el.startRun;
         const stopBtn = this.el.stopRun;
+        const discApply = this.el.discoveryApplySettings;
+        const discStart = this.el.discoveryStartRun;
+        const discStop = this.el.discoveryStopRun;
 
-        [applyBtn, startBtn, stopBtn].forEach((btn) => {
-            btn.classList.remove("is-active", "is-idle");
+        [applyBtn, startBtn, stopBtn, discApply, discStart, discStop].forEach((btn) => {
+            if (btn) btn.classList.remove("is-active", "is-idle");
         });
 
         if (state === "idle") {
-            applyBtn.classList.add("is-active");
-            startBtn.classList.add("is-idle");
-            stopBtn.classList.add("is-idle");
-            startBtn.disabled = true;
-            stopBtn.disabled = true;
-            applyBtn.disabled = false;
+            if (applyBtn) { applyBtn.classList.add("is-active"); applyBtn.disabled = false; }
+            if (startBtn) { startBtn.classList.add("is-idle"); startBtn.disabled = true; }
+            if (stopBtn) { stopBtn.classList.add("is-idle"); stopBtn.disabled = true; }
+            if (discApply) { discApply.classList.add("is-active"); discApply.disabled = false; }
+            if (discStart) { discStart.classList.add("is-idle"); discStart.disabled = true; }
+            if (discStop) { discStop.classList.add("is-idle"); discStop.disabled = true; }
             this.updateCalibrationReviewStartGuard();
+            this.updateDiscoveryStartGuard();
         } else if (state === "ready") {
-            applyBtn.classList.add("is-idle");
-            startBtn.classList.add("is-active");
-            stopBtn.classList.add("is-idle");
-            applyBtn.disabled = false;
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
+            if (applyBtn) { applyBtn.classList.add("is-idle"); applyBtn.disabled = false; }
+            if (startBtn) { startBtn.classList.add("is-active"); startBtn.disabled = false; }
+            if (stopBtn) { stopBtn.classList.add("is-idle"); stopBtn.disabled = true; }
+            if (discApply) { discApply.classList.add("is-idle"); discApply.disabled = false; }
+            if (discStart) { discStart.classList.add("is-active"); }
+            if (discStop) { discStop.classList.add("is-idle"); discStop.disabled = true; }
             this.updateCalibrationReviewStartGuard();
+            this.updateDiscoveryStartGuard();
         } else if (state === "running") {
-            applyBtn.classList.add("is-idle");
-            startBtn.classList.add("is-idle");
-            stopBtn.classList.add("is-active");
-            applyBtn.disabled = true;
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
+            if (applyBtn) { applyBtn.classList.add("is-idle"); applyBtn.disabled = true; }
+            if (startBtn) { startBtn.classList.add("is-idle"); startBtn.disabled = true; }
+            if (stopBtn) { stopBtn.classList.add("is-active"); stopBtn.disabled = false; }
+            if (discApply) { discApply.classList.add("is-idle"); discApply.disabled = true; }
+            if (discStart) { discStart.classList.add("is-idle"); discStart.disabled = true; }
+            if (discStop) { discStop.classList.add("is-active"); discStop.disabled = false; }
         }
         this.updateRunControlButtons();
     }
@@ -3522,16 +4034,18 @@ class ViscometryDashboard {
     }
 
     updateManualTerminateControl() {
-        const btn = this.el.terminateCurrentCell;
-        if (!btn) return;
         const isRegularRunning = this.isRunning && !this.calibrationModeActive && !this.recalibrationModeActive;
-        btn.classList.toggle("hidden", !isRegularRunning);
-        btn.disabled = !isRegularRunning || this.manualTerminateQueued;
-        btn.textContent = this.manualTerminateQueued
+        const label = this.manualTerminateQueued
             ? "Stop Measurement in current cell (queued)"
             : "Stop Measurement in current cell";
-        btn.classList.toggle("is-active", isRegularRunning && !this.manualTerminateQueued);
-        btn.classList.toggle("is-idle", !isRegularRunning || this.manualTerminateQueued);
+        [this.el.terminateCurrentCell, this.el.discoveryTerminateCurrentCell].forEach((btn) => {
+            if (!btn) return;
+            btn.classList.toggle("hidden", !isRegularRunning);
+            btn.disabled = !isRegularRunning || this.manualTerminateQueued;
+            btn.textContent = label;
+            btn.classList.toggle("is-active", isRegularRunning && !this.manualTerminateQueued);
+            btn.classList.toggle("is-idle", !isRegularRunning || this.manualTerminateQueued);
+        });
     }
 
     updateCalibrationStopControls() {
@@ -3676,7 +4190,12 @@ class ViscometryDashboard {
         if (!summary) return;
         this.calibrationSummary = summary;
         this.updateCalibrationCellsStatusPill(summary);
+        this.updateDiscoveryCalibrationPill(summary);
         this.updateZStartOffsetAvailability();
+        if (this.activeTabId === "discovery-tab") {
+            this.validateDiscoveryCells();
+            this.rebuildDiscoveryEtaTable();
+        }
         const isOk = Boolean(summary.is_calibrated);
         const section = this.el.calPanelSection;
         const pill = this.el.calStatusPill;
@@ -4048,9 +4567,16 @@ class ViscometryDashboard {
             const mode = this.getProtocolRunMode();
             if (mode === "calibration" || mode === "recalibration") {
                 this.switchTab("calibrate-tab", { force: true });
+            } else if (mode === "discovery") {
+                this.switchTab("discovery-tab", { force: true });
             } else if (mode === "regular") {
                 this.switchTab("controls-tab", { force: true });
             }
+        }
+
+        if (!isRunning && previous) {
+            this.discoveryModeActive = false;
+            this.updateDiscoveryStartGuard();
         }
 
         if (!isRunning) {
