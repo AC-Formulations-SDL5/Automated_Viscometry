@@ -223,7 +223,9 @@ class ViscometryDashboard {
         this.zLatestOnly = false;
         this.zConnectDots = false;
         this.zCalConnectDots = false;
+        this.zDiscoveryConnectDots = false;
         this.selectedCalGraphCell = null;
+        this.selectedDiscoveryGraphCell = null;
         this.activeTabId = "layout-tab";
         this._preCalibrationSettingsSnapshot = null;
         this._wasCalibrationLikeRun = false;
@@ -237,8 +239,9 @@ class ViscometryDashboard {
         this.zPlotInitialized = false;
         this.torquePlotInitialized = false;
         this.calDragPlotInitialized = false;
+        this.discoveryDragPlotInitialized = false;
         this.dwellPlotInitialized = false;
-        this.charts = { drag: null, torque: null, calDrag: null, dwell: null };
+        this.charts = { drag: null, torque: null, calDrag: null, discoveryDrag: null, dwell: null };
         this.dwellSeriesByCell = new Map();
         this.dwellZVisibility = new Map();
         this.runSaveAllSampleData = false;
@@ -269,6 +272,8 @@ class ViscometryDashboard {
         this._summaryHistoryPollMs = 8000;
         /** Debounce heavy Plotly / table DOM work during streaming measurements (remote viewers). */
         this._plotRefreshTimer = null;
+        this._calPlotRefreshTimer = null;
+        this._discoveryPlotRefreshTimer = null;
         this._tableRefreshTimer = null;
         this._graphTabIdsKey = "";
         this.isSavingFinalResults = false;
@@ -277,6 +282,7 @@ class ViscometryDashboard {
         this.discoveryEtaGuessMap = {}; // { cellId: viscosity cP or null }
         this.discoveryContentMap = {};
         this.discoveryModeActive = false;
+        this.discoveryResultsByCell = {};
         this.discoveryConfig = null;
         this.latestControlSettings = {};
         /** Settings frozen at run start for experiment history (avoids stale latestControlSettings). */
@@ -529,6 +535,18 @@ class ViscometryDashboard {
             discoveryStatusEta: document.getElementById("discovery-status-eta"),
             discoveryZStartOffsetRow: document.getElementById("discovery-z-start-offset-row"),
             discoveryZStartOffsetMm: document.getElementById("discovery-z-start-offset-mm"),
+            discoveryGaugeValue: document.getElementById("discovery-gauge-value"),
+            discoveryGaugeNeedle: document.getElementById("discovery-gauge-needle"),
+            discoveryGaugeText: document.getElementById("discovery-gauge-rpm"),
+            discoveryZMeasuringDisplay: document.getElementById("discovery-z-measuring-display"),
+            discoveryElapsed: document.getElementById("discovery-elapsed"),
+            discoveryElapsedCell: document.getElementById("discovery-elapsed-cell"),
+            discoveryZSparklineCanvas: document.getElementById("discovery-z-sparkline-canvas"),
+            discoveryZSparklineEmpty: document.getElementById("discovery-z-sparkline-empty"),
+            discoveryZConnectDots: document.getElementById("discovery-z-connect-dots"),
+            discoveryGraphCellTabs: document.getElementById("discovery-graph-cell-tabs"),
+            discoveryDragZRpmLegend: document.getElementById("discovery-drag-z-rpm-legend"),
+            discoveryDragZCellLabel: document.getElementById("discovery-drag-z-cell-label"),
             calibrationCellsStatusPill: document.getElementById("calibration-cells-status-pill"),
             calibrationCellsStatusText: document.getElementById("calibration-cells-status-text"),
             calPanelSection: document.getElementById("calibration-panel-section"),
@@ -741,6 +759,14 @@ class ViscometryDashboard {
                 this.refreshCalibrationLivePlots();
             });
         }
+        if (this.el.discoveryZConnectDots) {
+            this.el.discoveryZConnectDots.addEventListener("click", () => {
+                this.zDiscoveryConnectDots = !this.zDiscoveryConnectDots;
+                this.el.discoveryZConnectDots.textContent = `Connect Dots: ${this.zDiscoveryConnectDots ? "On" : "Off"}`;
+                this.el.discoveryZConnectDots.classList.toggle("dots-on", this.zDiscoveryConnectDots);
+                this.refreshDiscoveryLivePlots();
+            });
+        }
 
         if (this.el.calCheckEmpty) {
             this.el.calCheckEmpty.addEventListener("change", () => this.validateCalibrationChecklist());
@@ -936,6 +962,8 @@ class ViscometryDashboard {
             this.rebuildDiscoveryContentTable();
             this.updateDiscoveryZStartOffsetAvailability();
             this.fetchDiscoveryConfig();
+            this.refreshDiscoveryLivePlots();
+            this.updateDiscoveryGraphCellTabs();
         }
     }
 
@@ -945,7 +973,10 @@ class ViscometryDashboard {
     }
 
     _isPerformExperimentTabLocked() {
-        return this.isRunning && this._isCalibrationLikeProtocolMode();
+        return this.isRunning && (
+            this._isCalibrationLikeProtocolMode()
+            || this.getProtocolRunMode() === "discovery"
+        );
     }
 
     _isCalibrateTabLocked() {
@@ -954,7 +985,11 @@ class ViscometryDashboard {
     }
 
     _isDiscoveryTabLocked() {
-        return this._isPerformExperimentTabLocked();
+        return this.isRunning && this.getProtocolRunMode() === "regular";
+    }
+
+    _isDiscoveryRunActive() {
+        return this.isRunning && this.getProtocolRunMode() === "discovery";
     }
 
     updateRunTabAvailability() {
@@ -978,7 +1013,12 @@ class ViscometryDashboard {
         } else if (discoveryLocked && this.activeTabId === "discovery-tab") {
             this.switchTab("calibrate-tab", { force: true });
         } else if (calibrateLocked && this.activeTabId === "calibrate-tab") {
-            this.switchTab("controls-tab", { force: true });
+            const mode = this.getProtocolRunMode();
+            if (mode === "discovery") {
+                this.switchTab("discovery-tab", { force: true });
+            } else {
+                this.switchTab("controls-tab", { force: true });
+            }
         }
     }
 
@@ -1410,6 +1450,19 @@ class ViscometryDashboard {
             this.calDragPlotInitialized = true;
         }
 
+        if (this.el.discoveryZSparklineCanvas) {
+            this.charts.discoveryDrag = new Chart(this.el.discoveryZSparklineCanvas, {
+                type: "scatter",
+                data: { datasets: [] },
+                options: this._buildLiveChartOptions({
+                    yTitle: "Rotational Drag (torque / RPM)",
+                    theme,
+                    isDragChart: true,
+                }),
+            });
+            this.discoveryDragPlotInitialized = true;
+        }
+
         if (this.el.dwellTimeCanvas) {
             this.charts.dwell = new Chart(this.el.dwellTimeCanvas, {
                 type: "scatter",
@@ -1421,11 +1474,12 @@ class ViscometryDashboard {
 
         this.refreshLivePlots();
         this.refreshCalibrationLivePlots();
+        this.refreshDiscoveryLivePlots();
         this.refreshDwellTimePlot();
     }
 
     updateLiveChartTheme() {
-        if (!this.charts.drag && !this.charts.torque && !this.charts.calDrag) {
+        if (!this.charts.drag && !this.charts.torque && !this.charts.calDrag && !this.charts.discoveryDrag) {
             return;
         }
         const theme = this._getLiveChartTheme();
@@ -1453,6 +1507,14 @@ class ViscometryDashboard {
             });
             this.charts.calDrag.update("none");
         }
+        if (this.charts.discoveryDrag) {
+            this.charts.discoveryDrag.options = this._buildLiveChartOptions({
+                yTitle: "Rotational Drag (torque / RPM)",
+                theme,
+                isDragChart: true,
+            });
+            this.charts.discoveryDrag.update("none");
+        }
         if (this.charts.dwell) {
             this.charts.dwell.options = this._buildDwellChartOptions(theme);
             this.charts.dwell.update("none");
@@ -1470,6 +1532,9 @@ class ViscometryDashboard {
         if (this.charts.calDrag) {
             this.charts.calDrag.resize();
         }
+        if (this.charts.discoveryDrag) {
+            this.charts.discoveryDrag.resize();
+        }
         if (this.charts.dwell) {
             this.charts.dwell.resize();
         }
@@ -1484,6 +1549,8 @@ class ViscometryDashboard {
         if (this._liveChartsDirty) {
             if (this.activeTabId === "calibrate-tab") {
                 this.refreshCalibrationLivePlots();
+            } else if (this.activeTabId === "discovery-tab") {
+                this.refreshDiscoveryLivePlots();
             } else if (this.activeTabId === "controls-tab") {
                 this.refreshLivePlots();
             }
@@ -1511,6 +1578,7 @@ class ViscometryDashboard {
         };
         initGaugeArc(this.el.gaugeValue);
         initGaugeArc(this.el.calGaugeValue);
+        initGaugeArc(this.el.discoveryGaugeValue);
         this.updateGauge(0);
     }
 
@@ -1533,7 +1601,10 @@ class ViscometryDashboard {
                 this.applyTestingStatus(testingStatus || status.testing_status);
                 if (Array.isArray(measurementData)) {
                     measurementData.forEach((m) => this.ingestMeasurement(m, true));
-                    this.refreshLivePlots();
+                    if (!this._isDiscoveryRunActive()) {
+                        this.refreshLivePlots();
+                    }
+                    this.refreshDiscoveryLivePlots();
                 }
                 this._hydratePredictedViscosityFromServer(
                     predictedViscosity || status.predicted_viscosity_results
@@ -1880,6 +1951,10 @@ class ViscometryDashboard {
             .then((cfg) => {
                 this.discoveryConfig = cfg;
                 this.renderDiscoveryValidRpmChips(cfg.valid_rpms || []);
+                const modeNote = document.querySelector(".discovery-rpm-mode-note");
+                if (modeNote && cfg.rpm_selection_mode === "continuous") {
+                    modeNote.textContent = "Discovery uses continuous RPM from viscosity fit.";
+                }
                 if (this.el.discoveryZStartOffsetMm && cfg.hit_point_offset_mm != null) {
                     this.el.discoveryZStartOffsetMm.value = Number(cfg.hit_point_offset_mm).toFixed(2);
                 }
@@ -2052,6 +2127,10 @@ class ViscometryDashboard {
 
     ingestDiscoveryUpdate(payload) {
         if (!payload) return;
+        const cellId = payload.cell_id != null ? Number(payload.cell_id) : null;
+        if (cellId != null) {
+            this.discoveryResultsByCell[String(cellId)] = payload;
+        }
         const status = payload.status || "probing";
         if (this.el.discoveryStatusPill) {
             this.el.discoveryStatusPill.textContent = status;
@@ -2060,6 +2139,8 @@ class ViscometryDashboard {
                 this.el.discoveryStatusPill.classList.add("converged");
             } else if (status === "over_range" || status === "under_range" || status === "probe_failed") {
                 this.el.discoveryStatusPill.classList.add("failed");
+            } else if (status === "probing") {
+                this.el.discoveryStatusPill.classList.add("probing");
             }
         }
         if (this.el.discoveryStatusCell) {
@@ -2083,6 +2164,143 @@ class ViscometryDashboard {
         }
         if (this.el.discoveryProbeEmpty) {
             this.el.discoveryProbeEmpty.classList.toggle("hidden", probes.length > 0);
+        }
+        this.updateDiscoveryGraphCellTabs();
+        this._scheduleDiscoveryPlotRefresh();
+    }
+
+    _getDiscoveredRpmForCell(cellId) {
+        const entry = this.discoveryResultsByCell[String(cellId)];
+        if (!entry || entry.rpm == null) {
+            return null;
+        }
+        const status = String(entry.status || "");
+        if (status !== "converged" && status !== "converged_by_stability") {
+            return null;
+        }
+        return Number(entry.rpm);
+    }
+
+    _buildDiscoveryProbeTableHtml(probes) {
+        if (!Array.isArray(probes) || probes.length === 0) {
+            return "";
+        }
+        const rows = probes.map((p, idx) => (
+            `<tr><td>${idx + 1}</td><td class="mono">${Number(p.rpm).toFixed(3)}</td>`
+            + `<td class="mono">${Number(p.torque).toFixed(2)}</td>`
+            + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`
+        )).join("");
+        return `
+            <table class="duration-table discovery-probe-table discovery-review-table">
+                <thead>
+                    <tr><th>#</th><th>RPM</th><th>Torque %</th><th>η est (cP)</th></tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    getActiveDiscoveryGraphCellId() {
+        if (this.selectedDiscoveryGraphCell !== null) {
+            return this.selectedDiscoveryGraphCell;
+        }
+        if (this.currentCell) {
+            return this.currentCell;
+        }
+        const ids = this.getGraphCellIds();
+        return ids.length ? ids[ids.length - 1] : null;
+    }
+
+    updateDiscoveryGraphCellTabs() {
+        if (!this.el.discoveryGraphCellTabs) {
+            return;
+        }
+        const ids = this.getGraphCellIds();
+        this.el.discoveryGraphCellTabs.innerHTML = "";
+
+        const currentBtn = document.createElement("button");
+        currentBtn.className = `cell-tab${this.selectedDiscoveryGraphCell === null ? " active" : ""}`;
+        currentBtn.textContent = "Current Cell";
+        currentBtn.addEventListener("click", () => {
+            this.selectedDiscoveryGraphCell = null;
+            this.updateDiscoveryGraphCellTabs();
+            this.refreshDiscoveryLivePlots();
+        });
+        this.el.discoveryGraphCellTabs.appendChild(currentBtn);
+
+        ids.forEach((cellId) => {
+            const btn = document.createElement("button");
+            btn.className = `cell-tab${this.selectedDiscoveryGraphCell === cellId ? " active" : ""}`;
+            btn.textContent = `Cell ${cellId}`;
+            btn.addEventListener("click", () => {
+                this.selectedDiscoveryGraphCell = cellId;
+                this.updateDiscoveryGraphCellTabs();
+                this.refreshDiscoveryLivePlots();
+            });
+            this.el.discoveryGraphCellTabs.appendChild(btn);
+        });
+    }
+
+    renderDiscoveryDragZRpmLegend(cellId, orderedRpms) {
+        if (!this.el.discoveryDragZRpmLegend) {
+            return;
+        }
+        this.el.discoveryDragZRpmLegend.innerHTML = orderedRpms.map((rpm) => {
+            const label = Number(rpm).toFixed(3);
+            const color = this.colorForRpm(rpm);
+            return (
+                `<div class="rpm-legend-item">`
+                + `<span class="rpm-legend-swatch" style="background:${color}"></span>`
+                + `<span class="rpm-legend-label">RPM ${label}</span>`
+                + `</div>`
+            );
+        }).join("");
+    }
+
+    refreshDiscoveryLivePlots() {
+        const activeCell = this.getActiveDiscoveryGraphCellId();
+        const discoveredRpm = activeCell != null ? this._getDiscoveredRpmForCell(activeCell) : null;
+        const allSource = activeCell ? (this.measurementsByCell.get(activeCell) || []) : [];
+        const source = discoveredRpm != null
+            ? allSource.filter((m) => Math.abs(Number(m.rpm) - discoveredRpm) < 0.01)
+            : [];
+        const orderedRpms = discoveredRpm != null ? [discoveredRpm] : [];
+        const buckets = this.partitionMeasurementsByRpm(source, orderedRpms);
+
+        const dragDatasets = orderedRpms
+            .map((rpm) => {
+                const key = Number(rpm).toFixed(3);
+                const points = buckets.get(key) || [];
+                if (points.length === 0) {
+                    return null;
+                }
+                return this._buildDragDatasetForRpm(rpm, points, 0, orderedRpms, {
+                    connectDots: this.zDiscoveryConnectDots,
+                    skipFloorColoring: true,
+                });
+            })
+            .filter(Boolean);
+
+        if (this.discoveryDragPlotInitialized && this.charts.discoveryDrag) {
+            this.charts.discoveryDrag.data.datasets = dragDatasets;
+            if (this.el.discoveryZSparklineEmpty) {
+                this.el.discoveryZSparklineEmpty.classList.toggle("hidden", dragDatasets.length > 0);
+            }
+            this.renderDiscoveryDragZRpmLegend(activeCell, orderedRpms);
+        }
+        if (this.el.discoveryDragZCellLabel) {
+            const rpmLabel = discoveredRpm != null ? `@ ${discoveredRpm.toFixed(3)} RPM` : "";
+            this.el.discoveryDragZCellLabel.textContent = activeCell
+                ? `Cell ${activeCell} ${rpmLabel}`.trim()
+                : "Discovered RPM only";
+        }
+
+        if (this._renderPaused) {
+            this._liveChartsDirty = true;
+            return;
+        }
+
+        if (this.charts.discoveryDrag) {
+            this.charts.discoveryDrag.update("none");
         }
     }
 
@@ -2497,7 +2715,7 @@ class ViscometryDashboard {
                 data.timestamp,
                 data.hit_detected
             );
-            if (this.activeTabId === "controls-tab") {
+            if (this.activeTabId === "controls-tab" && !this._isDiscoveryRunActive()) {
                 const torquePercent = Number.isFinite(Number(data.torque_percent))
                     ? Number(data.torque_percent)
                     : (Number(data.rotational_drag) || 0) * (Number(data.rpm) || 0);
@@ -2512,7 +2730,7 @@ class ViscometryDashboard {
         });
 
         this.socket.on("torque_update", (data) => {
-            if (this.activeTabId !== "controls-tab") {
+            if (this.activeTabId !== "controls-tab" || this._isDiscoveryRunActive()) {
                 return;
             }
             const torquePercent = Number(data.torque_percent);
@@ -2546,6 +2764,13 @@ class ViscometryDashboard {
                 if (!this.experimentReviewPending && !this.calibrationReviewPending) {
                     this.saveCompletedExperiment();
                 }
+            } else if (data.is_running && wasRunning) {
+                // Keep discoveryModeActive during an active discovery run (hard refresh reconnect).
+            } else if (data.is_running && !wasRunning) {
+                const settings = data.control_settings || {};
+                if (settings.discovery_mode_enabled) {
+                    this.discoveryModeActive = true;
+                }
             }
             this.setRunningState(Boolean(data.is_running), wasRunning);
         });
@@ -2563,6 +2788,9 @@ class ViscometryDashboard {
             }
             if (this.el.calElapsed) {
                 this.el.calElapsed.textContent = "00:00:00";
+            }
+            if (this.el.discoveryElapsed) {
+                this.el.discoveryElapsed.textContent = "00:00:00";
             }
         });
 
@@ -2632,7 +2860,7 @@ class ViscometryDashboard {
         });
 
         this.socket.on("feedback_metrics_update", (data) => {
-            if (data) {
+            if (data && !this._isDiscoveryRunActive()) {
                 this.updateDragZSidebar(data);
             }
         });
@@ -2660,7 +2888,7 @@ class ViscometryDashboard {
                 statusMap.set(rpmKey, statuses[rpmKey] === "dropped" ? "dropped" : "active");
             });
             this.rpmTorqueStatusByCell.set(cellId, statusMap);
-            if (this.getActiveGraphCellId() === cellId) {
+            if (this.getActiveGraphCellId() === cellId && !this._isDiscoveryRunActive()) {
                 const ordered = this.expandRpmsWithObserved(
                     this.getRpmsForCell(cellId),
                     this.measurementsByCell.get(cellId) || []
@@ -2724,6 +2952,8 @@ class ViscometryDashboard {
         this._pendingCompletedCell = null;
         this.selectedGraphCell = null;
         this.selectedCalGraphCell = null;
+        this.selectedDiscoveryGraphCell = null;
+        this.discoveryResultsByCell = {};
         this.sparklineData = [];
         this.position = { x: 0, y: 0, z: 0 };
         this.currentCell = null;
@@ -2747,6 +2977,10 @@ class ViscometryDashboard {
         if (this._calPlotRefreshTimer) {
             window.clearTimeout(this._calPlotRefreshTimer);
             this._calPlotRefreshTimer = null;
+        }
+        if (this._discoveryPlotRefreshTimer) {
+            window.clearTimeout(this._discoveryPlotRefreshTimer);
+            this._discoveryPlotRefreshTimer = null;
         }
         if (this._tableRefreshTimer) {
             window.clearTimeout(this._tableRefreshTimer);
@@ -2780,11 +3014,20 @@ class ViscometryDashboard {
         if (this.el.calElapsedCell) {
             this.el.calElapsedCell.textContent = "Cell 00:00:00";
         }
+        if (this.el.discoveryElapsed) {
+            this.el.discoveryElapsed.textContent = "00:00:00";
+        }
+        if (this.el.discoveryElapsedCell) {
+            this.el.discoveryElapsedCell.textContent = "Cell 00:00:00";
+        }
         if (this.el.zMeasuringDisplay) {
             this.el.zMeasuringDisplay.textContent = "-";
         }
         if (this.el.calZMeasuringDisplay) {
             this.el.calZMeasuringDisplay.textContent = "-";
+        }
+        if (this.el.discoveryZMeasuringDisplay) {
+            this.el.discoveryZMeasuringDisplay.textContent = "-";
         }
         if (this.el.rotationalDragDisplay) {
             this.el.rotationalDragDisplay.textContent = "0.000";
@@ -2827,8 +3070,20 @@ class ViscometryDashboard {
         }
         this.updateGraphCellTabs();
         this.updateCalGraphCellTabs();
+        this.updateDiscoveryGraphCellTabs();
+        if (this.el.discoveryProbeTableBody) {
+            this.el.discoveryProbeTableBody.innerHTML = "";
+        }
+        if (this.el.discoveryProbeEmpty) {
+            this.el.discoveryProbeEmpty.classList.remove("hidden");
+        }
+        if (this.el.discoveryStatusPill) {
+            this.el.discoveryStatusPill.textContent = "Idle";
+            this.el.discoveryStatusPill.className = "discovery-status-pill idle";
+        }
         this.refreshLivePlots();
         this.refreshCalibrationLivePlots();
+        this.refreshDiscoveryLivePlots();
         this.updateTable();
     }
 
@@ -2899,6 +3154,26 @@ class ViscometryDashboard {
             this.calibrationModeActive = Boolean(status.calibration_mode);
         }
 
+        const settings = status.control_settings || {};
+        if (status.discovery_mode_active !== undefined || settings.discovery_mode_enabled !== undefined) {
+            const discoveryFlag = status.discovery_mode_active ?? settings.discovery_mode_enabled;
+            if (status.is_running) {
+                this.discoveryModeActive = Boolean(discoveryFlag);
+            } else if (!this.isRunning) {
+                this.discoveryModeActive = false;
+            }
+        }
+
+        if (status.discovery_results_by_cell && typeof status.discovery_results_by_cell === "object") {
+            this.discoveryResultsByCell = { ...status.discovery_results_by_cell };
+            Object.values(this.discoveryResultsByCell).forEach((entry) => {
+                if (entry) {
+                    this.ingestDiscoveryUpdate(entry);
+                }
+            });
+        }
+        this.updateRunTabAvailability();
+
         if (status.calibration_review_pending !== undefined) {
             this.calibrationReviewPending = Boolean(status.calibration_review_pending);
             this.updateReviewStartGuard();
@@ -2968,7 +3243,10 @@ class ViscometryDashboard {
 
         if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0) {
             status.measurement_data.forEach((m) => this.ingestMeasurement(m, true));
-            this.refreshLivePlots();
+            if (!this._isDiscoveryRunActive()) {
+                this.refreshLivePlots();
+            }
+            this.refreshDiscoveryLivePlots();
         }
 
         if (status.predicted_viscosity_results) {
@@ -3246,7 +3524,14 @@ class ViscometryDashboard {
             this._scheduleCalibrationPlotRefresh();
             return;
         }
+        if (this.activeTabId === "discovery-tab") {
+            this._scheduleDiscoveryPlotRefresh();
+            return;
+        }
         if (this.activeTabId !== "controls-tab") {
+            return;
+        }
+        if (this._isDiscoveryRunActive()) {
             return;
         }
         if (this._plotRefreshTimer) {
@@ -3265,6 +3550,16 @@ class ViscometryDashboard {
         this._calPlotRefreshTimer = window.setTimeout(() => {
             this._calPlotRefreshTimer = null;
             this.refreshCalibrationLivePlots();
+        }, 110);
+    }
+
+    _scheduleDiscoveryPlotRefresh() {
+        if (this._discoveryPlotRefreshTimer) {
+            window.clearTimeout(this._discoveryPlotRefreshTimer);
+        }
+        this._discoveryPlotRefreshTimer = window.setTimeout(() => {
+            this._discoveryPlotRefreshTimer = null;
+            this.refreshDiscoveryLivePlots();
         }, 110);
     }
 
@@ -3316,7 +3611,7 @@ class ViscometryDashboard {
 
         this.latestTorqueByCell.set(measurement.cell_id, measurement.torque_percent);
 
-        if (this.currentCell === measurement.cell_id && this.activeTabId === "controls-tab") {
+        if (this.currentCell === measurement.cell_id && this.activeTabId === "controls-tab" && !this._isDiscoveryRunActive()) {
             this.updateTorqueBar(measurement.torque_percent);
             this.updateLiveTorqueDisplay(measurement.torque_percent);
             this.updateLiveRotationalDragDisplay(measurement.rotational_drag);
@@ -3327,9 +3622,13 @@ class ViscometryDashboard {
             this._graphTabIdsKey = nextTabKey;
             this.updateGraphCellTabs();
             this.updateCalGraphCellTabs();
+            this.updateDiscoveryGraphCellTabs();
         }
 
         this._schedulePlotRefresh();
+        if (this._isDiscoveryRunActive()) {
+            this._scheduleDiscoveryPlotRefresh();
+        }
         this._scheduleTableRefresh();
         this._scheduleMapVisualSync();
     }
@@ -3830,6 +4129,13 @@ class ViscometryDashboard {
                 gaugeText: this.el.calGaugeText,
             });
         }
+        if (this.el.discoveryGaugeValue && this.el.discoveryGaugeNeedle && this.el.discoveryGaugeText) {
+            sets.push({
+                gaugeValue: this.el.discoveryGaugeValue,
+                gaugeNeedle: this.el.discoveryGaugeNeedle,
+                gaugeText: this.el.discoveryGaugeText,
+            });
+        }
         return sets;
     }
 
@@ -3918,7 +4224,7 @@ class ViscometryDashboard {
     }
 
     updateDragZSidebar(data) {
-        if (this.activeTabId !== "controls-tab") {
+        if (this.activeTabId !== "controls-tab" || this._isDiscoveryRunActive()) {
             return;
         }
         if (this.el.sidebarRpm) {
@@ -4465,6 +4771,9 @@ class ViscometryDashboard {
         }
         if (this.el.calZMeasuringDisplay) {
             this.el.calZMeasuringDisplay.textContent = text;
+        }
+        if (this.el.discoveryZMeasuringDisplay) {
+            this.el.discoveryZMeasuringDisplay.textContent = text;
         }
     }
 
@@ -5370,6 +5679,10 @@ class ViscometryDashboard {
                 settingsSnapshot.viscosity_prediction_mode
                 || (hasPredictedViscosityData ? "on" : "off"),
             predicted_viscosity: predictedViscosity,
+            run_type: settingsSnapshot.discovery_mode_enabled ? "discovery" : "regular",
+            discovery_results: settingsSnapshot.discovery_mode_enabled
+                ? JSON.parse(JSON.stringify(this.discoveryResultsByCell || {}))
+                : {},
         };
 
         this.runSettingsSnapshot = null;
@@ -5387,8 +5700,13 @@ class ViscometryDashboard {
         const dateStr = exp.created_at
             ? new Date(exp.created_at).toLocaleString()
             : "";
+        const isDiscovery = exp.run_type === "discovery"
+            || Boolean(exp.settings && exp.settings.discovery_mode_enabled);
+        const discoveryBadge = isDiscovery
+            ? '<span class="experiment-card-badge mode-discovery">Discovery</span>'
+            : "";
         return `
-            <strong class="experiment-card-title">${this._escapeHtml(experimentName)}</strong>
+            <strong class="experiment-card-title">${this._escapeHtml(experimentName)}${discoveryBadge}</strong>
             <div class="experiment-card-date">${this._escapeHtml(dateStr)}</div>
             <div class="experiment-card-row">
                 <span>Cells</span><span>${(exp.cells || []).join(", ") || "-"}</span>
@@ -5618,6 +5936,9 @@ class ViscometryDashboard {
         const leftLines = [
             `<strong>Date:</strong> ${new Date(exp.created_at).toLocaleString()}`,
             `<strong>Experiment name:</strong> ${s.experiment_name || "(unnamed)"}`,
+            (exp.run_type === "discovery" || s.discovery_mode_enabled)
+                ? '<strong>Run type:</strong> <span class="experiment-card-badge mode-discovery">Discovery</span>'
+                : "<strong>Run type:</strong> Regular",
             `<strong>Cells tested:</strong> ${exp.cells.join(", ") || "-"}`,
             `<strong>RPMs:</strong> ${exp.rpms.join(", ") || "-"}`,
             `<strong>Cell labels:</strong> ${cellLabelsSummary || "-"}`,
@@ -5639,6 +5960,28 @@ class ViscometryDashboard {
         }
         if (predEl) {
             predEl.innerHTML = this._buildPredictedViscosityTableHtml(exp, s);
+        }
+
+        const discoveryResults = exp.discovery_results || {};
+        const discoveryBlocks = (exp.cells || []).map((cellId) => {
+            const entry = discoveryResults[String(cellId)] || discoveryResults[cellId];
+            if (!entry || !Array.isArray(entry.probes) || entry.probes.length === 0) {
+                return "";
+            }
+            const status = entry.status || "—";
+            const rpm = entry.rpm != null ? Number(entry.rpm).toFixed(3) : "—";
+            const eta = entry.eta_estimate != null
+                ? Number(entry.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                : "—";
+            return `
+                <div class="summary-discovery-cell-block">
+                    <strong>Cell ${cellId} — RPM discovery</strong>
+                    <div>Status: ${this._escapeHtml(String(status))} · Discovered RPM: ${rpm} · η est: ${eta} cP</div>
+                    ${this._buildDiscoveryProbeTableHtml(entry.probes)}
+                </div>`;
+        }).filter(Boolean).join("");
+        if (discoveryBlocks && leftEl) {
+            leftEl.insertAdjacentHTML("beforeend", discoveryBlocks);
         }
 
         const byCellRpm = {};
@@ -5758,6 +6101,9 @@ class ViscometryDashboard {
             if (this.el.calElapsed) {
                 this.el.calElapsed.textContent = elapsedText;
             }
+            if (this.el.discoveryElapsed) {
+                this.el.discoveryElapsed.textContent = elapsedText;
+            }
         }
 
         if (this.cellStart !== null && this.isRunning) {
@@ -5767,6 +6113,9 @@ class ViscometryDashboard {
             }
             if (this.el.calElapsedCell) {
                 this.el.calElapsedCell.textContent = cellElapsedText;
+            }
+            if (this.el.discoveryElapsedCell) {
+                this.el.discoveryElapsedCell.textContent = cellElapsedText;
             }
         }
     }
@@ -5975,7 +6324,7 @@ class ViscometryDashboard {
     }
 
     renderLiveViscosityPredictionsTable() {
-        if (this.activeTabId !== "controls-tab") {
+        if (this.activeTabId !== "controls-tab" || this._isDiscoveryRunActive()) {
             return;
         }
         const tbody = this.el.liveViscosityTableBody;
@@ -6927,6 +7276,34 @@ class ViscometryDashboard {
         this.isCalibrationRun = false;
     }
 
+    _isDiscoveryReviewSession(session) {
+        if (!session) {
+            return false;
+        }
+        if (session.discovery_mode_enabled) {
+            return true;
+        }
+        const settings = this.runSettingsSnapshot || this.readControlSettings();
+        return Boolean(settings.discovery_mode_enabled);
+    }
+
+    _applyExperimentReviewDiscoveryTheme(session) {
+        const isDiscovery = this._isDiscoveryReviewSession(session);
+        this.el.body.classList.toggle("discovery-review-active", isDiscovery);
+        if (this.el.expReviewModal) {
+            this.el.expReviewModal.classList.toggle("discovery-review-modal", isDiscovery);
+        }
+    }
+
+    _getDiscoveryResultForReviewCell(cellId) {
+        const session = this.experimentReviewSession;
+        const fromSession = session?.discovery_results_by_cell?.[String(cellId)];
+        if (fromSession) {
+            return fromSession;
+        }
+        return this.discoveryResultsByCell[String(cellId)] || null;
+    }
+
     getPendingExperimentReviewCellIds() {
         const session = this.experimentReviewSession;
         if (!session) {
@@ -6953,6 +7330,7 @@ class ViscometryDashboard {
         this.experimentReviewPending = true;
         this.updateReviewStartGuard();
         this.updateExperimentReviewHeader(session);
+        this._applyExperimentReviewDiscoveryTheme(session);
         this.renderExperimentReviewTabs();
         const pending = this.getPendingExperimentReviewCellIds();
         if (!pending.includes(this.experimentReviewActiveCellId)) {
@@ -6982,6 +7360,7 @@ class ViscometryDashboard {
             this.el.expReviewBackdrop.setAttribute("aria-hidden", "false");
         }
         this.updateExperimentReviewHeader(session);
+        this._applyExperimentReviewDiscoveryTheme(session);
         this.el.body.classList.add("experiment-review-active");
         this.renderExperimentReviewTabs();
         this.renderExperimentReviewCellView(this.experimentReviewActiveCellId);
@@ -6990,15 +7369,26 @@ class ViscometryDashboard {
 
     updateExperimentReviewHeader(session) {
         const runEndedEarly = Boolean(session?.run_ended_early);
+        const isDiscovery = this._isDiscoveryReviewSession(session);
         if (this.el.expReviewTitle) {
-            this.el.expReviewTitle.textContent = runEndedEarly
-                ? "Save experiment data"
-                : "Save Data";
+            if (isDiscovery) {
+                this.el.expReviewTitle.innerHTML = runEndedEarly
+                    ? 'Save Discovery Experiment <span class="protocol-mode-badge mode-discovery">Discovery</span>'
+                    : 'Save Discovery Experiment <span class="protocol-mode-badge mode-discovery">Discovery</span>';
+            } else {
+                this.el.expReviewTitle.textContent = runEndedEarly
+                    ? "Save experiment data"
+                    : "Save Data";
+            }
         }
         if (this.el.expReviewSubtitle) {
             if (runEndedEarly) {
-                this.el.expReviewSubtitle.textContent =
-                    "Run ended early — saved output uses final point per Z×RPM";
+                this.el.expReviewSubtitle.textContent = isDiscovery
+                    ? "Discovery run ended early — saved output uses final point per Z×RPM"
+                    : "Run ended early — saved output uses final point per Z×RPM";
+                this.el.expReviewSubtitle.classList.remove("hidden");
+            } else if (isDiscovery) {
+                this.el.expReviewSubtitle.textContent = "Discovery run — RPM probe summary included in saved CSV metadata";
                 this.el.expReviewSubtitle.classList.remove("hidden");
             } else {
                 this.el.expReviewSubtitle.textContent = "";
@@ -7017,6 +7407,10 @@ class ViscometryDashboard {
             this.el.expReviewBackdrop.setAttribute("aria-hidden", "true");
         }
         this.el.body.classList.remove("experiment-review-active");
+        this.el.body.classList.remove("discovery-review-active");
+        if (this.el.expReviewModal) {
+            this.el.expReviewModal.classList.remove("discovery-review-modal");
+        }
         this.updateReviewStartGuard();
     }
 
@@ -7094,9 +7488,25 @@ class ViscometryDashboard {
         const runEndedNote = this.experimentReviewSession?.run_ended_early
             ? '<div class="experiment-review-early-note">Run ended early</div>'
             : "";
+        const discoveryEntry = this._getDiscoveryResultForReviewCell(cellId);
+        let discoveryBlock = "";
+        if (discoveryEntry && Array.isArray(discoveryEntry.probes) && discoveryEntry.probes.length > 0) {
+            const dStatus = discoveryEntry.status || "—";
+            const dRpm = discoveryEntry.rpm != null ? Number(discoveryEntry.rpm).toFixed(3) : "—";
+            const dEta = discoveryEntry.eta_estimate != null
+                ? Number(discoveryEntry.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                : "—";
+            discoveryBlock = `
+                <div class="summary-discovery-cell-block">
+                    <div><strong>RPM discovery</strong> <span class="protocol-mode-badge mode-discovery">Discovery</span></div>
+                    <div>Status: ${this._escapeHtml(String(dStatus))} · Discovered RPM: ${dRpm} · η est: ${dEta} cP</div>
+                    ${this._buildDiscoveryProbeTableHtml(discoveryEntry.probes)}
+                </div>`;
+        }
         box.innerHTML = `
             <div><strong>${title}</strong> ${partialBadge}</div>
             ${runEndedNote}
+            ${discoveryBlock}
             <div>RPMs tested: ${rpmText}</div>
             <div>Termination: <span class="review-termination-chip summary-termination-chip ${tMeta.cls}">${tMeta.text}</span></div>
             <div>Z levels collected: <strong>${zLevelsText}</strong></div>

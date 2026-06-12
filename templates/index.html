@@ -813,7 +813,8 @@
                             <span id="discovery-calibration-status-text">0/18 cells calibrated</span>
                         </div>
                         <div class="discovery-valid-rpms-wrap">
-                            <span class="discovery-valid-rpms-label">Valid spindle speeds</span>
+                            <span class="discovery-valid-rpms-label">Calibration reference RPMs</span>
+                            <p class="discovery-info-subtext discovery-rpm-mode-note">Discovery uses continuous RPM from viscosity fit.</p>
                             <div id="discovery-valid-rpm-chips" class="discovery-valid-rpm-chips" aria-label="Valid RPM list"></div>
                         </div>
                     </div>
@@ -968,7 +969,60 @@
                             </table>
                             <p id="discovery-probe-empty" class="plot-empty">No discovery probes yet.</p>
                         </div>
-                        <p class="discovery-live-hint">Live Z-scan charts update on the Perform Experiment tab during a discovery run.</p>
+                    </section>
+
+                    <section class="discovery-card discovery-tracking-card">
+                        <div class="card-title-row">
+                            <h2>Live Tracking</h2>
+                        </div>
+                        <div class="discovery-mini-tracking-row">
+                            <div class="discovery-mini-tracking-col status-block status-block-compact gauge-block">
+                                <div class="status-label">RPM Gauge</div>
+                                <svg id="discovery-rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
+                                    <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
+                                    <circle id="discovery-gauge-value" cx="110" cy="110" r="72" class="gauge-value"></circle>
+                                    <line id="discovery-gauge-needle" x1="110" y1="110" x2="110" y2="44" class="gauge-needle"></line>
+                                    <circle cx="110" cy="110" r="5" class="gauge-core"></circle>
+                                    <text id="discovery-gauge-rpm" x="110" y="118" text-anchor="middle" class="gauge-text">0.0</text>
+                                    <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
+                                </svg>
+                            </div>
+                            <div class="discovery-mini-tracking-col status-block status-block-compact measuring-z-block">
+                                <div class="status-label">Measuring Z</div>
+                                <div class="mono measuring-z-value" id="discovery-z-measuring-display">0.000 mm</div>
+                                <div class="status-subtext">Active Z under sampling</div>
+                            </div>
+                            <div class="discovery-mini-tracking-col status-block status-block-compact">
+                                <div class="status-label">Elapsed</div>
+                                <div id="discovery-elapsed" class="mono">00:00:00</div>
+                                <div id="discovery-elapsed-cell" class="status-subtext">Cell 00:00:00</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="discovery-card discovery-plot-card plot-card skeleton-host">
+                        <div class="card-title-row">
+                            <div>
+                                <h2>Live Rotational Drag</h2>
+                                <span id="discovery-drag-z-cell-label" class="chart-subtitle">Discovered RPM only</span>
+                            </div>
+                            <div class="plot-tools">
+                                <button type="button" id="discovery-z-connect-dots" class="btn subtle">Connect Dots: Off</button>
+                            </div>
+                        </div>
+                        <div id="discovery-graph-cell-tabs" class="graph-cell-tabs"></div>
+                        <div class="drag-z-with-sidebar">
+                            <div id="discovery-z-sparkline-plot" class="plot-shell drag-z-plot-area">
+                                <canvas id="discovery-z-sparkline-canvas" aria-label="Discovery live rotational drag vs Z-height"></canvas>
+                            </div>
+                            <aside class="drag-z-sidebar" id="discovery-drag-z-sidebar">
+                                <div class="sidebar-section sidebar-rpm-legend-section">
+                                    <div class="sidebar-label">RPM colors</div>
+                                    <div id="discovery-drag-z-rpm-legend" class="rpm-legend-list"></div>
+                                </div>
+                            </aside>
+                        </div>
+                        <div id="discovery-z-sparkline-empty" class="plot-empty">No data at discovered RPM yet</div>
                     </section>
                 </div>
                 <footer class="tab-signature" aria-hidden="true">

@@ -243,6 +243,7 @@ class ViscometryWebInterface:
             'discovery_probe_duration_s': 12.0,
         }
         self.predicted_viscosity_results: Dict = {}
+        self.discovery_results_by_cell: Dict[str, dict] = {}
         self.rpm_torque_status_by_cell: Dict[int, Dict[str, str]] = {}
         # ========== Calibration state ==========
         self.calibration_mode = False         # True when a calibration run is active
@@ -397,6 +398,13 @@ class ViscometryWebInterface:
                     'hit_point_offset_mm': cfg.hit_point_offset_mm,
                     'valid_rpms': list(cfg.valid_rpms),
                     'cold_start_rpm': cfg.cold_start_rpm,
+                    'a_cal': cfg.a_cal,
+                    'b_cal': cfg.b_cal,
+                    'rpm_min': cfg.rpm_min,
+                    'rpm_max': cfg.rpm_max,
+                    'rpm_selection_mode': cfg.rpm_selection_mode,
+                    'surface_torque_ref': cfg.surface_torque_ref,
+                    'a_cal_r_squared': cfg.a_cal_r_squared,
                 })
             except Exception as e:
                 print(f"Error in api_discovery_config: {e}")
@@ -722,6 +730,10 @@ class ViscometryWebInterface:
                 'recalibration_mode_active': recalibration_mode_active,
                 'recalibration_target_count': recalibration_target_count,
                 'predicted_viscosity_results': self._copy_predicted_viscosity_results(),
+                'discovery_results_by_cell': self._copy_discovery_results_by_cell(),
+                'discovery_mode_active': bool(
+                    (runtime or {}).get('discovery_mode_enabled', False)
+                ) if isinstance(runtime, dict) else False,
                 'calibration_review': self.get_calibration_review_session(),
                 'calibration_review_pending': self.has_pending_calibration_review(),
                 'experiment_review': self.get_experiment_review_session(),
@@ -752,6 +764,8 @@ class ViscometryWebInterface:
                 'recalibration_mode_active': False,
                 'recalibration_target_count': 0,
                 'predicted_viscosity_results': {},
+                'discovery_results_by_cell': {},
+                'discovery_mode_active': False,
                 'calibration_review': None,
                 'calibration_review_pending': False,
                 'experiment_review': None,
@@ -1145,6 +1159,7 @@ class ViscometryWebInterface:
                 "run_start_ts": self.experiment_start_ts,
                 "runtime_settings": settings,
                 "predicted_viscosity_results": self._copy_predicted_viscosity_results_unlocked(),
+                "discovery_results_by_cell": self._copy_discovery_results_by_cell_unlocked(),
             }
 
     def _build_experiment_review_session_from_pending(self) -> Optional[dict]:
@@ -1202,6 +1217,14 @@ class ViscometryWebInterface:
             "cells": cells,
             "queued_saves": dict(session.get("queued_saves") or {}),
             "run_ended_early": bool(run_ended_early),
+            "discovery_mode_enabled": bool(
+                (self._experiment_review_run_context or {}).get("runtime_settings", {}).get(
+                    "discovery_mode_enabled", False
+                )
+            ),
+            "discovery_results_by_cell": dict(
+                (self._experiment_review_run_context or {}).get("discovery_results_by_cell") or {}
+            ),
         }
 
     def get_experiment_review_session(self) -> Optional[dict]:
@@ -1359,6 +1382,15 @@ class ViscometryWebInterface:
         if pred_mode == "off" and self._predicted_viscosity_has_data(pred_filtered):
             pred_mode = "on"
 
+        discovery_all = run_context.get("discovery_results_by_cell") or {}
+        discovery_filtered = {}
+        for cell_id in cells_sorted:
+            key = str(int(cell_id))
+            if key in discovery_all:
+                discovery_filtered[key] = discovery_all[key]
+
+        is_discovery = bool(settings.get("discovery_mode_enabled"))
+
         return {
             "id": _experiment_history_id_for_run(run_start_ts),
             "created_at": int(time.time() * 1000),
@@ -1375,6 +1407,8 @@ class ViscometryWebInterface:
             "cell_partial_flags": partial_flags,
             "viscosity_prediction_mode": pred_mode,
             "predicted_viscosity": pred_filtered,
+            "run_type": "discovery" if is_discovery else "regular",
+            "discovery_results": discovery_filtered,
         }
 
     def commit_experiment_review(self, session_id: str) -> dict:
@@ -1969,6 +2003,16 @@ class ViscometryWebInterface:
         with self.control_lock:
             return self._copy_predicted_viscosity_results_unlocked()
 
+    def _copy_discovery_results_by_cell_unlocked(self) -> Dict:
+        try:
+            return copy.deepcopy(self.discovery_results_by_cell)
+        except Exception:
+            return dict(self.discovery_results_by_cell)
+
+    def _copy_discovery_results_by_cell(self) -> Dict:
+        with self.control_lock:
+            return self._copy_discovery_results_by_cell_unlocked()
+
     def clear_run_data(self):
         """Clear the current run's dashboard data and notify connected clients."""
         self.reset_calibration_review_pending()
@@ -1984,6 +2028,7 @@ class ViscometryWebInterface:
             self.completed_cells = []
             self.cell_termination_reasons = {}
             self.predicted_viscosity_results = {}
+            self.discovery_results_by_cell = {}
             self.rpm_torque_status_by_cell = {}
         self.clear_terminate_current_cell_request()
         self.socketio.emit('clear_dashboard')
@@ -2040,11 +2085,21 @@ class ViscometryWebInterface:
             print(f"Warning: Failed to emit predicted viscosity summary: {e}")
 
     def emit_discovery_update(self, payload: Dict):
-        """Broadcast Discovery Mode probe / convergence status."""
+        """Store and broadcast Discovery Mode probe / convergence status."""
         try:
+            cell_id = payload.get("cell_id")
+            if cell_id is not None:
+                with self.control_lock:
+                    self.discovery_results_by_cell[str(int(cell_id))] = dict(payload)
             self.socketio.emit('discovery_update', payload)
         except Exception as e:
             print(f"Warning: Failed to emit discovery update: {e}")
+
+    def record_discovery_result(self, cell_id: int, result: Dict) -> None:
+        """Persist discovery outcome for a cell (CSV/review); emits via emit_discovery_update."""
+        payload = dict(result) if isinstance(result, dict) else {}
+        payload["cell_id"] = int(cell_id)
+        self.emit_discovery_update(payload)
 
     def _load_experiment_history(self):
         """Load shared experiment history from disk if available."""

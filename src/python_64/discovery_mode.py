@@ -2,27 +2,36 @@
 Discovery Mode — pure RPM selection logic (no hardware dependencies).
 
 Finds spindle RPM that yields 25–35% torque at bulk-offset Z (rough hit-point + offset).
+Uses continuous power-law RPM ↔ viscosity calibration.
 """
 
 from __future__ import annotations
 
-import csv
 import json
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from calibration_store import load_calibration
+from discovery_rpm_calibration import (
+    A_CAL,
+    B_CAL,
+    DEFAULT_RPM_MAX,
+    DEFAULT_RPM_MIN,
+    TARGET_TORQUE_REF,
+    clamp_hardware_rpm,
+    eta_from_rpm_torque,
+    initial_rpm_for_discovery,
+    suggest_next_rpm_continuous,
+)
 from discovery_types import (
     DiscoveryConfig,
     DiscoveryProbeRecord,
     DiscoveryResult,
     ProbeExecutor,
-    ViscosityTableRow,
 )
 
 _MODULE_DIR = Path(__file__).resolve().parent
 _CONFIG_PATH = _MODULE_DIR / "calibration_data" / "discovery_bulk_calibration.json"
-_PROJECT_ROOT = _MODULE_DIR.parents[1]
 
 # Module-level defaults (overridden by DiscoveryConfig / JSON)
 K_BULK: float = 6.047104982213263e-04
@@ -34,7 +43,7 @@ VALID_RPM_LIST: Tuple[float, ...] = (
     2.1, 2.2, 2.3, 2.6, 2.7, 3.5, 4.0, 4.2, 5.0, 5.5, 5.6, 5.8, 6.0, 8.0,
     8.3, 8.6, 9.0, 10.0, 15.0, 16.0, 34.0, 43.0, 47.0, 48.0, 90.0, 120.0, 200.0,
 )
-MAX_ITERATIONS: int = 4
+MAX_ITERATIONS: int = 3
 
 
 def load_discovery_config(*, config_path: Optional[str] = None) -> DiscoveryConfig:
@@ -69,155 +78,19 @@ def load_discovery_config(*, config_path: Optional[str] = None) -> DiscoveryConf
         hit_point_offset_mm=float(data.get("hit_point_offset_mm", HIT_POINT_OFFSET_MM)),
         valid_rpms=valid_rpms,
         max_iterations=int(data.get("max_iterations", MAX_ITERATIONS)),
+        a_cal=float(data.get("a_cal", A_CAL)),
+        b_cal=float(data.get("b_cal", B_CAL)),
+        rpm_min=float(data.get("rpm_min", DEFAULT_RPM_MIN)),
+        rpm_max=float(data.get("rpm_max", DEFAULT_RPM_MAX)),
         cold_start_rpm=float(data.get("cold_start_rpm", 5.0)),
+        surface_torque_ref=float(data.get("surface_torque_ref", TARGET_TORQUE_REF)),
+        a_cal_r_squared=float(data.get("a_cal_r_squared", 0.0)),
+        rpm_selection_mode=str(data.get("rpm_selection_mode", "continuous")),
     )
 
 
 def default_discovery_config() -> DiscoveryConfig:
     return load_discovery_config()
-
-
-def load_viscosity_table_from_config(config: DiscoveryConfig) -> List[ViscosityTableRow]:
-    """Load viscosity lookup table path from JSON sidecar if present."""
-    path = _CONFIG_PATH
-    table_path: Optional[Path] = None
-    if path.exists():
-        try:
-            with path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-            rel = data.get("viscosity_table_path")
-            if isinstance(rel, str) and rel.strip():
-                candidate = _PROJECT_ROOT / rel.strip()
-                if candidate.exists():
-                    table_path = candidate
-        except Exception:
-            pass
-    if table_path is None:
-        default = _PROJECT_ROOT / "results" / "Viscosity Readings - Manual.csv"
-        if default.exists():
-            table_path = default
-    if table_path is None:
-        return []
-
-    from discovery_calibration import load_manual_viscosity_rpm_table
-
-    rows = load_manual_viscosity_rpm_table(table_path)
-    return [
-        ViscosityTableRow(
-            viscosity_cp=r["viscosity_cp"],
-            rpm=r["rpm"],
-            torque_pct=r["torque_pct"],
-        )
-        for r in rows
-    ]
-
-
-def snap_rpm(rpm_ideal: float, valid_rpms: Sequence[float]) -> float:
-    """Return nearest value in valid_rpms (tie -> lower RPM)."""
-    if not valid_rpms:
-        return float(rpm_ideal)
-    best = float(valid_rpms[0])
-    best_dist = abs(rpm_ideal - best)
-    for rpm in valid_rpms[1:]:
-        r = float(rpm)
-        dist = abs(rpm_ideal - r)
-        if dist < best_dist or (dist == best_dist and r < best):
-            best = r
-            best_dist = dist
-    return best
-
-
-def _rpm_index(rpm: float, valid_rpms: Sequence[float]) -> int:
-    for i, v in enumerate(valid_rpms):
-        if abs(float(v) - rpm) < 1e-9:
-            return i
-    return -1
-
-
-def clamp_rpm_index_steps(
-    current_rpm: float,
-    target_rpm: float,
-    valid_rpms: Sequence[float],
-    max_steps: int,
-) -> float:
-    """Limit discrete RPM jump to max_steps slots on valid_rpms ladder."""
-    if not valid_rpms or max_steps <= 0:
-        return snap_rpm(target_rpm, valid_rpms)
-    i_cur = _rpm_index(current_rpm, valid_rpms)
-    i_tgt = _rpm_index(snap_rpm(target_rpm, valid_rpms), valid_rpms)
-    if i_cur < 0 or i_tgt < 0:
-        return snap_rpm(target_rpm, valid_rpms)
-    delta = max(-max_steps, min(max_steps, i_tgt - i_cur))
-    return float(valid_rpms[i_cur + delta])
-
-
-def cold_start_rpm(valid_rpms: Sequence[float], *, cold_start: float = 5.0) -> float:
-    return snap_rpm(cold_start, valid_rpms)
-
-
-def estimate_initial_rpm(
-    eta_guess: float,
-    *,
-    target_torque: float = TARGET_TORQUE_BULK,
-    k_bulk: float = K_BULK,
-    valid_rpms: Sequence[float] = VALID_RPM_LIST,
-) -> float:
-    """RPM_ideal = target_torque / (k_bulk * eta_guess); snap to valid_rpms."""
-    if eta_guess <= 0 or k_bulk <= 0:
-        return cold_start_rpm(valid_rpms)
-    rpm_ideal = target_torque / (k_bulk * eta_guess)
-    return snap_rpm(rpm_ideal, valid_rpms)
-
-
-def initial_rpm_from_viscosity_table(
-    eta_guess: float,
-    viscosity_table: Sequence[ViscosityTableRow],
-    *,
-    target_torque_bulk: float = TARGET_TORQUE_BULK,
-    surface_torque_ref: float = 50.0,
-    valid_rpms: Sequence[float] = VALID_RPM_LIST,
-    cold_start: float = 5.0,
-) -> float:
-    """Nearest-neighbor on Viscosity_cP, scale surface RPM to bulk target, snap."""
-    if eta_guess <= 0 or not viscosity_table:
-        return cold_start_rpm(valid_rpms, cold_start=cold_start)
-
-    best_row: Optional[ViscosityTableRow] = None
-    best_dist = float("inf")
-    for row in viscosity_table:
-        dist = abs(row["viscosity_cp"] - eta_guess)
-        if dist < best_dist:
-            best_dist = dist
-            best_row = row
-    if best_row is None:
-        return cold_start_rpm(valid_rpms, cold_start=cold_start)
-
-    rpm_csv = best_row["rpm"]
-    scale = target_torque_bulk / surface_torque_ref if surface_torque_ref > 0 else 0.6
-    return snap_rpm(rpm_csv * scale, valid_rpms)
-
-
-def eta_from_probe(torque_pct: float, rpm: float, *, k_bulk: float = K_BULK) -> float:
-    if rpm <= 0 or k_bulk <= 0:
-        return float("nan")
-    return torque_pct / (k_bulk * rpm)
-
-
-def suggest_next_rpm(
-    current_rpm: float,
-    measured_torque_pct: float,
-    *,
-    target_torque: float = TARGET_TORQUE_BULK,
-    valid_rpms: Sequence[float],
-    max_index_steps: int = 2,
-) -> float:
-    """Proportional correction: rpm * (target / measured), snap, optional step cap."""
-    if measured_torque_pct <= 0:
-        return snap_rpm(current_rpm * 2.0, valid_rpms)
-    rpm_raw = current_rpm * (target_torque / measured_torque_pct)
-    if max_index_steps > 0:
-        return clamp_rpm_index_steps(current_rpm, rpm_raw, valid_rpms, max_index_steps)
-    return snap_rpm(rpm_raw, valid_rpms)
 
 
 def get_bulk_probe_z(
@@ -242,18 +115,15 @@ def get_bulk_probe_z(
 def check_range_limits(
     torque_pct: float,
     rpm: float,
-    valid_rpms: Sequence[float],
     *,
+    rpm_min: float,
+    rpm_max: float,
     over_range_torque_pct: float = 85.0,
     under_range_torque_pct: float = 5.0,
 ) -> Optional[str]:
-    if not valid_rpms:
-        return None
-    min_rpm = min(valid_rpms)
-    max_rpm = max(valid_rpms)
-    if rpm <= min_rpm + 1e-9 and torque_pct >= over_range_torque_pct:
+    if rpm <= rpm_min + 1e-9 and torque_pct >= over_range_torque_pct:
         return "over_range"
-    if rpm >= max_rpm - 1e-9 and torque_pct <= under_range_torque_pct:
+    if rpm >= rpm_max - 1e-9 and torque_pct <= under_range_torque_pct:
         return "under_range"
     return None
 
@@ -270,9 +140,9 @@ def discover_rpm(
     material_label: Optional[str] = None,
     config: Optional[DiscoveryConfig] = None,
     max_iterations: Optional[int] = None,
-    viscosity_table: Optional[Sequence[ViscosityTableRow]] = None,
+    on_probe: Optional[Callable[[DiscoveryProbeRecord, "DiscoveryResult"], None]] = None,
 ) -> DiscoveryResult:
-    """Iterative bulk-offset RPM discovery using injected probe callable."""
+    """Iterative bulk-offset RPM discovery using continuous power-law calibration."""
     cfg = config or default_discovery_config()
     max_iter = max_iterations if max_iterations is not None else cfg.max_iterations
     t_min, t_max = cfg.torque_window
@@ -291,18 +161,16 @@ def discover_rpm(
     if target_z is None:
         return empty
 
-    table = list(viscosity_table) if viscosity_table is not None else load_viscosity_table_from_config(cfg)
-    if eta_guess is not None and eta_guess > 0:
-        rpm = initial_rpm_from_viscosity_table(
-            eta_guess,
-            table,
-            target_torque_bulk=cfg.target_torque,
-            surface_torque_ref=cfg.surface_torque_ref,
-            valid_rpms=cfg.valid_rpms,
-            cold_start=cfg.cold_start_rpm,
-        )
-    else:
-        rpm = cold_start_rpm(cfg.valid_rpms, cold_start=cfg.cold_start_rpm)
+    rpm = initial_rpm_for_discovery(
+        eta_guess,
+        target_torque=cfg.target_torque,
+        cold_start_rpm=cfg.cold_start_rpm,
+        a_cal=cfg.a_cal,
+        b_cal=cfg.b_cal,
+        reference_torque=cfg.surface_torque_ref,
+        rpm_min=cfg.rpm_min,
+        rpm_max=cfg.rpm_max,
+    )
 
     probes: List[DiscoveryProbeRecord] = []
     status: str = "max_iter_reached"
@@ -323,7 +191,13 @@ def discover_rpm(
                 "from_cache": False,
             }
 
-        eta_est = eta_from_probe(torque, rpm, k_bulk=cfg.k_bulk)
+        eta_est = eta_from_rpm_torque(
+            rpm,
+            torque,
+            a_cal=cfg.a_cal,
+            b_cal=cfg.b_cal,
+            reference_torque=cfg.surface_torque_ref,
+        )
         probes.append(
             DiscoveryProbeRecord(
                 rpm=float(rpm),
@@ -333,10 +207,27 @@ def discover_rpm(
             )
         )
 
+        if on_probe is not None:
+            partial: DiscoveryResult = {
+                "rpm": float(rpm),
+                "eta_estimate": None if eta_est != eta_est else float(eta_est),
+                "status": "probing",
+                "iterations": len(probes),
+                "probes": list(probes),
+                "target_z_mm": target_z,
+                "material_label": material_label,
+                "from_cache": False,
+            }
+            try:
+                on_probe(probes[-1], partial)
+            except Exception:
+                pass
+
         range_status = check_range_limits(
             torque,
             rpm,
-            cfg.valid_rpms,
+            rpm_min=cfg.rpm_min,
+            rpm_max=cfg.rpm_max,
             over_range_torque_pct=cfg.over_range_torque_pct,
             under_range_torque_pct=cfg.under_range_torque_pct,
         )
@@ -358,12 +249,12 @@ def discover_rpm(
             final_eta = None if eta_est != eta_est else float(eta_est)
             break
 
-        rpm_next = suggest_next_rpm(
+        rpm_next = suggest_next_rpm_continuous(
             rpm,
             torque,
             target_torque=cfg.target_torque,
-            valid_rpms=cfg.valid_rpms,
-            max_index_steps=cfg.max_rpm_index_steps,
+            rpm_min=cfg.rpm_min,
+            rpm_max=cfg.rpm_max,
         )
 
         if rpm > 0 and abs(rpm_next - rpm) / rpm < cfg.rpm_stability_rel_tol:

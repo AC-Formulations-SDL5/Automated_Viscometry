@@ -4736,6 +4736,12 @@ body.discovery-active {
     color: var(--color-green-text);
 }
 
+.discovery-status-pill.probing {
+    background: var(--discovery-accent-subtle);
+    border-color: var(--discovery-border);
+    color: rgb(50, 90, 160);
+}
+
 .discovery-status-pill.failed {
     background: var(--color-red-badge-bg);
     border-color: var(--color-red-border);
@@ -4767,6 +4773,79 @@ body.discovery-active {
 .discovery-probe-table {
     width: 100%;
     font-size: 0.82rem;
+}
+
+.discovery-mini-tracking-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.discovery-mini-tracking-col {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    min-height: 100%;
+    padding: 10px 12px;
+    border-radius: var(--radius-card);
+    background: rgba(255, 255, 255, 0.35);
+    border: 1px solid var(--discovery-border);
+    box-shadow: var(--shadow-glass);
+}
+
+.discovery-mini-tracking-col.gauge-block {
+    align-items: center;
+}
+
+.discovery-plot-card .plot-shell {
+    min-height: 220px;
+}
+
+.summary-discovery-cell-block {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-card);
+    background: var(--discovery-accent-subtle);
+    border: 1px solid var(--discovery-border);
+}
+
+.discovery-review-table {
+    width: 100%;
+    margin-top: 10px;
+    font-size: 0.82rem;
+}
+
+.experiment-card-badge.mode-discovery {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: var(--discovery-accent-subtle);
+    border: 1px solid var(--discovery-border);
+    color: rgb(50, 90, 160);
+    vertical-align: middle;
+}
+
+body.discovery-review-active .experiment-review-backdrop {
+    background:
+        radial-gradient(ellipse 80% 60% at 20% 0%, rgba(88, 140, 230, 0.18) 0%, transparent 55%),
+        rgba(18, 24, 38, 0.48);
+}
+
+body.discovery-review-active .experiment-review-modal {
+    background: var(--discovery-glass-strong);
+    border: 1px solid var(--discovery-border);
+    box-shadow: 0 24px 64px rgba(40, 80, 140, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+body.discovery-review-active .experiment-review-header h2 {
+    color: rgb(40, 75, 140);
 }
 
 .protocol-mode-badge.mode-discovery {

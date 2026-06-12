@@ -1709,6 +1709,61 @@ def run_predicted_viscosity_for_cell(
         print(f"  Warning: cell rheology summary failed for Cell {cell_id}: {e}")
 
 
+def _append_discovery_csv_metadata(csv_writer) -> None:
+    """Write Discovery Mode RPM probe summary into CSV metadata comments."""
+    if not DISCOVERY_MODE_ENABLED:
+        return
+    try:
+        from web_interface import web_interface
+
+        results = dict(web_interface.discovery_results_by_cell or {})
+    except Exception:
+        results = {}
+    if not results:
+        return
+
+    csv_writer.writerow(["# Discovery Mode Results"])
+    csv_writer.writerow([
+        "# Cell,Cell_Label,Status,Discovered_RPM,eta_est_cP,Target_Z_mm,"
+        "Probe#,Probe_RPM,Probe_Torque_%,Probe_eta_cP"
+    ])
+    for cell_key in sorted(results.keys(), key=lambda k: int(k)):
+        entry = results.get(cell_key) or {}
+        try:
+            cell_id = int(cell_key)
+        except (TypeError, ValueError):
+            continue
+        label = CELL_CONTENT_MAP.get(cell_id, "")
+        status = entry.get("status", "")
+        discovered_rpm = entry.get("rpm", "")
+        eta_est = entry.get("eta_estimate", "")
+        target_z = entry.get("target_z_mm", "")
+        probes = entry.get("probes") or []
+        if not probes:
+            csv_writer.writerow([
+                f"# {cell_id},{label},{status},"
+                f"{'' if discovered_rpm is None else discovered_rpm},"
+                f"{'' if eta_est is None else eta_est},"
+                f"{'' if target_z is None else target_z},,,,"
+            ])
+            continue
+        for idx, probe in enumerate(probes, 1):
+            p_rpm = probe.get("rpm", "")
+            p_torque = probe.get("torque", "")
+            p_eta = probe.get("eta_est", "")
+            csv_writer.writerow([
+                f"# {cell_id},{label},{status},"
+                f"{'' if discovered_rpm is None else discovered_rpm},"
+                f"{'' if eta_est is None else eta_est},"
+                f"{'' if target_z is None else target_z},"
+                f"{idx},"
+                f"{'' if p_rpm is None else p_rpm},"
+                f"{'' if p_torque is None else p_torque},"
+                f"{'' if p_eta is None else p_eta}",
+            ])
+    csv_writer.writerow([])
+
+
 def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
     """Write predicted viscosity summary rows into CSV metadata comments."""
     csv_writer.writerow([f"# Viscosity prediction mode: {VISCOSITY_PREDICTION_MODE}"])
@@ -1986,6 +2041,7 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             csv_writer.writerow([
                 "# WARNING: Experiment was terminated early - these are partial results"
             ])
+        _append_discovery_csv_metadata(csv_writer)
         _append_predicted_viscosity_csv_metadata(csv_writer)
 
         headers = [
@@ -2444,6 +2500,15 @@ def main():
                                 )
                                 termination_by_cell[global_cell] = f"discovery_{status}"
                                 continue
+                            try:
+                                from discovery_runner import discovery_result_to_web_payload
+
+                                web_interface.record_discovery_result(
+                                    global_cell,
+                                    discovery_result_to_web_payload(global_cell, discovery_result),
+                                )
+                            except Exception:
+                                pass
                             cell_rpms = discovered_rpms
                             print(
                                 f"  Discovery converged for Cell {global_cell}: "

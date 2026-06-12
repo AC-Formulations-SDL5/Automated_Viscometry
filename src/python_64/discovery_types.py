@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Literal, Optional, Protocol, Tuple, TypedDict
 
 DiscoveryStatus = Literal[
+    "probing",
     "converged",
     "converged_by_stability",
     "over_range",
@@ -42,12 +43,17 @@ class DiscoveryConfig:
     hit_point_offset_mm: float
     valid_rpms: Tuple[float, ...]
     max_iterations: int
+    a_cal: float
+    b_cal: float
+    rpm_min: float = 0.1
+    rpm_max: float = 200.0
     rpm_stability_rel_tol: float = 0.05
     over_range_torque_pct: float = 85.0
     under_range_torque_pct: float = 5.0
     cold_start_rpm: float = 5.0
-    max_rpm_index_steps: int = 2
     surface_torque_ref: float = 50.0
+    a_cal_r_squared: float = 0.0
+    rpm_selection_mode: str = "continuous"
 
 
 class ViscosityTableRow(TypedDict):

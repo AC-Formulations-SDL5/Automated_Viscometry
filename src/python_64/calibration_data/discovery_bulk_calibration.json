@@ -1,8 +1,15 @@
 {
-  "version": 1,
-  "calibrated_at": "2026-06-12T10:54:18-04:00",
-  "k_bulk": 0.0006047104982213263,
-  "k_bulk_std": 0.005869870825113556,
+  "version": 2,
+  "calibrated_at": "2026-06-12T16:02:42-04:00",
+  "rpm_selection_mode": "continuous",
+  "a_cal": 49211.99110051258,
+  "b_cal": -0.9994361462881889,
+  "a_cal_r_squared": 0.9997824323463588,
+  "surface_torque_ref": 50.0,
+  "rpm_min": 0.1,
+  "rpm_max": 200.0,
+  "k_bulk": 0.0006047104368891482,
+  "k_bulk_std": 1.987408033594919e-05,
   "target_torque_bulk": 30.0,
   "torque_window_bulk": [
     25.0,
@@ -10,6 +17,7 @@
   ],
   "hit_point_offset_mm": 0.35,
   "cold_start_rpm": 5.0,
+  "max_iterations": 3,
   "valid_rpms": [
     0.1,
     0.2,
@@ -54,5 +62,5 @@
     200.0
   ],
   "viscosity_table_path": "results/Viscosity Readings - Manual.csv",
-  "notes": "Fit: manual_csv_median_surface_scaled, n=103"
+  "notes": "K_BULK: manual_csv_median_surface_scaled, n=102; power_law: log_log_torque_corrected_50pct, n=102, R\u00b2=0.9998"
 }

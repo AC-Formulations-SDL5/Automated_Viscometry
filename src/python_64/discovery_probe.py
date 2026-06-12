@@ -56,9 +56,7 @@ def make_probe_executor(
     cnc: Any,
     client: Any,
     *,
-    move_to_cell_fn: MoveFn,
     measure_torque_fn: MeasureFn,
-    row_resolver: RowResolver,
     measure_module: Any = None,
     measurement_duration_s: Optional[float] = None,
     sample_interval_s: Optional[float] = None,
@@ -66,12 +64,11 @@ def make_probe_executor(
     """
     Return ProbeExecutor(cell_id, z_mm, rpm) -> mean torque %.
 
+    Caller must position the CNC at (cell, z_mm) before the probe loop.
     Does not modify measure_torque_fn internals; optionally scopes duration globals.
     """
 
     def probe(cell_id: int, z_mm: float, rpm: float) -> Optional[float]:
-        row_number, local_cell = row_resolver(cell_id)
-
         @contextmanager
         def _maybe_duration():
             if measurement_duration_s is not None and measure_module is not None:
@@ -85,7 +82,6 @@ def make_probe_executor(
                 yield
 
         with _maybe_duration():
-            move_to_cell_fn(cnc, row_number, local_cell, z_mm)
             measurements = measure_torque_fn(client, rpm, z_mm)
         return mean_torque_from_measurements(measurements)
 

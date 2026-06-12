@@ -6,12 +6,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from discovery_mode import (
     discover_rpm,
+    get_bulk_probe_z,
     is_discovery_success,
     load_discovery_config,
-    load_viscosity_table_from_config,
 )
 from discovery_probe import MeasureFn, MoveFn, RowResolver, make_probe_executor
-from discovery_types import DiscoveryConfig, DiscoveryResult
+from discovery_types import DiscoveryConfig, DiscoveryProbeRecord, DiscoveryResult
 
 
 def discovery_result_to_web_payload(cell_id: int, result: DiscoveryResult) -> Dict[str, Any]:
@@ -58,14 +58,35 @@ def run_discovery_for_cell(
     Returns (result, cell_rpms_for_full_scan). On failure cell_rpms is [].
     """
     cfg = config or load_discovery_config()
-    table = load_viscosity_table_from_config(cfg)
+
+    target_z = get_bulk_probe_z(cell_id, offset_mm=cfg.hit_point_offset_mm)
+    empty: DiscoveryResult = {
+        "rpm": None,
+        "eta_estimate": None,
+        "status": "uncalibrated_cell",
+        "iterations": 0,
+        "probes": [],
+        "target_z_mm": target_z,
+        "material_label": material_label,
+        "from_cache": False,
+    }
+    if target_z is None:
+        if web_emit:
+            _emit_discovery_update(cell_id, empty)
+        return empty, []
+
+    row_number, local_cell = row_resolver(cell_id)
+    move_fn(cnc, row_number, local_cell, target_z)
+    if measure_module is not None:
+        settle_s = float(getattr(measure_module, "SETTLE_TIME", 1.0))
+        sleep_fn = getattr(measure_module, "sleep_with_stop", None)
+        if callable(sleep_fn):
+            sleep_fn(settle_s)
 
     probe = make_probe_executor(
         cnc,
         client,
-        move_to_cell_fn=move_fn,
         measure_torque_fn=measure_fn,
-        row_resolver=row_resolver,
         measure_module=measure_module,
         measurement_duration_s=probe_duration_s,
         sample_interval_s=min(5.0, probe_duration_s / 2.0) if probe_duration_s > 0 else None,
@@ -76,10 +97,14 @@ def run_discovery_for_cell(
             from web_interface import web_interface
 
             web_interface.update_status(
-                f"Discovery: Cell {cell_id} — probing RPM near Z={cfg.hit_point_offset_mm:.2f} mm offset"
+                f"Discovery: Cell {cell_id} — probing RPM at Z={target_z:.3f} mm (bulk offset)"
             )
         except Exception:
             pass
+
+    def _on_probe(_record: DiscoveryProbeRecord, partial: DiscoveryResult) -> None:
+        if web_emit:
+            _emit_discovery_update(cell_id, partial)
 
     result = discover_rpm(
         cell_id,
@@ -87,7 +112,7 @@ def run_discovery_for_cell(
         eta_guess=eta_guess,
         material_label=material_label,
         config=cfg,
-        viscosity_table=table,
+        on_probe=_on_probe if web_emit else None,
     )
 
     if web_emit:
