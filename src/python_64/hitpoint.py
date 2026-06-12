@@ -1,7 +1,7 @@
 """
 Hitpoint extraction: last non-hit Z-level before 3 consecutive hit Z-levels.
 
-Used for experiment viscosity trimming and calibration (rough hitpoint alias).
+Used for experiment viscosity trimming (exclude deeper than hitpoint) and calibration (rough hitpoint alias).
 Assumes descent decreases Z (Z_STEP_SIZE < 0): shallower points have larger Z.
 """
 

@@ -810,7 +810,7 @@ def _publish_torque_sample_to_web(
     emit_measurement_point: bool,
     sample_count: int = 1,
 ) -> None:
-    """Broadcast live torque and optionally persist a measurement point to the web UI."""
+    """Broadcast live torque and a measurement point to the web UI (Z vs drag live chart)."""
     web_interface.update_live_torque(
         torque_percent=torque_percent,
         rpm=rpm,
@@ -918,7 +918,7 @@ def measure_torque_at_rpm(
                             rpm,
                             tp,
                             elapsed_since_start,
-                            emit_measurement_point=SAVE_ALL_SAMPLE_DATA,
+                            emit_measurement_point=True,
                             sample_count=1,
                         )
                         hunting_unresolved = (
@@ -948,17 +948,6 @@ def measure_torque_at_rpm(
         client.stop()
         web_interface.set_current_rpm(0)
         sleep_with_stop(INTER_RPM_PAUSE)
-
-        if measurements and not SAVE_ALL_SAMPLE_DATA:
-            latest = measurements[-1]
-            _publish_torque_sample_to_web(
-                z_height,
-                rpm,
-                float(latest["torque_percent"]),
-                float(latest.get("elapsed_time", 0.0)),
-                emit_measurement_point=True,
-                sample_count=len(measurements),
-            )
         
         # Report measurement summary
         if measurements:
