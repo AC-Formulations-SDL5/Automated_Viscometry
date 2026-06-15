@@ -1,0 +1,33 @@
+# Dynamic Analysis - Mode: CUSTOM
+# Experiment Name: 11.61kcP
+# Test RPMs (global fallback): [0.8]
+# Timestamp: 20260615_085140
+"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"
+# Feedback Control: ENABLED
+"# Feedback R2 Thresholds: Drag = 0.975, CV = 0.975, Slope = 0.975, Confidence = 0.8"
+"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = 0.2/0.2/0.2, R2(Drag/CV/Slope) = 0.2/0.2/0.2"
+"# Low-torque liquid-contact hunt: per RPM at each Z, skip RPM when first sample at elapsed >= 5.0s is < 25.00% (regular runs only); skipped RPM rows use <25% and SKIPPED metrics"
+# Viscosity prediction mode: off
+
+row,cell,Cell_Label,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%,Rotational_Drag,Cell_Termination_Method,CV,R_2,Trend_Slope,Second_derivative,Second_derivative_drag,Second_derivative_cv,Second_derivative_slope,R_2_drag,R_2_cv,R_2_slope,Hit_2nd_Deriv_Drag,Hit_2nd_Deriv_CV,Hit_2nd_Deriv_Slope,Hit_R_2_Drag,Hit_R_2_CV,Hit_R_2_Slope,Samples_Collected_At_Z,Hit_Point_Confidence,Hit_Detected,Hit_Reasons
+1,1,,-66.350,3.3,15.07,30.530,9.336391,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.370,3.3,15.08,30.800,9.418960,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.390,3.3,15.08,31.050,9.495413,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.410,3.3,15.07,31.430,9.611621,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.430,3.3,15.03,32.350,9.892966,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.450,3.3,15.03,33.260,10.171254,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.470,3.3,15.02,34.330,10.498471,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.490,3.3,15.02,35.480,10.850153,hit_detected,0.000000,0.997138,-15.412844,61.162080,61.162080,-6.184579,0.000000,0.997138,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,
+1,1,,-66.510,3.3,15.09,36.700,11.223242,hit_detected,0.959198,0.997000,-16.697248,53.516820,53.516820,-9.255556,-3211.009174,0.997000,0.959198,0.000000,False,False,False,False,True,False,3,0.200000,False,hit_r2_cv (R^2=0.9592)
+1,1,,-66.530,3.3,15.03,38.030,11.629969,hit_detected,0.919903,0.998241,-18.211009,84.097859,84.097859,0.823000,-3784.403670,0.998241,0.919903,0.881938,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.9199); hit_r2_slope (R^2=0.8819)
+1,1,,-66.550,3.3,15.03,39.340,12.030581,hit_detected,0.911104,0.999088,-19.220183,-15.290520,-15.290520,-3.815229,-2522.935780,0.999088,0.911104,0.898936,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.9111); hit_r2_slope (R^2=0.8989)
+1,1,,-66.570,3.3,15.07,41.070,12.559633,hit_detected,0.983137,0.995534,-21.131498,321.100917,321.100917,5.170790,-4778.287462,0.995534,0.983137,0.825019,False,False,False,False,False,True,3,0.200000,False,hit_r2_slope (R^2=0.8250)
+1,1,,-66.590,3.3,15.03,42.840,13.100917,hit_detected,0.966407,0.994463,-23.425076,30.581040,30.581040,1.170773,-5733.944954,0.994463,0.966407,0.880435,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.9664); hit_r2_slope (R^2=0.8804)
+1,1,,-66.610,3.3,15.01,44.820,13.706422,hit_detected,0.964177,0.995062,-26.116208,160.550459,160.550459,0.967126,-6727.828746,0.995062,0.964177,0.882300,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.9642); hit_r2_slope (R^2=0.8823)
+1,1,,-66.630,3.3,20.07,47.090,14.400612,hit_detected,0.993356,0.996632,-29.434251,221.712538,221.712538,1.874770,-8295.107034,0.996632,0.993356,0.878064,False,False,False,False,False,True,4,0.200000,False,hit_r2_slope (R^2=0.8781)
+1,1,,-66.650,3.3,15.03,49.330,15.085627,hit_detected,0.988546,0.997316,-31.758410,-22.935780,-22.935780,-6.695027,-5810.397554,0.997316,0.988546,0.899635,False,False,False,False,False,True,3,0.200000,False,hit_r2_slope (R^2=0.8996)
+1,1,,-66.670,3.3,20.07,51.920,15.877676,hit_detected,0.977269,0.997893,-34.663609,267.584098,267.584098,1.825542,-7262.996942,0.997893,0.977269,0.876812,False,False,False,False,False,True,4,0.200000,False,hit_r2_slope (R^2=0.8768)
+1,1,,-66.690,3.3,15.02,53.600,16.391437,hit_detected,0.536277,0.996718,-34.235474,-695.718654,-695.718654,-16.020354,1070.336391,0.996718,0.536277,0.665629,True,False,False,False,True,True,3,0.600000,False,hit_2nd_deriv_drag (-695.7187); hit_r2_cv (R^2=0.5363); hit_r2_slope (R^2=0.6656)
+1,1,,-66.710,3.3,35.04,54.060,16.532110,hit_detected,0.376458,0.951600,-27.844037,-932.721713,-932.721713,-22.433641,15978.593272,0.951600,0.376458,0.563954,True,False,False,True,True,True,7,0.800000,True,hit_2nd_deriv_drag (-932.7217); hit_r2_drag (R^2=0.9516); hit_r2_cv (R^2=0.3765); hit_r2_slope (R^2=0.5640)
+1,1,,-66.730,3.3,35.01,53.100,16.238532,hit_detected,0.772950,0.653394,-14.801223,-1085.626911,-1085.626911,-16.347982,32607.033639,0.653394,0.772950,0.813520,True,False,True,True,True,True,7,1.000000,True,hit_2nd_deriv_drag (-1085.6269); hit_2nd_deriv_slope (32607.0336); hit_r2_drag (R^2=0.6534); hit_r2_cv (R^2=0.7729); hit_r2_slope (R^2=0.8135)
+1,1,,-66.750,3.3,35.03,57.420,17.559633,hit_detected,0.908008,0.648743,-16.055046,4036.697248,4036.697248,52.630962,-3134.556575,0.648743,0.908008,0.697344,True,True,False,True,True,True,7,1.000000,True,hit_2nd_deriv_drag (4036.6972); hit_2nd_deriv_cv (52.6310); hit_r2_drag (R^2=0.6487); hit_r2_cv (R^2=0.9080); hit_r2_slope (R^2=0.6973)
