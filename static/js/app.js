@@ -283,6 +283,8 @@ class ViscometryDashboard {
         this.discoveryContentMap = {};
         this.discoveryModeActive = false;
         this.discoveryResultsByCell = {};
+        /** Converged discovery RPM per cell; survives partial ladder/probing updates during Z-scan. */
+        this.discoveryConvergedRpmByCell = {};
         this.discoveryConfig = null;
         this.latestControlSettings = {};
         /** Settings frozen at run start for experiment history (avoids stale latestControlSettings). */
@@ -980,6 +982,9 @@ class ViscometryDashboard {
             this.rebuildDiscoveryContentTable();
             this.updateDiscoveryZStartOffsetAvailability();
             this.fetchDiscoveryConfig();
+            if (this.charts.discoveryDrag) {
+                this.charts.discoveryDrag.resize();
+            }
             this.refreshDiscoveryLivePlots();
             this.updateDiscoveryGraphCellTabs();
         }
@@ -2190,6 +2195,7 @@ class ViscometryDashboard {
         const cellId = payload.cell_id != null ? Number(payload.cell_id) : null;
         if (cellId != null) {
             this.discoveryResultsByCell[String(cellId)] = payload;
+            this._syncDiscoveryConvergedRpmCache(cellId, payload);
         }
         const status = payload.status || "probing";
         if (this.el.discoveryStatusPill) {
@@ -2245,16 +2251,66 @@ class ViscometryDashboard {
         this._refreshDiscoveryRheologyPanels();
     }
 
+    _isDiscoveryConvergedStatus(status) {
+        const normalized = String(status || "");
+        return normalized === "converged" || normalized === "converged_by_stability";
+    }
+
+    _syncDiscoveryConvergedRpmCache(cellId, entry) {
+        if (cellId == null || !entry || entry.rpm == null) {
+            return;
+        }
+        if (!this._isDiscoveryConvergedStatus(entry.status)) {
+            return;
+        }
+        const rpm = Number(entry.rpm);
+        if (Number.isFinite(rpm) && rpm > 0) {
+            this.discoveryConvergedRpmByCell[String(cellId)] = rpm;
+        }
+    }
+
+    _hydrateDiscoveryConvergedRpmCache(results = null) {
+        const source = results || this.discoveryResultsByCell || {};
+        Object.entries(source).forEach(([cellKey, entry]) => {
+            const cellId = Number(cellKey);
+            if (Number.isFinite(cellId) && entry) {
+                this._syncDiscoveryConvergedRpmCache(cellId, entry);
+            }
+        });
+    }
+
+    _inferDiscoveryPlotRpmFromMeasurements(cellId) {
+        if (!this._isDiscoveryRunActive()) {
+            return null;
+        }
+        const points = this.measurementsByCell.get(cellId) || [];
+        if (points.length === 0) {
+            return null;
+        }
+        const last = points[points.length - 1];
+        const rpm = Number(last?.rpm);
+        return Number.isFinite(rpm) && rpm > 0 ? rpm : null;
+    }
+
     _getDiscoveredRpmForCell(cellId) {
-        const entry = this.discoveryResultsByCell[String(cellId)];
-        if (!entry || entry.rpm == null) {
-            return null;
+        const key = String(cellId);
+        const cached = this.discoveryConvergedRpmByCell[key];
+        if (cached != null) {
+            const cachedRpm = Number(cached);
+            if (Number.isFinite(cachedRpm) && cachedRpm > 0) {
+                return cachedRpm;
+            }
         }
-        const status = String(entry.status || "");
-        if (status !== "converged" && status !== "converged_by_stability") {
-            return null;
+
+        const entry = this.discoveryResultsByCell[key];
+        if (entry && entry.rpm != null && this._isDiscoveryConvergedStatus(entry.status)) {
+            const rpm = Number(entry.rpm);
+            if (Number.isFinite(rpm) && rpm > 0) {
+                return rpm;
+            }
         }
-        return Number(entry.rpm);
+
+        return this._inferDiscoveryPlotRpmFromMeasurements(cellId);
     }
 
     _buildDiscoveryProbeTableHtml(probes, options = {}) {
@@ -3023,6 +3079,7 @@ class ViscometryDashboard {
             }
             if (data.discovery_results_by_cell && typeof data.discovery_results_by_cell === "object") {
                 this.discoveryResultsByCell = { ...data.discovery_results_by_cell };
+                this._hydrateDiscoveryConvergedRpmCache();
                 Object.values(this.discoveryResultsByCell).forEach((entry) => {
                     if (entry) {
                         this.ingestDiscoveryUpdate(entry);
@@ -3134,6 +3191,7 @@ class ViscometryDashboard {
         this.selectedCalGraphCell = null;
         this.selectedDiscoveryGraphCell = null;
         this.discoveryResultsByCell = {};
+        this.discoveryConvergedRpmByCell = {};
         this.sparklineData = [];
         this.position = { x: 0, y: 0, z: 0 };
         this.currentCell = null;
@@ -3347,6 +3405,7 @@ class ViscometryDashboard {
 
         if (status.discovery_results_by_cell && typeof status.discovery_results_by_cell === "object") {
             this.discoveryResultsByCell = { ...status.discovery_results_by_cell };
+            this._hydrateDiscoveryConvergedRpmCache();
             Object.values(this.discoveryResultsByCell).forEach((entry) => {
                 if (entry) {
                     this.ingestDiscoveryUpdate(entry);
@@ -3503,6 +3562,7 @@ class ViscometryDashboard {
         this.updateTable();
         this.updateGraphCellTabs();
         this.refreshLivePlots();
+        this.refreshDiscoveryLivePlots();
     }
 
     updateCellDisplay() {
