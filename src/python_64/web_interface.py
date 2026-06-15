@@ -1843,6 +1843,7 @@ class ViscometryWebInterface:
         self.start_requested_event.set()
         self.socketio.emit('experiment_start', {'start_ts': self.experiment_start_ts})
         self.broadcast_calibration_mode()
+        self.broadcast_discovery_mode()
 
     def broadcast_calibration_mode(self):
         """Broadcast current calibration mode to all connected clients."""
@@ -1857,6 +1858,16 @@ class ViscometryWebInterface:
             'recalibration_target_count': recalibration_target_count,
         })
 
+    def broadcast_discovery_mode(self):
+        """Broadcast current Discovery Mode state to all connected clients."""
+        runtime = self.get_runtime_settings()
+        discovery_enabled = bool((runtime or {}).get('discovery_mode_enabled', False))
+        discovery_mode_active = bool(self.is_running and discovery_enabled)
+        self.socketio.emit('discovery_mode_update', {
+            'discovery_mode_active': discovery_mode_active,
+            'discovery_results_by_cell': self._copy_discovery_results_by_cell(),
+        })
+
     def request_stop(self):
         """Mark that the experiment should stop."""
         self.stop_requested_event.set()
@@ -1865,6 +1876,7 @@ class ViscometryWebInterface:
         self.calibration_mode = False
         self._clear_persisted_calibration_run_flags()
         self.broadcast_calibration_mode()
+        self.broadcast_discovery_mode()
 
     def wait_for_start_command(self, poll_interval=0.2):
         """Block until a start request is received from the web UI."""
@@ -2250,7 +2262,13 @@ class ViscometryWebInterface:
             if previous_state:
                 self.socketio.emit('experiment_stop', {})
         if previous_state != is_running:
-            self.socketio.emit('running_state_update', {'is_running': is_running})
+            runtime = self.get_runtime_settings()
+            discovery_enabled = bool((runtime or {}).get('discovery_mode_enabled', False))
+            discovery_mode_active = bool(is_running and discovery_enabled)
+            self.socketio.emit('running_state_update', {
+                'is_running': is_running,
+                'discovery_mode_active': discovery_mode_active,
+            })
         # If a calibration run just stopped, clear calibration_mode and refresh status
         if not is_running and self.calibration_mode:
             self.calibration_mode = False
