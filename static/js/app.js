@@ -519,7 +519,6 @@ class ViscometryDashboard {
             discoveryEtaTable: document.getElementById("discovery-eta-table"),
             discoveryContentTable: document.getElementById("discovery-content-table"),
             discoveryCellValidation: document.getElementById("discovery-cell-validation"),
-            discoveryValidRpmChips: document.getElementById("discovery-valid-rpm-chips"),
             discoveryCalibrationPill: document.getElementById("discovery-calibration-pill"),
             discoveryCalibrationStatusText: document.getElementById("discovery-calibration-status-text"),
             discoveryApplySettings: document.getElementById("discovery-apply-settings"),
@@ -546,7 +545,24 @@ class ViscometryDashboard {
             discoveryZConnectDots: document.getElementById("discovery-z-connect-dots"),
             discoveryGraphCellTabs: document.getElementById("discovery-graph-cell-tabs"),
             discoveryDragZRpmLegend: document.getElementById("discovery-drag-z-rpm-legend"),
+            discoveryDragZRpmLegendNote: document.getElementById("discovery-drag-z-rpm-legend-note"),
             discoveryDragZCellLabel: document.getElementById("discovery-drag-z-cell-label"),
+            discoverySidebarRpm: document.getElementById("discovery-sidebar-rpm"),
+            discoverySidebarSecondDerivDrag: document.getElementById("discovery-sidebar-2nd-deriv-drag"),
+            discoverySidebarSecondDerivCv: document.getElementById("discovery-sidebar-2nd-deriv-cv"),
+            discoverySidebarSecondDerivSlope: document.getElementById("discovery-sidebar-2nd-deriv-slope"),
+            discoverySidebarR2Drag: document.getElementById("discovery-sidebar-r2-drag"),
+            discoverySidebarR2Cv: document.getElementById("discovery-sidebar-r2-cv"),
+            discoverySidebarR2Slope: document.getElementById("discovery-sidebar-r2-slope"),
+            discoverySidebarMethod2ndDerivDrag: document.getElementById("discovery-sidebar-method-2nd-deriv-drag"),
+            discoverySidebarMethod2ndDerivCv: document.getElementById("discovery-sidebar-method-2nd-deriv-cv"),
+            discoverySidebarMethod2ndDerivSlope: document.getElementById("discovery-sidebar-method-2nd-deriv-slope"),
+            discoverySidebarMethodR2Drag: document.getElementById("discovery-sidebar-method-r2-drag"),
+            discoverySidebarMethodR2Cv: document.getElementById("discovery-sidebar-method-r2-cv"),
+            discoverySidebarMethodR2Slope: document.getElementById("discovery-sidebar-method-r2-slope"),
+            discoverySidebarConfidence: document.getElementById("discovery-sidebar-confidence"),
+            discoverySidebarFailSafe: document.getElementById("discovery-sidebar-fail-safe"),
+            discoverySidebarHit: document.getElementById("discovery-sidebar-hit"),
             calibrationCellsStatusPill: document.getElementById("calibration-cells-status-pill"),
             calibrationCellsStatusText: document.getElementById("calibration-cells-status-text"),
             calPanelSection: document.getElementById("calibration-panel-section"),
@@ -1950,29 +1966,12 @@ class ViscometryDashboard {
             .then((r) => r.json())
             .then((cfg) => {
                 this.discoveryConfig = cfg;
-                this.renderDiscoveryValidRpmChips(cfg.valid_rpms || []);
-                const modeNote = document.querySelector(".discovery-rpm-mode-note");
-                if (modeNote && cfg.rpm_selection_mode === "continuous") {
-                    modeNote.textContent = "Discovery uses continuous RPM from viscosity fit.";
-                }
                 if (this.el.discoveryZStartOffsetMm && cfg.hit_point_offset_mm != null) {
                     this.el.discoveryZStartOffsetMm.value = Number(cfg.hit_point_offset_mm).toFixed(2);
                 }
                 return cfg;
             })
             .catch(() => undefined);
-    }
-
-    renderDiscoveryValidRpmChips(rpms) {
-        const wrap = this.el.discoveryValidRpmChips;
-        if (!wrap) return;
-        wrap.innerHTML = "";
-        (rpms || []).forEach((rpm) => {
-            const chip = document.createElement("span");
-            chip.className = "discovery-rpm-chip";
-            chip.textContent = String(rpm);
-            wrap.appendChild(chip);
-        });
     }
 
     buildDiscoveryEtaGuessMapPayload() {
@@ -2147,7 +2146,7 @@ class ViscometryDashboard {
             this.el.discoveryStatusCell.textContent = payload.cell_id != null ? String(payload.cell_id) : "—";
         }
         if (this.el.discoveryStatusRpm) {
-            this.el.discoveryStatusRpm.textContent = payload.rpm != null ? Number(payload.rpm).toFixed(3) : "—";
+            this.el.discoveryStatusRpm.textContent = payload.rpm != null ? Number(payload.rpm).toFixed(2) : "—";
         }
         if (this.el.discoveryStatusEta) {
             this.el.discoveryStatusEta.textContent = payload.eta_estimate != null
@@ -2157,7 +2156,7 @@ class ViscometryDashboard {
         const probes = payload.probes || [];
         if (this.el.discoveryProbeTableBody) {
             this.el.discoveryProbeTableBody.innerHTML = probes.map((p, idx) => (
-                `<tr><td>${idx + 1}</td><td class="mono">${Number(p.rpm).toFixed(3)}</td>`
+                `<tr><td>${idx + 1}</td><td class="mono">${Number(p.rpm).toFixed(2)}</td>`
                 + `<td class="mono">${Number(p.torque).toFixed(2)}</td>`
                 + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`
             )).join("");
@@ -2186,7 +2185,7 @@ class ViscometryDashboard {
             return "";
         }
         const rows = probes.map((p, idx) => (
-            `<tr><td>${idx + 1}</td><td class="mono">${Number(p.rpm).toFixed(3)}</td>`
+            `<tr><td>${idx + 1}</td><td class="mono">${Number(p.rpm).toFixed(2)}</td>`
             + `<td class="mono">${Number(p.torque).toFixed(2)}</td>`
             + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`
         )).join("");
@@ -2244,8 +2243,13 @@ class ViscometryDashboard {
         if (!this.el.discoveryDragZRpmLegend) {
             return;
         }
+        const floor = this._torqueFloorPctForLivePlots();
+        if (this.el.discoveryDragZRpmLegendNote) {
+            this.el.discoveryDragZRpmLegendNote.textContent =
+                `Below torque floor (${floor}%): red (all RPMs)`;
+        }
         this.el.discoveryDragZRpmLegend.innerHTML = orderedRpms.map((rpm) => {
-            const label = Number(rpm).toFixed(3);
+            const label = Number(rpm).toFixed(2);
             const color = this.colorForRpm(rpm);
             return (
                 `<div class="rpm-legend-item">`
@@ -2264,18 +2268,20 @@ class ViscometryDashboard {
             ? allSource.filter((m) => Math.abs(Number(m.rpm) - discoveredRpm) < 0.01)
             : [];
         const orderedRpms = discoveredRpm != null ? [discoveredRpm] : [];
-        const buckets = this.partitionMeasurementsByRpm(source, orderedRpms);
+        const buckets = new Map();
+        if (discoveredRpm != null) {
+            buckets.set(Number(discoveredRpm).toFixed(2), source);
+        }
 
         const dragDatasets = orderedRpms
             .map((rpm) => {
-                const key = Number(rpm).toFixed(3);
+                const key = Number(rpm).toFixed(2);
                 const points = buckets.get(key) || [];
                 if (points.length === 0) {
                     return null;
                 }
                 return this._buildDragDatasetForRpm(rpm, points, 0, orderedRpms, {
                     connectDots: this.zDiscoveryConnectDots,
-                    skipFloorColoring: true,
                 });
             })
             .filter(Boolean);
@@ -2288,7 +2294,7 @@ class ViscometryDashboard {
             this.renderDiscoveryDragZRpmLegend(activeCell, orderedRpms);
         }
         if (this.el.discoveryDragZCellLabel) {
-            const rpmLabel = discoveredRpm != null ? `@ ${discoveredRpm.toFixed(3)} RPM` : "";
+            const rpmLabel = discoveredRpm != null ? `@ ${discoveredRpm.toFixed(2)} RPM` : "";
             this.el.discoveryDragZCellLabel.textContent = activeCell
                 ? `Cell ${activeCell} ${rpmLabel}`.trim()
                 : "Discovered RPM only";
@@ -2860,7 +2866,12 @@ class ViscometryDashboard {
         });
 
         this.socket.on("feedback_metrics_update", (data) => {
-            if (data && !this._isDiscoveryRunActive()) {
+            if (!data) {
+                return;
+            }
+            if (this._isDiscoveryRunActive()) {
+                this.updateDiscoveryDragZSidebar(data);
+            } else if (this.activeTabId === "controls-tab") {
                 this.updateDragZSidebar(data);
             }
         });
@@ -3051,6 +3062,7 @@ class ViscometryDashboard {
             this.el.sidebarHit.textContent = "No";
             this.el.sidebarHit.className = "sidebar-value mono hit-no";
         }
+        this._resetDragZSidebarElements(this._discoveryDragZSidebarElements());
         this.renderDragZRpmLegend(null, []);
 
         this.platform.cells.forEach((cell) => this.cellStates.set(cell.id, "pending"));
@@ -4223,57 +4235,138 @@ class ViscometryDashboard {
         }
     }
 
-    updateDragZSidebar(data) {
-        if (this.activeTabId !== "controls-tab" || this._isDiscoveryRunActive()) {
+    _performDragZSidebarElements() {
+        return {
+            rpm: this.el.sidebarRpm,
+            secondDerivDrag: this.el.sidebarSecondDerivDrag,
+            secondDerivCv: this.el.sidebarSecondDerivCv,
+            secondDerivSlope: this.el.sidebarSecondDerivSlope,
+            r2Drag: this.el.sidebarR2Drag,
+            r2Cv: this.el.sidebarR2Cv,
+            r2Slope: this.el.sidebarR2Slope,
+            method2ndDerivDrag: this.el.sidebarMethod2ndDerivDrag,
+            method2ndDerivCv: this.el.sidebarMethod2ndDerivCv,
+            method2ndDerivSlope: this.el.sidebarMethod2ndDerivSlope,
+            methodR2Drag: this.el.sidebarMethodR2Drag,
+            methodR2Cv: this.el.sidebarMethodR2Cv,
+            methodR2Slope: this.el.sidebarMethodR2Slope,
+            confidence: this.el.sidebarConfidence,
+            failSafe: this.el.sidebarFailSafe,
+            hit: this.el.sidebarHit,
+        };
+    }
+
+    _discoveryDragZSidebarElements() {
+        return {
+            rpm: this.el.discoverySidebarRpm,
+            secondDerivDrag: this.el.discoverySidebarSecondDerivDrag,
+            secondDerivCv: this.el.discoverySidebarSecondDerivCv,
+            secondDerivSlope: this.el.discoverySidebarSecondDerivSlope,
+            r2Drag: this.el.discoverySidebarR2Drag,
+            r2Cv: this.el.discoverySidebarR2Cv,
+            r2Slope: this.el.discoverySidebarR2Slope,
+            method2ndDerivDrag: this.el.discoverySidebarMethod2ndDerivDrag,
+            method2ndDerivCv: this.el.discoverySidebarMethod2ndDerivCv,
+            method2ndDerivSlope: this.el.discoverySidebarMethod2ndDerivSlope,
+            methodR2Drag: this.el.discoverySidebarMethodR2Drag,
+            methodR2Cv: this.el.discoverySidebarMethodR2Cv,
+            methodR2Slope: this.el.discoverySidebarMethodR2Slope,
+            confidence: this.el.discoverySidebarConfidence,
+            failSafe: this.el.discoverySidebarFailSafe,
+            hit: this.el.discoverySidebarHit,
+        };
+    }
+
+    _resetDragZSidebarElements(elements) {
+        if (!elements) {
             return;
         }
-        if (this.el.sidebarRpm) {
-            this.el.sidebarRpm.textContent = data.rpm != null ? `${Number(data.rpm).toFixed(2)} RPM` : "-";
+        if (elements.rpm) elements.rpm.textContent = "-";
+        if (elements.secondDerivDrag) elements.secondDerivDrag.textContent = "-";
+        if (elements.secondDerivCv) elements.secondDerivCv.textContent = "-";
+        if (elements.secondDerivSlope) elements.secondDerivSlope.textContent = "-";
+        if (elements.r2Drag) elements.r2Drag.textContent = "-";
+        if (elements.r2Cv) elements.r2Cv.textContent = "-";
+        if (elements.r2Slope) elements.r2Slope.textContent = "-";
+        if (elements.confidence) {
+            elements.confidence.textContent = "-";
+            elements.confidence.className = "sidebar-value mono";
+        }
+        if (elements.failSafe) {
+            elements.failSafe.textContent = "No";
+            elements.failSafe.className = "sidebar-value mono fail-safe-no";
+        }
+        if (elements.hit) {
+            elements.hit.textContent = "No";
+            elements.hit.className = "sidebar-value mono hit-no";
+        }
+    }
+
+    _applyDragZSidebar(data, elements) {
+        if (!data || !elements) {
+            return;
+        }
+        if (elements.rpm) {
+            elements.rpm.textContent = data.rpm != null ? `${Number(data.rpm).toFixed(2)} RPM` : "-";
         }
         const fmt = (v) => v != null && !Number.isNaN(Number(v)) ? Number(v).toFixed(4) : "-";
         const r2DragThreshold = Number(this.el.r2DragMin?.value ?? 0.975);
         const r2CvThreshold = Number(this.el.r2CvMin?.value ?? 0.975);
         const r2SlopeThreshold = Number(this.el.r2SlopeMin?.value ?? 0.975);
-        if (this.el.sidebarSecondDerivDrag) this.el.sidebarSecondDerivDrag.textContent = fmt(data.second_derivative_drag);
-        if (this.el.sidebarSecondDerivCv) this.el.sidebarSecondDerivCv.textContent = fmt(data.second_derivative_cv);
-        if (this.el.sidebarSecondDerivSlope) this.el.sidebarSecondDerivSlope.textContent = fmt(data.second_derivative_slope);
-        if (this.el.sidebarR2Drag) this.el.sidebarR2Drag.textContent = fmt(data.trend_r_squared);
-        if (this.el.sidebarR2Cv) this.el.sidebarR2Cv.textContent = fmt(data.moving_r2_cv);
-        if (this.el.sidebarR2Slope) this.el.sidebarR2Slope.textContent = fmt(data.moving_r2_slope);
-        if (this.el.sidebarMethodR2Drag) this.el.sidebarMethodR2Drag.textContent = `Threshold ≥ ${r2DragThreshold.toFixed(3)}`;
-        if (this.el.sidebarMethodR2Cv) this.el.sidebarMethodR2Cv.textContent = `Threshold ≥ ${r2CvThreshold.toFixed(3)}`;
-        if (this.el.sidebarMethodR2Slope) this.el.sidebarMethodR2Slope.textContent = `Threshold ≥ ${r2SlopeThreshold.toFixed(3)}`;
-        if (this.el.sidebarMethod2ndDerivDrag) this.updateCalibrationBadge(this.el.sidebarMethod2ndDerivDrag, Boolean(data.drag_sd2_calibrated));
-        if (this.el.sidebarMethod2ndDerivCv) this.updateCalibrationBadge(this.el.sidebarMethod2ndDerivCv, Boolean(data.cv_sd2_calibrated));
-        if (this.el.sidebarMethod2ndDerivSlope) this.updateCalibrationBadge(this.el.sidebarMethod2ndDerivSlope, Boolean(data.slope_sd2_calibrated));
+        if (elements.secondDerivDrag) elements.secondDerivDrag.textContent = fmt(data.second_derivative_drag);
+        if (elements.secondDerivCv) elements.secondDerivCv.textContent = fmt(data.second_derivative_cv);
+        if (elements.secondDerivSlope) elements.secondDerivSlope.textContent = fmt(data.second_derivative_slope);
+        if (elements.r2Drag) elements.r2Drag.textContent = fmt(data.trend_r_squared);
+        if (elements.r2Cv) elements.r2Cv.textContent = fmt(data.moving_r2_cv);
+        if (elements.r2Slope) elements.r2Slope.textContent = fmt(data.moving_r2_slope);
+        if (elements.methodR2Drag) elements.methodR2Drag.textContent = `Threshold ≥ ${r2DragThreshold.toFixed(3)}`;
+        if (elements.methodR2Cv) elements.methodR2Cv.textContent = `Threshold ≥ ${r2CvThreshold.toFixed(3)}`;
+        if (elements.methodR2Slope) elements.methodR2Slope.textContent = `Threshold ≥ ${r2SlopeThreshold.toFixed(3)}`;
+        if (elements.method2ndDerivDrag) this.updateCalibrationBadge(elements.method2ndDerivDrag, Boolean(data.drag_sd2_calibrated));
+        if (elements.method2ndDerivCv) this.updateCalibrationBadge(elements.method2ndDerivCv, Boolean(data.cv_sd2_calibrated));
+        if (elements.method2ndDerivSlope) this.updateCalibrationBadge(elements.method2ndDerivSlope, Boolean(data.slope_sd2_calibrated));
         const hitThreshold = Number(this.el.hitPointConfidenceThreshold?.value ?? 0.8);
         const failSafeFloor = hitThreshold * 0.75;
         const confidenceRaw = Number(data.hit_confidence);
         const confidenceValid = Number.isFinite(confidenceRaw);
         const confidenceAboveFailSafeFloor = confidenceValid && confidenceRaw >= failSafeFloor;
 
-        if (this.el.sidebarConfidence) {
-            this.el.sidebarConfidence.textContent = fmt(data.hit_confidence);
+        if (elements.confidence) {
+            elements.confidence.textContent = fmt(data.hit_confidence);
             if (confidenceValid && confidenceRaw >= hitThreshold) {
-                this.el.sidebarConfidence.className = "sidebar-value mono confidence-hit";
+                elements.confidence.className = "sidebar-value mono confidence-hit";
             } else if (confidenceAboveFailSafeFloor) {
-                this.el.sidebarConfidence.className = "sidebar-value mono confidence-failsafe";
+                elements.confidence.className = "sidebar-value mono confidence-failsafe";
             } else {
-                this.el.sidebarConfidence.className = "sidebar-value mono";
+                elements.confidence.className = "sidebar-value mono";
             }
         }
 
-        if (this.el.sidebarFailSafe) {
+        if (elements.failSafe) {
             const isFailSafe = Boolean(data.fail_safe_active);
-            this.el.sidebarFailSafe.textContent = isFailSafe ? "Yes" : "No";
-            this.el.sidebarFailSafe.className = `sidebar-value mono ${isFailSafe ? "fail-safe-yes" : "fail-safe-no"}`;
+            elements.failSafe.textContent = isFailSafe ? "Yes" : "No";
+            elements.failSafe.className = `sidebar-value mono ${isFailSafe ? "fail-safe-yes" : "fail-safe-no"}`;
         }
 
-        if (this.el.sidebarHit) {
+        if (elements.hit) {
             const isHit = Boolean(data.hit_detected);
-            this.el.sidebarHit.textContent = isHit ? "YES ⚠" : "No";
-            this.el.sidebarHit.className = `sidebar-value mono ${isHit ? "hit-yes" : "hit-no"}`;
+            elements.hit.textContent = isHit ? "YES ⚠" : "No";
+            elements.hit.className = `sidebar-value mono ${isHit ? "hit-yes" : "hit-no"}`;
         }
+    }
+
+    updateDragZSidebar(data) {
+        if (this.activeTabId !== "controls-tab" || this._isDiscoveryRunActive()) {
+            return;
+        }
+        this._applyDragZSidebar(data, this._performDragZSidebarElements());
+    }
+
+    updateDiscoveryDragZSidebar(data) {
+        if (!this._isDiscoveryRunActive()) {
+            return;
+        }
+        this._applyDragZSidebar(data, this._discoveryDragZSidebarElements());
     }
 
     setUiState(state) {
@@ -5969,7 +6062,7 @@ class ViscometryDashboard {
                 return "";
             }
             const status = entry.status || "—";
-            const rpm = entry.rpm != null ? Number(entry.rpm).toFixed(3) : "—";
+            const rpm = entry.rpm != null ? Number(entry.rpm).toFixed(2) : "—";
             const eta = entry.eta_estimate != null
                 ? Number(entry.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
                 : "—";
@@ -7492,7 +7585,7 @@ class ViscometryDashboard {
         let discoveryBlock = "";
         if (discoveryEntry && Array.isArray(discoveryEntry.probes) && discoveryEntry.probes.length > 0) {
             const dStatus = discoveryEntry.status || "—";
-            const dRpm = discoveryEntry.rpm != null ? Number(discoveryEntry.rpm).toFixed(3) : "—";
+            const dRpm = discoveryEntry.rpm != null ? Number(discoveryEntry.rpm).toFixed(2) : "—";
             const dEta = discoveryEntry.eta_estimate != null
                 ? Number(discoveryEntry.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
                 : "—";

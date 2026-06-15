@@ -13,6 +13,11 @@ DEFAULT_RPM_MIN: float = 0.1
 DEFAULT_RPM_MAX: float = 200.0
 
 
+def round_rpm_2dp(rpm: float) -> float:
+    """Round RPM to 2 decimal places for discovery probe storage and handoff."""
+    return round(float(rpm), 2)
+
+
 def rpm_at_reference_torque(
     eta_cp: float,
     *,

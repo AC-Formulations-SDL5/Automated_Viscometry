@@ -21,6 +21,7 @@ from discovery_rpm_calibration import (
     clamp_hardware_rpm,
     eta_from_rpm_torque,
     initial_rpm_for_discovery,
+    round_rpm_2dp,
     suggest_next_rpm_continuous,
 )
 from discovery_types import (
@@ -161,15 +162,17 @@ def discover_rpm(
     if target_z is None:
         return empty
 
-    rpm = initial_rpm_for_discovery(
-        eta_guess,
-        target_torque=cfg.target_torque,
-        cold_start_rpm=cfg.cold_start_rpm,
-        a_cal=cfg.a_cal,
-        b_cal=cfg.b_cal,
-        reference_torque=cfg.surface_torque_ref,
-        rpm_min=cfg.rpm_min,
-        rpm_max=cfg.rpm_max,
+    rpm = round_rpm_2dp(
+        initial_rpm_for_discovery(
+            eta_guess,
+            target_torque=cfg.target_torque,
+            cold_start_rpm=cfg.cold_start_rpm,
+            a_cal=cfg.a_cal,
+            b_cal=cfg.b_cal,
+            reference_torque=cfg.surface_torque_ref,
+            rpm_min=cfg.rpm_min,
+            rpm_max=cfg.rpm_max,
+        )
     )
 
     probes: List[DiscoveryProbeRecord] = []
@@ -198,9 +201,10 @@ def discover_rpm(
             b_cal=cfg.b_cal,
             reference_torque=cfg.surface_torque_ref,
         )
+        rpm_recorded = round_rpm_2dp(rpm)
         probes.append(
             DiscoveryProbeRecord(
-                rpm=float(rpm),
+                rpm=rpm_recorded,
                 torque=float(torque),
                 eta_est=None if eta_est != eta_est else float(eta_est),
                 z_mm=float(target_z),
@@ -209,7 +213,7 @@ def discover_rpm(
 
         if on_probe is not None:
             partial: DiscoveryResult = {
-                "rpm": float(rpm),
+                "rpm": rpm_recorded,
                 "eta_estimate": None if eta_est != eta_est else float(eta_est),
                 "status": "probing",
                 "iterations": len(probes),
@@ -245,21 +249,23 @@ def discover_rpm(
 
         if _torque_in_window(torque, cfg.torque_window):
             status = "converged"
-            final_rpm = float(rpm)
+            final_rpm = rpm_recorded
             final_eta = None if eta_est != eta_est else float(eta_est)
             break
 
-        rpm_next = suggest_next_rpm_continuous(
-            rpm,
-            torque,
-            target_torque=cfg.target_torque,
-            rpm_min=cfg.rpm_min,
-            rpm_max=cfg.rpm_max,
+        rpm_next = round_rpm_2dp(
+            suggest_next_rpm_continuous(
+                rpm,
+                torque,
+                target_torque=cfg.target_torque,
+                rpm_min=cfg.rpm_min,
+                rpm_max=cfg.rpm_max,
+            )
         )
 
         if rpm > 0 and abs(rpm_next - rpm) / rpm < cfg.rpm_stability_rel_tol:
             status = "converged_by_stability"
-            final_rpm = float(rpm_next)
+            final_rpm = rpm_next
             final_eta = None if eta_est != eta_est else float(eta_est)
             break
 

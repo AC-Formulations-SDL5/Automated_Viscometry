@@ -1122,11 +1122,13 @@ def test_cell_dynamic_z_series(
     cell_rpms: List[float],
     pump: Optional[PumpESP32] = None,
     custom_starting_z: Optional[float] = None,
+    skip_initial_safe_move: bool = False,
 ) -> Tuple[Dict[float, Dict[float, Optional[List[Dict]]]], Optional[threading.Thread]]:
     """Test dynamic analysis (multiple RPMs) across Z-gap range for one cell using global cell numbering with rotational drag feedback control
     
     Args:
         custom_starting_z: Optional custom starting Z-height for recalibration mode. If provided, overrides safe_z.
+        skip_initial_safe_move: When True, first Z-step uses direct in-sample move (no retract to Z=0).
     """
     row_number, local_cell = global_cell_to_row_and_local(global_cell)
     print(f"\n{'='*60}")
@@ -1141,6 +1143,8 @@ def test_cell_dynamic_z_series(
     print(f"Effective max Z: {effective_max_z:.3f} ({z_limit_mode})")
     if custom_starting_z is not None:
         print(f"Custom Starting Z: {custom_starting_z:.3f}")
+    if skip_initial_safe_move:
+        print("Discovery handoff: in-sample Z-scan (no safe retract on first step)")
     print(f"Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}")
     print(f"{'='*60}")
     
@@ -1225,10 +1229,10 @@ def test_cell_dynamic_z_series(
             
             try:
                 # Move to position
-                if step_count == 1:
+                if step_count == 1 and not skip_initial_safe_move:
                     move_to_cell_position(cnc, row_number, local_cell, current_z)
                 else:
-                    # Direct Z movement to next increment (no Z=0 retraction)
+                    # Direct Z movement (no Z=0 retraction)
                     base_x = None
                     for row in ROWS:
                         if row['row_number'] == row_number:
@@ -1237,13 +1241,23 @@ def test_cell_dynamic_z_series(
                     
                     x_pos = base_x
                     y_pos = BASE_Y + (local_cell - 1) * Y_OFFSET
-                    print(f"  Moving directly to Z={current_z:.3f} (no retraction)")
+                    if step_count == 1 and skip_initial_safe_move:
+                        web_interface.set_current_cell(global_cell)
+                        print(
+                            f"  Discovery handoff: direct move to Z={current_z:.3f} mm "
+                            f"(no retract to safe Z)"
+                        )
+                        web_interface.update_status(
+                            f"Cell {global_cell}: in-sample Z-scan from Z={z_rounded:.3f} mm"
+                        )
+                    else:
+                        print(f"  Moving directly to Z={current_z:.3f} (no retraction)")
+                        web_interface.update_status(
+                            f"Cell {global_cell} | Z-step {step_count} | Z={z_rounded:.3f} mm"
+                        )
                     raise_if_stop_requested()
                     cnc.move_to_point(x_pos, y_pos, current_z, speed=Z_FEED_RATE)
                     web_interface.update_position(x_pos, y_pos, current_z)
-                    web_interface.update_status(
-                        f"Cell {global_cell} | Z-step {step_count} | Z={z_rounded:.3f} mm"
-                    )
                     sleep_with_stop(SETTLE_TIME)
                 
                 if len(dropped_torque_rpms) >= len(cell_rpms):
@@ -2465,6 +2479,8 @@ def main():
                     cell_rpms = get_rpms_for_cell(global_cell)
                     # Use resolved run mode (set once at run start) to avoid accidental drift in per-cell flags.
                     is_calibration_like_run = mode in ("calibration", "recalibration")
+                    discovery_handoff_z: Optional[float] = None
+                    skip_initial_safe_move = False
 
                     if DISCOVERY_MODE_ENABLED and not is_calibration_like_run:
                         try:
@@ -2510,11 +2526,19 @@ def main():
                             except Exception:
                                 pass
                             cell_rpms = discovered_rpms
+                            discovery_handoff_z = discovery_result.get("target_z_mm")
+                            skip_initial_safe_move = True
                             print(
                                 f"  Discovery converged for Cell {global_cell}: "
-                                f"RPM={cell_rpms[0]:.3f}, "
+                                f"RPM={cell_rpms[0]:.2f}, "
                                 f"status={discovery_result.get('status')}"
                             )
+                            if discovery_handoff_z is not None:
+                                print(
+                                    f"  Discovery handoff: in-sample Z-scan from "
+                                    f"Z={float(discovery_handoff_z):.3f}, "
+                                    f"RPM={cell_rpms[0]:.2f}, no safe retract"
+                                )
                         except Exception as discovery_exc:
                             print(
                                 f"  Discovery error for Cell {global_cell}: {discovery_exc}"
@@ -2528,7 +2552,7 @@ def main():
 
                     print(f"  RPMs for Cell {global_cell}: {cell_rpms}")
                     
-                    # Determine status message and custom starting Z for recalibration
+                    # Determine status message and custom starting Z for recalibration / discovery handoff
                     custom_z = None
                     if RECALIBRATE_INDIVIDUAL_CELLS:
                         # Check if a custom starting Z is provided for this cell
@@ -2537,6 +2561,8 @@ def main():
                             web_interface.update_status(f"Recalibrating cell {i+1}/{len(selected_cells)} (Cell {global_cell}, starting at Z={custom_z:.3f})")
                         else:
                             web_interface.update_status(f"Recalibrating cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
+                    elif skip_initial_safe_move and discovery_handoff_z is not None:
+                        custom_z = float(discovery_handoff_z)
                     elif CALIBRATION_MODE:
                         web_interface.update_status(f"Calibrating cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                     else:
@@ -2550,7 +2576,8 @@ def main():
                         row_config['max_z_travel'],
                         cell_rpms,
                         pump=None if is_calibration_like_run else pump,   # No pump in calibration/recalibration mode
-                        custom_starting_z=custom_z,  # Pass custom starting Z if in recalibration mode
+                        custom_starting_z=custom_z,  # Pass custom starting Z if in recalibration or discovery handoff
+                        skip_initial_safe_move=skip_initial_safe_move,
                     )
                     feedback_summary = {}
                     if isinstance(result, tuple):

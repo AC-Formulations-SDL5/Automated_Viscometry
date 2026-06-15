@@ -11,17 +11,28 @@ from discovery_mode import (
     load_discovery_config,
 )
 from discovery_probe import MeasureFn, MoveFn, RowResolver, make_probe_executor
+from discovery_rpm_calibration import round_rpm_2dp
 from discovery_types import DiscoveryConfig, DiscoveryProbeRecord, DiscoveryResult
 
 
 def discovery_result_to_web_payload(cell_id: int, result: DiscoveryResult) -> Dict[str, Any]:
+    rpm = result.get("rpm")
+    probes = result.get("probes", [])
+    rounded_probes = []
+    for probe in probes:
+        if not isinstance(probe, dict):
+            continue
+        entry = dict(probe)
+        if entry.get("rpm") is not None:
+            entry["rpm"] = round_rpm_2dp(float(entry["rpm"]))
+        rounded_probes.append(entry)
     return {
         "cell_id": int(cell_id),
-        "rpm": result.get("rpm"),
+        "rpm": round_rpm_2dp(float(rpm)) if rpm is not None else None,
         "eta_estimate": result.get("eta_estimate"),
         "status": result.get("status"),
         "iterations": result.get("iterations"),
-        "probes": result.get("probes", []),
+        "probes": rounded_probes,
         "target_z_mm": result.get("target_z_mm"),
         "material_label": result.get("material_label"),
     }
@@ -119,6 +130,6 @@ def run_discovery_for_cell(
         _emit_discovery_update(cell_id, result)
 
     if is_discovery_success(result) and result.get("rpm") is not None:
-        return result, [float(result["rpm"])]
+        return result, [round_rpm_2dp(float(result["rpm"]))]
 
     return result, []

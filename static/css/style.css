@@ -759,6 +759,11 @@ body.running .header-sweep {
     box-shadow: var(--shadow-glass);
 }
 
+.cal-mini-tracking-col.live-tracking-col-centered {
+    align-items: center;
+    text-align: center;
+}
+
 .cal-mini-tracking-col.gauge-block {
     align-items: center;
 }
@@ -1024,6 +1029,11 @@ body.running .header-sweep {
 .tracking-unit-minor > .status-block {
     flex: 1;
     min-height: 0;
+}
+
+.tracking-layout-row .status-block-compact.live-tracking-col-centered {
+    align-items: center;
+    text-align: center;
 }
 
 .tracking-layout-row .status-block-compact {
@@ -4780,6 +4790,11 @@ body.discovery-active {
     grid-template-columns: 1fr 1fr 1fr;
     gap: 14px;
     align-items: stretch;
+}
+
+.live-tracking-col-centered {
+    align-items: center;
+    text-align: center;
 }
 
 .discovery-mini-tracking-col {

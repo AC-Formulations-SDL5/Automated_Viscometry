@@ -279,7 +279,7 @@
                             <h2>Live Tracking</h2>
                         </div>
                         <div class="cal-mini-tracking-row">
-                            <div class="cal-mini-tracking-col status-block status-block-compact gauge-block">
+                            <div class="cal-mini-tracking-col live-tracking-col-centered status-block status-block-compact gauge-block">
                                 <div class="status-label">RPM Gauge</div>
                                 <svg id="cal-rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
                                     <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
@@ -290,12 +290,12 @@
                                     <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
                                 </svg>
                             </div>
-                            <div class="cal-mini-tracking-col status-block status-block-compact measuring-z-block">
+                            <div class="cal-mini-tracking-col live-tracking-col-centered status-block status-block-compact measuring-z-block">
                                 <div class="status-label">Measuring Z</div>
                                 <div class="mono measuring-z-value" id="cal-z-measuring-display">0.000 mm</div>
                                 <div class="status-subtext">Active Z under sampling</div>
                             </div>
-                            <div class="cal-mini-tracking-col status-block status-block-compact">
+                            <div class="cal-mini-tracking-col live-tracking-col-centered status-block status-block-compact">
                                 <div class="status-label">Elapsed</div>
                                 <div id="cal-elapsed" class="mono">00:00:00</div>
                                 <div id="cal-elapsed-cell" class="status-subtext">Cell 00:00:00</div>
@@ -605,7 +605,7 @@
                         <div class="tracking-grid-compact tracking-layout-row">
                             <div class="tracking-unit">
                                 <div class="tracking-unit-major">
-                                    <div class="status-block status-block-compact gauge-block tracking-col-gauge">
+                                    <div class="status-block status-block-compact live-tracking-col-centered gauge-block tracking-col-gauge">
                                         <div class="status-label">RPM Gauge</div>
                                         <svg id="rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
                                             <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
@@ -618,12 +618,12 @@
                                     </div>
                                 </div>
                                 <div class="tracking-unit-minor">
-                                    <div class="status-block status-block-compact xyz-grid xyz-grid-compact mono">
+                                    <div class="status-block status-block-compact live-tracking-col-centered xyz-grid xyz-grid-compact mono">
                                         <div class="xyz-item"><span>X</span><strong id="xyz-x">0.0</strong></div>
                                         <div class="xyz-item"><span>Y</span><strong id="xyz-y">0.0</strong></div>
                                         <div class="xyz-item"><span>Z</span><strong id="xyz-z">0.0</strong></div>
                                     </div>
-                                    <div class="status-block status-block-compact measuring-z-block">
+                                    <div class="status-block status-block-compact live-tracking-col-centered measuring-z-block">
                                         <div class="status-label">Measuring Z</div>
                                         <div class="mono measuring-z-value" id="z-measuring-display">0.000 mm</div>
                                         <div class="status-subtext tracking-compact-subtext">Active Z under sampling</div>
@@ -632,7 +632,7 @@
                             </div>
                             <div class="tracking-unit">
                                 <div class="tracking-unit-major">
-                                    <div class="status-block status-block-compact tracking-col-torque">
+                                    <div class="status-block status-block-compact live-tracking-col-centered tracking-col-torque">
                                         <div class="status-label">Torque %</div>
                                         <div class="torque-shell">
                                             <div id="torque-fill" class="torque-fill"></div>
@@ -646,12 +646,12 @@
                                     </div>
                                 </div>
                                 <div class="tracking-unit-minor">
-                                    <div class="status-block status-block-compact">
+                                    <div class="status-block status-block-compact live-tracking-col-centered">
                                         <div class="status-label">Current Cell</div>
                                         <div id="cell-flip" class="cell-flip" data-cell="-">-</div>
                                         <div id="cell-meta" class="status-subtext">Row -, local -</div>
                                     </div>
-                                    <div class="status-block status-block-compact">
+                                    <div class="status-block status-block-compact live-tracking-col-centered">
                                         <div class="status-label">Elapsed</div>
                                         <div id="elapsed" class="mono">00:00:00</div>
                                         <div id="elapsed-cell" class="status-subtext">Cell 00:00:00</div>
@@ -812,11 +812,6 @@
                         <div id="discovery-calibration-pill" class="calibration-cells-status-pill cal-cells-status-none">
                             <span id="discovery-calibration-status-text">0/18 cells calibrated</span>
                         </div>
-                        <div class="discovery-valid-rpms-wrap">
-                            <span class="discovery-valid-rpms-label">Calibration reference RPMs</span>
-                            <p class="discovery-info-subtext discovery-rpm-mode-note">Discovery uses continuous RPM from viscosity fit.</p>
-                            <div id="discovery-valid-rpm-chips" class="discovery-valid-rpm-chips" aria-label="Valid RPM list"></div>
-                        </div>
                     </div>
 
                     <section class="discovery-card parameters-card">
@@ -976,7 +971,7 @@
                             <h2>Live Tracking</h2>
                         </div>
                         <div class="discovery-mini-tracking-row">
-                            <div class="discovery-mini-tracking-col status-block status-block-compact gauge-block">
+                            <div class="discovery-mini-tracking-col live-tracking-col-centered status-block status-block-compact gauge-block">
                                 <div class="status-label">RPM Gauge</div>
                                 <svg id="discovery-rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
                                     <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
@@ -987,12 +982,12 @@
                                     <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
                                 </svg>
                             </div>
-                            <div class="discovery-mini-tracking-col status-block status-block-compact measuring-z-block">
+                            <div class="discovery-mini-tracking-col live-tracking-col-centered status-block status-block-compact measuring-z-block">
                                 <div class="status-label">Measuring Z</div>
                                 <div class="mono measuring-z-value" id="discovery-z-measuring-display">0.000 mm</div>
                                 <div class="status-subtext">Active Z under sampling</div>
                             </div>
-                            <div class="discovery-mini-tracking-col status-block status-block-compact">
+                            <div class="discovery-mini-tracking-col live-tracking-col-centered status-block status-block-compact">
                                 <div class="status-label">Elapsed</div>
                                 <div id="discovery-elapsed" class="mono">00:00:00</div>
                                 <div id="discovery-elapsed-cell" class="status-subtext">Cell 00:00:00</div>
@@ -1019,6 +1014,53 @@
                                 <div class="sidebar-section sidebar-rpm-legend-section">
                                     <div class="sidebar-label">RPM colors</div>
                                     <div id="discovery-drag-z-rpm-legend" class="rpm-legend-list"></div>
+                                    <div id="discovery-drag-z-rpm-legend-note" class="rpm-legend-note">Below torque floor: red (all RPMs)</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">Active RPM</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-rpm">-</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">2nd Deriv Rotational Drag</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-2nd-deriv-drag">-</div>
+                                    <div class="sidebar-method" id="discovery-sidebar-method-2nd-deriv-drag">AUTO Z-SCORE (calibrating...)</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">2nd Deriv CV</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-2nd-deriv-cv">-</div>
+                                    <div class="sidebar-method" id="discovery-sidebar-method-2nd-deriv-cv">AUTO Z-SCORE (calibrating...)</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">2nd Deriv Trend Slope</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-2nd-deriv-slope">-</div>
+                                    <div class="sidebar-method" id="discovery-sidebar-method-2nd-deriv-slope">AUTO Z-SCORE (calibrating...)</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">R_2 Rotational Drag</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-r2-drag">-</div>
+                                    <div class="sidebar-method" id="discovery-sidebar-method-r2-drag">Threshold ≥ 0.975</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">R_2 CV</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-r2-cv">-</div>
+                                    <div class="sidebar-method" id="discovery-sidebar-method-r2-cv">Threshold ≥ 0.975</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">R_2 Trend Slope</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-r2-slope">-</div>
+                                    <div class="sidebar-method" id="discovery-sidebar-method-r2-slope">Threshold ≥ 0.975</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">Hit Confidence</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-confidence">-</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">Fail Safe Activated?</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-fail-safe">-</div>
+                                </div>
+                                <div class="sidebar-section">
+                                    <div class="sidebar-label">Hit Detected?</div>
+                                    <div class="sidebar-value mono" id="discovery-sidebar-hit">-</div>
                                 </div>
                             </aside>
                         </div>

@@ -24,9 +24,14 @@ from discovery_rpm_calibration import (
     clamp_hardware_rpm,
     eta_from_rpm_torque,
     initial_rpm_for_discovery,
+    round_rpm_2dp,
     rpm_for_target_torque,
     suggest_next_rpm_continuous,
 )
+
+
+def _assert_rpm_is_2dp(test_case, rpm):
+    test_case.assertEqual(rpm, round(float(rpm), 2))
 
 
 def _default_cfg(**overrides) -> DiscoveryConfig:
@@ -47,6 +52,10 @@ def _default_cfg(**overrides) -> DiscoveryConfig:
 
 
 class TestPowerLawCalibration(unittest.TestCase):
+    def test_round_rpm_2dp(self):
+        self.assertEqual(round_rpm_2dp(7.3456), 7.35)
+        self.assertEqual(round_rpm_2dp(10.0), 10.0)
+
     def test_rpm_for_target_torque_1000cp(self):
         rpm = rpm_for_target_torque(1000.0, target_torque=30.0)
         expected = rpm_for_target_torque(1000.0, target_torque=30.0, a_cal=A_CAL, b_cal=B_CAL)
@@ -94,15 +103,17 @@ class TestDiscoverRpmContinuous(unittest.TestCase):
     def test_eta_guess_uses_power_law_not_snap(self):
         cfg = _default_cfg()
         eta_guess = 1000.0
-        expected = initial_rpm_for_discovery(
-            eta_guess,
-            target_torque=cfg.target_torque,
-            cold_start_rpm=cfg.cold_start_rpm,
-            a_cal=cfg.a_cal,
-            b_cal=cfg.b_cal,
-            reference_torque=cfg.surface_torque_ref,
-            rpm_min=cfg.rpm_min,
-            rpm_max=cfg.rpm_max,
+        expected = round_rpm_2dp(
+            initial_rpm_for_discovery(
+                eta_guess,
+                target_torque=cfg.target_torque,
+                cold_start_rpm=cfg.cold_start_rpm,
+                a_cal=cfg.a_cal,
+                b_cal=cfg.b_cal,
+                reference_torque=cfg.surface_torque_ref,
+                rpm_min=cfg.rpm_min,
+                rpm_max=cfg.rpm_max,
+            )
         )
         self.assertNotAlmostEqual(expected, 5.0, places=1)
         probe = FakeProbe([30.0])
@@ -110,7 +121,10 @@ class TestDiscoverRpmContinuous(unittest.TestCase):
         if result["status"] == "uncalibrated_cell":
             self.skipTest("cell 1 not calibrated in test environment")
         self.assertEqual(result["status"], "converged")
-        self.assertAlmostEqual(probe.calls[0][2], expected, places=3)
+        self.assertAlmostEqual(probe.calls[0][2], expected, places=2)
+        _assert_rpm_is_2dp(self, result["rpm"])
+        for probe_row in result["probes"]:
+            _assert_rpm_is_2dp(self, probe_row["rpm"])
 
 
 class TestDiscoverRpm(unittest.TestCase):
@@ -122,6 +136,7 @@ class TestDiscoverRpm(unittest.TestCase):
         self.assertEqual(result["status"], "converged")
         self.assertTrue(is_discovery_success(result))
         self.assertEqual(result["rpm"], probe.calls[0][2])
+        _assert_rpm_is_2dp(self, result["rpm"])
 
     def test_iterative_convergence(self):
         probe = FakeProbe([80.0, 32.0])
