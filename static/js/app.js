@@ -2465,14 +2465,16 @@ class ViscometryDashboard {
     refreshDiscoveryLivePlots() {
         const activeCell = this.getActiveDiscoveryGraphCellId();
         const discoveredRpm = activeCell != null ? this._getDiscoveredRpmForCell(activeCell) : null;
-        const allSource = activeCell ? (this.measurementsByCell.get(activeCell) || []) : [];
-        const source = discoveredRpm != null
-            ? allSource.filter((m) => Math.abs(Number(m.rpm) - discoveredRpm) < 0.01)
-            : [];
-        const orderedRpms = discoveredRpm != null ? [discoveredRpm] : [];
+        const fallbackRpm = activeCell != null ? this._inferDiscoveryPlotRpmFromMeasurements(activeCell) : null;
+        const plotRpm = discoveredRpm != null ? discoveredRpm : fallbackRpm;
+        const allSource = activeCell != null ? (this.measurementsByCell.get(activeCell) || []) : [];
+        const source = plotRpm != null
+            ? allSource.filter((m) => Math.abs(Number(m.rpm) - plotRpm) < 0.01)
+            : allSource;
+        const orderedRpms = plotRpm != null ? [plotRpm] : [];
         const buckets = new Map();
-        if (discoveredRpm != null) {
-            buckets.set(Number(discoveredRpm).toFixed(2), source);
+        if (plotRpm != null) {
+            buckets.set(Number(plotRpm).toFixed(2), source);
         }
 
         const dragDatasets = orderedRpms
@@ -2496,7 +2498,7 @@ class ViscometryDashboard {
             this.renderDiscoveryDragZRpmLegend(activeCell, orderedRpms);
         }
         if (this.el.discoveryDragZCellLabel) {
-            const rpmLabel = discoveredRpm != null ? `@ ${discoveredRpm.toFixed(2)} RPM` : "";
+            const rpmLabel = plotRpm != null ? `@ ${plotRpm.toFixed(2)} RPM` : "";
             this.el.discoveryDragZCellLabel.textContent = activeCell
                 ? `Cell ${activeCell} ${rpmLabel}`.trim()
                 : "Discovered RPM only";

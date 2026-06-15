@@ -1675,7 +1675,7 @@ def test_cell_dynamic_z_series(
         print(f"\n  Feedback Controller Summary:")
         print(f"    Hit point detected: {summary['hit_point_detected']}")
         if summary['hit_point_detected']:
-            print(f"    Hit Z-level: {summary['hit_point_z']:.3f}")
+            print(f"    Hit Z-level: {_format_hit_point_z(summary.get('hit_point_z'))}")
             print(f"    Detection confidence: {summary['hit_point_confidence']:.2f}")
         print(f"    Total Z-levels analyzed: {summary['total_z_levels']}")
         print(f"    RPMs tested: {len(cell_rpms)}")
@@ -1872,6 +1872,16 @@ def _merge_discovery_landing_after_descent(
         web_interface.record_discovery_result(cell_id, payload)
     except Exception as exc:
         print(f"  Warning: discovery landing metrics failed for Cell {cell_id}: {exc}")
+
+
+def _format_hit_point_z(hit_point_z: Optional[float]) -> str:
+    """Format a hit-point Z value for logs without raising on missing data."""
+    if hit_point_z is None:
+        return "n/a"
+    try:
+        return f"{float(hit_point_z):.3f}"
+    except (TypeError, ValueError):
+        return "n/a"
 
 
 def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:

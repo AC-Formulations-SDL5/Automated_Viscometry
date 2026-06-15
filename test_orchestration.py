@@ -104,6 +104,13 @@ class TestFinishCellOrder(unittest.TestCase):
     def setUp(self):
         os.chdir(_ROOT)
 
+    def test_format_hit_point_z_handles_none(self):
+        import all_cells_with_rotational_drag_feedback as exp
+
+        self.assertEqual(exp._format_hit_point_z(None), "n/a")
+        self.assertEqual(exp._format_hit_point_z(12.3456), "12.346")
+        self.assertEqual(exp._format_hit_point_z("bad"), "n/a")
+
     def test_retract_logged_before_concurrent(self):
         import all_cells_with_rotational_drag_feedback as exp
 
