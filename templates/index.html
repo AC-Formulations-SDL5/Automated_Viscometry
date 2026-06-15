@@ -880,7 +880,17 @@
                             <div class="dual-fields">
                                 <label>
                                     <span>Discovery probe duration (s)</span>
-                                    <input id="discovery-probe-duration-s" name="discovery_probe_duration_s" type="number" step="1" min="5" value="12">
+                                    <input id="discovery-probe-duration-s" name="discovery_probe_duration_s" type="number" step="1" min="5" value="60">
+                                </label>
+                                <label>
+                                    <span>Duck torque ceiling (%)</span>
+                                    <input id="discovery-duck-torque-pct" name="discovery_duck_torque_pct" type="number" step="1" min="1" max="100" value="80">
+                                </label>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Handoff pause before Z-scan (s)</span>
+                                    <input id="discovery-handoff-pause-s" name="discovery_handoff_pause_s" type="number" step="1" min="0" value="10">
                                 </label>
                                 <label id="discovery-z-start-offset-row" class="z-start-offset-row is-disabled">
                                     <span>Z-start offset from rough hitpoint (mm)</span>

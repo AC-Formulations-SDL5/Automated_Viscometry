@@ -240,7 +240,9 @@ class ViscometryWebInterface:
             'z_start_offset_mm': 0.4,
             'discovery_mode_enabled': False,
             'discovery_eta_guess_map': {},
-            'discovery_probe_duration_s': 12.0,
+            'discovery_probe_duration_s': 60.0,
+            'discovery_duck_torque_pct': 80.0,
+            'discovery_handoff_pause_s': 10.0,
         }
         self.predicted_viscosity_results: Dict = {}
         self.discovery_results_by_cell: Dict[str, dict] = {}
@@ -1674,9 +1676,24 @@ class ViscometryWebInterface:
                 normalized['discovery_mode_enabled'] = bool(settings['discovery_mode_enabled'])
             if 'discovery_probe_duration_s' in settings and settings['discovery_probe_duration_s'] not in (None, ''):
                 try:
-                    normalized['discovery_probe_duration_s'] = float(settings['discovery_probe_duration_s'])
+                    normalized['discovery_probe_duration_s'] = max(
+                        5.0, float(settings['discovery_probe_duration_s'])
+                    )
                 except (TypeError, ValueError):
-                    normalized['discovery_probe_duration_s'] = 12.0
+                    normalized['discovery_probe_duration_s'] = 60.0
+            if 'discovery_duck_torque_pct' in settings and settings['discovery_duck_torque_pct'] not in (None, ''):
+                try:
+                    duck_pct = float(settings['discovery_duck_torque_pct'])
+                    normalized['discovery_duck_torque_pct'] = max(1.0, min(100.0, duck_pct))
+                except (TypeError, ValueError):
+                    normalized['discovery_duck_torque_pct'] = 80.0
+            if 'discovery_handoff_pause_s' in settings and settings['discovery_handoff_pause_s'] not in (None, ''):
+                try:
+                    normalized['discovery_handoff_pause_s'] = max(
+                        0.0, float(settings['discovery_handoff_pause_s'])
+                    )
+                except (TypeError, ValueError):
+                    normalized['discovery_handoff_pause_s'] = 10.0
             if 'discovery_eta_guess_map' in settings:
                 raw_eta = settings['discovery_eta_guess_map']
                 if isinstance(raw_eta, dict):

@@ -126,7 +126,9 @@ CALIBRATION_OFFSET = 0.4         # mm above rough hitpoint to use as safe_z
 # ========== DISCOVERY MODE CONFIGURATION ==========
 DISCOVERY_MODE_ENABLED = False
 DISCOVERY_ETA_GUESS_MAP: Dict[int, Optional[float]] = {}
-DISCOVERY_PROBE_DURATION_S = 12.0
+DISCOVERY_PROBE_DURATION_S = 60.0
+DISCOVERY_DUCK_TORQUE_PCT = 80.0
+DISCOVERY_HANDOFF_PAUSE_S = 10.0
 
 
 def _is_calibration_like_run() -> bool:
@@ -202,6 +204,7 @@ def apply_runtime_settings_from_web():
     global VISCOSITY_PREDICTION_MODE
     global SAVE_ALL_SAMPLE_DATA, Z_START_OFFSET_MM
     global DISCOVERY_MODE_ENABLED, DISCOVERY_ETA_GUESS_MAP, DISCOVERY_PROBE_DURATION_S
+    global DISCOVERY_DUCK_TORQUE_PCT, DISCOVERY_HANDOFF_PAUSE_S
 
     settings = web_interface.get_runtime_settings()
 
@@ -267,6 +270,16 @@ def apply_runtime_settings_from_web():
         Z_START_OFFSET_MM = 0.4
     DISCOVERY_MODE_ENABLED = bool(settings.get('discovery_mode_enabled', False))
     DISCOVERY_PROBE_DURATION_S = float(settings.get('discovery_probe_duration_s', DISCOVERY_PROBE_DURATION_S))
+    try:
+        duck_pct = float(settings.get('discovery_duck_torque_pct', DISCOVERY_DUCK_TORQUE_PCT))
+        DISCOVERY_DUCK_TORQUE_PCT = max(1.0, min(100.0, duck_pct))
+    except (TypeError, ValueError):
+        DISCOVERY_DUCK_TORQUE_PCT = 80.0
+    try:
+        pause_s = float(settings.get('discovery_handoff_pause_s', DISCOVERY_HANDOFF_PAUSE_S))
+        DISCOVERY_HANDOFF_PAUSE_S = max(0.0, pause_s)
+    except (TypeError, ValueError):
+        DISCOVERY_HANDOFF_PAUSE_S = 10.0
     raw_eta_map = settings.get('discovery_eta_guess_map', {})
     DISCOVERY_ETA_GUESS_MAP = {}
     if isinstance(raw_eta_map, dict):
@@ -835,6 +848,7 @@ def measure_torque_at_rpm(
     z_height: float,
     hunting_first_contact_min_pct: Optional[float] = None,
     read_retries_per_slot: int = 1,
+    duck_above_pct_on_first_sample: Optional[float] = None,
 ) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps.
 
@@ -848,6 +862,10 @@ def measure_torque_at_rpm(
     on the **first** recorded sample, if torque is **strictly less than** that threshold, sampling
     stops immediately. Otherwise the full ``MEASUREMENT_DURATION`` collection proceeds.
     Smart early exit is disabled until this gate is resolved.
+
+    If ``duck_above_pct_on_first_sample`` is set (Discovery probe ceiling), on the **first**
+    recorded sample, if torque is **greater than or equal to** that threshold, sampling stops
+    immediately after recording that point.
     """
     try:
         # Set spindle speed
@@ -902,6 +920,32 @@ def measure_torque_at_rpm(
                                 elapsed_since_start,
                                 emit_measurement_point=True,
                                 sample_count=1,
+                            )
+                            break
+                        if (
+                            duck_above_pct_on_first_sample is not None
+                            and sample_index == 1
+                            and tp >= duck_above_pct_on_first_sample
+                        ):
+                            measurement = {
+                                "timestamp": current_time,
+                                "elapsed_time": elapsed_since_start,
+                                "torque_percent": tp,
+                                "rpm": rpm,
+                            }
+                            measurements.append(measurement)
+                            _publish_torque_sample_to_web(
+                                z_height,
+                                rpm,
+                                tp,
+                                elapsed_since_start,
+                                emit_measurement_point=True,
+                                sample_count=1,
+                            )
+                            print(
+                                f"      [DISCOVERY DUCK] Sample at {elapsed_since_start:.2f}s "
+                                f"{tp:.2f}% >= {duck_above_pct_on_first_sample:.2f}% — "
+                                "stopping probe"
                             )
                             break
                         measurement = {
@@ -2503,6 +2547,7 @@ def main():
                                 row_resolver=global_cell_to_row_and_local,
                                 measure_module=sys.modules[__name__],
                                 probe_duration_s=DISCOVERY_PROBE_DURATION_S,
+                                duck_torque_pct=DISCOVERY_DUCK_TORQUE_PCT,
                                 web_emit=True,
                             )
                             if not discovered_rpms:
@@ -2539,6 +2584,12 @@ def main():
                                     f"Z={float(discovery_handoff_z):.3f}, "
                                     f"RPM={cell_rpms[0]:.2f}, no safe retract"
                                 )
+                            if DISCOVERY_HANDOFF_PAUSE_S > 0:
+                                web_interface.update_status(
+                                    f"Discovery complete — pausing {DISCOVERY_HANDOFF_PAUSE_S:.0f}s "
+                                    f"before Z-scan for Cell {global_cell}"
+                                )
+                                sleep_with_stop(DISCOVERY_HANDOFF_PAUSE_S)
                         except Exception as discovery_exc:
                             print(
                                 f"  Discovery error for Cell {global_cell}: {discovery_exc}"
