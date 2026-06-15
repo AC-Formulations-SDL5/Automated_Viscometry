@@ -117,45 +117,111 @@ The transition from manual to autonomous rheometry imposes its own precision con
 
 **Figure 3.** Physics-informed measurement framework. The lubrication-theory descriptor of equation (7) interpolates continuously between the parallel-plate ($h \gg r\tan\alpha$) and cone-and-plate ($h \to 0$) limits sampled by the automated descent, and the descent feedback layer absorbs the residual mechanical positional uncertainty into a fitted geometric offset rather than as a hardware-calibration requirement.
 
-### 2.3 Software Orchestration and Data Pipeline
+### 2.3 Data-Analysis Pipeline from Raw Torque-Displacement Traces to Rheological Behaviour
+
+The analysis layer converts each automated-descent record $(h, T(\%), \mathrm{RPM})$ into calibrated rheological observables through a single, transferable workflow. The full inference chain is shown in **Figure 6** and is executed identically for Newtonian and non-Newtonian materials, with no per-chemistry redesign.
+
+![End-to-end inference pipeline for a new sample.](../../Images/New_sample_inference_pipeline.svg)
+
+**Figure 6.** Inference-time view of the physics-constrained analysis pipeline. Green annotations mark the universal constants ($h_c^\star$, $k$, $p$, $c_\tau$) calibrated once on silicone standards and reused across all chemistry families.
+
+#### 2.3.1 Signal transformation and scaling diagnosis
+
+The first transformation is rotational-drag normalization,
+
+$$D \equiv \frac{T(\%)}{\mathrm{RPM}}, \tag{8}$$
+
+which removes the trivial Newtonian angular-speed dependence and isolates the geometry-fluid signal. A global and local log-log slope diagnosis on the silicone set showed that no single power law $D \propto h^{-n}$ explains the full descent range: the local slope drifts toward $-1$ only near contact, indicating that a pure $1/h$ model is asymptotically correct but globally incomplete.
+
+![Log-log diagnosis: global slope and local moving-window slope of D vs h on the focus silicone.](./figures_rheology/02_loglog_focus.png)
+
+**Figure 6a.** Scaling diagnosis of $D(h)$ on the focus silicone. Local slope drift away from $-1$ at intermediate gaps motivates regularization of the hyperbolic form.
+
+To identify the correct baseline structure, an offset-scan was performed by subtracting candidate constants $B$ from $D$ and refitting log-log slope on the positive residual. The resulting plateau near slope $-1$ confirms the leading-order form $D = A/h + B$.
+
+![Log-log slope of (D - B) versus the subtracted baseline B; a flat plateau near -1 emerges when B is chosen correctly.](./figures_rheology/02b_slope_vs_B.png)
+
+**Figure 6b.** Offset-scan diagnostic. The plateau near slope $\approx -1$ supports a hyperbolic core with a non-trivial baseline term.
+
+#### 2.3.2 Model selection in physical space
+
+Four candidate models were compared in physical space (pure hyperbola, regularized hyperbola, generalized power, and saturation) using bounded Levenberg-Marquardt fitting and ranked by $R^2$, adjusted $R^2$, AIC, BIC, and cross-validated RMSE. The regularized hyperbola was the consistent winner:
+
+$$D(h) = \frac{A}{h + h_c} + B. \tag{9}$$
+
+Here, $A$ carries viscosity information, $h_c$ absorbs effective zero-gap effects (slip layer, asperity, compliance, and residual geometric offsets), and $B$ is a small parasitic baseline.
+
+![Side-by-side fits of the four candidate models on the focus silicone - hyperbolic, regularised hyperbola, generalised power, and saturation.](./figures_rheology/04_direct_fits.png)
+
+**Figure 6c.** Physical-space model comparison on the focus silicone dataset.
+
+Residual diagnostics confirm that the selected model is unbiased and near-homoscedastic across gap height, supporting stable downstream inverse calibration.
+
+![Residuals and diagnostics of the recommended regularised-hyperbolic fit on the focus silicone.](./figures_rheology/06_residuals_best.png)
+
+**Figure 6d.** Residual and distribution diagnostics for the selected regularized-hyperbolic model.
+
+#### 2.3.3 Universality of geometry shape and fixed-$h_c$ production fitting
+
+The factorization hypothesis $D(h,\mu)=A(\mu)F(h)$ was tested by normalizing each sweep by its own maximum and overlaying all silicone traces on a common gap axis. The collapse to a single master shape validates a geometry-governed $F(h)$ and fluid-dependent amplitude $A$.
+
+![Per-sample normalised drag curves D / max(D) overlaid on a common gap axis.](./figures_rheology/normalized_drag_per_sample.png)
+
+**Figure 6e.** Dimensionless collapse of silicone drag curves, supporting factorization into geometry shape and viscosity amplitude.
+
+A global fit to the normalized master curve selected the regularized form as the most parsimonious representation, which justifies extracting a universal geometric regularization length $h_c^\star$ for production fitting.
+
+![Master-curve overlay with 95% bootstrap envelope and the best global F(h) fit.](./figures_rheology/13_master_overlay_and_mean.png)
+
+**Figure 6f.** Master-curve construction with bootstrap envelope and best global regularized fit.
+
+Operationally, each sweep is first fitted with free $h_c$, and the median of high-quality fits ($R^2 > 0.7$, $h_c \in [0.05,1.5]$ mm) defines $h_c^\star$. All sweeps are then refitted with fixed $h_c=h_c^\star$, reducing parameter coupling and improving amplitude identifiability.
+
+#### 2.3.4 Calibration equations and constitutive extension
+
+Silicone standards provide the one-shot amplitude-viscosity calibration,
+
+$$\ln A = \ln k + p\,\ln\mu \quad\Longleftrightarrow\quad \mu_{\mathrm{app}} = \left(\frac{A}{k}\right)^{1/p}. \tag{10}$$
+
+For non-Newtonian materials measured at multiple RPM values, amplitude becomes shear-rate dependent,
+
+$$A(\dot\gamma) = A_0\,\dot\gamma^{\,n-1}, \tag{11}$$
+
+so the slope of $\ln A$ versus $\ln\dot\gamma$ yields the flow-behaviour index $n$. Shear stress is computed from percent torque by
+
+$$\tau\,[\mathrm{Pa}] = c_\tau\,T(\%), \qquad c_\tau = \frac{3(M_{\mathrm{full}}/100)}{2\pi R^3} \approx 1.986\ \mathrm{Pa}/\%. \tag{12}$$
+
+Uncertainty and robustness procedures applied uniformly in Results include leave-the-$k$-smallest-out sensitivity, 500-iteration bootstrap confidence bands, and the per-sweep $h_c$-distribution analysis.
+
+### 2.4 Software Orchestration
 
 The hardware-embedding strategy integrates rotational sensing, robotic positioning, and automated washing within a unified control plane. The rotational torquemeter is paired with the three-axis CNC stage to enable programmable sample traversal and repeatable spindle alignment across predefined sample and washing coordinates. All machine-level coordinates — sample positions, washing-station locations, safe-height offsets, and per-cell calibration data — are parameterized through YAML configuration files, so that the deck layout can be reconfigured without modifying the control software. An ESP32 microcontroller serves as the embedded actuator-control layer for the washing subsystem; its custom PCB carries L298N motor drivers under PWM control to actuate six DC pumps and three agitation motors, and a multiplexed channel-sharing configuration with diode-isolated switching provides independent fluid delivery while reducing hardware complexity. The microcontroller executes predefined detergent / water / isopropanol rinse cycles between measurements and exposes only a small command interface to the host (***Supplementary Information***).
 
-At the host level, the platform employs a dual-Python asynchronous architecture that accommodates the hardware compatibility constraints of the rotational torquemeter while keeping experimental orchestration centralized. A 64-bit Python runtime manages high-level workflow execution, CNC motion control via G-code generation, washing-station sequencing, and rheological data processing. Because the proprietary communication library of the rotational torquemeter requires a 32-bit DLL, viscometer communication is isolated within a dedicated 32-bit Python runtime, and the two processes communicate through synchronized file-based exchange and process-level coordination. The software stack is organized into modular hardware-abstraction layers (CNC control, viscometer communication, embedded washing control, and rheological analysis), and the ESP32 receives high-level serial commands from the host while executing the corresponding pump and motor sequences independently of the primary orchestration loop. The asynchronous design enables non-blocking concurrent execution of robotic motion, rheological acquisition, and washing operations — the throughput-determining property of the platform — and integrates traceability (calibration status, software version, operator annotations, environmental conditions) and recovery mechanisms (instrument reconnection, safe-motion interruption) to support long-duration autonomous operation. A real-time web dashboard exposes the live torque–displacement traces of every cell, current batch progress, and per-cell acquisition status to the operator, together with manual override, batch-abort, washing-protocol-selection, and calibration triggers, and at the end of every batch generates an automated experimental report containing the per-cell summaries and the recovered constitutive equations.
+At the host level, the platform employs a dual-Python asynchronous architecture that accommodates the hardware compatibility constraints of the rotational torquemeter while keeping experimental orchestration centralized. A 64-bit Python runtime manages high-level workflow execution, CNC motion control via G-code generation, washing-station sequencing, and data logging. Because the proprietary communication library of the rotational torquemeter requires a 32-bit DLL, viscometer communication is isolated within a dedicated 32-bit Python runtime, and the two processes communicate through synchronized file-based exchange and process-level coordination. The software stack is organized into modular hardware-abstraction layers (CNC control, viscometer communication, embedded washing control, and analysis trigger layer), and the ESP32 receives high-level serial commands from the host while executing the corresponding pump and motor sequences independently of the primary orchestration loop. The asynchronous design enables non-blocking concurrent execution of robotic motion, rheological acquisition, and washing operations — the throughput-determining property of the platform — and integrates traceability (calibration status, software version, operator annotations, environmental conditions) and recovery mechanisms (instrument reconnection, safe-motion interruption) to support long-duration autonomous operation. A real-time web dashboard exposes the live torque-displacement traces of every cell, current batch progress, and per-cell acquisition status to the operator, together with manual override, batch-abort, washing-protocol-selection, and calibration triggers, and at the end of every batch generates an automated experimental report containing per-cell summaries and recovered constitutive outputs.
 
 ---
 
 ## 3. Results and Discussion
 
-We organize the results around the two declared outputs of the platform — a calibrated stress–shear-rate flow curve and the fitted power-law constitutive equation. §3.1 establishes the reproducibility, throughput, and cross-material robustness of the *acquisition* layer, demonstrating that the platform produces stable torque–displacement signatures across a working range that spans more than two decades of viscosity and across mechanistically distinct chemistries. §3.2 establishes the *inference* layer, in which a single physics-constrained pipeline — calibrated only once on the silicone reference set — converts the raw signatures into apparent viscosities, calibrated stresses, and full flow curves. §3.3 demonstrates that the same pipeline, with no additional retuning, generalizes to non-Newtonian power-law fluids and recovers the regime-classifying flow-behaviour index $n$.
+The Methods section defines all equations, fitting rules, and uncertainty calculations. Results are therefore presented here as experimental evidence and scientific interpretation of platform performance in two stages: (i) acquisition reproducibility and statistical robustness of the automated measurement layer, then (ii) material-level rheological performance across Newtonian and non-Newtonian classes.
 
-### 3.1 Acquisition Performance: Reproducibility, Throughput, and Cross-Material Robustness
+### 3.1 Acquisition Performance: Reproducibility
 
-We first quantify the end-to-end performance of the *automated descent* itself, decoupled from the downstream inference (**Figure 4**). Across the working range of 1.0–125.0 k cP, the normalized rotational-drag traces of the silicone reference set (Figure 4A) collapse onto a single dimensionless master profile, confirming that the *shape* of the descent signature is universal and that viscosity information is encoded in its amplitude rather than in its functional form — the property the inference pipeline exploits in §3.2. Figures 4B–D step through the full acquisition-to-prediction sequence on an 18-sample run: (B) the raw rotational-drag traces, (C) the trimmed traces overlaid with their hyperbolic fits, and (D) the per-cell parity plot of the predicted apparent viscosity against the manufacturer-quoted reference, together with the corresponding relative error. The execution-reliability summary in Figure 4E aggregates the relative-error distribution over multiple independent runs and confirms that the platform sustains its performance across long autonomous campaigns for fluids up to 125,000 cP. The throughput breakdown in Figure 4F decomposes the timeline of the full process into its human-bound (blending, dispensing) and robot-bound (characterization, washing) components and contrasts the resulting five-hour, 18-sample autonomous workflow against the equivalent fully-manual workflow, quantifying the human-time compression delivered by the platform.
+We first evaluate the reproducibility and statistical stability of automated acquisition before discussing chemistry-specific material outcomes. Across the 1.0–125.0 k cP operating range, normalized rotational-drag signatures collapse to a common shape, while amplitude differences preserve viscosity information (**Figure 4A**). The full 18-sample autonomous campaign (**Figure 4B–F**) confirms that this shape-preserving acquisition remains stable under long-duration operation, with robust parity trends, consistent error distributions, and a practical throughput of 18 samples in approximately five robot-hours.
 
 ![Results 1](../../Images/Figure_1.svg)
 
-**Figure 4.** End-to-end performance of the automated viscometry platform. (A) Normalized rotational-drag traces collapse onto a universal master profile across the working range of 1.0–125.0 k cP. (B–D) Acquisition-to-prediction sequence on an 18-sample run: (B) raw rotational-drag data, (C) trimmed traces with hyperbolic fits, (D) predicted vs. reference apparent viscosity per cell with the corresponding relative error. (E) Execution reliability across several runs, summarized as the distribution of relative errors for fluids up to 125,000 cP. (F) Stacked timeline breakdown of the autonomous workflow against the equivalent fully-manual workflow.
+**Figure 4.** End-to-end automated acquisition performance. (A) Normalized rotational-drag traces collapse onto a common shape across the working range of 1.0–125.0 k cP. (B–D) Acquisition-to-analysis sequence on an 18-sample run: (B) raw rotational-drag data, (C) trimmed traces with fitted regularised profiles, (D) predicted vs. reference apparent viscosity per cell with relative error. (E) Execution reliability across independent runs. (F) Timeline comparison of autonomous vs fully manual workflow.
 
-To probe the limits of acquisition robustness, we then deployed the platform across mechanistically distinct chemistries that probe fundamentally different viscosity-generation mechanisms. The selected materials span polymeric chain-entanglement fluids (silicone oils, polyethylene glycol), intermolecular friction-dominated molecular liquids (glycerol), polysaccharide-thickened biopolymer systems (Solagum), associative rheology modifiers governed by transient hydrophobic networks (Sepineo), and crosslinked microgel structures (Carbopol 980). These materials introduce substantial variations in wetting dynamics, meniscus formation, drag evolution, spindle immersion response, and local microstructural resistance during the automated descent. Despite these chemically and structurally different environments (**Figure 5**), the physics-constrained Z-descent and torque-acquisition framework maintained stable operation throughout the investigated viscosity range; the adaptive hit-point detection delivered reliable spindle-floor gap control under varying interfacial conditions, and the dual-stage washing architecture effectively prevented residual contamination between sequential samples of dissimilar chemistry. Acquisition is therefore not restricted to a single calibration-fluid family.
+Reproducibility was then stress-tested using the three diagnostics defined in §2.3. First, leave-the-$k$-smallest-out analysis confirms that the fitted amplitude $A$ changes by less than 5 % even when up to six near-contact points are removed (**Figure 7**, top), indicating low leverage sensitivity and mechanical tolerance to local contact-region noise. Second, 500-iteration bootstrap refitting provides tight 95 % confidence bands for $(A, h_c, B)$ (**Figure 7**, bottom), demonstrating statistical identifiability of the drag model under repeated resampling. Third, the per-sweep regularisation-length distribution remains narrow and unimodal around $h_c^\star \approx 0.277$ mm (**Figure 8**), supporting the interpretation that $h_c$ is a geometry-linked descriptor rather than a chemistry-specific fitting artifact.
+
+From an engineering perspective, these results indicate that backlash, compliance, and wetting variability are absorbed effectively into the fitted regularised representation without destabilizing amplitude recovery. From a scientific perspective, the observed master-shape consistency supports a transferable drag-profile factorization across formulations. From a statistical perspective, sensitivity, bootstrap, and parameter-distribution diagnostics agree that uncertainty in the fitting layer is sub-dominant to cross-material viscosity variation, enabling reliable downstream constitutive interpretation.
+
+To verify that this reproducibility extends across distinct interfacial and microstructural environments, we deployed the acquisition layer on mechanistically diverse systems (**Figure 5**), including polymeric entanglement fluids (silicones, PEG), molecular liquids (glycerol), polysaccharide-thickened systems (Solagum), associative networks (Sepineo), and crosslinked microgels (Carbopol 980). Stable hit-point detection and contamination-free sequential operation confirm that automated acquisition robustness is not limited to a single calibration-fluid family.
 
 ![Cross-chemistry rheology of high-viscosity fluids.](../../Images/non-newtonian_samples.png)
 
-**Figure 5.** Cross-chemistry view of the validation set. The investigated systems span polymeric entanglement (silicones, PEG), molecular friction (glycerol), polysaccharide thickening (Solagum), associative networks (Sepineo), and crosslinked microgels (Carbopol 980), each introducing a distinct viscosity-generation mechanism that the acquisition layer must absorb without per-chemistry retuning.
-
-### 3.2 Inference Pipeline: From Raw Torque–Displacement Traces to Calibrated Flow Curves
-
-Having established that the platform produces stable torque–displacement signatures across mechanistically distinct fluids (§3.1), the next question is whether a *single* analysis pipeline — calibrated only once on the silicone reference set — can convert the raw output of an automated descent into a quantitatively predictive flow curve for every chemistry investigated, Newtonian or non-Newtonian. We answer this through a physics-constrained, data-driven inference pipeline that takes triples of axial height $h$, percent-of-full-scale torque $T(\%)$, and spindle speed (RPM), and returns a calibrated stress-versus-shear-rate response $\tau(\dot\gamma)$ together with its fitted constitutive equation, without per-sample re-tuning (**Figure 6**).
-
-![End-to-end inference pipeline for a new sample.](../../Images/New_sample_inference_pipeline.svg)
-
-**Figure 6.** Inference-time view of the physics-constrained analysis pipeline. Each stage transforms the raw automated-descent output into a calibrated rheogram. Green annotations mark the four universal constants ($h_c^\star$, $k$, $p$, $c_\tau$) that were determined once on the silicone calibration set and re-used for every subsequent sample, regardless of chemistry.
-
-The first physics-motivated transformation works on the *rotational drag* $D \equiv T(\%)/\mathrm{RPM}$ rather than the raw torque, since the cone-plate torque scales linearly with angular velocity in the Newtonian limit. Dividing out the trivial shear-rate dependence isolates the geometry-and-fluid factor that actually carries the rheological signal: any residual RPM dependence remaining in $D$ after the division is, by construction, evidence of a non-unit flow-behaviour index $n \neq 1$. A log–log scaling diagnosis on the silicone calibration set showed that no single power law $D \propto h^{-n}$ describes the data across the full descent range; an offset-scan, however, recovered a robust plateau at slope $\approx -1$ after subtraction of a constant baseline, pinning the leading-order structure as $D = A/h + B$. A subsequent comparison of four candidate forms (pure hyperbola, regularised hyperbola, generalised power, and saturation) — fitted in physical space with bounded Levenberg–Marquardt and ranked by $R^{2}$, adjusted $R^{2}$, AIC, BIC, and 5-fold cross-validated RMSE — identified the **regularised hyperbola**
-
-$$D(h) = \frac{A}{h + h_c} + B \tag{8}$$
-
-as the unambiguous winner, in which the amplitude $A$ scales with the apparent viscosity, the offset $h_c$ encodes residual zero-gap effects (slip layer, asperity, compliance of the 3D-printed fixtures), and $B$ is a small parasitic baseline. Leave-the-$k$-smallest-out sensitivity testing confirmed that $A$ fluctuates by less than $5\%$ as up to six near-contact points are sequentially removed, and a 500-iteration bootstrap delivered tight 95 % confidence intervals on all three parameters across the silicone set (**Figure 7**).
+**Figure 5.** Cross-chemistry acquisition validation set. The investigated systems span polymeric entanglement (silicones, PEG), molecular friction (glycerol), polysaccharide thickening (Solagum), associative networks (Sepineo), and crosslinked microgels (Carbopol 980), each imposing distinct interfacial and mechanical signatures on the descent.
 
 ![Robustness diagnostics of the regularised-hyperbolic fit.](./figures_rheology/08_sensitivity_regularized.png)
 
@@ -163,49 +229,67 @@ as the unambiguous winner, in which the amplitude $A$ scales with the apparent v
 
 **Figure 7.** Robustness diagnostics of the regularised-hyperbolic fit on the focus silicone. (Top) Leave-the-$k$-smallest-out sensitivity: the fitted amplitude $A$ remains stable to within a few percent as up to six near-contact points are sequentially removed, certifying that the calibration is not driven by ill-conditioned small-gap data. (Bottom) 500-iteration bootstrap 95 % confidence band and posterior histograms of $(A, h_c, B)$, demonstrating that parametric uncertainty is sub-dominant to the downstream viscosity error.
 
-The conceptual core of the pipeline is the demonstration that the *shape* of the drag profile is universal across fluids: normalising every sweep by its own maximum collapses all silicone curves onto a single dimensionless master curve, with a global fit selecting the regularised form $F(h) = C/(h + h_c)$ as the most parsimonious description. This factorisation $D(h, \mu) = A(\mu)\,F(h)$ means that the regularisation length $h_c$ is a *geometric* fingerprint of the cone–plate configuration and is independent of the fluid being measured. Operationally, every sweep is first fitted with $h_c$ free, the distribution of per-sweep $h_c$ values is examined (**Figure 8**), and the median over high-quality fits ($R^{2} > 0.7$, $h_c \in [0.05, 1.5]$ mm) is adopted as the **universal geometric offset** $h_c^\star \approx 0.277$ mm. Every sweep is then refitted with $h_c$ fixed, yielding a single, well-constrained amplitude $A$ per (*fluid*, *RPM*) combination with median $R^{2} \gtrsim 0.99$.
+The universality of the geometric regularisation length is shown in **Figure 8**.
 
 ![Distribution of per-sweep h_c values.](./figures_pipeline/05_hc_distribution.png)
 
 **Figure 8.** Production-pipeline confirmation that the regularisation length is universal. The histogram of per-sweep $h_c$ values (free-$h_c$ first pass) is tight, unimodal, and viscosity-independent. The red line marks the adopted $h_c^\star \approx 0.277$ mm used to refit every sweep, reducing the analysis from a three-parameter to a two-parameter problem and eliminating the entanglement between $A$ and $h_c$ in the inverse calibration.
 
-With $h_c^\star$ fixed, the silicone calibration becomes a one-shot exercise: the relationship between the fitted amplitude $A$ and the manufacturer-labelled viscosity $\mu$ is fitted in log–log space as $\ln A = \ln k + p\,\ln\mu$ (**Figure 9**). On the silicone reference set the fit yields $k \approx 5.9 \times 10^{-9}$ and $p \approx 2.01$ with $R^{2} \approx 0.999$ across more than two decades of viscosity. The empirical exponent $p \approx 2$ reflects the non-trivial coupling between gap geometry, local shear rate, and viscous response that the regularised amplitude integrates along the descent — it is stable across the entire silicone calibration window and yields the inverse calibration
+### 3.2 Material Performance: Newtonian and Non-Newtonian Fluids
 
-$$\mu_{\mathrm{app}} = \left(\frac{A}{k}\right)^{1/p} \tag{9}$$
+With reproducibility established at the acquisition layer, we next evaluate material-level rheological performance using the fixed pipeline of §2.3.
 
-that any subsequent measurement, silicone or otherwise, can invoke without further tuning. Conversion from percent-of-full-scale torque to absolute SI stress is then completed through the single cone-plate identity $\tau\,[\mathrm{Pa}] = c_\tau\,T(\%)$ with $c_\tau = 3(M_{\mathrm{full}}/100)/(2\pi R^{3}) \approx 1.986$ Pa/%, using only the full-scale torque $M_{\mathrm{full}} = 7187$ dyne·cm of the rotational torquemeter.
+#### 3.2.1 Lubricant (Silicone)
+
+Silicone oils act as the Newtonian anchor set and confirm that amplitude-based decoding maps directly to stable apparent viscosity recovery over more than two decades. The calibration trend between fitted amplitude and labelled viscosity remains monotonic and near-linear in log-log space (**Figure 9**), and parity against reference values stays within the target error envelope over the measured shear-rate window.
 
 ![Silicone calibration A = k·μ^p.](./figures_pipeline/06_silicone_calibration.png)
 
-**Figure 9.** Silicone Newtonian calibration. The log–log fit of amplitude $A$ versus manufacturer-labelled viscosity $\mu$ yields $k \approx 5.9 \times 10^{-9}$ and $p \approx 2.01$ with $R^{2} \approx 0.999$ over more than two decades of viscosity. The inverse relation $\mu_{\mathrm{app}} = (A/k)^{1/p}$ becomes the universal viscosity decoder for every subsequent sweep.
+**Figure 9.** Silicone Newtonian material-performance map used for quantitative decoding of apparent viscosity in the fixed pipeline.
 
-### 3.3 Generalization to Non-Newtonian Fluids: Stress–Strain Curves and Power-Law Recovery
+#### 3.2.2 Rheology Modifier Materials (PEG-600k, Solagum, Carbopol, and Sepineo)
 
-The pipeline generalises to non-Newtonian fluids by replacing the constant amplitude $A$ with a shear-rate-dependent amplitude
-
-$$A(\dot\gamma) = A_{0}\,\dot\gamma^{\,n-1}, \tag{10}$$
-
-where $n$ is the flow-behaviour index of a generalised-Newtonian power-law fluid. For every non-silicone fluid measured at two or more distinct RPMs, a linear regression of $\ln A$ on $\ln\dot\gamma$ recovers $n$ directly from the slope and $A_{0}$ from the intercept (**Figure 10**). A simple decision rule classifies the regime: $n > 1.05$ → shear-thickening; $0.95 \le n \le 1.05$ → Newtonian; $n < 0.95$ → shear-thinning, with $n \to 0$ corresponding to the yield-stress / gel-like limit. On the validation set, PEG sits near $n \approx 0.5\!-\!0.6$, Sepineo and Solagum near $n \approx 0.15\!-\!0.33$, and Carbopol approaches the yield-stress limit $n \to 0$, in agreement with the expected chemistry-specific shear-thinning behaviour.
+For rheology modifiers, multi-RPM sweeps reveal non-Newtonian behaviour through shear-rate-dependent amplitude trends. PEG-600k occupies a moderate shear-thinning regime, while Solagum and Sepineo show stronger thinning signatures, and Carbopol approaches a near-yield-stress limit. These behaviours are captured consistently by the same calibrated workflow, without re-parameterization by chemistry.
 
 ![Amplitude flow curves A(γ̇).](./figures_pipeline/07_amplitude_flow_curves.png)
 
-**Figure 10.** Amplitude flow curves $A(\dot\gamma)$ for the non-Newtonian fluids. The dashed log–log lines are the fitted power laws and their slopes give $(n - 1)$ directly. The chemistry families separate cleanly: PEG sits near $n \approx 0.5\!-\!0.6$, Sepineo and Solagum near $n \approx 0.15\!-\!0.33$, and Carbopol approaches $n \to 0$, recovering the expected yield-stress / gel-like limit.
+**Figure 10.** Material-level amplitude flow curves for PEG-600k, Solagum, Carbopol, and Sepineo. Dashed log-log slopes separate the rheology-modifier families by flow behaviour.
 
-A single log–log $\tau$-versus-$\dot\gamma$ master rheogram (**Figure 11**) consolidates every measurement in the dataset. Silicone lines of unit slope $\tau = \mu\,\dot\gamma$ form a Newtonian reference grid; polymer power-law fits $\tau = K\,\dot\gamma^{\,n}$ overlay the grid with reduced slope, and the measured stress points sit directly on top of their respective fits with no per-fluid normalization. The *slope* of each fluid's locus therefore encodes its rheology by inspection. The strongest validation of the entire pipeline is the per-sweep parity test (**Figure 12**), in which both the cone-plate-derived apparent viscosity $\mu_{\mathrm{app}} = (A/k)^{1/p}$ and the cone-plate-derived stress $\tau = c_\tau\,T(\%)$ are compared point-by-point against the manufacturer reference table at the same shear rate, using a log–log interpolation of the quoted reference flow curve. Silicones sit on the unit-slope diagonal by construction, while PEG, Sepineo, Solagum, and Carbopol all fall *inside* the $\pm 2\times$ envelope across their full RPM ladders — the operational definition of agreement with the reference at every shear rate, not just on average.
+To make the transformation from raw descent data to constitutive interpretation explicit, we include two intermediate views. Figure 10a shows per-polymer drag profiles $D(h)$ at each RPM; the family-specific response is expressed primarily as vertical amplitude shift while preserving the fitted profile form. Figure 10b then shows reconstructed apparent viscosity trajectories $\mu_{\mathrm{app}}(\dot\gamma)$ obtained by inverting amplitudes through the silicone calibration.
+
+![Per-polymer drag profiles D(h) at each RPM in the multi-RPM ladder.](./figures_rheology/14a_polymer_Dh_per_RPM.png)
+
+**Figure 10a.** Polymer-family drag profiles across RPM ladders, illustrating consistent profile geometry with shear-rate-dependent amplitude.
+
+![Apparent viscosity η_app(γ̇) inferred from each amplitude through the silicone calibration.](./figures_rheology/14c_polymer_eta_vs_shear.png)
+
+**Figure 10b.** Apparent-viscosity flow curves reconstructed from amplitude calibration for modifier materials.
+
+A consolidated stress-shear-rate view confirms separation of Newtonian and non-Newtonian families while preserving parity with the independent reference rheology.
 
 ![Master rheogram τ vs γ̇ for every fluid in the dataset.](./figures_pipeline/09_master_rheogram.png)
 
-**Figure 11.** Master rheogram of the validation dataset. Silicone Newtonian lines of unit slope form the reference grid; polymer power-law fits cross the grid with reduced slope, classifying each chemistry by inspection. Every measured $(\dot\gamma, \tau)$ point sits on its predicted locus without per-fluid normalization.
+**Figure 11.** Master rheogram of Newtonian and rheology-modifier datasets. The slope transition from unit-slope silicone responses to lower-slope modifier families indicates consistent non-Newtonian classification.
 
 ![Per-sweep parity against the reference rheology.](./figures_pipeline/10_parity_per_sweep.png)
 
-**Figure 12.** Per-sweep parity against the reference rheology. Every measured (*family*, *concentration*, *RPM*) row is compared point-by-point against the manufacturer flow curve at the same shear rate using log–log interpolation. Silicones sit on the unit-slope diagonal by construction; PEG, Sepineo, Solagum, and Carbopol all fall inside the $\pm 2\times$ envelope across their full RPM ladders, the operational definition of agreement with the reference at every shear rate.
+**Figure 12.** Per-sweep parity against the reference rheology across silicone and rheology-modifier materials. Most points remain inside the $\pm 2\times$ engineering acceptance envelope.
 
-The pipeline closes the loop on a per-chemistry basis through the family-resolved rheograms in **Figure 13**, in which the platform-measured points, the fitted constitutive equation, and the independent reference rheology are overlaid on the same axes for each fluid family. The solid line passing through both the filled circles (cone-plate measurements) and the open stars (reference rheology) on the same axes is the visual confirmation that the single calibrated pipeline — universal $h_c^\star$, silicone $(k, p)$, cone-plate $c_\tau$ — correctly recovers the rheology of mechanistically distinct fluids without any per-chemistry retuning. The two declared outputs of the platform — a calibrated stress–shear-rate flow curve and the fitted power-law constitutive equation $\tau = K\,\dot\gamma^{\,n}$ — are therefore obtained from a single pass through a universal analysis pipeline applied directly to the raw torque–displacement output of the automated descent.
+An additional parity view using the polymer-focused discovery aggregation confirms this agreement at the family level over matched shear-rate points.
+
+![Polymer parity: predicted μ_app vs reference at the same shear rate.](./figures_rheology/14d_polymer_parity.png)
+
+**Figure 12a.** Polymer-focused parity against matched-shear reference values using amplitude-decoded apparent viscosity.
+
+Family-resolved overlays further show that measured points, fitted constitutive curves, and independent reference values remain aligned by family, indicating that a single calibrated code path can recover rheology from moderate to strong shear-thinning response.
 
 ![Per-family rheograms with measurements, fitted rheology, and reference values.](./figures_pipeline/13_per_family_rheograms.png)
 
-**Figure 13.** Per-family rheograms on linear axes. Filled circles are the platform-measured $(\dot\gamma, \tau)$, solid lines are the predicted rheology with their constitutive equations (power-law for $\geq 2$ RPMs, Newtonian otherwise), and open stars are the independent reference rheology values. The solid line passing through both markers on the same axes is the closed-loop visual confirmation that the calibrated pipeline correctly recovers the rheology of every chemistry family — from silicone Newtonian fluids to strongly shear-thinning gels — through a single code path.
+**Figure 13.** Per-family rheograms on linear axes. Filled circles: platform measurements; solid lines: fitted constitutive response; open stars: independent reference values.
+
+#### 3.2.3 Thermal Interface Materials (to be added)
+
+Thermal Interface Materials (TIMs) will be incorporated as a dedicated material class in a subsequent dataset expansion. The same analysis and reporting template used for lubricants and rheology modifiers will be applied: amplitude scaling, stress-shear-rate reconstruction, parity testing against reference rheology, and family-resolved constitutive interpretation.
 
 ---
 
@@ -238,14 +322,3 @@ The immediate application of the platform is as the foundational measurement lay
 
 ---
 
-## Editor's Note — Structural Recommendations Applied in This Revision
-
-This is a brief log of the structural changes applied relative to `20260601_Manuscript_Auto_Visco.md`, kept here so the recommendations are visible alongside the revision. Delete this section before submission.
-
-1. **Title and framing.** The original two-tier title (Bayesian-optimization / SDL formulation discovery) was replaced with a platform-validation title that matches the stated outputs (stress–shear-rate curve and power-law constitutive equation). Bayesian-optimization, q-EHVI, ternary-simplex, and Pareto-front content was removed from the body and demoted to a single forward-looking sentence in the Conclusion, where it now reads as future work rather than as a contribution of the present manuscript.
-2. **Heading reduction.** Three nested levels (`### 2.1.1`, `### 2.1.2`, `### 2.1.3`, etc.) were collapsed into single `## 2.x` sections written as continuous prose with bold paragraph leads. Net change: 8 sub-sub-headings removed, 0 new headings added, total heading count reduced from 14 to 9.
-3. **Brookfield mention.** The instrument is now named explicitly only once, in the bill-of-materials of §2.1, and is referred to throughout the rest of the manuscript as *the rotational torquemeter* (with its quoted flow curves called *the reference rheology*), per the request.
-4. **Introduction expansion.** The four bullet groups of the original §1 were rewritten as four flowing paragraphs covering, in order: the high-viscosity characterization bottleneck, the limits of empirical mixing models and the resulting need for ground-truth measurement, the SDL paradigm and the specific obstacles of automating rheology, and the principle that a sufficiently information-rich descent can absorb hardware-level positional uncertainty into the analysis layer. A fifth, dedicated **Scope and objectives** paragraph was added at the end of §1 to declare the two outputs of the platform and to organize the contributions along the three axes (mechanical-engineering, physics / data-science, autonomous-experimentation) requested by the author.
-5. **Story-line of §3.** The Results section was reorganized along the two declared outputs of the platform: §3.1 acquisition (reproducibility, throughput, cross-material robustness), §3.2 inference (silicone calibration, $h_c^\star$, $k$, $p$, $c_\tau$), §3.3 generalization (power-law recovery, master rheogram, parity, per-family rheograms). Cross-references between the three sections were inserted in the opening paragraph of §3 and at the start of §3.2 and §3.3 so that the narrative now reads as a single argument from raw torque trace to fitted constitutive equation.
-6. **Figures.** All 13 main-text figures were preserved with their original paths and captions lightly edited for consistency (e.g. *Brookfield reference* → *reference rheology*; equations numbered (1)–(10)); the two SI placeholder figures were retained as `Figure S1` / `Figure S2`.
-7. **Items intentionally not changed.** The body of §2.2 (lubrication-theory derivation) and the technical paragraphs of §3.2 / §3.3 (regularised-hyperbolic fit, $h_c^\star$ universality, silicone calibration, power-law generalization) were retained verbatim or near-verbatim, because they already read at publication quality and the request was structural rather than line-level.
