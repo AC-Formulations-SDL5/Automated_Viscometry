@@ -407,6 +407,16 @@ class ViscometryWebInterface:
                     'rpm_selection_mode': cfg.rpm_selection_mode,
                     'surface_torque_ref': cfg.surface_torque_ref,
                     'a_cal_r_squared': cfg.a_cal_r_squared,
+                    'discovery_stage2_enabled': cfg.discovery_stage2_enabled,
+                    'ladder_targets': list(cfg.ladder_targets),
+                    'ladder_tolerance_pct': cfg.ladder_tolerance_pct,
+                    'newtonian_n_threshold': cfg.newtonian_n_threshold,
+                    'squeeze_boundary_base': cfg.squeeze_boundary_base,
+                    'hello_probe_rpm': cfg.hello_probe_rpm,
+                    'ladder_max_iterations_per_target': cfg.ladder_max_iterations_per_target,
+                    'landing_torque_window': list(cfg.landing_torque_window),
+                    'min_ladder_points_for_fit': cfg.min_ladder_points_for_fit,
+                    'min_power_law_r_squared': cfg.min_power_law_r_squared,
                 })
             except Exception as e:
                 print(f"Error in api_discovery_config: {e}")

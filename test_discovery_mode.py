@@ -46,9 +46,25 @@ def _default_cfg(**overrides) -> DiscoveryConfig:
         b_cal=B_CAL,
         rpm_min=0.1,
         rpm_max=200.0,
+        discovery_stage2_enabled=False,
     )
     base.update(overrides)
     return DiscoveryConfig(**base)
+
+
+class PowerLawFakeProbe:
+    """Returns torque = k * rpm^n (deterministic ladder testing)."""
+
+    def __init__(self, k: float = 8.0, n: float = 1.0):
+        self.k = k
+        self.n = n
+        self.calls: List[Tuple[int, float, float]] = []
+
+    def __call__(self, cell_id: int, z_mm: float, rpm: float) -> Optional[float]:
+        self.calls.append((cell_id, z_mm, rpm))
+        if rpm <= 0:
+            return None
+        return float(self.k * (rpm ** self.n))
 
 
 class TestPowerLawCalibration(unittest.TestCase):
@@ -297,6 +313,149 @@ class TestDiscoverRpmDuckStepping(unittest.TestCase):
         self.assertEqual(result["status"], "converged")
         self.assertEqual(len(result["probes"]), 2)
         self.assertLess(probe.calls[1][2], probe.calls[0][2])
+
+
+class TestTorqueLadderMath(unittest.TestCase):
+    def test_torque_window_for_target(self):
+        from discovery_torque_ladder import torque_in_target_window, torque_window_for_target
+
+        lo, hi = torque_window_for_target(30.0)
+        self.assertAlmostEqual(lo, 27.5)
+        self.assertAlmostEqual(hi, 32.5)
+        self.assertTrue(torque_in_target_window(30.0, 30.0))
+        self.assertFalse(torque_in_target_window(26.0, 30.0))
+
+    def test_fit_n_probe_newtonian(self):
+        from discovery_torque_ladder import fit_n_probe
+
+        fit = fit_n_probe([1.0, 2.0, 4.0, 8.0], [10.0, 20.0, 40.0, 80.0])
+        self.assertAlmostEqual(fit["n_probe"], 1.0, delta=0.05)
+
+    def test_fit_n_probe_shear_thinning(self):
+        from discovery_torque_ladder import fit_n_probe
+
+        rpms = [1.0, 2.0, 4.0, 8.0, 16.0]
+        torques = [8.0 * (r ** 0.5) for r in rpms]
+        fit = fit_n_probe(rpms, torques)
+        self.assertAlmostEqual(fit["n_probe"], 0.5, delta=0.08)
+
+    def test_is_newtonian_threshold(self):
+        from discovery_torque_ladder import is_newtonian_probe
+
+        self.assertFalse(is_newtonian_probe(0.974))
+        self.assertTrue(is_newtonian_probe(0.975))
+
+    def test_t_top_target_branches(self):
+        from discovery_torque_ladder import t_top_target
+
+        self.assertAlmostEqual(t_top_target(1.0), 30.0)
+        self.assertAlmostEqual(t_top_target(0.5), 50.0 * (0.6 ** 0.5), places=2)
+
+
+class TestDiscoveryLanding(unittest.TestCase):
+    def _mock_cell_data(self, hit_z: float, torque: float, rpm: float = 5.0):
+        return {
+            -65.0: {rpm: [{"torque_percent": 25.0}], "_metrics": {rpm: {"Hit_Detected": False}}},
+            hit_z: {rpm: [{"torque_percent": torque}], "_metrics": {rpm: {"Hit_Detected": False}}},
+            hit_z - 0.02: {
+                rpm: [{"torque_percent": 60.0}],
+                "_metrics": {rpm: {"Hit_Detected": True}},
+            },
+            hit_z - 0.04: {
+                rpm: [{"torque_percent": 61.0}],
+                "_metrics": {rpm: {"Hit_Detected": True}},
+            },
+            hit_z - 0.06: {
+                rpm: [{"torque_percent": 62.0}],
+                "_metrics": {rpm: {"Hit_Detected": True}},
+            },
+        }
+
+    def test_extract_t_bottom_hit_detected(self):
+        from discovery_landing import extract_t_bottom
+
+        data = self._mock_cell_data(-65.22, 48.0)
+        out = extract_t_bottom(data, 5.0, "hit_detected")
+        self.assertAlmostEqual(out["t_bottom"], 48.0)
+        self.assertAlmostEqual(out["z_bottom_mm"], -65.22)
+
+    def test_extract_t_bottom_fail_safe_na(self):
+        from discovery_landing import extract_t_bottom
+
+        data = self._mock_cell_data(-65.22, 48.0)
+        out = extract_t_bottom(data, 5.0, "fail_safe")
+        self.assertIsNone(out["t_bottom"])
+
+    def test_landing_ok_boundaries(self):
+        from discovery_landing import compute_landing_metrics
+
+        ok = compute_landing_metrics(30.0, 50.0, "hit_detected")
+        self.assertTrue(ok["landing_ok"])
+        self.assertEqual(ok["landing_status"], "ok")
+        high = compute_landing_metrics(30.0, 60.0, "hit_detected")
+        self.assertEqual(high["landing_status"], "high")
+        low = compute_landing_metrics(30.0, 40.0, "hit_detected")
+        self.assertEqual(low["landing_status"], "low")
+        na = compute_landing_metrics(30.0, 50.0, "manual_terminate")
+        self.assertEqual(na["landing_status"], "na")
+
+
+class TestDiscoverRpmStage2(unittest.TestCase):
+    def test_stage2_newtonian_converges(self):
+        from discovery_mode import discover_rpm_stage2
+
+        probe = PowerLawFakeProbe(k=6.0, n=1.0)
+        cfg = _default_cfg(
+            discovery_stage2_enabled=True,
+            ladder_max_iterations_per_target=5,
+            hello_probe_rpm=5.0,
+        )
+        result = discover_rpm_stage2(1, probe, config=cfg)
+        if result["status"] == "uncalibrated_cell":
+            self.skipTest("cell 1 not calibrated")
+        self.assertEqual(result["status"], "converged")
+        self.assertTrue(result.get("is_newtonian"))
+        self.assertEqual(result.get("discovery_path"), "newtonian")
+        self.assertIsNotNone(result.get("rpm_30"))
+        self.assertIsNotNone(result.get("n_probe"))
+
+    def test_stage2_shear_thinning_path(self):
+        from discovery_mode import discover_rpm_stage2
+
+        probe = PowerLawFakeProbe(k=12.0, n=0.5)
+        cfg = _default_cfg(
+            discovery_stage2_enabled=True,
+            ladder_max_iterations_per_target=6,
+            hello_probe_rpm=2.0,
+            min_power_law_r_squared=0.5,
+        )
+        result = discover_rpm_stage2(1, probe, config=cfg)
+        if result["status"] == "uncalibrated_cell":
+            self.skipTest("cell 1 not calibrated")
+        self.assertEqual(result["status"], "converged")
+        self.assertFalse(result.get("is_newtonian"))
+        self.assertEqual(result.get("discovery_path"), "non_newtonian")
+        self.assertGreater(result.get("T_top_target", 0), 30.0)
+
+    def test_discovery_payload_stage2_fields(self):
+        from discovery_runner import discovery_result_to_web_payload
+
+        payload = discovery_result_to_web_payload(
+            3,
+            {
+                "rpm": 4.5,
+                "status": "converged",
+                "probes": [],
+                "n_probe": 0.52,
+                "T_top": 38.0,
+                "T_bottom": 50.0,
+                "S": 1.32,
+                "landing_status": "ok",
+            },
+        )
+        self.assertEqual(payload["n_probe"], 0.52)
+        self.assertEqual(payload["T_top"], 38.0)
+        self.assertEqual(payload["landing_status"], "ok")
 
 
 class TestWebDiscoverySafety(unittest.TestCase):

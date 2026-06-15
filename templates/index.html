@@ -804,7 +804,7 @@
                 <div class="discovery-experiment-stack">
                     <section class="discovery-card discovery-info-banner">
                         <p class="discovery-info-title">Discovery Mode</p>
-                        <p class="discovery-info-text">Autonomous rheological analysis for materials of unknown viscosity. <strong>Step 1:</strong> smart RPM selection — the system probes each <em>calibrated</em> cell near the bulk offset (~0.35&nbsp;mm above rough hit-point) until torque lands in the <strong>25–35%</strong> window. <strong>Step 2:</strong> a full Z-height scan runs automatically at the discovered RPM (same pipeline as Perform Experiment).</p>
+                        <p class="discovery-info-text">Autonomous rheological analysis for materials of unknown viscosity. <strong>Step 1:</strong> a five-point torque ladder (30–70%) at the bulk offset (~0.35&nbsp;mm above rough hit-point) fits <em>n</em><sub>probe</sub> and selects the discovery RPM (Newtonian fluids use the classic 30% target). <strong>Step 2:</strong> a full Z-height scan runs at the discovered RPM (same pipeline as Perform Experiment).</p>
                         <p class="discovery-info-subtext">Only Z-calibrated cells may be selected. Washing runs between cells as in a normal experiment.</p>
                     </section>
 
@@ -817,7 +817,7 @@
                     <section class="discovery-card parameters-card">
                         <div class="card-title-row">
                             <h2>Discovery Experiment</h2>
-                            <span class="discovery-step-badge">Step 1 — RPM</span>
+                            <span class="discovery-step-badge">Step 1 — Torque ladder</span>
                         </div>
                         <form id="discovery-run-settings-form" class="run-settings-form run-settings-form-grid">
                             <div class="run-settings-row run-settings-primary-row">
@@ -959,12 +959,15 @@
                             <div><span class="discovery-status-label">Cell</span><strong id="discovery-status-cell">—</strong></div>
                             <div><span class="discovery-status-label">Discovered RPM</span><strong id="discovery-status-rpm" class="mono">—</strong></div>
                             <div><span class="discovery-status-label">η estimate (cP)</span><strong id="discovery-status-eta" class="mono">—</strong></div>
+                            <div><span class="discovery-status-label">n<sub>probe</sub></span><strong id="discovery-status-n-probe" class="mono">—</strong></div>
+                            <div><span class="discovery-status-label">Landing</span><strong id="discovery-status-landing" class="discovery-landing-chip discovery-landing-na">—</strong></div>
                         </div>
                         <div class="table-wrap">
                             <table class="duration-table discovery-probe-table">
                                 <thead>
                                     <tr>
                                         <th>#</th>
+                                        <th>Target %</th>
                                         <th>RPM</th>
                                         <th>Torque %</th>
                                         <th>η est (cP)</th>

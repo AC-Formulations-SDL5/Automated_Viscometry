@@ -532,6 +532,8 @@ class ViscometryDashboard {
             discoveryStatusCell: document.getElementById("discovery-status-cell"),
             discoveryStatusRpm: document.getElementById("discovery-status-rpm"),
             discoveryStatusEta: document.getElementById("discovery-status-eta"),
+            discoveryStatusNProbe: document.getElementById("discovery-status-n-probe"),
+            discoveryStatusLanding: document.getElementById("discovery-status-landing"),
             discoveryZStartOffsetRow: document.getElementById("discovery-z-start-offset-row"),
             discoveryZStartOffsetMm: document.getElementById("discovery-z-start-offset-mm"),
             discoveryGaugeValue: document.getElementById("discovery-gauge-value"),
@@ -2126,6 +2128,63 @@ class ViscometryDashboard {
             });
     }
 
+    _formatDiscoveryLandingChip(entry) {
+        const status = entry?.landing_status;
+        if (!status || status === "na") {
+            return { text: "N/A", cls: "discovery-landing-na" };
+        }
+        const tBottom = entry?.T_bottom;
+        const suffix = tBottom != null ? ` (${Number(tBottom).toFixed(1)}%)` : "";
+        if (status === "ok") {
+            return { text: `OK${suffix}`, cls: "discovery-landing-ok" };
+        }
+        if (status === "high") {
+            return { text: `High${suffix}`, cls: "discovery-landing-warn" };
+        }
+        if (status === "low") {
+            return { text: `Low${suffix}`, cls: "discovery-landing-warn" };
+        }
+        return { text: "—", cls: "discovery-landing-na" };
+    }
+
+    _discoveryProbeRowHtml(p, idx) {
+        const target = p.ladder_target_pct != null
+            ? Number(p.ladder_target_pct).toFixed(0)
+            : "—";
+        return `<tr><td>${idx + 1}</td><td class="mono">${target}</td>`
+            + `<td class="mono">${Number(p.rpm).toFixed(2)}</td>`
+            + `<td class="mono">${Number(p.torque).toFixed(2)}</td>`
+            + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`;
+    }
+
+    _buildDiscoveryStage2SummaryHtml(entry) {
+        if (!entry) {
+            return "";
+        }
+        const nProbe = entry.n_probe != null ? Number(entry.n_probe).toFixed(3) : "—";
+        const path = entry.discovery_path
+            ? `<span class="protocol-mode-badge mode-discovery">${this._escapeHtml(String(entry.discovery_path))}</span>`
+            : "";
+        const landing = this._formatDiscoveryLandingChip(entry);
+        const landingHtml = `<span class="discovery-landing-chip ${landing.cls}">${this._escapeHtml(landing.text)}</span>`;
+        const ladderRpms = [30, 40, 50, 60, 70].map((t) => {
+            const rpm = entry[`rpm_${t}`];
+            return rpm != null ? `${t}%→${Number(rpm).toFixed(2)}` : null;
+        }).filter(Boolean).join(" · ");
+        return `
+            <div class="summary-discovery-stage2-block">
+                <div><strong>Rheology</strong> ${path}</div>
+                <div class="discovery-stage2-metrics">
+                    <span>n<sub>probe</sub> = <span class="mono">${nProbe}</span></span>
+                    <span>T<sub>top</sub> = <span class="mono">${entry.T_top != null ? Number(entry.T_top).toFixed(1) : "—"}%</span></span>
+                    <span>T<sub>bottom</sub> = <span class="mono">${entry.T_bottom != null ? Number(entry.T_bottom).toFixed(1) : "—"}%</span></span>
+                    <span>S = <span class="mono">${entry.S != null ? Number(entry.S).toFixed(3) : "—"}</span></span>
+                    <span>Landing: ${landingHtml}</span>
+                </div>
+                ${ladderRpms ? `<div class="discovery-ladder-rpm-line">Ladder RPM: ${this._escapeHtml(ladderRpms)}</div>` : ""}
+            </div>`;
+    }
+
     ingestDiscoveryUpdate(payload) {
         if (!payload) return;
         const cellId = payload.cell_id != null ? Number(payload.cell_id) : null;
@@ -2138,9 +2197,16 @@ class ViscometryDashboard {
             this.el.discoveryStatusPill.className = "discovery-status-pill";
             if (status === "converged" || status === "converged_by_stability") {
                 this.el.discoveryStatusPill.classList.add("converged");
-            } else if (status === "over_range" || status === "under_range" || status === "probe_failed") {
+            } else if (
+                status === "over_range"
+                || status === "under_range"
+                || status === "probe_failed"
+                || status === "ladder_failed"
+                || status === "ladder_over_range"
+                || status === "ladder_under_range"
+            ) {
                 this.el.discoveryStatusPill.classList.add("failed");
-            } else if (status === "probing") {
+            } else if (status === "probing" || status === "ladder_probing") {
                 this.el.discoveryStatusPill.classList.add("probing");
             }
         }
@@ -2155,12 +2221,20 @@ class ViscometryDashboard {
                 ? Number(payload.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
                 : "—";
         }
+        if (this.el.discoveryStatusNProbe) {
+            this.el.discoveryStatusNProbe.textContent = payload.n_probe != null
+                ? Number(payload.n_probe).toFixed(3)
+                : "—";
+        }
+        if (this.el.discoveryStatusLanding) {
+            const landing = this._formatDiscoveryLandingChip(payload);
+            this.el.discoveryStatusLanding.textContent = landing.text;
+            this.el.discoveryStatusLanding.className = `discovery-landing-chip ${landing.cls}`;
+        }
         const probes = payload.probes || [];
         if (this.el.discoveryProbeTableBody) {
             this.el.discoveryProbeTableBody.innerHTML = probes.map((p, idx) => (
-                `<tr><td>${idx + 1}</td><td class="mono">${Number(p.rpm).toFixed(2)}</td>`
-                + `<td class="mono">${Number(p.torque).toFixed(2)}</td>`
-                + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`
+                this._discoveryProbeRowHtml(p, idx)
             )).join("");
         }
         if (this.el.discoveryProbeEmpty) {
@@ -2168,6 +2242,7 @@ class ViscometryDashboard {
         }
         this.updateDiscoveryGraphCellTabs();
         this._scheduleDiscoveryPlotRefresh();
+        this._refreshDiscoveryRheologyPanels();
     }
 
     _getDiscoveredRpmForCell(cellId) {
@@ -2187,15 +2262,11 @@ class ViscometryDashboard {
             return "";
         }
         const review = Boolean(options.review);
-        const rows = probes.map((p, idx) => (
-            `<tr><td>${idx + 1}</td><td class="mono">${Number(p.rpm).toFixed(2)}</td>`
-            + `<td class="mono">${Number(p.torque).toFixed(2)}</td>`
-            + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`
-        )).join("");
+        const rows = probes.map((p, idx) => this._discoveryProbeRowHtml(p, idx)).join("");
         const tableHtml = `
             <table class="duration-table discovery-probe-table discovery-review-table">
                 <thead>
-                    <tr><th>#</th><th>RPM</th><th>Torque %</th><th>η est (cP)</th></tr>
+                    <tr><th>#</th><th>Target %</th><th>RPM</th><th>Torque %</th><th>η est (cP)</th></tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>`;
@@ -2203,6 +2274,74 @@ class ViscometryDashboard {
             return `<div class="discovery-review-probe-scroll">${tableHtml}</div>`;
         }
         return tableHtml;
+    }
+
+    _buildDiscoverySummaryBlockHtml(cellId, entry) {
+        if (!entry || !Array.isArray(entry.probes) || entry.probes.length === 0) {
+            return "";
+        }
+        const status = entry.status || "—";
+        const rpm = entry.rpm != null ? Number(entry.rpm).toFixed(2) : "—";
+        const eta = entry.eta_estimate != null
+            ? Number(entry.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
+            : "—";
+        return `
+            <div class="summary-discovery-cell-block">
+                <strong>Cell ${cellId} — RPM discovery</strong>
+                <div>Status: ${this._escapeHtml(String(status))} · Discovered RPM: ${rpm} · η est: ${eta} cP</div>
+                ${this._buildDiscoveryStage2SummaryHtml(entry)}
+                ${this._buildDiscoveryProbeTableHtml(entry.probes)}
+            </div>`;
+    }
+
+    _refreshDiscoveryRheologyPanels() {
+        if (!this.el.predictedViscosityCharts) {
+            return;
+        }
+        Object.entries(this.discoveryResultsByCell || {}).forEach(([cellKey, entry]) => {
+            const cellId = Number(cellKey);
+            if (!Number.isFinite(cellId)) {
+                return;
+            }
+            const wrap = this.el.predictedViscosityCharts.querySelector(`[data-pv-cell-id="${cellId}"]`);
+            if (!wrap) {
+                return;
+            }
+            let panel = wrap.querySelector(`[data-dr-panel="${cellId}"]`);
+            if (!panel) {
+                return;
+            }
+            panel.innerHTML = this._buildDiscoveryRheologyPanelInnerHtml(entry);
+        });
+    }
+
+    _buildDiscoveryRheologyPanelInnerHtml(entry) {
+        if (!entry || entry.n_probe == null && entry.T_top == null) {
+            return `<div class="discovery-rheology-empty">No Stage 2 discovery data for this cell.</div>`;
+        }
+        const landing = this._formatDiscoveryLandingChip(entry);
+        const rows = [
+            ["n_probe", entry.n_probe != null ? Number(entry.n_probe).toFixed(3) : "—"],
+            ["Newtonian", entry.is_newtonian == null ? "—" : (entry.is_newtonian ? "Yes" : "No")],
+            ["T_top", entry.T_top != null ? `${Number(entry.T_top).toFixed(1)}%` : "—"],
+            ["T_bottom", entry.T_bottom != null ? `${Number(entry.T_bottom).toFixed(1)}%` : "—"],
+            ["S", entry.S != null ? Number(entry.S).toFixed(3) : "—"],
+            ["Landing", landing.text],
+        ];
+        const ladderRows = [30, 40, 50, 60, 70].map((t) => {
+            const rpm = entry[`rpm_${t}`];
+            if (rpm == null) {
+                return "";
+            }
+            return `<tr><td>${t}%</td><td class="mono">${Number(rpm).toFixed(2)}</td></tr>`;
+        }).filter(Boolean).join("");
+        return `
+            <div class="discovery-rheology-title">Discovery Rheology</div>
+            <table class="discovery-rheology-metrics-table">
+                ${rows.map(([k, v]) => `<tr><th>${k}</th><td class="mono">${this._escapeHtml(String(v))}</td></tr>`).join("")}
+            </table>
+            ${ladderRows ? `<table class="discovery-rheology-ladder-table"><thead><tr><th>Target</th><th>RPM</th></tr></thead><tbody>${ladderRows}</tbody></table>` : ""}
+            <div class="discovery-landing-chip ${landing.cls}">${this._escapeHtml(landing.text)}</div>`;
     }
 
     getActiveDiscoveryGraphCellId() {
@@ -6089,20 +6228,7 @@ class ViscometryDashboard {
         const discoveryResults = exp.discovery_results || {};
         const discoveryBlocks = (exp.cells || []).map((cellId) => {
             const entry = discoveryResults[String(cellId)] || discoveryResults[cellId];
-            if (!entry || !Array.isArray(entry.probes) || entry.probes.length === 0) {
-                return "";
-            }
-            const status = entry.status || "—";
-            const rpm = entry.rpm != null ? Number(entry.rpm).toFixed(2) : "—";
-            const eta = entry.eta_estimate != null
-                ? Number(entry.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
-                : "—";
-            return `
-                <div class="summary-discovery-cell-block">
-                    <strong>Cell ${cellId} — RPM discovery</strong>
-                    <div>Status: ${this._escapeHtml(String(status))} · Discovered RPM: ${rpm} · η est: ${eta} cP</div>
-                    ${this._buildDiscoveryProbeTableHtml(entry.probes)}
-                </div>`;
+            return this._buildDiscoverySummaryBlockHtml(cellId, entry);
         }).filter(Boolean).join("");
         if (discoveryBlocks && leftEl) {
             leftEl.insertAdjacentHTML("beforeend", discoveryBlocks);
@@ -6798,21 +6924,24 @@ class ViscometryDashboard {
                     <div class="predicted-viscosity-cell-heading" data-pv-heading="${cellId}">Cell ${cellId}</div>
                     <div class="predicted-viscosity-plot-row">
                         <div class="predicted-viscosity-plot" data-pv-plot="${cellId}"></div>
-                        <aside class="predicted-viscosity-params-panel">
-                            <table class="predicted-viscosity-params-table" data-pv-params="${cellId}">
-                                <thead>
-                                    <tr>
-                                        <th>RPM</th>
-                                        <th>η (kCp)</th>
-                                        <th>A</th>
-                                        <th>R²</th>
-                                        <th>pts</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody data-pv-params-body="${cellId}"></tbody>
-                            </table>
-                        </aside>
+                        <div class="predicted-viscosity-side-panels">
+                            <aside class="predicted-viscosity-params-panel">
+                                <table class="predicted-viscosity-params-table" data-pv-params="${cellId}">
+                                    <thead>
+                                        <tr>
+                                            <th>RPM</th>
+                                            <th>η (kCp)</th>
+                                            <th>A</th>
+                                            <th>R²</th>
+                                            <th>pts</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody data-pv-params-body="${cellId}"></tbody>
+                                </table>
+                            </aside>
+                            <aside class="discovery-rheology-panel" data-dr-panel="${cellId}"></aside>
+                        </div>
                     </div>`;
             }
 
@@ -6933,6 +7062,8 @@ class ViscometryDashboard {
                 wrap.remove();
             }
         });
+
+        this._refreshDiscoveryRheologyPanels();
     }
 
     updateTable() {
@@ -7616,15 +7747,14 @@ class ViscometryDashboard {
         const discoveryEntry = this._getDiscoveryResultForReviewCell(cellId);
         let discoveryBlock = "";
         if (discoveryEntry && Array.isArray(discoveryEntry.probes) && discoveryEntry.probes.length > 0) {
-            const dStatus = discoveryEntry.status || "—";
-            const dRpm = discoveryEntry.rpm != null ? Number(discoveryEntry.rpm).toFixed(2) : "—";
             const dEta = discoveryEntry.eta_estimate != null
                 ? Number(discoveryEntry.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
                 : "—";
             discoveryBlock = `
                 <div class="summary-discovery-cell-block">
                     <div><strong>RPM discovery</strong> <span class="protocol-mode-badge mode-discovery">Discovery</span></div>
-                    <div>Status: ${this._escapeHtml(String(dStatus))} · Discovered RPM: ${dRpm} · η est: ${dEta} cP</div>
+                    <div>Status: ${this._escapeHtml(String(discoveryEntry.status || "—"))} · Discovered RPM: ${discoveryEntry.rpm != null ? Number(discoveryEntry.rpm).toFixed(2) : "—"} · η est: ${dEta} cP</div>
+                    ${this._buildDiscoveryStage2SummaryHtml(discoveryEntry)}
                     ${this._buildDiscoveryProbeTableHtml(discoveryEntry.probes, { review: true })}
                 </div>`;
         }

@@ -4823,7 +4823,7 @@ body.discovery-active {
 
 .discovery-status-summary {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 12px;
     margin-bottom: 14px;
 }
@@ -4892,6 +4892,91 @@ body.discovery-active {
     border-radius: var(--radius-card);
     background: var(--discovery-accent-subtle);
     border: 1px solid var(--discovery-border);
+}
+
+.summary-discovery-stage2-block {
+    margin: 8px 0;
+    font-size: 0.86rem;
+}
+
+.discovery-stage2-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin-top: 6px;
+}
+
+.discovery-ladder-rpm-line {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.discovery-landing-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.discovery-landing-ok {
+    background: var(--color-green-badge-bg, rgba(34, 139, 34, 0.15));
+    color: var(--color-green-text, #1b6b1b);
+    border: 1px solid var(--color-green-border, rgba(34, 139, 34, 0.35));
+}
+
+.discovery-landing-warn {
+    background: var(--color-amber-badge-bg, rgba(255, 165, 0, 0.15));
+    color: var(--color-amber-text, #9a5b00);
+    border: 1px solid var(--color-amber-border, rgba(255, 165, 0, 0.35));
+}
+
+.discovery-landing-na {
+    background: rgba(120, 130, 150, 0.12);
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.08));
+}
+
+.predicted-viscosity-side-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 220px;
+}
+
+.discovery-rheology-panel {
+    padding: 10px 12px;
+    border-radius: var(--radius-card);
+    background: var(--discovery-glass, rgba(235, 242, 255, 0.72));
+    border: 1px solid var(--discovery-border);
+    border-left: 3px solid var(--discovery-accent);
+    backdrop-filter: blur(var(--glass-blur));
+    font-size: 0.8rem;
+}
+
+.discovery-rheology-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--discovery-accent);
+}
+
+.discovery-rheology-metrics-table,
+.discovery-rheology-ladder-table {
+    width: 100%;
+    margin-bottom: 8px;
+}
+
+.discovery-rheology-metrics-table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding-right: 8px;
+}
+
+.discovery-rheology-empty {
+    color: var(--text-muted);
+    font-size: 0.78rem;
 }
 
 .discovery-review-table {

@@ -1782,8 +1782,9 @@ def _append_discovery_csv_metadata(csv_writer) -> None:
 
     csv_writer.writerow(["# Discovery Mode Results"])
     csv_writer.writerow([
-        "# Cell,Cell_Label,Status,Discovered_RPM,eta_est_cP,Target_Z_mm,"
-        "Probe#,Probe_RPM,Probe_Torque_%,Probe_eta_cP"
+        "# Cell,Cell_Label,n_probe,is_newtonian,T_top,T_top_target,T_bottom,Z_bottom_mm,S,"
+        "landing_ok,landing_status,rpm_30,rpm_40,rpm_50,rpm_60,rpm_70,power_law_r2,"
+        "discovery_path,status,Discovered_RPM,eta_est_cP,Target_Z_mm"
     ])
     for cell_key in sorted(results.keys(), key=lambda k: int(k)):
         entry = results.get(cell_key) or {}
@@ -1792,34 +1793,85 @@ def _append_discovery_csv_metadata(csv_writer) -> None:
         except (TypeError, ValueError):
             continue
         label = CELL_CONTENT_MAP.get(cell_id, "")
-        status = entry.get("status", "")
-        discovered_rpm = entry.get("rpm", "")
-        eta_est = entry.get("eta_estimate", "")
-        target_z = entry.get("target_z_mm", "")
-        probes = entry.get("probes") or []
-        if not probes:
-            csv_writer.writerow([
-                f"# {cell_id},{label},{status},"
-                f"{'' if discovered_rpm is None else discovered_rpm},"
-                f"{'' if eta_est is None else eta_est},"
-                f"{'' if target_z is None else target_z},,,,"
-            ])
+        csv_writer.writerow([
+            f"# {cell_id},{label},"
+            f"{entry.get('n_probe', '')},"
+            f"{entry.get('is_newtonian', '')},"
+            f"{entry.get('T_top', '')},"
+            f"{entry.get('T_top_target', '')},"
+            f"{entry.get('T_bottom', '')},"
+            f"{entry.get('Z_bottom_mm', '')},"
+            f"{entry.get('S', '')},"
+            f"{entry.get('landing_ok', '')},"
+            f"{entry.get('landing_status', '')},"
+            f"{entry.get('rpm_30', '')},"
+            f"{entry.get('rpm_40', '')},"
+            f"{entry.get('rpm_50', '')},"
+            f"{entry.get('rpm_60', '')},"
+            f"{entry.get('rpm_70', '')},"
+            f"{entry.get('power_law_r2', '')},"
+            f"{entry.get('discovery_path', '')},"
+            f"{entry.get('status', '')},"
+            f"{entry.get('rpm', '')},"
+            f"{entry.get('eta_estimate', '')},"
+            f"{entry.get('target_z_mm', '')}",
+        ])
+    csv_writer.writerow([
+        "# Probe detail: Cell,Cell_Label,Probe#,Probe_RPM,Probe_Torque_%,"
+        "Probe_eta_cP,Ladder_Target_%"
+    ])
+    for cell_key in sorted(results.keys(), key=lambda k: int(k)):
+        entry = results.get(cell_key) or {}
+        try:
+            cell_id = int(cell_key)
+        except (TypeError, ValueError):
             continue
+        label = CELL_CONTENT_MAP.get(cell_id, "")
+        probes = entry.get("probes") or []
         for idx, probe in enumerate(probes, 1):
             p_rpm = probe.get("rpm", "")
             p_torque = probe.get("torque", "")
             p_eta = probe.get("eta_est", "")
+            ladder_tgt = probe.get("ladder_target_pct", "")
             csv_writer.writerow([
-                f"# {cell_id},{label},{status},"
-                f"{'' if discovered_rpm is None else discovered_rpm},"
-                f"{'' if eta_est is None else eta_est},"
-                f"{'' if target_z is None else target_z},"
-                f"{idx},"
+                f"# {cell_id},{label},{idx},"
                 f"{'' if p_rpm is None else p_rpm},"
                 f"{'' if p_torque is None else p_torque},"
-                f"{'' if p_eta is None else p_eta}",
+                f"{'' if p_eta is None else p_eta},"
+                f"{'' if ladder_tgt is None else ladder_tgt}",
             ])
     csv_writer.writerow([])
+
+
+def _merge_discovery_landing_after_descent(
+    cell_id: int,
+    cell_data: Dict[float, Dict[float, Optional[List[Dict]]]],
+    discovery_rpm: float,
+    termination_reason: str,
+) -> None:
+    """Enrich discovery_results_by_cell with post-descent T_bottom, S, landing flag."""
+    try:
+        from discovery_landing import merge_landing_into_discovery_result
+        from discovery_mode import load_discovery_config
+        from discovery_runner import discovery_result_to_web_payload
+        from web_interface import web_interface
+
+        cfg = load_discovery_config()
+        key = str(int(cell_id))
+        existing = dict(web_interface.discovery_results_by_cell.get(key) or {})
+        if not existing:
+            return
+        merged = merge_landing_into_discovery_result(
+            existing,
+            cell_data,
+            float(discovery_rpm),
+            termination_reason,
+            landing_window=cfg.landing_torque_window,
+        )
+        payload = discovery_result_to_web_payload(cell_id, merged)
+        web_interface.record_discovery_result(cell_id, payload)
+    except Exception as exc:
+        print(f"  Warning: discovery landing metrics failed for Cell {cell_id}: {exc}")
 
 
 def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
@@ -2525,6 +2577,7 @@ def main():
                     is_calibration_like_run = mode in ("calibration", "recalibration")
                     discovery_handoff_z: Optional[float] = None
                     skip_initial_safe_move = False
+                    discovery_rpm_for_landing: Optional[float] = None
 
                     if DISCOVERY_MODE_ENABLED and not is_calibration_like_run:
                         try:
@@ -2571,6 +2624,7 @@ def main():
                             except Exception:
                                 pass
                             cell_rpms = discovered_rpms
+                            discovery_rpm_for_landing = float(cell_rpms[0])
                             discovery_handoff_z = discovery_result.get("target_z_mm")
                             skip_initial_safe_move = True
                             print(
@@ -2648,6 +2702,18 @@ def main():
                     completed_cells.append(global_cell)
                     termination_by_cell[global_cell] = str(feedback_summary.get("exit_reason", "normal"))
                     print(f"Cell {global_cell} testing completed")
+
+                    if (
+                        DISCOVERY_MODE_ENABLED
+                        and discovery_rpm_for_landing is not None
+                        and not is_calibration_like_run
+                    ):
+                        _merge_discovery_landing_after_descent(
+                            global_cell,
+                            cell_data,
+                            discovery_rpm_for_landing,
+                            termination_by_cell[global_cell],
+                        )
 
                     if is_calibration_like_run:
                         # Extract rough hitpoint for post-run review (not auto-saved to disk)

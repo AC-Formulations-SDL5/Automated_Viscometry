@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from discovery_mode import (
     discover_rpm,
+    discover_rpm_stage2,
     get_bulk_probe_z,
     is_discovery_success,
     load_discovery_config,
@@ -14,19 +15,44 @@ from discovery_probe import MeasureFn, MoveFn, RowResolver, make_probe_executor
 from discovery_rpm_calibration import round_rpm_2dp
 from discovery_types import DiscoveryConfig, DiscoveryProbeRecord, DiscoveryResult
 
+_STAGE2_PAYLOAD_KEYS = (
+    "n_probe",
+    "is_newtonian",
+    "power_law_r2",
+    "discovery_path",
+    "rpm_30",
+    "rpm_40",
+    "rpm_50",
+    "rpm_60",
+    "rpm_70",
+    "torque_30",
+    "torque_40",
+    "torque_50",
+    "torque_60",
+    "torque_70",
+    "T_top_target",
+    "T_top",
+    "T_bottom",
+    "Z_bottom_mm",
+    "S",
+    "landing_ok",
+    "landing_status",
+    "ladder_status",
+)
+
 
 def discovery_result_to_web_payload(cell_id: int, result: DiscoveryResult) -> Dict[str, Any]:
     rpm = result.get("rpm")
     probes = result.get("probes", [])
     rounded_probes = []
-    for probe in probes:
-        if not isinstance(probe, dict):
+    for probe_row in probes:
+        if not isinstance(probe_row, dict):
             continue
-        entry = dict(probe)
+        entry = dict(probe_row)
         if entry.get("rpm") is not None:
             entry["rpm"] = round_rpm_2dp(float(entry["rpm"]))
         rounded_probes.append(entry)
-    return {
+    payload: Dict[str, Any] = {
         "cell_id": int(cell_id),
         "rpm": round_rpm_2dp(float(rpm)) if rpm is not None else None,
         "eta_estimate": result.get("eta_estimate"),
@@ -36,6 +62,10 @@ def discovery_result_to_web_payload(cell_id: int, result: DiscoveryResult) -> Di
         "target_z_mm": result.get("target_z_mm"),
         "material_label": result.get("material_label"),
     }
+    for key in _STAGE2_PAYLOAD_KEYS:
+        if key in result:
+            payload[key] = result.get(key)
+    return payload
 
 
 def _emit_discovery_update(cell_id: int, result: DiscoveryResult) -> None:
@@ -109,8 +139,13 @@ def run_discovery_for_cell(
         try:
             from web_interface import web_interface
 
+            label = (
+                "Stage 2 torque ladder"
+                if cfg.discovery_stage2_enabled
+                else "RPM probe"
+            )
             web_interface.update_status(
-                f"Discovery: Cell {cell_id} — probing RPM at Z={target_z:.3f} mm (bulk offset)"
+                f"Discovery: Cell {cell_id} — {label} at Z={target_z:.3f} mm (bulk offset)"
             )
         except Exception:
             pass
@@ -119,7 +154,8 @@ def run_discovery_for_cell(
         if web_emit:
             _emit_discovery_update(cell_id, partial)
 
-    result = discover_rpm(
+    discover_fn = discover_rpm_stage2 if cfg.discovery_stage2_enabled else discover_rpm
+    result = discover_fn(
         cell_id,
         probe,
         eta_guess=eta_guess,

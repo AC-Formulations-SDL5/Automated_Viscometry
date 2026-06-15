@@ -198,6 +198,16 @@ def write_discovery_calibration_json(
         "max_iterations": 3,
         "valid_rpms": [float(r) for r in valid_rpms],
         "viscosity_table_path": viscosity_table_path,
+        "discovery_stage2_enabled": True,
+        "ladder_targets": [30.0, 40.0, 50.0, 60.0, 70.0],
+        "ladder_tolerance_pct": 2.5,
+        "newtonian_n_threshold": 0.975,
+        "squeeze_boundary_base": 0.6,
+        "hello_probe_rpm": 5.0,
+        "ladder_max_iterations_per_target": 3,
+        "landing_torque_window": [45.0, 55.0],
+        "min_ladder_points_for_fit": 3,
+        "min_power_law_r_squared": 0.85,
         "notes": (
             f"K_BULK: {fit_result.get('fit_method', 'unknown')}, n={fit_result.get('n_points', 0)}; "
             f"power_law: {power_law.get('fit_method', 'unknown')}, "
