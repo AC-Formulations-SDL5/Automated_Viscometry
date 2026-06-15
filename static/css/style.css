@@ -743,7 +743,7 @@ body.running .header-sweep {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 14px;
-    align-items: stretch;
+    align-items: start;
 }
 
 .cal-mini-tracking-col {
@@ -751,7 +751,6 @@ body.running .header-sweep {
     flex-direction: column;
     justify-content: center;
     gap: 6px;
-    min-height: 100%;
     padding: 10px 12px;
     border-radius: var(--radius-card);
     background: rgba(255, 255, 255, 0.42);
@@ -996,7 +995,7 @@ body.running .header-sweep {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
-    align-items: stretch;
+    align-items: start;
     width: 100%;
 }
 
@@ -1004,7 +1003,7 @@ body.running .header-sweep {
     display: grid;
     grid-template-columns: minmax(120px, 1.15fr) minmax(100px, 0.85fr);
     gap: 8px;
-    align-items: stretch;
+    align-items: start;
     min-width: 0;
     min-height: 0;
 }
@@ -1015,7 +1014,7 @@ body.running .header-sweep {
 }
 
 .tracking-unit-major > .status-block {
-    height: 100%;
+    height: auto;
 }
 
 .tracking-unit-minor {
@@ -4293,14 +4292,31 @@ body.experiment-review-active {
 }
 
 .data-review-modal,
-.calibration-review-modal,
-.experiment-review-modal {
+.calibration-review-modal {
     width: min(92vw, 1100px);
     height: min(82vh, 820px);
     min-width: 320px;
     min-height: 360px;
     max-width: calc(100vw - 32px);
     max-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
+    padding: 16px 18px;
+    border-radius: var(--radius-card);
+    background: var(--glass-white-strong);
+    backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-glass-hover);
+}
+
+.experiment-review-modal {
+    width: min(92vw, 1100px);
+    height: auto;
+    min-width: 320px;
+    min-height: 360px;
+    max-width: calc(100vw - 32px);
+    max-height: min(88vh, 780px);
     display: flex;
     flex-direction: column;
     padding: 16px 18px;
@@ -4364,8 +4380,7 @@ body.experiment-review-active {
 }
 
 .data-review-body,
-.calibration-review-body,
-.experiment-review-body {
+.calibration-review-body {
     flex: 1;
     min-height: 0;
     display: flex;
@@ -4373,9 +4388,17 @@ body.experiment-review-active {
     gap: 12px;
 }
 
+.experiment-review-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
 .data-review-plot,
-.calibration-review-plot,
-.experiment-review-plot {
+.calibration-review-plot {
     flex: 1;
     min-height: min(52vh, 480px);
     border-radius: var(--radius-sm);
@@ -4383,9 +4406,16 @@ body.experiment-review-active {
     border: 1px solid rgba(180, 200, 230, 0.55);
 }
 
+.experiment-review-plot {
+    flex: 1;
+    min-height: min(40vh, 360px);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(180, 200, 230, 0.55);
+}
+
 .data-review-footer,
-.calibration-review-footer,
-.experiment-review-footer {
+.calibration-review-footer {
     flex-shrink: 0;
     display: grid;
     grid-template-columns: 1fr auto;
@@ -4393,9 +4423,17 @@ body.experiment-review-active {
     align-items: stretch;
 }
 
+.experiment-review-footer {
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 14px;
+    align-items: start;
+    min-height: 0;
+}
+
 .data-review-summary,
-.calibration-review-summary,
-.experiment-review-summary {
+.calibration-review-summary {
     padding: 10px 12px;
     border-radius: var(--radius-sm);
     background: rgba(255, 255, 255, 0.65);
@@ -4407,6 +4445,22 @@ body.experiment-review-active {
     color: var(--text-secondary);
 }
 
+.experiment-review-summary {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(180, 200, 230, 0.55);
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    max-height: 22vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 1;
+}
+
 .data-review-summary strong,
 .calibration-review-summary strong,
 .experiment-review-summary strong {
@@ -4414,8 +4468,7 @@ body.experiment-review-active {
 }
 
 .data-review-actions,
-.calibration-review-actions,
-.experiment-review-actions {
+.calibration-review-actions {
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -4423,12 +4476,22 @@ body.experiment-review-active {
     min-width: 140px;
 }
 
+.experiment-review-actions {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    min-width: 140px;
+    flex-shrink: 0;
+    align-self: stretch;
+}
+
 .experiment-review-btn-save {
     background: var(--color-green-badge-bg);
     border: 1px solid var(--color-green-border);
     color: var(--color-green-text);
     font-weight: 700;
-    padding: 12px 18px;
+    padding: 10px 14px;
 }
 
 .experiment-review-btn-save:hover:not(:disabled) {
@@ -4441,7 +4504,7 @@ body.experiment-review-active {
     border: 1px solid var(--color-red-border);
     color: var(--color-red-text);
     font-weight: 700;
-    padding: 12px 18px;
+    padding: 10px 14px;
 }
 
 .experiment-review-btn-discard:hover:not(:disabled) {
@@ -4789,7 +4852,7 @@ body.discovery-active {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 14px;
-    align-items: stretch;
+    align-items: start;
 }
 
 .live-tracking-col-centered {
@@ -4802,7 +4865,6 @@ body.discovery-active {
     flex-direction: column;
     justify-content: center;
     gap: 6px;
-    min-height: 100%;
     padding: 10px 12px;
     border-radius: var(--radius-card);
     background: rgba(255, 255, 255, 0.35);
@@ -4812,6 +4874,12 @@ body.discovery-active {
 
 .discovery-mini-tracking-col.gauge-block {
     align-items: center;
+}
+
+.discovery-mini-tracking-col .rpm-gauge {
+    max-width: 140px;
+    height: auto;
+    aspect-ratio: 1;
 }
 
 .discovery-plot-card .plot-shell {
@@ -4861,6 +4929,30 @@ body.discovery-review-active .experiment-review-modal {
 
 body.discovery-review-active .experiment-review-header h2 {
     color: rgb(40, 75, 140);
+}
+
+body.discovery-review-active .experiment-review-plot {
+    min-height: min(32vh, 280px);
+}
+
+body.discovery-review-active .experiment-review-summary .summary-discovery-cell-block {
+    margin-top: 8px;
+    padding: 8px 10px;
+}
+
+body.discovery-review-active .experiment-review-summary .discovery-review-table {
+    font-size: 0.68rem;
+}
+
+body.discovery-review-active .experiment-review-summary .discovery-review-table th,
+body.discovery-review-active .experiment-review-summary .discovery-review-table td {
+    padding: 3px 6px;
+}
+
+.discovery-review-probe-scroll {
+    max-height: 110px;
+    overflow-y: auto;
+    margin-top: 6px;
 }
 
 .protocol-mode-badge.mode-discovery {

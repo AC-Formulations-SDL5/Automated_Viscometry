@@ -60,7 +60,8 @@ def run_discovery_for_cell(
     measure_fn: MeasureFn,
     row_resolver: RowResolver,
     measure_module: Any = None,
-    probe_duration_s: float = 12.0,
+    probe_duration_s: float = 60.0,
+    duck_torque_pct: float = 80.0,
     web_emit: bool = True,
 ) -> Tuple[DiscoveryResult, List[float]]:
     """
@@ -101,6 +102,7 @@ def run_discovery_for_cell(
         measure_module=measure_module,
         measurement_duration_s=probe_duration_s,
         sample_interval_s=min(5.0, probe_duration_s / 2.0) if probe_duration_s > 0 else None,
+        duck_torque_pct=duck_torque_pct,
     )
 
     if web_emit:

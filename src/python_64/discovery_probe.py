@@ -60,6 +60,7 @@ def make_probe_executor(
     measure_module: Any = None,
     measurement_duration_s: Optional[float] = None,
     sample_interval_s: Optional[float] = None,
+    duck_torque_pct: Optional[float] = None,
 ) -> ProbeExecutor:
     """
     Return ProbeExecutor(cell_id, z_mm, rpm) -> mean torque %.
@@ -82,7 +83,10 @@ def make_probe_executor(
                 yield
 
         with _maybe_duration():
-            measurements = measure_torque_fn(client, rpm, z_mm)
+            duck_kw = {}
+            if duck_torque_pct is not None and float(duck_torque_pct) > 0:
+                duck_kw["duck_above_pct_on_first_sample"] = float(duck_torque_pct)
+            measurements = measure_torque_fn(client, rpm, z_mm, **duck_kw)
         return mean_torque_from_measurements(measurements)
 
     return probe

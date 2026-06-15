@@ -231,8 +231,8 @@ class TestProbeExecutorMoveOnce(unittest.TestCase):
         move_calls = []
         measure_calls = []
 
-        def measure_fn(_client, rpm, z_mm):
-            measure_calls.append((rpm, z_mm))
+        def measure_fn(_client, rpm, z_mm, **kwargs):
+            measure_calls.append((rpm, z_mm, kwargs))
             return [{"torque_percent": 30.0}]
 
         executor = make_probe_executor(
@@ -243,8 +243,60 @@ class TestProbeExecutorMoveOnce(unittest.TestCase):
         torque = executor(1, -65.0, 5.0)
         self.assertEqual(torque, 30.0)
         self.assertEqual(len(measure_calls), 1)
-        self.assertEqual(measure_calls[0], (5.0, -65.0))
+        self.assertEqual(measure_calls[0][0], 5.0)
+        self.assertEqual(measure_calls[0][1], -65.0)
+        self.assertEqual(measure_calls[0][2], {})
         self.assertEqual(move_calls, [])
+
+
+class TestProbeExecutorDuck(unittest.TestCase):
+    def test_probe_executor_passes_duck_kwarg(self):
+        from discovery_probe import make_probe_executor
+
+        captured = {}
+
+        def measure_fn(_client, rpm, z_mm, **kwargs):
+            captured.update(kwargs)
+            return [{"torque_percent": 85.0}]
+
+        executor = make_probe_executor(
+            object(),
+            object(),
+            measure_torque_fn=measure_fn,
+            duck_torque_pct=80.0,
+        )
+        torque = executor(1, -65.0, 5.0)
+        self.assertEqual(torque, 85.0)
+        self.assertEqual(captured.get("duck_above_pct_on_first_sample"), 80.0)
+
+    def test_probe_executor_omits_duck_when_disabled(self):
+        from discovery_probe import make_probe_executor
+
+        captured = {}
+
+        def measure_fn(_client, rpm, z_mm, **kwargs):
+            captured.update(kwargs)
+            return [{"torque_percent": 30.0}]
+
+        executor = make_probe_executor(
+            object(),
+            object(),
+            measure_torque_fn=measure_fn,
+            duck_torque_pct=0,
+        )
+        executor(1, -65.0, 5.0)
+        self.assertEqual(captured, {})
+
+
+class TestDiscoverRpmDuckStepping(unittest.TestCase):
+    def test_high_first_probe_steps_down_to_convergence(self):
+        probe = FakeProbe([85.0, 30.0])
+        result = discover_rpm(1, probe, config=_default_cfg())
+        if result["status"] == "uncalibrated_cell":
+            self.skipTest("cell 1 not calibrated")
+        self.assertEqual(result["status"], "converged")
+        self.assertEqual(len(result["probes"]), 2)
+        self.assertLess(probe.calls[1][2], probe.calls[0][2])
 
 
 class TestWebDiscoverySafety(unittest.TestCase):
@@ -253,6 +305,15 @@ class TestWebDiscoverySafety(unittest.TestCase):
 
         payload = ViscometryWebInterface._regular_run_mode_clear_payload()
         self.assertFalse(payload.get("discovery_mode_enabled"))
+
+    def test_runtime_discovery_defaults(self):
+        from web_interface import ViscometryWebInterface
+
+        iface = ViscometryWebInterface()
+        settings = iface.get_runtime_settings()
+        self.assertEqual(settings.get("discovery_probe_duration_s"), 60.0)
+        self.assertEqual(settings.get("discovery_duck_torque_pct"), 80.0)
+        self.assertEqual(settings.get("discovery_handoff_pause_s"), 10.0)
 
 
 if __name__ == "__main__":

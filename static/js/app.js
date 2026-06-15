@@ -2012,7 +2012,9 @@ class ViscometryDashboard {
             selected_cells: this.validateDiscoveryCells(),
             discovery_mode_enabled: true,
             discovery_eta_guess_map: this.buildDiscoveryEtaGuessMapPayload(),
-            discovery_probe_duration_s: getNum("discovery-probe-duration-s", 12),
+            discovery_probe_duration_s: getNum("discovery-probe-duration-s", 60),
+            discovery_duck_torque_pct: getNum("discovery-duck-torque-pct", 80),
+            discovery_handoff_pause_s: getNum("discovery-handoff-pause-s", 10),
             low_torque_liquid_contact_skip_enabled: false,
             z_step_size: getNum("discovery-z-step-size", -0.02),
             measurement_duration: getNum("discovery-measurement-duration", 40),
@@ -2180,22 +2182,27 @@ class ViscometryDashboard {
         return Number(entry.rpm);
     }
 
-    _buildDiscoveryProbeTableHtml(probes) {
+    _buildDiscoveryProbeTableHtml(probes, options = {}) {
         if (!Array.isArray(probes) || probes.length === 0) {
             return "";
         }
+        const review = Boolean(options.review);
         const rows = probes.map((p, idx) => (
             `<tr><td>${idx + 1}</td><td class="mono">${Number(p.rpm).toFixed(2)}</td>`
             + `<td class="mono">${Number(p.torque).toFixed(2)}</td>`
             + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`
         )).join("");
-        return `
+        const tableHtml = `
             <table class="duration-table discovery-probe-table discovery-review-table">
                 <thead>
                     <tr><th>#</th><th>RPM</th><th>Torque %</th><th>η est (cP)</th></tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>`;
+        if (review) {
+            return `<div class="discovery-review-probe-scroll">${tableHtml}</div>`;
+        }
+        return tableHtml;
     }
 
     getActiveDiscoveryGraphCellId() {
@@ -2778,6 +2785,9 @@ class ViscometryDashboard {
                     this.discoveryModeActive = true;
                 }
             }
+            if (data.is_running && data.discovery_mode_active !== undefined) {
+                this.discoveryModeActive = Boolean(data.discovery_mode_active);
+            }
             this.setRunningState(Boolean(data.is_running), wasRunning);
         });
 
@@ -2863,6 +2873,26 @@ class ViscometryDashboard {
                 this.updateRunTabAvailability();
                 this.updateRunControlButtons();
             }
+        });
+
+        this.socket.on("discovery_mode_update", (data) => {
+            if (!data || typeof data !== "object") {
+                return;
+            }
+            if (data.discovery_mode_active !== undefined) {
+                this.discoveryModeActive = Boolean(data.discovery_mode_active);
+            }
+            if (data.discovery_results_by_cell && typeof data.discovery_results_by_cell === "object") {
+                this.discoveryResultsByCell = { ...data.discovery_results_by_cell };
+                Object.values(this.discoveryResultsByCell).forEach((entry) => {
+                    if (entry) {
+                        this.ingestDiscoveryUpdate(entry);
+                    }
+                });
+            }
+            this.updateRunTabAvailability();
+            this.renderProtocolUI();
+            this.updateRunControlButtons();
         });
 
         this.socket.on("feedback_metrics_update", (data) => {
@@ -3532,6 +3562,10 @@ class ViscometryDashboard {
     }
 
     _schedulePlotRefresh() {
+        if (this._isDiscoveryRunActive()) {
+            this._scheduleDiscoveryPlotRefresh();
+            return;
+        }
         if (this.activeTabId === "calibrate-tab") {
             this._scheduleCalibrationPlotRefresh();
             return;
@@ -3541,9 +3575,6 @@ class ViscometryDashboard {
             return;
         }
         if (this.activeTabId !== "controls-tab") {
-            return;
-        }
-        if (this._isDiscoveryRunActive()) {
             return;
         }
         if (this._plotRefreshTimer) {
@@ -7457,6 +7488,7 @@ class ViscometryDashboard {
         this.el.body.classList.add("experiment-review-active");
         this.renderExperimentReviewTabs();
         this.renderExperimentReviewCellView(this.experimentReviewActiveCellId);
+        this.handleWindowResize();
         this.pushStatusMessage("Review experiment data — Save or Discard each cell");
     }
 
@@ -7593,7 +7625,7 @@ class ViscometryDashboard {
                 <div class="summary-discovery-cell-block">
                     <div><strong>RPM discovery</strong> <span class="protocol-mode-badge mode-discovery">Discovery</span></div>
                     <div>Status: ${this._escapeHtml(String(dStatus))} · Discovered RPM: ${dRpm} · η est: ${dEta} cP</div>
-                    ${this._buildDiscoveryProbeTableHtml(discoveryEntry.probes)}
+                    ${this._buildDiscoveryProbeTableHtml(discoveryEntry.probes, { review: true })}
                 </div>`;
         }
         box.innerHTML = `
