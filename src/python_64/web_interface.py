@@ -1830,7 +1830,7 @@ class ViscometryWebInterface:
             dcfg = load_discovery_config()
             z_offset = float(dcfg.hit_point_offset_mm)
         except Exception:
-            z_offset = 0.35
+            z_offset = 0.4
 
         merged = {
             **body,

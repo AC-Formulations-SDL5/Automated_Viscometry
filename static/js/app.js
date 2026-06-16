@@ -226,6 +226,7 @@ class ViscometryDashboard {
         this.zDiscoveryConnectDots = false;
         this.selectedCalGraphCell = null;
         this.selectedDiscoveryGraphCell = null;
+        this.discoveryPlotShowDiscoveredRpmOnly = false;
         this.activeTabId = "layout-tab";
         this._preCalibrationSettingsSnapshot = null;
         this._wasCalibrationLikeRun = false;
@@ -547,6 +548,7 @@ class ViscometryDashboard {
             discoveryZSparklineCanvas: document.getElementById("discovery-z-sparkline-canvas"),
             discoveryZSparklineEmpty: document.getElementById("discovery-z-sparkline-empty"),
             discoveryZConnectDots: document.getElementById("discovery-z-connect-dots"),
+            discoveryPlotShowDiscoveredRpmOnlyCheckbox: document.getElementById("discovery-plot-show-discovered-rpm-only"),
             discoveryGraphCellTabs: document.getElementById("discovery-graph-cell-tabs"),
             discoveryDragZRpmLegend: document.getElementById("discovery-drag-z-rpm-legend"),
             discoveryDragZRpmLegendNote: document.getElementById("discovery-drag-z-rpm-legend-note"),
@@ -777,6 +779,12 @@ class ViscometryDashboard {
                 this.el.calZConnectDots.textContent = `Connect Dots: ${this.zCalConnectDots ? "On" : "Off"}`;
                 this.el.calZConnectDots.classList.toggle("dots-on", this.zCalConnectDots);
                 this.refreshCalibrationLivePlots();
+            });
+        }
+        if (this.el.discoveryPlotShowDiscoveredRpmOnlyCheckbox) {
+            this.el.discoveryPlotShowDiscoveredRpmOnlyCheckbox.addEventListener("change", () => {
+                this.discoveryPlotShowDiscoveredRpmOnly = this.el.discoveryPlotShowDiscoveredRpmOnlyCheckbox.checked;
+                this.refreshDiscoveryLivePlots();
             });
         }
         if (this.el.discoveryZConnectDots) {
@@ -2468,7 +2476,7 @@ class ViscometryDashboard {
         const fallbackRpm = activeCell != null ? this._inferDiscoveryPlotRpmFromMeasurements(activeCell) : null;
         const plotRpm = discoveredRpm != null ? discoveredRpm : fallbackRpm;
         const allSource = activeCell != null ? (this.measurementsByCell.get(activeCell) || []) : [];
-        const source = plotRpm != null
+        const source = this.discoveryPlotShowDiscoveredRpmOnly && plotRpm != null
             ? allSource.filter((m) => Math.abs(Number(m.rpm) - plotRpm) < 0.01)
             : allSource;
         const orderedRpms = plotRpm != null ? [plotRpm] : [];

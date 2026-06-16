@@ -709,7 +709,25 @@ def discover_rpm_stage2(
     t_top_measured: Optional[float] = None
     status: str = "max_iter_reached"
 
-    for _ in range(cfg.max_iterations):
+    # Deduplication check: if first ladder target is already converged and within final window,
+    # skip the T_top convergence loop and use that RPM directly (common for newtonian samples)
+    first_target_pct = float(cfg.ladder_targets[0]) if cfg.ladder_targets else None
+    if first_target_pct is not None and first_target_pct in converged:
+        first_converged_rpm, first_converged_torque = converged[first_target_pct]
+        if _torque_in_window(first_converged_torque, final_window):
+            # Already converged at first target, and it's within our final window - reuse it
+            final_rpm = round_rpm_2dp(first_converged_rpm)
+            final_eta = None  # Would need to recalculate if needed
+            t_top_measured = float(first_converged_torque)
+            status = "converged"
+            # Skip the convergence loop by using an empty range
+            convergence_iterations = 0
+        else:
+            convergence_iterations = cfg.max_iterations
+    else:
+        convergence_iterations = cfg.max_iterations
+
+    for _ in range(convergence_iterations):
         torque = probe(cell_id, target_z, rpm)
         if torque is None:
             return DiscoveryResult(
