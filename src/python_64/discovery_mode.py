@@ -727,114 +727,115 @@ def discover_rpm_stage2(
     else:
         convergence_iterations = cfg.max_iterations
 
-    for _ in range(convergence_iterations):
-        torque = probe(cell_id, target_z, rpm)
-        if torque is None:
-            return DiscoveryResult(
-                rpm=None,
-                eta_estimate=None,
-                status="probe_failed",
-                iterations=len(probes),
-                probes=probes,
-                target_z_mm=target_z,
-                material_label=material_label,
-                from_cache=False,
-                n_probe=n_probe,
-                is_newtonian=newtonian,
-                power_law_r2=power_law_r2,
-                discovery_path=discovery_path,
-                T_top_target=t_target,
-                ladder_status=ladder_status,
-                **_ladder_fields_from_converged(converged),
-            )
-
-        record = _append_probe_record(
-            probes,
-            rpm=rpm,
-            torque=torque,
-            z_mm=target_z,
-            cfg=cfg,
-            ladder_target_pct=None,
-        )
-        _emit_partial(
-            on_probe,
-            record,
-            _build_partial_result(
-                probes,
-                target_z=target_z,
-                material_label=material_label,
-                status="probing",
-                extra={
-                    "n_probe": n_probe,
-                    "is_newtonian": newtonian,
-                    "T_top_target": t_target,
-                    "discovery_path": discovery_path,
+    if convergence_iterations > 0:
+        for _ in range(convergence_iterations):
+            torque = probe(cell_id, target_z, rpm)
+            if torque is None:
+                return DiscoveryResult(
+                    rpm=None,
+                    eta_estimate=None,
+                    status="probe_failed",
+                    iterations=len(probes),
+                    probes=probes,
+                    target_z_mm=target_z,
+                    material_label=material_label,
+                    from_cache=False,
+                    n_probe=n_probe,
+                    is_newtonian=newtonian,
+                    power_law_r2=power_law_r2,
+                    discovery_path=discovery_path,
+                    T_top_target=t_target,
+                    ladder_status=ladder_status,
                     **_ladder_fields_from_converged(converged),
-                },
-            ),
-        )
-
-        range_status = check_range_limits(
-            torque,
-            rpm,
-            rpm_min=cfg.rpm_min,
-            rpm_max=cfg.rpm_max,
-            over_range_torque_pct=cfg.over_range_torque_pct,
-            under_range_torque_pct=cfg.under_range_torque_pct,
-        )
-        if range_status:
-            return DiscoveryResult(
-                rpm=None,
-                eta_estimate=None,
-                status=range_status,
-                iterations=len(probes),
-                probes=probes,
-                target_z_mm=target_z,
-                material_label=material_label,
-                from_cache=False,
-                n_probe=n_probe,
-                is_newtonian=newtonian,
-                power_law_r2=power_law_r2,
-                discovery_path=discovery_path,
-                T_top_target=t_target,
-                ladder_status=ladder_status,
-                **_ladder_fields_from_converged(converged),
-            )
-
-        eta_est = record.get("eta_est")
-        if _torque_in_window(torque, final_window):
-            status = "converged"
-            final_rpm = round_rpm_2dp(rpm)
-            final_eta = eta_est
-            t_top_measured = float(torque)
-            break
-
-        if newtonian:
-            rpm = round_rpm_2dp(
-                suggest_next_rpm_continuous(
-                    rpm,
-                    torque,
-                    target_torque=cfg.target_torque,
-                    rpm_min=cfg.rpm_min,
-                    rpm_max=cfg.rpm_max,
                 )
+
+            record = _append_probe_record(
+                probes,
+                rpm=rpm,
+                torque=torque,
+                z_mm=target_z,
+                cfg=cfg,
+                ladder_target_pct=None,
             )
+            _emit_partial(
+                on_probe,
+                record,
+                _build_partial_result(
+                    probes,
+                    target_z=target_z,
+                    material_label=material_label,
+                    status="probing",
+                    extra={
+                        "n_probe": n_probe,
+                        "is_newtonian": newtonian,
+                        "T_top_target": t_target,
+                        "discovery_path": discovery_path,
+                        **_ladder_fields_from_converged(converged),
+                    },
+                ),
+            )
+
+            range_status = check_range_limits(
+                torque,
+                rpm,
+                rpm_min=cfg.rpm_min,
+                rpm_max=cfg.rpm_max,
+                over_range_torque_pct=cfg.over_range_torque_pct,
+                under_range_torque_pct=cfg.under_range_torque_pct,
+            )
+            if range_status:
+                return DiscoveryResult(
+                    rpm=None,
+                    eta_estimate=None,
+                    status=range_status,
+                    iterations=len(probes),
+                    probes=probes,
+                    target_z_mm=target_z,
+                    material_label=material_label,
+                    from_cache=False,
+                    n_probe=n_probe,
+                    is_newtonian=newtonian,
+                    power_law_r2=power_law_r2,
+                    discovery_path=discovery_path,
+                    T_top_target=t_target,
+                    ladder_status=ladder_status,
+                    **_ladder_fields_from_converged(converged),
+                )
+
+            eta_est = record.get("eta_est")
+            if _torque_in_window(torque, final_window):
+                status = "converged"
+                final_rpm = round_rpm_2dp(rpm)
+                final_eta = eta_est
+                t_top_measured = float(torque)
+                break
+
+            if newtonian:
+                rpm = round_rpm_2dp(
+                    suggest_next_rpm_continuous(
+                        rpm,
+                        torque,
+                        target_torque=cfg.target_torque,
+                        rpm_min=cfg.rpm_min,
+                        rpm_max=cfg.rpm_max,
+                    )
+                )
+            else:
+                rpm = round_rpm_2dp(
+                    suggest_rpm_for_torque_target(
+                        rpm,
+                        torque,
+                        t_target,
+                        n_step,
+                        rpm_min=cfg.rpm_min,
+                        rpm_max=cfg.rpm_max,
+                    )
+                )
         else:
-            rpm = round_rpm_2dp(
-                suggest_rpm_for_torque_target(
-                    rpm,
-                    torque,
-                    t_target,
-                    n_step,
-                    rpm_min=cfg.rpm_min,
-                    rpm_max=cfg.rpm_max,
-                )
-            )
-    else:
-        if probes:
-            final_rpm = probes[-1]["rpm"]
-            final_eta = probes[-1].get("eta_est")
-            t_top_measured = probes[-1]["torque"]
+            if probes:
+                final_rpm = probes[-1]["rpm"]
+                final_eta = probes[-1].get("eta_est")
+                t_top_measured = probes[-1]["torque"]
 
     return DiscoveryResult(
         rpm=final_rpm,

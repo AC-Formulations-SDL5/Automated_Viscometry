@@ -1755,6 +1755,32 @@ class ViscometryDashboard {
         this.updateZStartOffsetAvailability();
         this.latestControlSettings = JSON.parse(JSON.stringify(settings));
 
+        // Sync discovery-tab fields so settings are shared across all connected devices
+        if (settings.discovery_mode_enabled) {
+            if (this.el.discoveryExperimentName) {
+                this.el.discoveryExperimentName.value = settings.experiment_name || "";
+            }
+            if (this.el.discoverySelectedCells && Array.isArray(settings.selected_cells)) {
+                this.el.discoverySelectedCells.value = settings.selected_cells.join(", ");
+            }
+        }
+        const setDiscoveryInput = (id, val) => {
+            const el = document.getElementById(id);
+            if (el && val != null) el.value = val;
+        };
+        setDiscoveryInput("discovery-z-step-size", settings.z_step_size);
+        setDiscoveryInput("discovery-measurement-duration", settings.measurement_duration);
+        setDiscoveryInput("discovery-sample-interval", settings.sample_interval);
+        setDiscoveryInput("discovery-dwell-seconds", settings.dwell_seconds);
+        setDiscoveryInput("discovery-inter-rpm-pause", settings.inter_rpm_pause);
+        setDiscoveryInput("discovery-torque-break-threshold", settings.torque_break_threshold);
+        setDiscoveryInput("discovery-probe-duration-s", settings.discovery_probe_duration_s);
+        setDiscoveryInput("discovery-duck-torque-pct", settings.discovery_duck_torque_pct);
+        setDiscoveryInput("discovery-handoff-pause-s", settings.discovery_handoff_pause_s);
+        if (this.el.discoveryZStartOffsetMm && settings.z_start_offset_mm != null) {
+            this.el.discoveryZStartOffsetMm.value = settings.z_start_offset_mm;
+        }
+
         this.setControlStatus("Settings loaded");
         this.updateCompletionBar();
         this.refreshLivePlots();
@@ -2042,7 +2068,7 @@ class ViscometryDashboard {
             feedback_control_enabled: getBool("discovery-feedback-control-enabled", true),
             viscosity_prediction_mode: getBool("discovery-viscosity-prediction-enabled", false) ? "on" : "off",
             save_all_sample_data: getBool("discovery-save-all-sample-data", false),
-            z_start_offset_mm: getNum("discovery-z-start-offset-mm", 0.35),
+            z_start_offset_mm: getNum("discovery-z-start-offset-mm", 0.4),
             cell_content_map: this.buildDiscoveryContentMapPayload(),
             r2_drag_min: Number(this.el.r2DragMin?.value ?? 0.975),
             r2_cv_min: Number(this.el.r2CvMin?.value ?? 0.975),
@@ -2479,10 +2505,19 @@ class ViscometryDashboard {
         const source = this.discoveryPlotShowDiscoveredRpmOnly && plotRpm != null
             ? allSource.filter((m) => Math.abs(Number(m.rpm) - plotRpm) < 0.01)
             : allSource;
-        const orderedRpms = plotRpm != null ? [plotRpm] : [];
+        let orderedRpms;
         const buckets = new Map();
-        if (plotRpm != null) {
+        if (this.discoveryPlotShowDiscoveredRpmOnly && plotRpm != null) {
+            orderedRpms = [plotRpm];
             buckets.set(Number(plotRpm).toFixed(2), source);
+        } else {
+            // Group all source measurements by unique rounded RPM
+            for (const m of source) {
+                const key = Number(Number(m.rpm).toFixed(2)).toFixed(2);
+                if (!buckets.has(key)) buckets.set(key, []);
+                buckets.get(key).push(m);
+            }
+            orderedRpms = [...buckets.keys()].map(Number).sort((a, b) => a - b);
         }
 
         const dragDatasets = orderedRpms
