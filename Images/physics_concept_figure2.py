@@ -15,18 +15,25 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from physics_concept_figure import draw_overview
+import physics_concept_figure as pcf
 
 HERE = Path(__file__).parent
 OUT_SVG = HERE / "physics_concept_figure2.svg"
 
 
 def build_figure():
+    # Force a much larger, uniform text scale for subplot A.
+    pcf.FS_TITLE = 45
+    pcf.FS_EQ = 45
+    pcf.FS_LABEL = 45
+    pcf.FS_AXIS = 45
+    pcf.FS_NOTE = 45
+
     # Large square-ish canvas so the single panel reads big and clean.
     fig, ax = plt.subplots(figsize=(14, 12), dpi=150)
     fig.subplots_adjust(left=0.04, right=0.96, top=0.94, bottom=0.08)
 
-    draw_overview(
+    pcf.draw_overview(
         ax,
         show_title=False,
         show_caption=False,
@@ -34,6 +41,10 @@ def build_figure():
         plate_label_offset_below=0.18,   # well below the plate's front edge
         h_dimension_style="left_extension",
     )
+
+    # Enforce the same large text size for any text added to this axes.
+    for txt in ax.texts:
+        txt.set_fontsize(45)
 
     fig.savefig(OUT_SVG, format="svg", bbox_inches="tight")
     fig.savefig(OUT_SVG.with_suffix(".png"), format="png",
