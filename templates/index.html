@@ -1012,13 +1012,13 @@
                         <div class="card-title-row">
                             <div>
                                 <h2>Live Rotational Drag</h2>
-                                <span id="discovery-drag-z-cell-label" class="chart-subtitle">Discovered RPM only</span>
+                                <span id="discovery-drag-z-cell-label" class="chart-subtitle"></span>
                             </div>
                             <div class="plot-tools">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="discovery-plot-show-discovered-rpm-only" class="checkbox-input">
-                                    <span class="checkbox-text">Show Discovered RPM Only</span>
-                                </label>
+                                <div class="segmented" role="group" aria-label="Z data filter">
+                                    <button id="discovery-z-filter-all" class="seg active">All Samples</button>
+                                    <button id="discovery-z-filter-latest" class="seg">Most Recent Per Z-Height</button>
+                                </div>
                                 <button type="button" id="discovery-z-connect-dots" class="btn subtle">Connect Dots: Off</button>
                             </div>
                         </div>

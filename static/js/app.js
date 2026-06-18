@@ -224,9 +224,9 @@ class ViscometryDashboard {
         this.zConnectDots = false;
         this.zCalConnectDots = false;
         this.zDiscoveryConnectDots = false;
+        this.zDiscoveryLatestOnly = false;
         this.selectedCalGraphCell = null;
         this.selectedDiscoveryGraphCell = null;
-        this.discoveryPlotShowDiscoveredRpmOnly = false;
         this.activeTabId = "layout-tab";
         this._preCalibrationSettingsSnapshot = null;
         this._wasCalibrationLikeRun = false;
@@ -548,7 +548,8 @@ class ViscometryDashboard {
             discoveryZSparklineCanvas: document.getElementById("discovery-z-sparkline-canvas"),
             discoveryZSparklineEmpty: document.getElementById("discovery-z-sparkline-empty"),
             discoveryZConnectDots: document.getElementById("discovery-z-connect-dots"),
-            discoveryPlotShowDiscoveredRpmOnlyCheckbox: document.getElementById("discovery-plot-show-discovered-rpm-only"),
+            discoveryZFilterAll: document.getElementById("discovery-z-filter-all"),
+            discoveryZFilterLatest: document.getElementById("discovery-z-filter-latest"),
             discoveryGraphCellTabs: document.getElementById("discovery-graph-cell-tabs"),
             discoveryDragZRpmLegend: document.getElementById("discovery-drag-z-rpm-legend"),
             discoveryDragZRpmLegendNote: document.getElementById("discovery-drag-z-rpm-legend-note"),
@@ -781,17 +782,25 @@ class ViscometryDashboard {
                 this.refreshCalibrationLivePlots();
             });
         }
-        if (this.el.discoveryPlotShowDiscoveredRpmOnlyCheckbox) {
-            this.el.discoveryPlotShowDiscoveredRpmOnlyCheckbox.addEventListener("change", () => {
-                this.discoveryPlotShowDiscoveredRpmOnly = this.el.discoveryPlotShowDiscoveredRpmOnlyCheckbox.checked;
-                this.refreshDiscoveryLivePlots();
-            });
-        }
         if (this.el.discoveryZConnectDots) {
             this.el.discoveryZConnectDots.addEventListener("click", () => {
                 this.zDiscoveryConnectDots = !this.zDiscoveryConnectDots;
                 this.el.discoveryZConnectDots.textContent = `Connect Dots: ${this.zDiscoveryConnectDots ? "On" : "Off"}`;
                 this.el.discoveryZConnectDots.classList.toggle("dots-on", this.zDiscoveryConnectDots);
+                this.refreshDiscoveryLivePlots();
+            });
+        }
+        if (this.el.discoveryZFilterAll) {
+            this.el.discoveryZFilterAll.addEventListener("click", () => {
+                this.zDiscoveryLatestOnly = false;
+                this.updateDiscoveryZFilterButtons();
+                this.refreshDiscoveryLivePlots();
+            });
+        }
+        if (this.el.discoveryZFilterLatest) {
+            this.el.discoveryZFilterLatest.addEventListener("click", () => {
+                this.zDiscoveryLatestOnly = true;
+                this.updateDiscoveryZFilterButtons();
                 this.refreshDiscoveryLivePlots();
             });
         }
@@ -1123,6 +1132,7 @@ class ViscometryDashboard {
         this.setUiState("idle");
         this.updateCompletionChip();
         this.updateZFilterButtons();
+        this.updateDiscoveryZFilterButtons();
         this.renderProtocolUI();
     }
 
@@ -2498,36 +2508,33 @@ class ViscometryDashboard {
 
     refreshDiscoveryLivePlots() {
         const activeCell = this.getActiveDiscoveryGraphCellId();
-        const discoveredRpm = activeCell != null ? this._getDiscoveredRpmForCell(activeCell) : null;
-        const fallbackRpm = activeCell != null ? this._inferDiscoveryPlotRpmFromMeasurements(activeCell) : null;
-        const plotRpm = discoveredRpm != null ? discoveredRpm : fallbackRpm;
-        const allSource = activeCell != null ? (this.measurementsByCell.get(activeCell) || []) : [];
-        const source = this.discoveryPlotShowDiscoveredRpmOnly && plotRpm != null
-            ? allSource.filter((m) => Math.abs(Number(m.rpm) - plotRpm) < 0.01)
-            : allSource;
-        let orderedRpms;
-        const buckets = new Map();
-        if (this.discoveryPlotShowDiscoveredRpmOnly && plotRpm != null) {
-            orderedRpms = [plotRpm];
-            buckets.set(Number(plotRpm).toFixed(2), source);
-        } else {
-            // Group all source measurements by unique rounded RPM
-            for (const m of source) {
-                const key = Number(Number(m.rpm).toFixed(2)).toFixed(2);
-                if (!buckets.has(key)) buckets.set(key, []);
-                buckets.get(key).push(m);
-            }
-            orderedRpms = [...buckets.keys()].map(Number).sort((a, b) => a - b);
+        const source = activeCell ? (this.measurementsByCell.get(activeCell) || []) : [];
+        const torqueFloor = this._torqueFloorPctForLivePlots();
+
+        let zData = source;
+        if (this.zDiscoveryLatestOnly && source.length > 0) {
+            const latestByHeightRpm = new Map();
+            source.forEach((m) => {
+                const key = `${Number(m.height).toFixed(3)}|${Number(m.rpm).toFixed(3)}`;
+                const prev = latestByHeightRpm.get(key);
+                if (!prev || (Number(m.timestamp) || 0) >= (Number(prev.timestamp) || 0)) {
+                    latestByHeightRpm.set(key, m);
+                }
+            });
+            zData = [...latestByHeightRpm.values()];
         }
+
+        const orderedRpms = activeCell ? this.expandRpmsWithObserved(this.getRpmsForCell(activeCell), zData) : [];
+        const buckets = this.partitionMeasurementsByRpm(zData, orderedRpms);
 
         const dragDatasets = orderedRpms
             .map((rpm) => {
-                const key = Number(rpm).toFixed(2);
+                const key = Number(rpm).toFixed(3);
                 const points = buckets.get(key) || [];
                 if (points.length === 0) {
                     return null;
                 }
-                return this._buildDragDatasetForRpm(rpm, points, 0, orderedRpms, {
+                return this._buildDragDatasetForRpm(rpm, points, torqueFloor, orderedRpms, {
                     connectDots: this.zDiscoveryConnectDots,
                 });
             })
@@ -2541,10 +2548,7 @@ class ViscometryDashboard {
             this.renderDiscoveryDragZRpmLegend(activeCell, orderedRpms);
         }
         if (this.el.discoveryDragZCellLabel) {
-            const rpmLabel = plotRpm != null ? `@ ${plotRpm.toFixed(2)} RPM` : "";
-            this.el.discoveryDragZCellLabel.textContent = activeCell
-                ? `Cell ${activeCell} ${rpmLabel}`.trim()
-                : "Discovered RPM only";
+            this.el.discoveryDragZCellLabel.textContent = activeCell ? `Cell ${activeCell}` : "All Cells";
         }
 
         if (this._renderPaused) {
@@ -2959,7 +2963,7 @@ class ViscometryDashboard {
             this._scheduleMapVisualSync();
         });
 
-        this.socket.on("new_measurement", (data) => {
+         this.socket.on("new_measurement", (data) => {
             this.addPointToChart(
                 data.cell_id,
                 data.height,
@@ -2968,7 +2972,7 @@ class ViscometryDashboard {
                 data.timestamp,
                 data.hit_detected
             );
-            if (this.activeTabId === "controls-tab" && !this._isDiscoveryRunActive()) {
+            if (this.activeTabId === "controls-tab") {
                 const torquePercent = Number.isFinite(Number(data.torque_percent))
                     ? Number(data.torque_percent)
                     : (Number(data.rotational_drag) || 0) * (Number(data.rpm) || 0);
@@ -2983,7 +2987,7 @@ class ViscometryDashboard {
         });
 
         this.socket.on("torque_update", (data) => {
-            if (this.activeTabId !== "controls-tab" || this._isDiscoveryRunActive()) {
+            if (this.activeTabId !== "controls-tab") {
                 return;
             }
             const torquePercent = Number(data.torque_percent);
@@ -3805,11 +3809,7 @@ class ViscometryDashboard {
         }
     }
 
-    _schedulePlotRefresh() {
-        if (this._isDiscoveryRunActive()) {
-            this._scheduleDiscoveryPlotRefresh();
-            return;
-        }
+     _schedulePlotRefresh() {
         if (this.activeTabId === "calibrate-tab") {
             this._scheduleCalibrationPlotRefresh();
             return;
@@ -3898,7 +3898,7 @@ class ViscometryDashboard {
 
         this.latestTorqueByCell.set(measurement.cell_id, measurement.torque_percent);
 
-        if (this.currentCell === measurement.cell_id && this.activeTabId === "controls-tab" && !this._isDiscoveryRunActive()) {
+        if (this.currentCell === measurement.cell_id && this.activeTabId === "controls-tab") {
             this.updateTorqueBar(measurement.torque_percent);
             this.updateLiveTorqueDisplay(measurement.torque_percent);
             this.updateLiveRotationalDragDisplay(measurement.rotational_drag);
@@ -3913,14 +3913,11 @@ class ViscometryDashboard {
         }
 
         this._schedulePlotRefresh();
-        if (this._isDiscoveryRunActive()) {
-            this._scheduleDiscoveryPlotRefresh();
-        }
         this._scheduleTableRefresh();
         this._scheduleMapVisualSync();
     }
 
-    updateZFilterButtons() {
+     updateZFilterButtons() {
         if (this.el.zFilterAll) {
             this.el.zFilterAll.classList.toggle("active", !this.zLatestOnly);
         }
@@ -3930,6 +3927,19 @@ class ViscometryDashboard {
         if (this.el.zConnectDots) {
             this.el.zConnectDots.textContent = `Connect Dots: ${this.zConnectDots ? "On" : "Off"}`;
             this.el.zConnectDots.classList.toggle("dots-on", this.zConnectDots);
+        }
+    }
+
+    updateDiscoveryZFilterButtons() {
+        if (this.el.discoveryZFilterAll) {
+            this.el.discoveryZFilterAll.classList.toggle("active", !this.zDiscoveryLatestOnly);
+        }
+        if (this.el.discoveryZFilterLatest) {
+            this.el.discoveryZFilterLatest.classList.toggle("active", this.zDiscoveryLatestOnly);
+        }
+        if (this.el.discoveryZConnectDots) {
+            this.el.discoveryZConnectDots.textContent = `Connect Dots: ${this.zDiscoveryConnectDots ? "On" : "Off"}`;
+            this.el.discoveryZConnectDots.classList.toggle("dots-on", this.zDiscoveryConnectDots);
         }
     }
 
