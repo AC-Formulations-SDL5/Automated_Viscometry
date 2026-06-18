@@ -1,0 +1,36 @@
+# Dynamic Analysis - Mode: CUSTOM
+# Experiment Name: 11.61kcP_t2
+# Test RPMs (global fallback): [0.8]
+# Timestamp: 20260618_092253
+"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"
+# Feedback Control: ENABLED
+"# Feedback R2 Thresholds: Drag = 0.975, CV = 0.975, Slope = 0.975, Confidence = 0.8"
+"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = 0.2/0.2/0.2, R2(Drag/CV/Slope) = 0.2/0.2/0.2"
+"# Low-torque liquid-contact hunt: per RPM at each Z, skip RPM when first sample at elapsed >= 5.0s is < 25.00% (regular runs only); skipped RPM rows use <25% and SKIPPED metrics"
+# Viscosity prediction mode: off
+
+row,cell,Cell_Label,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%,Rotational_Drag,Cell_Termination_Method,CV,R_2,Trend_Slope,Second_derivative,Second_derivative_drag,Second_derivative_cv,Second_derivative_slope,R_2_drag,R_2_cv,R_2_slope,Hit_2nd_Deriv_Drag,Hit_2nd_Deriv_CV,Hit_2nd_Deriv_Slope,Hit_R_2_Drag,Hit_R_2_CV,Hit_R_2_Slope,Samples_Collected_At_Z,Hit_Point_Confidence,Hit_Detected,Hit_Reasons
+1,1,,-66.160,3.9,15.07,29.260,7.483376,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.180,3.9,15.01,29.980,7.667519,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.200,3.9,15.00,30.800,7.877238,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.220,3.9,15.02,31.450,8.043478,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.240,3.9,15.02,32.230,8.242967,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.260,3.9,15.09,33.100,8.465473,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.280,3.9,15.02,33.960,8.685422,hit_detected,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,insufficient_data
+1,1,,-66.300,3.9,15.02,34.890,8.923274,hit_detected,0.000000,0.999123,-11.010230,44.757033,44.757033,3.361208,0.000000,0.999123,0.000000,0.000000,False,False,False,False,False,False,3,0.000000,False,
+1,1,,-66.320,3.9,15.01,35.920,9.186701,hit_detected,0.917090,0.998562,-11.726343,63.938619,63.938619,-1.142895,-1790.281330,0.998562,0.917090,0.000000,False,False,False,False,True,False,3,0.200000,False,hit_r2_cv (R^2=0.9171)
+1,1,,-66.340,3.9,15.03,36.870,9.429668,hit_detected,0.951231,0.999061,-12.148338,-51.150895,-51.150895,-2.648752,-1054.987212,0.999061,0.951231,0.895760,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.9512); hit_r2_slope (R^2=0.8958)
+1,1,,-66.360,3.9,15.02,38.220,9.774936,hit_detected,0.942594,0.994903,-13.427110,255.754476,255.754476,6.527136,-3196.930946,0.994903,0.942594,0.748326,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.9426); hit_r2_slope (R^2=0.7483)
+1,1,,-66.380,3.9,15.02,39.450,10.089514,hit_detected,0.932365,0.995408,-14.603581,-76.726343,-76.726343,-1.606958,-2941.176471,0.995408,0.932365,0.896461,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.9324); hit_r2_slope (R^2=0.8965)
+1,1,,-66.400,3.9,15.01,40.980,10.480818,hit_detected,0.950925,0.994397,-16.240409,191.815857,191.815857,2.729117,-4092.071611,0.994397,0.950925,0.865919,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.9509); hit_r2_slope (R^2=0.8659)
+1,1,,-66.420,3.9,15.03,42.310,10.820972,hit_detected,0.992790,0.999057,-17.442455,-127.877238,-127.877238,-4.094482,-3005.115090,0.999057,0.992790,0.899965,False,False,False,False,False,True,3,0.200000,False,hit_r2_slope (R^2=0.9000)
+1,1,,-66.440,3.9,20.07,43.910,11.230179,hit_detected,0.939243,0.998308,-18.209719,172.634271,172.634271,-3.303814,-1918.158568,0.998308,0.939243,0.898039,False,False,False,False,True,True,4,0.400000,False,hit_r2_cv (R^2=0.9392); hit_r2_slope (R^2=0.8980)
+1,1,,-66.460,3.9,15.03,45.470,11.629156,hit_detected,0.859265,0.999152,-19.143223,-25.575448,-25.575448,0.797478,-2333.759591,0.999152,0.859265,0.879244,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.8593); hit_r2_slope (R^2=0.8792)
+1,1,,-66.480,3.9,15.03,47.420,12.127877,hit_detected,0.950963,0.995661,-20.511509,249.360614,249.360614,2.471025,-3420.716113,0.995661,0.950963,0.859931,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.9510); hit_r2_slope (R^2=0.8599)
+1,1,,-66.500,3.9,15.02,49.760,12.726343,hit_detected,0.785078,0.992070,-23.542199,249.360614,249.360614,9.346056,-7576.726343,0.992070,0.785078,0.800425,False,False,False,False,True,True,3,0.400000,False,hit_r2_cv (R^2=0.7851); hit_r2_slope (R^2=0.8004)
+1,1,,-66.520,3.9,35.06,52.410,13.404092,hit_detected,0.887499,0.989683,-27.225064,198.209719,198.209719,1.896312,-9207.161125,0.989683,0.887499,0.879350,False,False,False,False,True,True,7,0.400000,False,hit_r2_cv (R^2=0.8875); hit_r2_slope (R^2=0.8794)
+1,1,,-66.540,3.9,35.02,55.000,14.066496,hit_detected,0.974350,0.996519,-30.754476,-38.363171,-38.363171,-3.541604,-8823.529412,0.996519,0.974350,0.894859,False,False,False,False,True,True,7,0.400000,False,hit_r2_cv (R^2=0.9743); hit_r2_slope (R^2=0.8949)
+1,1,,-66.560,3.9,35.06,57.170,14.621483,hit_detected,0.893461,0.998944,-31.636829,-268.542199,-268.542199,-15.152624,-2205.882353,0.998944,0.893461,0.844828,False,False,False,False,True,True,7,0.400000,False,hit_r2_cv (R^2=0.8935); hit_r2_slope (R^2=0.8448)
+1,1,,-66.580,3.9,35.08,62.260,15.923274,hit_detected,0.887359,0.972500,-38.056266,1867.007673,1867.007673,28.849121,-16048.593350,0.972500,0.887359,0.623980,True,True,True,True,True,True,7,1.000000,True,hit_2nd_deriv_drag (1867.0077); hit_2nd_deriv_cv (28.8491); hit_2nd_deriv_slope (-16048.5934); hit_r2_drag (R^2=0.9725); hit_r2_cv (R^2=0.8874); hit_r2_slope (R^2=0.6240)
+1,1,,-66.600,3.9,35.03,63.480,16.235294,hit_detected,0.667265,0.970161,-37.595908,-2474.424552,-2474.424552,-36.819936,1150.895141,0.970161,0.667265,0.711581,True,True,False,True,True,True,7,1.000000,True,hit_2nd_deriv_drag (-2474.4246); hit_2nd_deriv_cv (-36.8199); hit_r2_drag (R^2=0.9702); hit_r2_cv (R^2=0.6673); hit_r2_slope (R^2=0.7116)
+1,1,,-66.620,3.9,35.06,65.960,16.869565,hit_detected,0.014903,0.963025,-36.099744,805.626598,805.626598,-3.279508,3740.409207,0.963025,0.014903,0.736735,True,False,False,True,True,True,7,0.800000,True,hit_2nd_deriv_drag (805.6266); hit_r2_drag (R^2=0.9630); hit_r2_cv (R^2=0.0149); hit_r2_slope (R^2=0.7367)
