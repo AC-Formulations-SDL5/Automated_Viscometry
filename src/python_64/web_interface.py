@@ -720,6 +720,7 @@ class ViscometryWebInterface:
             recalibration_cells = runtime.get('recalibration_cells') if isinstance(runtime, dict) else {}
             recalibration_target_count = len(recalibration_cells) if isinstance(recalibration_cells, dict) else 0
             recalibration_mode_active = bool(self.calibration_mode and runtime.get('recalibrate_individual_cells', False))
+            discovery_enabled = bool((runtime or {}).get('discovery_mode_enabled', False)) if isinstance(runtime, dict) else False
             return {
                 'position': self.current_position,
                 'current_cell': self.current_cell,
@@ -743,9 +744,7 @@ class ViscometryWebInterface:
                 'recalibration_target_count': recalibration_target_count,
                 'predicted_viscosity_results': self._copy_predicted_viscosity_results(),
                 'discovery_results_by_cell': self._copy_discovery_results_by_cell(),
-                'discovery_mode_active': bool(
-                    (runtime or {}).get('discovery_mode_enabled', False)
-                ) if isinstance(runtime, dict) else False,
+                'discovery_mode_active': bool(self.is_running and discovery_enabled),
                 'calibration_review': self.get_calibration_review_session(),
                 'calibration_review_pending': self.has_pending_calibration_review(),
                 'experiment_review': self.get_experiment_review_session(),
@@ -2296,6 +2295,8 @@ class ViscometryWebInterface:
                 'is_running': is_running,
                 'discovery_mode_active': discovery_mode_active,
             })
+            if is_running and discovery_enabled:
+                self.broadcast_discovery_mode()
         # If a calibration run just stopped, clear calibration_mode and refresh status
         if not is_running and self.calibration_mode:
             self.calibration_mode = False

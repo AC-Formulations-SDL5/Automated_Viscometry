@@ -1588,7 +1588,9 @@ class ViscometryDashboard {
         }
         this._renderPaused = false;
         if (this._liveChartsDirty) {
-            if (this.activeTabId === "calibrate-tab") {
+            if (this._isDiscoveryRunActive()) {
+                this.refreshDiscoveryLivePlots();
+            } else if (this.activeTabId === "calibrate-tab") {
                 this.refreshCalibrationLivePlots();
             } else if (this.activeTabId === "discovery-tab") {
                 this.refreshDiscoveryLivePlots();
@@ -2557,6 +2559,7 @@ class ViscometryDashboard {
         }
 
         if (this.charts.discoveryDrag) {
+            this.charts.discoveryDrag.resize();
             this.charts.discoveryDrag.update("none");
         }
     }
@@ -3124,7 +3127,18 @@ class ViscometryDashboard {
                 return;
             }
             if (data.discovery_mode_active !== undefined) {
-                this.discoveryModeActive = Boolean(data.discovery_mode_active);
+                if (data.discovery_mode_active) {
+                    this.discoveryModeActive = true;
+                } else if (!this.isRunning) {
+                    this.discoveryModeActive = false;
+                } else if (
+                    this.latestControlSettings?.discovery_mode_enabled
+                    || this.runSettingsSnapshot?.discovery_mode_enabled
+                ) {
+                    // Ignore pre-run false from request_start(); running_state_update is authoritative.
+                } else {
+                    this.discoveryModeActive = false;
+                }
             }
             if (data.discovery_results_by_cell && typeof data.discovery_results_by_cell === "object") {
                 this.discoveryResultsByCell = { ...data.discovery_results_by_cell };
@@ -3174,11 +3188,13 @@ class ViscometryDashboard {
                 statusMap.set(rpmKey, statuses[rpmKey] === "dropped" ? "dropped" : "active");
             });
             this.rpmTorqueStatusByCell.set(cellId, statusMap);
-            if (this.getActiveGraphCellId() === cellId && !this._isDiscoveryRunActive()) {
-                const ordered = this.expandRpmsWithObserved(
-                    this.getRpmsForCell(cellId),
-                    this.measurementsByCell.get(cellId) || []
-                );
+            const ordered = this.expandRpmsWithObserved(
+                this.getRpmsForCell(cellId),
+                this.measurementsByCell.get(cellId) || []
+            );
+            if (this._isDiscoveryRunActive() && this.getActiveDiscoveryGraphCellId() === cellId) {
+                this.renderDiscoveryDragZRpmLegend(cellId, ordered);
+            } else if (this.getActiveGraphCellId() === cellId && !this._isDiscoveryRunActive()) {
                 this.renderDragZRpmLegend(cellId, ordered);
             }
         });
@@ -3583,6 +3599,10 @@ class ViscometryDashboard {
         const previousCell = this.currentCell;
         this.currentCell = cellId === null ? null : Number(cellId);
 
+        if (this._isDiscoveryRunActive() && this.currentCell !== previousCell) {
+            this.selectedDiscoveryGraphCell = null;
+        }
+
         if (previousCell && this.currentCell !== previousCell) {
             this.measuredCells.add(previousCell);
             this._pendingCompletedCell = previousCell;
@@ -3810,6 +3830,10 @@ class ViscometryDashboard {
     }
 
      _schedulePlotRefresh() {
+        if (this._isDiscoveryRunActive()) {
+            this._scheduleDiscoveryPlotRefresh();
+            return;
+        }
         if (this.activeTabId === "calibrate-tab") {
             this._scheduleCalibrationPlotRefresh();
             return;
