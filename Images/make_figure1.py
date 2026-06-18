@@ -10,8 +10,8 @@ single ``matplotlib.figure.Figure`` under one shared ``rcParams`` and a
 single ``gridspec`` so every axes box has the same physical size.
 
 Layout (2 rows x 3 cols, row-major, top-left = A):
-    A: Normalized rotational drag (from Data/Manual_Auto/timing_v2.csv)
-    B: Raw rotational-drag overview                  (full_run CSV)
+    A: Raw rotational-drag overview                  (full_run CSV)
+    B: Normalized rotational drag (from Data/Manual_Auto/timing_v2.csv)
     C: Trimmed data + per-cell hyperbola fits        (full_run CSV)
     D: Hyperbola viscosity prediction accuracy       (full_run CSV)
     E: Cross-dataset relative-error distribution     (4 CSVs)
@@ -178,7 +178,7 @@ def _resolve_csv(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Panel A -- Normalized rotational drag (from timing_v2.csv)
+# Panel A -- Raw rotational-drag overview
 # ---------------------------------------------------------------------------
 VISCOSITY_MAPPING = {
     "350cp": 412.07,   "1kcp": 1073.33,  "2kcp": 3345.33,  "4kcp": 6603.00,
@@ -263,7 +263,7 @@ def draw_panel_A(ax: plt.Axes) -> None:
                    edgecolors="none", label=f"{int(v):,} cP")
 
     ax.set_xlabel("Gap Height (mm)", fontsize=LABEL_FS)
-    ax.set_ylabel("Rotational Drag (N·m/RPM)", fontsize=LABEL_FS)
+    ax.set_ylabel("Drag Profile", fontsize=LABEL_FS)
     # Force scientific notation with exponent fixed at 1e-3 (matches panels B/C).
     ax.yaxis.set_major_formatter(_FixedOrderFormatter(-3))
     ax.yaxis.get_offset_text().set_fontsize(TICK_FS)
@@ -275,7 +275,7 @@ def draw_panel_A(ax: plt.Axes) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Panel B -- Raw rotational-drag overview
+# Panel B -- Normalized rotational drag (from timing_v2.csv)
 # ---------------------------------------------------------------------------
 def _hyperbola(x, a, b):
     return a / (x - b)
@@ -293,7 +293,7 @@ def draw_panel_B(ax: plt.Axes, raw_df: pd.DataFrame) -> None:
         ax.scatter(x, y, s=22, alpha=0.85, color=cmap(idx % cmap.N),
                    edgecolors="none", label=f"Cell {int(c)}")
     ax.set_xlabel("Spindle Height in Z-axis (mm)", fontsize=LABEL_FS)
-    ax.set_ylabel("Rotational Drag (N·m/RPM)", fontsize=LABEL_FS)
+    ax.set_ylabel("Drag Profile", fontsize=LABEL_FS)
     ax.xaxis.set_major_locator(MultipleLocator(0.5))
     # Force scientific notation with exponent fixed at 1e-3 (matches panel C).
     ax.yaxis.set_major_formatter(_FixedOrderFormatter(-3))
@@ -596,10 +596,10 @@ def main() -> Path:
         for ax in axes:
             _style_axis(ax)
 
-        print("Drawing panel A (normalized rotational drag) ...")
-        draw_panel_A(axes[0])
-        print("Drawing panel B (raw overview) ...")
-        draw_panel_B(axes[1], pipe["raw_df"])
+        print("Drawing panel A (raw overview) ...")
+        draw_panel_B(axes[0], pipe["raw_df"])
+        print("Drawing panel B (normalized rotational drag) ...")
+        draw_panel_A(axes[1])
         print("Drawing panel C (trimmed + hyperbola fits) ...")
         draw_panel_C(axes[2], pipe["trimmed_df"])
         print("Drawing panel D (prediction accuracy) ...")
