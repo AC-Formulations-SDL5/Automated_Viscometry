@@ -546,6 +546,11 @@ body.running .header-sweep {
     display: none !important;
 }
 
+.tab-panel:not(.active),
+.tab-panel:not(.active) * {
+    animation-play-state: paused;
+}
+
 .tab-signature {
     grid-column: 1 / -1;
     width: 100%;
