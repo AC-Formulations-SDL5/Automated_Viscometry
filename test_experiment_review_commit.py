@@ -420,6 +420,65 @@ class TestSaveDynamicPartialFilename(unittest.TestCase):
         self.assertIn("Completed cells: [1]", content)
 
 
+class TestSaveDynamicAnalysisCsvShape(unittest.TestCase):
+    def test_summary_csv_uses_slim_headers_and_termination_metadata(self):
+        from all_cells_with_rotational_drag_feedback import save_dynamic_analysis_data
+
+        data = {
+            1: {
+                65.5: {
+                    0.8: [
+                        {
+                            "torque_percent": 12.0,
+                            "elapsed_time": 6.0,
+                        }
+                    ],
+                    "_metrics": {
+                        0.8: {
+                            "Hit_Detected": True,
+                            "CV": 0.1,
+                            "Hit_Reasons": "kept internal only",
+                        }
+                    },
+                }
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = os.getcwd()
+            try:
+                os.chdir(tmp)
+                path = save_dynamic_analysis_data(
+                    data,
+                    "20260608_120000",
+                    "custom",
+                    "unit_test",
+                    termination_by_cell={1: "hit_detected"},
+                )
+                with open(path, encoding="utf-8") as f:
+                    lines = f.read().splitlines()
+            finally:
+                os.chdir(prev)
+
+        self.assertIn("# Cell termination methods: {1: 'hit_detected'}", lines)
+        header = next(line for line in lines if line.startswith("row,cell,"))
+        self.assertEqual(
+            header,
+            "row,cell,Cell_Label,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%,Rotational_Drag,Hit_Detected",
+        )
+        self.assertNotIn("Cell_Termination_Method", header)
+        self.assertNotIn("CV", header)
+        self.assertNotIn("Hit_Reasons", header)
+
+        header_idx = lines.index(header)
+        data_rows = [
+            ln for ln in lines[header_idx + 1:]
+            if ln.strip()
+        ]
+        self.assertEqual(len(data_rows), 1)
+        self.assertTrue(data_rows[0].endswith(",True"))
+
+
 class TestSaveTimeseriesData(unittest.TestCase):
     def test_timeseries_writes_all_samples(self):
         from all_cells_with_rotational_drag_feedback import (
@@ -453,11 +512,21 @@ class TestSaveTimeseriesData(unittest.TestCase):
 
         ts_data_rows = [
             ln for ln in ts_content.splitlines()
-            if ln.strip() and not ln.startswith("#") and not ln.startswith("row,")
+            if ln.strip()
         ]
         self.assertTrue(summary.endswith(".csv"))
         self.assertTrue(ts_path.endswith("_timeseries.csv"))
         self.assertIn("Save all sample data: ENABLED", ts_content)
+        self.assertIn("# Cell termination methods: {10: 'normal', 11: 'normal'}", ts_content)
+        self.assertIn(
+            "row,cell,Cell_Label,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%,Rotational_Drag",
+            ts_content,
+        )
+        self.assertNotIn("Cell_Termination_Method", ts_content)
+        ts_header_idx = ts_data_rows.index(
+            "row,cell,Cell_Label,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%,Rotational_Drag"
+        )
+        ts_data_rows = ts_data_rows[ts_header_idx + 1:]
         self.assertEqual(len(ts_data_rows), 3)
 
 

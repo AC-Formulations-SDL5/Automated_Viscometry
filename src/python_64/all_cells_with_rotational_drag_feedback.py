@@ -344,6 +344,30 @@ def raise_if_stop_requested():
         raise KeyboardInterrupt("Stop requested from web interface")
 
 
+SUMMARY_CSV_HEADERS = [
+    "row", "cell", "Cell_Label", "Z_Height_mm", "RPM",
+    "Elapsed_Time_s", "Torque_%", "Rotational_Drag", "Hit_Detected",
+]
+
+TIMESERIES_CSV_HEADERS = [
+    "row", "cell", "Cell_Label", "Z_Height_mm", "RPM",
+    "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
+]
+
+
+def _append_cell_termination_metadata(
+    csv_writer,
+    all_data: Dict[int, object],
+    termination_by_cell: Optional[Dict[int, str]] = None,
+) -> None:
+    """Write per-cell termination methods into CSV metadata comments."""
+    if not all_data:
+        return
+    term = termination_by_cell or {}
+    cell_map = {cell: term.get(cell, "normal") for cell in sorted(all_data.keys())}
+    csv_writer.writerow([f"# Cell termination methods: {cell_map}"])
+
+
 def _liquid_skip_csv_row(row_number: int, global_cell: int, z_height: float, rpm: float, torque_label: str) -> List[str]:
     """One CSV row for a Z-level skipped due to low torque (no liquid contact)."""
     sk = "SKIPPED"
@@ -356,7 +380,8 @@ def _liquid_skip_csv_row(row_number: int, global_cell: int, z_height: float, rpm
         sk,
         torque_label,
         sk,
-    ] + [sk] * 10 + [sk] * 6 + [sk, sk, sk, sk]
+        "False",
+    ]
 
 
 def _liquid_skip_torque_label(th: float) -> str:
@@ -2163,19 +2188,9 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
             ])
         _append_discovery_csv_metadata(csv_writer)
         _append_predicted_viscosity_csv_metadata(csv_writer)
+        _append_cell_termination_metadata(csv_writer, all_data, termination_by_cell)
 
-        headers = [
-            "row", "cell", "Cell_Label", "Z_Height_mm", "RPM", "Elapsed_Time_s", "Torque_%", "Rotational_Drag",
-            "Cell_Termination_Method",
-            "CV", "R_2", "Trend_Slope", "Second_derivative",
-            "Second_derivative_drag", "Second_derivative_cv", "Second_derivative_slope",
-            "R_2_drag", "R_2_cv", "R_2_slope",
-            "Hit_2nd_Deriv_Drag", "Hit_2nd_Deriv_CV", "Hit_2nd_Deriv_Slope",
-            "Hit_R_2_Drag", "Hit_R_2_CV", "Hit_R_2_Slope",
-            "Samples_Collected_At_Z",
-            "Hit_Point_Confidence", "Hit_Detected", "Hit_Reasons"
-        ]
-        csv_writer.writerow(headers)
+        csv_writer.writerow(SUMMARY_CSV_HEADERS)
 
         for global_cell in sorted(all_data.keys()):
             row_number, local_cell = global_cell_to_row_and_local(global_cell)
@@ -2202,66 +2217,25 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 )
                             continue
                         if measurements is not None:
-                            # Get metrics for this RPM at this Z-height
-                            rpm_metrics = metrics_data.get(rpm, {
-                                'CV': 0.0,
-                                'R2': 0.0,
-                                'Trend_Slope': 0.0,
-                                'Second_derivative': 0.0,
-                                'Second_derivative_drag': 0.0,
-                                'Second_derivative_cv': 0.0,
-                                'Second_derivative_slope': 0.0,
-                                'R2_drag': 0.0,
-                                'R2_cv': 0.0,
-                                'R2_slope': 0.0,
-                                'Hit_2nd_Deriv_Drag': False,
-                                'Hit_2nd_Deriv_CV': False,
-                                'Hit_2nd_Deriv_Slope': False,
-                                'Hit_R2_Drag': False,
-                                'Hit_R2_CV': False,
-                                'Hit_R2_Slope': False,
-                                'Hit_Point_Confidence': 0.0,
-                                'Hit_Detected': False,
-                                'Hit_Reasons': ''
-                            })
-                            
+                            rpm_metrics = metrics_data.get(rpm, {})
+                            hit_detected = bool(rpm_metrics.get('Hit_Detected', False))
+
                             # Use LATEST measurement only (as requested by user)
                             latest_measurement = measurements[-1]
                             torque_percent = latest_measurement['torque_percent']
                             rotational_drag = abs(torque_percent) / rpm if rpm > 0 else float('inf')
 
-                            data_row = [
-                                str(row_number),                              # row
-                                str(global_cell),                            # cell (global numbering)
-                                CELL_CONTENT_MAP.get(global_cell, ''),       # Cell_Label
-                                f"{z_height:.3f}",                          # Z_Height_mm
-                                f"{rpm:.1f}",                               # RPM
-                                f"{latest_measurement['elapsed_time']:.2f}", # Elapsed_Time_s
-                                f"{latest_measurement['torque_percent']:.3f}", # Torque_%
-                                f"{rotational_drag:.6f}",                   # Rotational_Drag
-                                str((termination_by_cell or {}).get(global_cell, "normal")),
-                                f"{rpm_metrics['CV']:.6f}",                 # CV
-                                f"{rpm_metrics['R2']:.6f}",                 # R2
-                                f"{rpm_metrics['Trend_Slope']:.6f}",        # Trend_Slope
-                                f"{rpm_metrics['Second_derivative']:.6f}",   # Second_derivative
-                                f"{rpm_metrics.get('Second_derivative_drag', 0.0):.6f}",
-                                f"{rpm_metrics.get('Second_derivative_cv', 0.0):.6f}",
-                                f"{rpm_metrics.get('Second_derivative_slope', 0.0):.6f}",
-                                f"{rpm_metrics.get('R2_drag', 0.0):.6f}",
-                                f"{rpm_metrics.get('R2_cv', 0.0):.6f}",
-                                f"{rpm_metrics.get('R2_slope', 0.0):.6f}",
-                                str(bool(rpm_metrics.get('Hit_2nd_Deriv_Drag', False))),
-                                str(bool(rpm_metrics.get('Hit_2nd_Deriv_CV', False))),
-                                str(bool(rpm_metrics.get('Hit_2nd_Deriv_Slope', False))),
-                                str(bool(rpm_metrics.get('Hit_R2_Drag', False))),
-                                str(bool(rpm_metrics.get('Hit_R2_CV', False))),
-                                str(bool(rpm_metrics.get('Hit_R2_Slope', False))),
-                                str(len(measurements)),
-                                f"{rpm_metrics['Hit_Point_Confidence']:.6f}", # Hit_Point_Confidence
-                                str(bool(rpm_metrics['Hit_Detected'])),       # Hit_Detected
-                                str(rpm_metrics['Hit_Reasons'])               # Hit_Reasons
-                            ]
-                            csv_writer.writerow(data_row)
+                            csv_writer.writerow([
+                                str(row_number),
+                                str(global_cell),
+                                CELL_CONTENT_MAP.get(global_cell, ''),
+                                f"{z_height:.3f}",
+                                f"{rpm:.1f}",
+                                f"{latest_measurement['elapsed_time']:.2f}",
+                                f"{latest_measurement['torque_percent']:.3f}",
+                                f"{rotational_drag:.6f}",
+                                str(hit_detected),
+                            ])
 
     if partial:
         print(f"Partial results saved to: {csv_filename}")
@@ -2306,18 +2280,14 @@ def save_timeseries_data(
             csv_writer.writerow([
                 "# WARNING: Experiment was terminated early - these are partial results"
             ])
+        _append_cell_termination_metadata(csv_writer, all_data, termination_by_cell)
 
-        headers = [
-            "row", "cell", "Cell_Label", "Z_Height_mm", "RPM",
-            "Elapsed_Time_s", "Torque_%", "Rotational_Drag", "Cell_Termination_Method",
-        ]
-        csv_writer.writerow(headers)
+        csv_writer.writerow(TIMESERIES_CSV_HEADERS)
 
         for global_cell in sorted(all_data.keys()):
             row_number, _local_cell = global_cell_to_row_and_local(global_cell)
             cell_data = all_data[global_cell]
             z_heights = sorted(_z_keys_from_cell_data(cell_data), reverse=True)
-            term = str((termination_by_cell or {}).get(global_cell, "normal"))
             for z_height in z_heights:
                 rpm_data = cell_data.get(z_height)
                 if not isinstance(rpm_data, dict):
@@ -2343,7 +2313,6 @@ def save_timeseries_data(
                             f"{elapsed:.2f}",
                             f"{torque_percent:.3f}",
                             f"{rotational_drag:.6f}",
-                            term,
                         ])
 
     print(f"Timeseries data saved to: {csv_filename}")
