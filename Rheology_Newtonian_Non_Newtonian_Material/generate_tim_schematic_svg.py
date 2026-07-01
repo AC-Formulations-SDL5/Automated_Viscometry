@@ -26,17 +26,6 @@ def make_root(width: int, height: int) -> ET.Element:
             "height": str(height),
         },
     )
-    ET.SubElement(
-        root,
-        "rect",
-        {
-            "x": "0",
-            "y": "0",
-            "width": str(width),
-            "height": str(height),
-            "fill": "#ffffff",
-        },
-    )
     return root
 
 
@@ -118,8 +107,8 @@ def build_svg(width: int, height: int) -> ET.Element:
     root = make_root(width, height)
     add_style(root)
 
-    # Apply a global inset and slight downscale so all particles stay inside the frame.
-    g_scene = ET.SubElement(root, "g", {"transform": "translate(8 8) scale(0.95 0.95)"})
+    # Draw directly in the full viewBox so the schematic uses the available area.
+    g_scene = ET.SubElement(root, "g")
     g_chain = ET.SubElement(g_scene, "g")
     g_nodes = ET.SubElement(g_scene, "g")
 
