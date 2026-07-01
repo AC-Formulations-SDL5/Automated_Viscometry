@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import string
 from pathlib import Path
 from typing import Optional
 from xml.dom import minidom
@@ -63,6 +62,9 @@ def _add_styles(root: ET.Element) -> None:
         ".h1{font-family:Arial,sans-serif;font-size:50px;font-weight:800;fill:#101418;letter-spacing:1px;}"
         ".h2{font-family:Arial,sans-serif;font-size:46px;font-weight:800;fill:#101418;letter-spacing:0.6px;}"
         ".h3{font-family:Arial,sans-serif;font-size:25px;font-weight:800;fill:#101418;}"
+        ".h3Lub{font-family:Arial,sans-serif;font-size:40px;font-weight:800;fill:#2F5D9B;}"
+        ".h3RM{font-family:Arial,sans-serif;font-size:40px;font-weight:800;fill:#2E6B3D;}"
+        ".h3TIM{font-family:Arial,sans-serif;font-size:40px;font-weight:800;fill:#9A6A00;}"
         ".panelLetter{font-family:Arial,sans-serif;font-size:34px;font-weight:400;fill:#101418;}"
         ".subtitle{font-family:Arial,sans-serif;font-size:15px;font-weight:600;fill:#5F6368;}"
     )
@@ -229,8 +231,11 @@ def _draw_layout(base_dir: Path, output_path: Path, width: int, height: int) -> 
 
     g = ET.SubElement(root, "g")
 
-    outer_margin_x = 36
-    outer_margin_y = 28
+    # Solid white backdrop so exported SVG never renders with transparency.
+    _add_rect(g, 0, 0, width, height, fill="#FFFFFF", stroke="none", stroke_w=0, rx=0)
+
+    outer_margin_x = 10  #36
+    outer_margin_y = 30 #28
     col_gap = 18
     n_cols = 5
     col_w = (width - 2 * outer_margin_x - (n_cols - 1) * col_gap) / n_cols
@@ -240,9 +245,9 @@ def _draw_layout(base_dir: Path, output_path: Path, width: int, height: int) -> 
     h_brace = 86    # Brace connectors area
     h_row2 = 76     # Category group boxes
     h_row3 = 320    # Schematics (increased)
-    h_plot = 375    # Plot row height (+50%)
-    row_gap = 0
-    plot_row_gap = -10  # Highly small spacing between plot rows.
+    h_plot = 450    # Plot row height (+50%)
+    row_gap = 30
+    plot_row_gap = 10  # Highly small spacing between plot rows.
 
     # Compute y anchors
     y1 = outer_margin_y
@@ -285,13 +290,13 @@ def _draw_layout(base_dir: Path, output_path: Path, width: int, height: int) -> 
 
     # Row 2 category boxes
     _add_rect(g, col_x[0], y2, col_w, h_row2, fill="#84ABE8", stroke="none", stroke_w=0, rx=16)
-    _add_text(g, "LUBRICANTS", col_x[0] + col_w / 2, y2 + h_row2 / 2, "h3")
+    _add_text(g, "LUBRICANTS", col_x[0] + col_w / 2, y2 + h_row2 / 2, "h3Lub")
 
     _add_rect(g, rm_x, y2, rm_w, h_row2, fill="#8FCC9A", stroke="none", stroke_w=0, rx=16)
-    _add_text(g, "RHEOLOGY MODIFIERS", rm_x + rm_w / 2, y2 + h_row2 / 2, "h3")
+    _add_text(g, "RHEOLOGY MODIFIERS", rm_x + rm_w / 2, y2 + h_row2 / 2, "h3RM")
 
     _add_rect(g, tim_x, y2, tim_w, h_row2, fill="#F6D98D", stroke="none", stroke_w=0, rx=16)
-    _add_text(g, "THERMAL INTERFACE MATERIALS", tim_x + tim_w / 2, y2 + h_row2 / 2, "h3")
+    _add_text(g, "THERMAL INTERFACE MATERIALS", tim_x + tim_w / 2, y2 + h_row2 / 2, "h3TIM")
 
     # Row 3 schematics
     _add_rect(g, col_x[0], y3, col_w, h_row3, fill=CARD_BLUE, stroke="none", stroke_w=0, rx=24)
@@ -327,8 +332,27 @@ def _draw_layout(base_dir: Path, output_path: Path, width: int, height: int) -> 
         preserve_aspect_ratio="xMidYMid slice",
     )
 
-    # Plot panels with A, B, C... labels
-    letters = iter(string.ascii_uppercase)
+    # Plot panels with custom labels in row-major placement order.
+    panel_labels = iter(
+        [
+            "A1",
+            "B1",
+            "C1",
+            "F1",
+            "G1",
+            "A2",
+            "B2",
+            "C2",
+            "F2",
+            "G2",
+            "D1",
+            "E1",
+            "H1",
+            "D2",
+            "E2",
+            "H2",
+        ]
+    )
 
     for r in range(4):
         y = y_plot0 + r * (h_plot + plot_row_gap)
@@ -339,8 +363,8 @@ def _draw_layout(base_dir: Path, output_path: Path, width: int, height: int) -> 
 
             x = col_x[c]
 
-            letter = next(letters)
-            _add_text(g, letter, x + 20, y + 22, "panelLetter", anchor="start")
+            panel_label = next(panel_labels)
+            _add_text(g, panel_label, x + 20, y + 22, "panelLetter", anchor="start")
 
             # Place each exported SVG directly in its slot (no extra frame or color strip).
             img_pad_x = 2
@@ -374,7 +398,7 @@ def parse_args() -> argparse.Namespace:
         help="Output SVG path (default: composite_rheology_overview.svg in base dir).",
     )
     p.add_argument("--width", type=int, default=2600, help="Canvas width in px.")
-    p.add_argument("--height", type=int, default=2250, help="Canvas height in px.")
+    p.add_argument("--height", type=int, default=2400, help="Canvas height in px.")
     return p.parse_args()
 
 
