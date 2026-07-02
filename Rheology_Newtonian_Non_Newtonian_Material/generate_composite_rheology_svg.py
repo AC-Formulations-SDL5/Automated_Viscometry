@@ -335,22 +335,22 @@ def _draw_layout(base_dir: Path, output_path: Path, width: int, height: int) -> 
     # Plot panels with custom labels in row-major placement order.
     panel_labels = iter(
         [
-            "A1",
-            "B1",
-            "C1",
-            "F1",
-            "G1",
-            "A2",
-            "B2",
-            "C2",
-            "F2",
-            "G2",
-            "D1",
-            "E1",
-            "H1",
-            "D2",
-            "E2",
-            "H2",
+            "A-1",
+            "B-1",
+            "C-1",
+            "F-1",
+            "G-1",
+            "A-2",
+            "B-2",
+            "C-2",
+            "F-2",
+            "G-2",
+            "D-1",
+            "E-1",
+            "H-1",
+            "D-2",
+            "E-2",
+            "H-2",
         ]
     )
 
@@ -398,7 +398,7 @@ def parse_args() -> argparse.Namespace:
         help="Output SVG path (default: composite_rheology_overview.svg in base dir).",
     )
     p.add_argument("--width", type=int, default=2600, help="Canvas width in px.")
-    p.add_argument("--height", type=int, default=2400, help="Canvas height in px.")
+    p.add_argument("--height", type=int, default=2550, help="Canvas height in px.")
     return p.parse_args()
 
 
