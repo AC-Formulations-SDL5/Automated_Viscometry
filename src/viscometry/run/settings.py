@@ -110,6 +110,14 @@ def _is_calibration_like_run() -> bool:
     return bool(CALIBRATION_MODE or RECALIBRATE_INDIVIDUAL_CELLS)
 
 
+def use_liquid_z_skip() -> bool:
+    """True when regular-run liquid-contact Z-skipping should be active."""
+    return (
+        LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED
+        and not _is_calibration_like_run()
+    )
+
+
 # ========== TESTING MODE CONFIGURATION ==========
 # Set the testing mode and parameters here (no runtime input required)
 

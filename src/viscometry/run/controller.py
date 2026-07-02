@@ -86,6 +86,63 @@ def _sanitize_experiment_slug(name: str) -> str:
     return cleaned[:80] if cleaned else "experiment"
 
 
+_RUNTIME_SETTING_NAMES = (
+    "EXPERIMENT_NAME",
+    "TESTING_MODE",
+    "SELECTED_ROWS",
+    "SELECTED_CELLS",
+    "TEST_RPMS",
+    "CELL_RPM_MAP",
+    "CELL_CONTENT_MAP",
+    "Z_STEP_SIZE",
+    "DWELL_SECONDS",
+    "INTER_RPM_PAUSE",
+    "MEASUREMENT_DURATION",
+    "SAMPLE_INTERVAL",
+    "SMART_EARLY_EXIT_ENABLED",
+    "FAIL_SAFE_ENABLED",
+    "SMART_CV_THRESHOLD",
+    "SMART_WINDOW_SIZE",
+    "FEEDBACK_CONTROL_ENABLED",
+    "MIN_DATA_POINTS_FOR_TREND",
+    "R2_DRAG_MIN",
+    "R2_CV_MIN",
+    "R2_SLOPE_MIN",
+    "HIT_POINT_CONFIDENCE_THRESHOLD",
+    "TORQUE_BREAK_THRESHOLD",
+    "WEIGHT_2ND_DERIV_DRAG",
+    "WEIGHT_2ND_DERIV_CV",
+    "WEIGHT_2ND_DERIV_SLOPE",
+    "WEIGHT_R2_DRAG",
+    "WEIGHT_R2_CV",
+    "WEIGHT_R2_SLOPE",
+    "BASELINE_N_CALIBRATION",
+    "BASELINE_Z_THRESHOLD",
+    "CALIBRATION_MODE",
+    "RECALIBRATE_INDIVIDUAL_CELLS",
+    "RECALIBRATION_IGNORE_MAX_Z_TRAVEL",
+    "LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED",
+    "LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT",
+    "VISCOSITY_PREDICTION_MODE",
+    "SAVE_ALL_SAMPLE_DATA",
+    "Z_START_OFFSET_MM",
+    "DISCOVERY_MODE_ENABLED",
+    "DISCOVERY_PROBE_DURATION_S",
+    "DISCOVERY_DUCK_TORQUE_PCT",
+    "DISCOVERY_HANDOFF_PAUSE_S",
+    "DISCOVERY_ETA_GUESS_MAP",
+    "RECALIBRATION_CELLS",
+)
+
+
+def _sync_controller_runtime_settings() -> None:
+    """Mirror run_settings module attrs into this module's star-import namespace."""
+    g = globals()
+    rs = run_settings
+    for name in _RUNTIME_SETTING_NAMES:
+        g[name] = getattr(rs, name)
+
+
 def apply_runtime_settings_from_web():
     """Synchronize module-level run settings from the web interface."""
     rs = run_settings
@@ -180,6 +237,8 @@ def apply_runtime_settings_from_web():
                     continue
     if rs.DISCOVERY_MODE_ENABLED:
         rs.LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = False
+    if rs.CALIBRATION_MODE or rs.RECALIBRATE_INDIVIDUAL_CELLS:
+        rs.LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED = False
     raw_recalibration_cells = web_settings.get('recalibration_cells', {})
     normalized_recalibration_cells: Dict[int, Optional[float]] = {}
     if isinstance(raw_recalibration_cells, dict):
@@ -196,6 +255,7 @@ def apply_runtime_settings_from_web():
                 except (TypeError, ValueError):
                     normalized_recalibration_cells[normalized_cell_id] = None
     rs.RECALIBRATION_CELLS = normalized_recalibration_cells
+    _sync_controller_runtime_settings()
 
 
 def get_rpms_for_cell(global_cell: int) -> List[float]:
@@ -1056,11 +1116,7 @@ def test_cell_dynamic_z_series(
     )
     
     cell_z_rpm_data = {}
-    use_liquid_z_skip = (
-        LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED
-        and (not CALIBRATION_MODE)
-        and (not RECALIBRATE_INDIVIDUAL_CELLS)
-    )
+    use_liquid_z_skip = run_settings.use_liquid_z_skip()
     if use_liquid_z_skip:
         print(
             f"  Liquid-contact hunt enabled (regular run): per RPM at each Z, skip RPM when first "
