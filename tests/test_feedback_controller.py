@@ -103,10 +103,10 @@ def test_feedback_controller():
     controller = RotationalDragFeedbackController(
         feedback_enabled=True,
         min_data_points=3,
-        second_derivative_threshold=-0.5,
-        cv_jump_threshold=0.2,
-        trend_r_squared_min=0.8,
-        hit_point_confidence_threshold=0.6
+        r2_drag_min=0.8,
+        r2_cv_min=0.8,
+        r2_slope_min=0.8,
+        hit_point_confidence_threshold=0.6,
     )
     
     # Process data step by step as the real system would

@@ -1,11 +1,5 @@
-import sys
-from pathlib import Path
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT / "src") not in sys.path:
-    sys.path.insert(0, str(_ROOT / "src"))
-
-"""
-Offline calibration for Discovery Mode bulk-offset RPM model.
+#!/usr/bin/env python3
+"""Offline calibration for Discovery Mode bulk-offset RPM model.
 
 CLI-only: fits K_BULK and continuous RPM↔viscosity power law from manual CSV,
 writes data/calibration/discovery_bulk_calibration.json.
@@ -18,9 +12,14 @@ import csv
 import json
 import math
 import statistics
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "src"))
 
 from viscometry.discovery.rpm_calibration import A_CAL, B_CAL, DEFAULT_RPM_MAX, DEFAULT_RPM_MIN
 
@@ -231,7 +230,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument(
         "--manual-csv",
         type=Path,
-        default=_PROJECT_ROOT / "results" / "Viscosity Readings - Manual.csv",
+        default=_PROJECT_ROOT / "data" / "reference" / "Viscosity Readings - Manual.csv",
     )
     parser.add_argument("--output", type=Path, default=_DEFAULT_OUTPUT)
     args = parser.parse_args(argv)

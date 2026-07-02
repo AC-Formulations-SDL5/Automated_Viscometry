@@ -1,11 +1,5 @@
-import sys
-from pathlib import Path
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT / "src") not in sys.path:
-    sys.path.insert(0, str(_ROOT / "src"))
-
-"""
-Backfill per-cell calibration JSON from a calibration CSV export.
+#!/usr/bin/env python3
+"""Backfill per-cell calibration JSON from a calibration CSV export.
 
 Reliable hitpoint rule used here matches the runtime extractor:
 - A rough hitpoint is the LAST z-level (descent order, higher to lower)
@@ -16,27 +10,27 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Tuple
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "src"))
 
 from viscometry.calibration.store import save_calibration, update_calibration_for_cells
+from viscometry.io.csv_text import find_row_cell_header_index, read_text_lines_with_fallback
 from viscometry.measurement.hitpoint import extract_hitpoint_from_sequence
 
 
 def _parse_rows(csv_path: Path) -> List[dict]:
-    """
-    Parse CSV rows while ignoring metadata lines before the true header row.
-    """
-    from scripts.csv_text_utils import read_text_lines_with_fallback
-
+    """Parse CSV rows while ignoring metadata lines before the true header row."""
     lines, _enc = read_text_lines_with_fallback(csv_path)
     text = "\n".join(lines)
     if not text:
         raise ValueError(f"Could not decode CSV file: {csv_path}")
-
-    from scripts.csv_text_utils import find_row_cell_header_index
 
     try:
         header_idx = find_row_cell_header_index(lines)
@@ -51,9 +45,7 @@ def _parse_rows(csv_path: Path) -> List[dict]:
 
 
 def _build_hit_sequences(rows: Iterable[dict]) -> Dict[int, List[Tuple[float, bool]]]:
-    """
-    Group rows by cell and z-height, reducing to a per-z any-hit boolean.
-    """
+    """Group rows by cell and z-height, reducing to a per-z any-hit boolean."""
     per_cell_per_z: Dict[int, Dict[float, bool]] = defaultdict(dict)
     for row in rows:
         try:

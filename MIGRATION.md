@@ -12,8 +12,10 @@ python -m viscometry
 Install editable package (recommended):
 
 ```bash
-python3 -m pip install -e .
+python3 -m pip install -e ".[analysis,dev]"
 ```
+
+For notebooks and offline CSV analysis, the `[analysis]` extra includes pandas, matplotlib, scikit-learn, statsmodels, and optional fit libraries.
 
 ## Directory layout
 
@@ -31,6 +33,7 @@ python3 -m pip install -e .
 | Simulation (no hardware) | `examples/simulation/` |
 | ESP32 firmware | `firmware/esp32/` |
 | Maintenance scripts | `scripts/` |
+| Offline analysis pipelines | `src/viscometry/analysis/` |
 
 ## Archived run CSVs
 
@@ -39,3 +42,11 @@ Root-level `dynamic_analysis_*.csv` files were moved to `results/runs/archive/`.
 ## Removed legacy code
 
 Old experiment scripts under `src/python_64/` and `src/python_32/` were removed after migration to `src/viscometry/`. The 32-bit viscometer worker now lives at `src/viscometry/hardware/viscometer/worker32/`.
+
+Offline batch helpers that previously lived in `results/auto_runs/` (`viscosity_pipeline_helper.py`, `rheology_pipeline_core.py`) are now in `src/viscometry/analysis/`:
+
+```python
+from viscometry.analysis import run_viscosity_pipeline, RheologyPipeline, create_default_pipeline
+```
+
+Shared CSV parsing utilities are in `src/viscometry/io/csv_text.py`.

@@ -9,7 +9,9 @@ from contextlib import redirect_stdout
 from unittest.mock import MagicMock
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
+_SRC = os.path.join(_ROOT, "src")
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
 
 from viscometry.measurement.feedback import _linear_regression_extended, RotationalDragFeedbackController
 from viscometry.hardware.cnc import CNC_Machine, CNCMotionError

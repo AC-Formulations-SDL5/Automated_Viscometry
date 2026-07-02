@@ -1,8 +1,8 @@
 {
-  "pythonVersion": "3.13",
-  "pythonPlatform": "Windows",
+  "pythonVersion": "3.10",
   "venvPath": ".",
-  "venv": ".venv64",
+  "venv": ".venv",
   "typeCheckingMode": "off",
-  "include": ["src"]
+  "extraPaths": ["src"],
+  "include": ["src", "scripts", "tests", "run_viscometry.py"]
 }
