@@ -935,7 +935,7 @@ def test_dynamic_analysis_at_z(
     SAMPLE_INTERVAL is below the floor, that RPM is skipped and the next RPM is tried.
     """
     read_retries_per_slot = (
-        CALIBRATION_READ_RETRIES_PER_SLOT if _is_calibration_like_run() else 1
+        CALIBRATION_READ_RETRIES_PER_SLOT if run_settings._is_calibration_like_run() else 1
     )
     dropped: Set[float] = dropped_torque_rpms if dropped_torque_rpms is not None else set()
     rpm_torque_data: Dict[float, Optional[List[Dict]]] = {}
@@ -981,7 +981,7 @@ def test_dynamic_analysis_at_z(
 
         rpm_torque_data[rpm] = measurements
         should_drop, reason = _torque_should_drop_rpm(measurements)
-        if should_drop and not _is_calibration_like_run():
+        if should_drop and not run_settings._is_calibration_like_run():
             _mark_rpm_torque_dropped(rpm, dropped, cell_rpms, global_cell, reason)
         elif should_drop:
             print(
