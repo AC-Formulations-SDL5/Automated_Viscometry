@@ -19,16 +19,48 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 
-from viscometry.paths import CALIBRATION_DIR, calibration_file, ensure_calibration_dir
+from viscometry.paths import CALIBRATION_DIR, PROJECT_ROOT, calibration_file, ensure_calibration_dir
 
 CALIBRATION_FILE_PATH: str = str(CALIBRATION_DIR / "per_cell_z_calibration.json")
 
 _DEFAULT_CAL = {"version": 1, "calibrated_at": None, "cell_calibrated_at": {}, "cells": {}}
 
+_LEGACY_READ_RELATIVE = (
+    Path("src") / "python_64" / "calibration_data" / "per_cell_z_calibration.json",
+    Path("calibration_data") / "per_cell_z_calibration.json",
+)
+
+
+def _legacy_read_paths() -> tuple[Path, ...]:
+    return tuple(PROJECT_ROOT / rel for rel in _LEGACY_READ_RELATIVE)
+
+
+def _canonical_path() -> Path:
+    return calibration_file("per_cell_z_calibration.json")
+
 
 def _get_path() -> Path:
-    """Read path with legacy fallback."""
-    return calibration_file("per_cell_z_calibration.json")
+    """Resolve read path: canonical location, then pre-restructure legacy paths."""
+    canonical = _canonical_path()
+    if canonical.is_file():
+        return canonical
+    for legacy in _legacy_read_paths():
+        if legacy.is_file():
+            return legacy
+    return canonical
+
+
+def _maybe_migrate_legacy_calibration(source: Path) -> None:
+    """Copy legacy calibration JSON into data/calibration/ on first read."""
+    canonical = _canonical_path()
+    if canonical.is_file() or not source.is_file():
+        return
+    try:
+        ensure_calibration_dir()
+        shutil.copy2(source, canonical)
+        print(f"Migrated per-cell calibration from {source} to {canonical}")
+    except Exception as exc:
+        print(f"Warning: could not migrate calibration from {source}: {exc}")
 
 
 def _write_path() -> Path:
@@ -63,6 +95,10 @@ def load_calibration() -> Dict[str, Any]:
     path = _get_path()
     if not path.exists():
         return dict(_DEFAULT_CAL)
+
+    if path != _canonical_path():
+        _maybe_migrate_legacy_calibration(path)
+        path = _canonical_path() if _canonical_path().is_file() else path
 
     try:
         with path.open("r", encoding="utf-8") as f:

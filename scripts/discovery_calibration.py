@@ -22,9 +22,10 @@ if str(_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_ROOT / "src"))
 
 from viscometry.discovery.rpm_calibration import A_CAL, B_CAL, DEFAULT_RPM_MAX, DEFAULT_RPM_MIN
+from viscometry.paths import CALIBRATION_DIR
 
 _MODULE_DIR = Path(__file__).resolve().parent
-_DEFAULT_OUTPUT = _MODULE_DIR / "calibration_data" / "discovery_bulk_calibration.json"
+_DEFAULT_OUTPUT = CALIBRATION_DIR / "discovery_bulk_calibration.json"
 _PROJECT_ROOT = _MODULE_DIR.parents[1]
 
 # Known bad manual row: eta looks like copy-paste of SS_dyne/cm2 column

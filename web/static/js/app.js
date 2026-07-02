@@ -3701,6 +3701,10 @@ class ViscometryDashboard {
             this.openExperimentReview(status.experiment_review);
         }
 
+        if (status.calibration_summary && typeof status.calibration_summary === "object") {
+            this.applyCalibrationStatus(status.calibration_summary);
+        }
+
         if (status.current_rpm !== undefined) {
             this.currentRPM = Number(status.current_rpm) || 0;
             this.updateGauge(this.currentRPM);
