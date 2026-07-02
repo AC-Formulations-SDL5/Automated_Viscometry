@@ -1,0 +1,473 @@
+"""
+Rotational Drag Feedback Controller Helper Module
+
+This module contains the RotationalDragFeedbackController class and related utilities
+for automated hit-point detection in viscometer measurements.
+
+Version: 1.0
+Module: feedback_helper_function
+"""
+
+import math
+import statistics
+from collections import deque
+from typing import Dict, List, Optional, Tuple
+
+# Module verification function
+def verify_import():
+
+    """Verify that the module has been imported correctly."""
+    print("✓ feedback_helper_function v1.0 imported successfully")
+    return True
+
+
+def _mean(values: List[float]) -> float:
+    return statistics.mean(values) if values else 0.0
+
+
+def _std(values: List[float], mean_value: Optional[float] = None) -> float:
+    if not values:
+        return 0.0
+    if mean_value is None:
+        mean_value = statistics.mean(values)
+    return statistics.pstdev(values, mu=mean_value)
+
+
+def _linear_regression(x: List[float], y: List[float]) -> Tuple[float, float, float]:
+    slope, intercept, r_squared, _ss_tot = _linear_regression_extended(x, y)
+    return slope, intercept, r_squared
+
+
+def _linear_regression_extended(x: List[float], y: List[float]) -> Tuple[float, float, float, float]:
+    """Return slope, intercept, r_squared, and ss_tot (0 when variance undefined)."""
+    n = len(x)
+    if n == 0:
+        return 0.0, 0.0, 0.0, 0.0
+    x_mean = _mean(x)
+    y_mean = _mean(y)
+    ss_xy = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, y))
+    ss_xx = sum((xi - x_mean) ** 2 for xi in x)
+    slope = ss_xy / ss_xx if ss_xx != 0 else 0.0
+    intercept = y_mean - slope * x_mean
+    y_pred = [slope * xi + intercept for xi in x]
+    ss_res = sum((yi - yp) ** 2 for yi, yp in zip(y, y_pred))
+    ss_tot = sum((yi - y_mean) ** 2 for yi in y)
+    r_squared = 1.0 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+    return slope, intercept, r_squared, ss_tot
+
+
+def _approximate_second_derivative(z_heights: List[float], drag_values: List[float]) -> Optional[float]:
+    if len(z_heights) < 3:
+        return None
+    x0, x1, x2 = z_heights[-3], z_heights[-2], z_heights[-1]
+    y0, y1, y2 = drag_values[-3], drag_values[-2], drag_values[-1]
+    if x1 == x0 or x2 == x1 or x2 == x0:
+        return None
+    return 2 * (((y2 - y1) / (x2 - x1)) - ((y1 - y0) / (x1 - x0))) / (x2 - x0)
+
+
+class BaselineZScoreDetector:
+    def __init__(self, n_calibration_points: int = 10, z_score_threshold: float = 10.0):
+        self.n_calibration = n_calibration_points
+        self.z_threshold = z_score_threshold
+        self._buffer: List[float] = []
+        self._baseline_mean: Optional[float] = None
+        self._baseline_std: Optional[float] = None
+        self.calibrated: bool = False
+
+    def feed(self, value: float) -> bool:
+        """Feed a new value. Returns True if this value is detected as a transition."""
+        if not self.calibrated:
+            self._buffer.append(value)
+            if len(self._buffer) >= self.n_calibration:
+                self._baseline_mean = _mean(self._buffer)
+                self._baseline_std = _std(self._buffer, self._baseline_mean) or 1e-9
+                self.calibrated = True
+            return False
+        z = abs(value - self._baseline_mean) / self._baseline_std
+        return z > self.z_threshold
+
+    def reset(self):
+        self._buffer = []
+        self._baseline_mean = None
+        self._baseline_std = None
+        self.calibrated = False
+
+
+class RotationalDragFeedbackController:
+    """
+    Feedback controller for detecting hit points based on rotational drag trend analysis.
+    
+    The controller analyzes the trend of Rotational_Drag vs Height_mm for each RPM to detect
+    when the viscometer hits the sample surface (hit-point detection).
+    """
+    
+    def __init__(
+        self,
+        feedback_enabled=True,
+        min_data_points=3,
+        r2_drag_min=0.975,
+        r2_cv_min=0.975,
+        r2_slope_min=0.975,
+        hit_point_confidence_threshold=0.8,
+        weight_2nd_deriv_drag=0.2,
+        weight_2nd_deriv_cv=0.2,
+        weight_2nd_deriv_slope=0.2,
+        weight_r2_drag=0.2,
+        weight_r2_cv=0.2,
+        weight_r2_slope=0.2,
+        baseline_n_calibration=10,
+        baseline_z_threshold=10.0,
+        cv_window=5,
+        slope_window=5,
+    ):
+        self.z_rpm_drag_data = {}  # Structure: {z_height: {rpm: {measurements: [], avg_drag: float}}}
+        self.hit_point_detected = False
+        self.hit_point_z = None
+        self.hit_point_confidence = 0.0
+        
+        # Configuration parameters
+        self.feedback_enabled = feedback_enabled
+        self.min_data_points = min_data_points
+        self.r2_drag_min = r2_drag_min
+        self.r2_cv_min = r2_cv_min
+        self.r2_slope_min = r2_slope_min
+        self.hit_point_confidence_threshold = hit_point_confidence_threshold
+        self.weight_2nd_deriv_drag = weight_2nd_deriv_drag
+        self.weight_2nd_deriv_cv = weight_2nd_deriv_cv
+        self.weight_2nd_deriv_slope = weight_2nd_deriv_slope
+        self.weight_r2_drag = weight_r2_drag
+        self.weight_r2_cv = weight_r2_cv
+        self.weight_r2_slope = weight_r2_slope
+        self.baseline_n_calibration = baseline_n_calibration
+        self.baseline_z_threshold = baseline_z_threshold
+        self.cv_window = cv_window
+        self.slope_window = slope_window
+        self.delta_z = 0.02
+
+        self._drag_buffer: Dict[float, deque] = {}
+        self.rpm_cv_history: Dict[float, List[float]] = {}
+        self.rpm_cv_r2_history: Dict[float, List[float]] = {}
+        self.rpm_cv_second_deriv_history: Dict[float, List[float]] = {}
+        self.rpm_slope_history: Dict[float, List[float]] = {}
+        self.rpm_slope_r2_history: Dict[float, List[float]] = {}
+        self.rpm_slope_second_deriv_history: Dict[float, List[float]] = {}
+
+        self._drag_sd2_detectors: Dict[float, BaselineZScoreDetector] = {}
+        self._cv_sd2_detectors: Dict[float, BaselineZScoreDetector] = {}
+        self._slope_sd2_detectors: Dict[float, BaselineZScoreDetector] = {}
+
+    def _get_detector(self, store: dict, rpm: float) -> BaselineZScoreDetector:
+        if rpm not in store:
+            store[rpm] = BaselineZScoreDetector(
+                n_calibration_points=self.baseline_n_calibration,
+                z_score_threshold=self.baseline_z_threshold
+            )
+        return store[rpm]
+
+    def _update_moving_cv(self, rpm: float, latest_drag: float):
+        if rpm not in self._drag_buffer:
+            self._drag_buffer[rpm] = deque()
+        if rpm not in self.rpm_cv_history:
+            self.rpm_cv_history[rpm] = []
+        if rpm not in self.rpm_cv_r2_history:
+            self.rpm_cv_r2_history[rpm] = []
+        if rpm not in self.rpm_cv_second_deriv_history:
+            self.rpm_cv_second_deriv_history[rpm] = []
+
+        self._drag_buffer[rpm].append(latest_drag)
+        if len(self._drag_buffer[rpm]) >= self.cv_window:
+            recent_drag = list(self._drag_buffer[rpm])[-self.cv_window:]
+            recent_mean = _mean(recent_drag)
+            cv = _std(recent_drag, recent_mean) / recent_mean if recent_mean > 0 else 0.0
+            self.rpm_cv_history[rpm].append(cv)
+
+            if len(self.rpm_cv_history[rpm]) >= 5:
+                recent_cv = self.rpm_cv_history[rpm][-5:]
+                x_idx = list(range(5))
+                _, _, cv_r2 = _linear_regression(x_idx, recent_cv)
+                self.rpm_cv_r2_history[rpm].append(cv_r2)
+
+            if len(self.rpm_cv_history[rpm]) >= 3:
+                cv_i = self.rpm_cv_history[rpm][-1]
+                cv_i1 = self.rpm_cv_history[rpm][-2]
+                cv_i2 = self.rpm_cv_history[rpm][-3]
+                second_deriv_cv = (cv_i - 2 * cv_i1 + cv_i2) / (self.delta_z ** 2)
+                self.rpm_cv_second_deriv_history[rpm].append(second_deriv_cv)
+        
+    def calculate_rotational_drag(self, torque_percent: float, rpm: float) -> float:
+        """
+        Calculate rotational drag for a single measurement.
+        
+        Args:
+            torque_percent: Torque measurement as percentage
+            rpm: RPM at which measurement was taken
+            
+        Returns:
+            Rotational drag = torque_% / RPM
+        """
+        if rpm == 0:
+            return float('inf')  # Avoid division by zero
+        return abs(torque_percent) / rpm
+    
+    def add_measurements_at_z(self, z_height: float, rpm_measurements: Dict[float, List[Dict]]):
+        """
+        Add torque measurements at a specific Z-height and calculate rotational drag.
+        
+        Args:
+            z_height: Z-position where measurements were taken
+            rpm_measurements: Dictionary of {rpm: [measurements]} from viscometer
+        """
+        if z_height not in self.z_rpm_drag_data:
+            self.z_rpm_drag_data[z_height] = {}
+        
+        for rpm, measurements in rpm_measurements.items():
+            if not isinstance(rpm, (int, float)):
+                continue
+            if measurements is None or not isinstance(measurements, list):
+                continue
+                
+            # Calculate rotational drag for each measurement
+            drag_values = []
+            for measurement in measurements:
+                torque_percent = measurement.get('torque_percent', 0)
+                drag = self.calculate_rotational_drag(torque_percent, rpm)
+                drag_values.append(drag)
+            
+            # Use LATEST rotational drag value instead of average (as requested by user)
+            if drag_values:
+                latest_drag = drag_values[-1]  # Take the last measurement
+                avg_drag = _mean(drag_values)
+                cv = _std(drag_values, avg_drag) / avg_drag if avg_drag > 0 else 0
+                
+                self.z_rpm_drag_data[z_height][rpm] = {
+                    'measurements': measurements,
+                    'drag_values': drag_values,
+                    'avg_drag': avg_drag,
+                    'latest_drag': latest_drag,  # Store latest drag value
+                    'cv': cv,
+                    'num_samples': len(drag_values)
+                }
+                self._update_moving_cv(rpm, latest_drag)
+                print(f"      RPM {rpm}: Latest Rotational_Drag = {latest_drag:.4f}, Avg = {avg_drag:.4f}, CV = {cv:.3f}")
+    
+    def analyze_trend_for_rpm(self, rpm: float) -> Dict:
+        """
+        Analyze the rotational drag trend for a specific RPM across all Z-heights.
+        
+        Args:
+            rpm: RPM to analyze
+            
+        Returns:
+            Dictionary with trend analysis results
+        """
+        # Get all Z-heights with data for this RPM (sorted from highest to lowest)
+        z_heights = []
+        drag_values = []
+        
+        for z_height in sorted(self.z_rpm_drag_data.keys(), reverse=True):
+            if rpm in self.z_rpm_drag_data[z_height]:
+                z_heights.append(z_height)
+                # Use latest drag instead of average as requested by user
+                drag_values.append(self.z_rpm_drag_data[z_height][rpm]['latest_drag'])
+        
+        if len(z_heights) < self.min_data_points:
+            return {'valid': False, 'reason': 'insufficient_data'}
+
+        # Perform local-window linear regression using the latest 5 points (or fewer).
+        recent_z = z_heights[-self.slope_window:] if len(z_heights) >= self.slope_window else z_heights
+        recent_drag = drag_values[-self.slope_window:] if len(drag_values) >= self.slope_window else drag_values
+        trend_slope, _, trend_r_squared, drag_ss_tot = _linear_regression_extended(recent_z, recent_drag)
+
+        # Calculate second derivative approximation if we have enough points
+        second_deriv_drag = _approximate_second_derivative(z_heights, drag_values)
+
+        if rpm not in self.rpm_slope_history:
+            self.rpm_slope_history[rpm] = []
+        if rpm not in self.rpm_slope_r2_history:
+            self.rpm_slope_r2_history[rpm] = []
+        if rpm not in self.rpm_slope_second_deriv_history:
+            self.rpm_slope_second_deriv_history[rpm] = []
+        self.rpm_slope_history[rpm].append(trend_slope)
+
+        latest_slope_r2 = None
+        slope_ss_tot = 0.0
+        if len(self.rpm_slope_history[rpm]) >= 5:
+            recent_slope = self.rpm_slope_history[rpm][-5:]
+            x_idx = list(range(5))
+            _, _, latest_slope_r2, slope_ss_tot = _linear_regression_extended(x_idx, recent_slope)
+            self.rpm_slope_r2_history[rpm].append(latest_slope_r2)
+
+        latest_slope_second_deriv = None
+        if len(self.rpm_slope_history[rpm]) >= 3:
+            slope_i = self.rpm_slope_history[rpm][-1]
+            slope_i1 = self.rpm_slope_history[rpm][-2]
+            slope_i2 = self.rpm_slope_history[rpm][-3]
+            latest_slope_second_deriv = (slope_i - 2 * slope_i1 + slope_i2) / (self.delta_z ** 2)
+            self.rpm_slope_second_deriv_history[rpm].append(latest_slope_second_deriv)
+
+        latest_cv_r2 = None
+        if rpm in self.rpm_cv_r2_history and self.rpm_cv_r2_history[rpm]:
+            latest_cv_r2 = self.rpm_cv_r2_history[rpm][-1]
+        latest_cv_second_deriv = None
+        if rpm in self.rpm_cv_second_deriv_history and self.rpm_cv_second_deriv_history[rpm]:
+            latest_cv_second_deriv = self.rpm_cv_second_deriv_history[rpm][-1]
+
+        hit_confidence = 0.0
+        hit_reasons = []
+
+        drag_detector = self._get_detector(self._drag_sd2_detectors, rpm)
+        hit_2nd_deriv_drag = False
+        if second_deriv_drag is not None:
+            hit_2nd_deriv_drag = drag_detector.feed(second_deriv_drag)
+
+        cv_detector = self._get_detector(self._cv_sd2_detectors, rpm)
+        hit_2nd_deriv_cv = False
+        if latest_cv_second_deriv is not None:
+            hit_2nd_deriv_cv = cv_detector.feed(latest_cv_second_deriv)
+
+        slope_detector = self._get_detector(self._slope_sd2_detectors, rpm)
+        hit_2nd_deriv_slope = False
+        if latest_slope_second_deriv is not None:
+            hit_2nd_deriv_slope = slope_detector.feed(latest_slope_second_deriv)
+
+        cv_ss_tot = 0.0
+        if len(self.rpm_cv_history.get(rpm, [])) >= 5:
+            recent_cv = self.rpm_cv_history[rpm][-5:]
+            _, _, _, cv_ss_tot = _linear_regression_extended(list(range(5)), recent_cv)
+
+        hit_r2_drag = drag_ss_tot > 0 and trend_r_squared < self.r2_drag_min
+        hit_r2_cv = latest_cv_r2 is not None and cv_ss_tot > 0 and latest_cv_r2 < self.r2_cv_min
+        hit_r2_slope = latest_slope_r2 is not None and slope_ss_tot > 0 and latest_slope_r2 < self.r2_slope_min
+
+        if hit_2nd_deriv_drag:
+            hit_confidence += self.weight_2nd_deriv_drag
+            hit_reasons.append(f"hit_2nd_deriv_drag ({second_deriv_drag:.4f})")
+        if hit_2nd_deriv_cv:
+            hit_confidence += self.weight_2nd_deriv_cv
+            hit_reasons.append(f"hit_2nd_deriv_cv ({latest_cv_second_deriv:.4f})")
+        if hit_2nd_deriv_slope:
+            hit_confidence += self.weight_2nd_deriv_slope
+            hit_reasons.append(f"hit_2nd_deriv_slope ({latest_slope_second_deriv:.4f})")
+        if hit_r2_drag:
+            hit_confidence += self.weight_r2_drag
+            hit_reasons.append(f"hit_r2_drag (R^2={trend_r_squared:.4f})")
+        if hit_r2_cv:
+            hit_confidence += self.weight_r2_cv
+            hit_reasons.append(f"hit_r2_cv (R^2={latest_cv_r2:.4f})")
+        if hit_r2_slope:
+            hit_confidence += self.weight_r2_slope
+            hit_reasons.append(f"hit_r2_slope (R^2={latest_slope_r2:.4f})")
+
+        hit_confidence = min(hit_confidence, 1.0)
+        hit_detected = hit_confidence >= self.hit_point_confidence_threshold
+        
+        return {
+            'valid': True,
+            'rpm': rpm,
+            'z_heights': z_heights,
+            'drag_values': drag_values,
+            'trend_slope': trend_slope,
+            'trend_r_squared': trend_r_squared,
+            'second_derivative_drag': second_deriv_drag,
+            'second_derivative_cv': latest_cv_second_deriv,
+            'second_derivative_slope': latest_slope_second_deriv,
+            'moving_r2_cv': latest_cv_r2,
+            'moving_r2_slope': latest_slope_r2,
+            'hit_detected': hit_detected,
+            'hit_confidence': hit_confidence,
+            'hit_reasons': hit_reasons,
+            'drag_sd2_calibrated': drag_detector.calibrated,
+            'cv_sd2_calibrated': cv_detector.calibrated if rpm in self._cv_sd2_detectors else False,
+            'slope_sd2_calibrated': slope_detector.calibrated if rpm in self._slope_sd2_detectors else False,
+        }
+    
+    def _calculate_r_squared(self, x_data: List[float], y_data: List[float], coeffs: List[float]) -> float:
+        """Calculate R-squared for linear fit"""
+        y_pred = [coeffs[0] * x + coeffs[1] for x in x_data]
+        ss_res = sum((y - yp) ** 2 for y, yp in zip(y_data, y_pred))
+        y_mean = _mean(y_data)
+        ss_tot = sum((y - y_mean) ** 2 for y in y_data)
+        return 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+    
+    def evaluate_hit_point_detection(self, test_rpms: List[float]) -> bool:
+        """
+        Evaluate if hit point has been detected based on analysis of all RPMs.
+        
+        Args:
+            test_rpms: List of RPMs being tested
+            
+        Returns:
+            True if hit point is detected with sufficient confidence
+        """
+        if not self.feedback_enabled:
+            return False
+        
+        if len(self.z_rpm_drag_data) < self.min_data_points:
+            return False
+        
+        print(f"    Feedback Controller: Analyzing trends for {len(test_rpms)} RPMs...")
+        
+        hit_detections = []
+        total_confidence = 0.0
+        
+        # Analyze trend for each RPM
+        for rpm in test_rpms:
+            trend_analysis = self.analyze_trend_for_rpm(rpm)
+            
+            if trend_analysis['valid']:
+                second_drag_str = f"{trend_analysis['second_derivative_drag']:.4f}" if trend_analysis['second_derivative_drag'] is not None else "N/A"
+                second_cv_str = f"{trend_analysis['second_derivative_cv']:.4f}" if trend_analysis['second_derivative_cv'] is not None else "N/A"
+                second_slope_str = f"{trend_analysis['second_derivative_slope']:.4f}" if trend_analysis['second_derivative_slope'] is not None else "N/A"
+                r2_drag_str = f"{trend_analysis['trend_r_squared']:.4f}" if trend_analysis['trend_r_squared'] is not None else "N/A"
+                r2_cv_str = f"{trend_analysis['moving_r2_cv']:.4f}" if trend_analysis['moving_r2_cv'] is not None else "N/A"
+                r2_slope_str = f"{trend_analysis['moving_r2_slope']:.4f}" if trend_analysis['moving_r2_slope'] is not None else "N/A"
+                print(
+                    f"    RPM {rpm} METRICS: "
+                    f"2nd-Deriv Drag [AUTO-Z] = {second_drag_str}, "
+                    f"2nd-Deriv CV [AUTO-Z] = {second_cv_str}, "
+                    f"2nd-Deriv Slope [AUTO-Z] = {second_slope_str}, "
+                    f"R² Drag [R²≥{self.r2_drag_min}] = {r2_drag_str}, "
+                    f"R² CV [R²≥{self.r2_cv_min}] = {r2_cv_str}, "
+                    f"R² Slope [R²≥{self.r2_slope_min}] = {r2_slope_str}"
+                )
+                
+                if trend_analysis['hit_detected']:
+                    hit_detections.append(rpm)
+                    total_confidence += trend_analysis['hit_confidence']
+                    print(f"    RPM {rpm}: HIT DETECTED (confidence: {trend_analysis['hit_confidence']:.2f}) - {', '.join(trend_analysis['hit_reasons'])}")
+                else:
+                    print(f"    RPM {rpm}: Normal trend (slope: {trend_analysis['trend_slope']:.4f})")
+            else:
+                print(f"    RPM {rpm}: {trend_analysis['reason']}")
+        
+        # Determine overall hit detection
+        avg_confidence = total_confidence / len(test_rpms) if len(test_rpms) > 0 else 0
+        hit_ratio = len(hit_detections) / len(test_rpms) if len(test_rpms) > 0 else 0
+        
+        # Hit point detected if:
+        # 1. At least 50% of RPMs show hit detection, AND
+        # 2. Average confidence exceeds threshold
+        if hit_ratio >= 0.5 and avg_confidence >= self.hit_point_confidence_threshold:
+            self.hit_point_detected = True
+            self.hit_point_confidence = avg_confidence
+            
+            print(f"    *** HIT POINT DETECTED *** ")
+            print(f"    Hit ratio: {hit_ratio:.1%} ({len(hit_detections)}/{len(test_rpms)} RPMs)")
+            print(f"    Confidence: {avg_confidence:.2f}")
+            if self.hit_point_z is not None:
+                print(f"    Estimated hit Z: {self.hit_point_z:.3f}")
+            return True
+        else:
+            print(f"    No hit point detected (hit ratio: {hit_ratio:.1%}, confidence: {avg_confidence:.2f})")
+            return False
+    
+    def get_summary(self) -> Dict:
+        """Get summary of feedback controller analysis"""
+        return {
+            'hit_point_detected': self.hit_point_detected,
+            'hit_point_z': self.hit_point_z,
+            'hit_point_confidence': self.hit_point_confidence,
+            'total_z_levels': len(self.z_rpm_drag_data),
+            'feedback_enabled': self.feedback_enabled
+        }

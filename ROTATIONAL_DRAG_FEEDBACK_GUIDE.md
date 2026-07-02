@@ -42,7 +42,7 @@ The controller uses multiple indicators to detect hit points:
 
 ## Configuration Parameters
 
-Edit these parameters in `all_cells_with_rotational_drag_feedback.py`:
+Edit these parameters in `src/viscometry/run/settings.py` (or via the web UI at runtime):
 
 ```python
 # ========== FEEDBACK CONTROLLER CONFIGURATION ==========

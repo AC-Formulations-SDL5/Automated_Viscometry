@@ -224,7 +224,7 @@ Perfect for presentations and documentation!
 
 After viewing the simulation:
 1. **Install hardware dependencies** for real experiment
-2. **Modify configuration** in `all_cells_with_rotational_drag_feedback.py`
+2. **Modify configuration** in `src/viscometry/run/settings.py`
 3. **Test with real hardware** using the integrated web interface
 4. **Customize interface** by editing CSS/JS files
 

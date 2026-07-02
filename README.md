@@ -2,7 +2,7 @@
 ## Digital Viscometry for Self-Driving Laboratories
 
 <p align="center">
-  <img src="static/images/logo.png" alt="Acceleration Consortium Logo" width="200">
+  <img src="web/static/images/logo.png" alt="Acceleration Consortium Logo" width="200">
 </p>
 
 <p align="center">
@@ -260,26 +260,33 @@ python orchestration_control.py
 ## 📁 **Project Structure**
 
 ```
-visc_automated_workflow_V3/
-├── 📁 src/
-│   ├── 📁 python_32/          # 32-bit Python for viscometer
-│   │   ├── viscometer_protocol.py
-│   │   └── worker32.py
-│   ├── 📁 python_64/          # Main control system
-│   │   ├── all_cells_with_rotational_drag_feedback.py
-│   │   ├── web_interface.py
-│   │   └── ...
-│   └── 📁 esp32/              # ESP32 pump control
-│       └── pump_wash_control.cpp
-├── 📁 templates/              # Web interface HTML
-├── 📁 static/                 # Web assets (CSS, JS, images)
-├── 📁 config/                 # Configuration files
-├── 📁 results/                # Measurement data
-├── 📁 Images/                 # Documentation images
-├── orchestration_control.py   # Main execution script
-├── simulate_viscometry.py     # Hardware-free simulation
-└── README.md                  # This file
+Automated_Viscometry/
+├── src/viscometry/            # Main Python package (python -m viscometry)
+│   ├── run/                   # Experiment controller + CSV export
+│   ├── hardware/              # CNC, pump, viscometer (incl. 32-bit worker)
+│   ├── measurement/           # Hitpoint + feedback controller
+│   ├── rheology/              # Viscosity prediction
+│   ├── discovery/             # Discovery mode
+│   ├── calibration/           # Z calibration store
+│   └── web/                   # Flask web interface
+├── web/                       # templates/ + static/
+├── data/
+│   ├── calibration/           # JSON calibration files
+│   └── reference/             # Reference CSV inputs
+├── results/
+│   ├── runs/                  # Auto-produced run CSVs (gitignored)
+│   └── web_experiment_history.json
+├── notebooks/                 # Analysis notebooks
+├── research/                  # Rheology research assets
+├── examples/simulation/       # Hardware-free web UI demo
+├── firmware/esp32/            # Pump wash firmware
+├── scripts/                   # Maintenance CLIs
+├── tests/                     # Unit tests
+├── config/locations.yaml
+└── pyproject.toml
 ```
+
+See [MIGRATION.md](MIGRATION.md) for paths changed from the pre-restructure layout.
 
 ---
 

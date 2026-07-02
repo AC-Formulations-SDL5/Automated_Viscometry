@@ -20,8 +20,10 @@ pip install -r requirements_web.txt
 
 2. Run the main analysis script:
 ```bash
-python src/python_64/all_cells_with_rotational_drag_feedback.py
+python run_viscometry.py
 ```
+
+Or: `python -m viscometry` (from repo root, with `pip install -e .` or `PYTHONPATH=src`).
 
 3. Open your web browser and navigate to:
 ```
@@ -109,7 +111,7 @@ Click "Export Data" to download a CSV file containing:
 1. **Web interface doesn't load**: Check that port 5000 is available
 2. **No real-time updates**: Verify WebSocket connection in browser console
 3. **Plot not showing**: Check browser JavaScript console for errors
-4. **Logo not displaying**: Place logo file at `static/images/logo.png`
+4. **Logo not displaying**: Place logo file at `web/static/images/logo.png`
 
 ## Browser Compatibility
 

@@ -194,9 +194,9 @@ http://localhost:5000
 
 ### 💡 Next Steps After Simulation
 
-1. **Customize** the interface colors/layout in `static/css/style.css`
-2. **Add features** by modifying `static/js/app.js`  
-3. **Integrate** with real hardware by running `all_cells_with_rotational_drag_feedback.py`
+1. **Customize** the interface colors/layout in `web/static/css/style.css`
+2. **Add features** by modifying `web/static/js/app.js`  
+3. **Integrate** with real hardware by running `run_viscometry.py`
 4. **Deploy** to lab computer for production use
 
 The simulation uses the **exact same interface** as your real experiment! 🎯

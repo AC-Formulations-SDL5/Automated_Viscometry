@@ -2,14 +2,37 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Run Current File (64-bit)",
+            "name": "Viscometry (run_viscometry.py)",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "${workspaceFolder}/run_viscometry.py",
             "console": "integratedTerminal",
-            "pythonPath": "${workspaceFolder}/.venv64/Scripts/python.exe",
-            "justMyCode": true,
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Viscometry (python -m viscometry)",
+            "type": "python",
+            "request": "launch",
+            "module": "viscometry",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Simulation",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/simulation/run_simulation.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "justMyCode": true
         }
     ]
 }

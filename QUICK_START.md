@@ -7,7 +7,7 @@ This guide shows how to use the orchestration reference files to control and cus
 1. **[ORCHESTRATION_SCENARIO.md](ORCHESTRATION_SCENARIO.md)** - Complete technical reference
 2. **[CONFIGURATION_PROFILES.md](CONFIGURATION_PROFILES.md)** - Ready-to-use parameter sets
 3. **[orchestration_control.py](orchestration_control.py)** - Programmable control interface
-4. **[all_cells_with_wash.py](src/python_64/all_cells_with_wash.py)** - Your current implementation
+4. **[run_viscometry.py](run_viscometry.py)** - Main entry point (hardware + web UI)
 
 ## Quick Configuration Changes
 
@@ -202,7 +202,7 @@ def manual_wash_check(cell_number):
 ## Integration with Your Current Workflow
 
 ### Option 1: Modify Current Script
-Copy parameters from `CONFIGURATION_PROFILES.md` into your `all_cells_with_wash.py`
+Copy parameters from `CONFIGURATION_PROFILES.md` into `src/viscometry/run/settings.py`
 
 ### Option 2: Use Control Interface
 Import and use `OrchestrationController` class in your existing code
@@ -211,7 +211,7 @@ Import and use `OrchestrationController` class in your existing code
 Use current script for main logic, but load configuration from profiles:
 
 ```python
-# At top of all_cells_with_wash.py
+# In src/viscometry/run/settings.py
 import yaml
 
 def load_config_profile(profile_name):
