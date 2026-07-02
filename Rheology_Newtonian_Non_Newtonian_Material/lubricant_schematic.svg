@@ -1,6 +1,5 @@
 <?xml version="1.0" ?>
 <svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 516 387" width="516" height="387">
-  <rect x="0" y="0" width="516" height="387" fill="#e7e7e7"/>
   <style>.chain{fill:none;stroke:#111;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round;}.bead{fill:#b9c7cb;stroke:#111;stroke-width:2;}.hatch{stroke:#4f5659;stroke-width:1.6;stroke-linecap:round;}.arrow{stroke:#111;stroke-width:3.5;fill:none;stroke-linecap:round;}.arrowhead{fill:#111;}</style>
   <g>
     <path class="chain" d="M 18 112 C 24.053333333333335 127.48 35.38666666666667 135.48 52 136 C 61.8 124.74666666666666 73.8 121.41333333333334 88 126 C 105.93333333333332 123.48 117.26666666666667 113.48 122 96 C 132.02666666666667 83.64 144.69333333333336 79.64 160 84 C 172.22666666666666 93.02666666666667 184.89333333333335 93.69333333333333 198 86 C 210.22666666666666 76.97333333333333 222.89333333333335 76.30666666666667 236 84 C 255.72 84.57333333333332 269.72 75.90666666666667 278 58"/>

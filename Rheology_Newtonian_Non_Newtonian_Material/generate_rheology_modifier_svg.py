@@ -27,17 +27,6 @@ def make_root(width: int, height: int) -> ET.Element:
             "height": str(height),
         },
     )
-    ET.SubElement(
-        root,
-        "rect",
-        {
-            "x": "0",
-            "y": "0",
-            "width": str(width),
-            "height": str(height),
-            "fill": "#ffffff",
-        },
-    )
     return root
 
 

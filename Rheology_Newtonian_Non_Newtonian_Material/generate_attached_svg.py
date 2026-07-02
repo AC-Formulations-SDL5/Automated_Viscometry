@@ -26,18 +26,6 @@ def _svg_root(width: int, height: int) -> ET.Element:
         },
     )
 
-    ET.SubElement(
-        root,
-        "rect",
-        {
-            "x": "0",
-            "y": "0",
-            "width": str(width),
-            "height": str(height),
-            "fill": "#e7e7e7",
-        },
-    )
-
     return root
 
 
