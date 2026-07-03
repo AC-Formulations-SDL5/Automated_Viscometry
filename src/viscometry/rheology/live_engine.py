@@ -136,7 +136,8 @@ class LiveCellSession:
         ]
 
     def on_z_slice_complete(self, z_mm: float) -> List[Dict[str, Any]]:
-        events: List[Dict[str, Any]] = [
+        """Emit status only; analysis runs solely in finalize_cell."""
+        return [
             {
                 "type": "z_slice",
                 "cell_id": self.cell_id,
@@ -147,29 +148,12 @@ class LiveCellSession:
                 },
             }
         ]
-        if not self.finalized:
-            for rpm in self.rpms:
-                fit_evt = self._fit_rpm(rpm, provisional=True)
-                if fit_evt:
-                    events.append(fit_evt)
-            summary_evt = self._maybe_emit_summary(provisional=True)
-            if summary_evt:
-                events.append(summary_evt)
-        return events
 
     def set_hit_point_z(self, z: Optional[float]) -> List[Dict[str, Any]]:
+        """Store hit-point Z for use at finalize; do not fit mid-cell."""
         if z is not None:
             self.hit_point_z = float(z)
-        events: List[Dict[str, Any]] = []
-        provisional = not self.finalized
-        for rpm in self.rpms:
-            fit_evt = self._fit_rpm(rpm, provisional=provisional)
-            if fit_evt:
-                events.append(fit_evt)
-        summary_evt = self._maybe_emit_summary(provisional=provisional)
-        if summary_evt:
-            events.append(summary_evt)
-        return events
+        return []
 
     def finalize_cell(self, *, is_partial: bool = False) -> List[Dict[str, Any]]:
         self.finalized = True

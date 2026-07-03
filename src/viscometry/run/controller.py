@@ -786,17 +786,23 @@ def _characterization_ingest_point(
 ) -> None:
     if not _characterization_is_enabled():
         return
-    mgr = _get_characterization_manager()
-    events = mgr.ingest_point(cell_id, h_mm, rpm, torque_pct, timestamp=timestamp)
-    _emit_characterization_events(events)
+    try:
+        mgr = _get_characterization_manager()
+        events = mgr.ingest_point(cell_id, h_mm, rpm, torque_pct, timestamp=timestamp)
+        _emit_characterization_events(events)
+    except Exception as exc:
+        print(f"  Warning: characterization failed (cell {cell_id}): {exc}")
 
 
 def _characterization_on_z_slice(cell_id: int, z_mm: float) -> None:
     if not _characterization_is_enabled():
         return
-    mgr = _get_characterization_manager()
-    events = mgr.on_z_slice_complete(cell_id, z_mm)
-    _emit_characterization_events(events)
+    try:
+        mgr = _get_characterization_manager()
+        events = mgr.on_z_slice_complete(cell_id, z_mm)
+        _emit_characterization_events(events)
+    except Exception as exc:
+        print(f"  Warning: characterization failed (cell {cell_id}): {exc}")
 
 
 def _characterization_apply_hit_point(cell_id: int, hit_z: Optional[float]) -> None:
@@ -807,9 +813,12 @@ def _characterization_apply_hit_point(cell_id: int, hit_z: Optional[float]) -> N
     if cid in _hit_point_applied_cells:
         return
     _hit_point_applied_cells.add(cid)
-    mgr = _get_characterization_manager()
-    events = mgr.set_hit_point_z(cid, hit_z)
-    _emit_characterization_events(events)
+    try:
+        mgr = _get_characterization_manager()
+        events = mgr.set_hit_point_z(cid, hit_z)
+        _emit_characterization_events(events)
+    except Exception as exc:
+        print(f"  Warning: characterization failed (cell {cell_id}): {exc}")
 
 
 def run_characterization_for_cell(
@@ -823,22 +832,25 @@ def run_characterization_for_cell(
     if not _characterization_is_enabled():
         return
 
-    mgr = _get_characterization_manager()
-    events = mgr.finalize_cell(int(cell_id), is_partial=is_partial)
-    _emit_characterization_events(events)
+    try:
+        mgr = _get_characterization_manager()
+        events = mgr.finalize_cell(int(cell_id), is_partial=is_partial)
+        _emit_characterization_events(events)
 
-    session = mgr.get_session(int(cell_id))
-    if session is not None:
-        CELL_VISCOSITY_RESULTS[int(cell_id)] = session.snapshot()
+        session = mgr.get_session(int(cell_id))
+        if session is not None:
+            CELL_VISCOSITY_RESULTS[int(cell_id)] = session.snapshot()
 
-    summary_evt = next((e for e in events if e.get("type") == "summary"), None)
-    if summary_evt and summary_evt.get("success"):
-        print(
-            f"  Characterization Cell {cell_id}: {summary_evt.get('regime')} "
-            f"n_idx={summary_evt.get('n_idx')} "
-            f"K_Pas_n={summary_evt.get('K_Pas_n')} "
-            f"K_stress={summary_evt.get('K_stress')}"
-        )
+        summary_evt = next((e for e in events if e.get("type") == "summary"), None)
+        if summary_evt and summary_evt.get("success"):
+            print(
+                f"  Characterization Cell {cell_id}: {summary_evt.get('regime')} "
+                f"n_idx={summary_evt.get('n_idx')} "
+                f"K_Pas_n={summary_evt.get('K_Pas_n')} "
+                f"K_stress={summary_evt.get('K_stress')}"
+            )
+    except Exception as exc:
+        print(f"  Warning: characterization failed (cell {cell_id}): {exc}")
 
 
 def _publish_torque_sample_to_web(

@@ -55,6 +55,24 @@ class TestStressPowerlaw(unittest.TestCase):
         staged = stage_powerlaw_points(rows)
         self.assertGreaterEqual(len(staged), 2)
 
+    def test_clean_for_powerlaw_mask_is_writable(self):
+        """Regression: MAD loop must mutate keep without read-only errors."""
+        rows = []
+        for g in [5.0, 10.0, 20.0, 40.0, 80.0, 160.0]:
+            rows.append(
+                {
+                    "gamma_dot_1_s": g,
+                    "tau_Pa": 1.2 * g**0.8,
+                    "R2_drag": 0.9,
+                }
+            )
+        rows.append({"gamma_dot_1_s": 25.0, "tau_Pa": 800.0, "R2_drag": 0.9})
+        d = pd.DataFrame(rows)
+        mask = clean_for_powerlaw(d)
+        self.assertTrue(mask.flags.writeable)
+        self.assertLess(int(mask.sum()), len(rows))
+        mask[0] = False  # must not raise
+
 
 if __name__ == "__main__":
     unittest.main()

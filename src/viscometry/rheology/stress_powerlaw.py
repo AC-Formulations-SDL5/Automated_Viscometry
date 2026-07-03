@@ -63,7 +63,8 @@ def clean_for_powerlaw(
     if "R2_drag" in d.columns:
         keep = keep & (d["R2_drag"].fillna(1.0) >= r2_drag_min)
 
-    keep = keep.astype(bool).to_numpy()
+    # Explicit writable copy: pandas .to_numpy() may return a read-only view.
+    keep = np.array(keep.astype(bool), dtype=bool, copy=True)
 
     for _ in range(max_iter):
         if keep.sum() <= min_keep:
