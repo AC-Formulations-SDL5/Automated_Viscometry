@@ -3790,8 +3790,14 @@ class ViscometryDashboard {
             this._refreshActiveTabCharts();
         }
 
-        if (status.predicted_viscosity_results) {
-            this._hydratePredictedViscosityFromServer(status.predicted_viscosity_results);
+        // Prefer characterization_results; never hydrate from an empty {} (truthy but
+        // would wipe live charts populated by SocketIO events).
+        const charResults = status.characterization_results;
+        const predResults = status.predicted_viscosity_results;
+        if (charResults && typeof charResults === "object" && Object.keys(charResults).length > 0) {
+            this._hydratePredictedViscosityFromServer(charResults);
+        } else if (predResults && typeof predResults === "object" && Object.keys(predResults).length > 0) {
+            this._hydratePredictedViscosityFromServer(predResults);
         }
         if (status.testing_status) {
             this.applyTestingStatus(status.testing_status);
@@ -6927,7 +6933,7 @@ class ViscometryDashboard {
     }
 
     _hydratePredictedViscosityFromServer(serverData) {
-        if (!serverData || typeof serverData !== "object") {
+        if (!serverData || typeof serverData !== "object" || Object.keys(serverData).length === 0) {
             return;
         }
         this.predictedViscosityData = {};
