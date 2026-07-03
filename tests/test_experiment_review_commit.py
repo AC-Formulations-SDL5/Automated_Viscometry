@@ -587,6 +587,25 @@ class TestViscosityPredictionModeNormalization(unittest.TestCase):
             "on",
         )
 
+    def test_characterization_mode_normalization(self):
+        from viscometry.rheology.viscosity import (
+            characterization_enabled,
+            normalize_characterization_mode,
+        )
+
+        self.assertEqual(normalize_characterization_mode("on"), "on")
+        self.assertEqual(normalize_characterization_mode("off"), "off")
+        self.assertTrue(characterization_enabled("on"))
+        self.assertFalse(characterization_enabled("off"))
+        self.assertEqual(
+            normalize_characterization_mode(
+                None,
+                predicted_viscosity_enabled=True,
+                viscosity_prediction_mode="off",
+            ),
+            "on",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

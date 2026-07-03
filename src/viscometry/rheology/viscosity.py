@@ -17,6 +17,7 @@ from viscometry.rheology.live_adapter import (
 )
 
 VISCOSITY_PREDICTION_MODES = frozenset({"off", "on"})
+CHARACTERIZATION_MODES = VISCOSITY_PREDICTION_MODES
 
 
 def normalize_viscosity_prediction_mode(
@@ -34,6 +35,40 @@ def normalize_viscosity_prediction_mode(
     if legacy_enabled is True:
         return "on"
     return "off"
+
+
+def normalize_characterization_mode(
+    mode: Optional[str] = None,
+    *,
+    legacy_enabled: Optional[bool] = None,
+    viscosity_prediction_mode: Optional[str] = None,
+    predicted_viscosity_enabled: Optional[bool] = None,
+) -> str:
+    """Map settings to characterization 'on' or 'off'."""
+    if mode is not None:
+        m = str(mode).strip()
+        if m in ("on", "Newtonian", "Non-Newtonian"):
+            return "on"
+        if m == "off":
+            return "off"
+    if legacy_enabled is True:
+        return "on"
+    if predicted_viscosity_enabled is True:
+        return "on"
+    if viscosity_prediction_mode is not None:
+        return normalize_viscosity_prediction_mode(
+            viscosity_prediction_mode,
+            legacy_enabled=predicted_viscosity_enabled,
+        )
+    return "off"
+
+
+def characterization_enabled(
+    mode: Optional[str] = None,
+    **kwargs: Any,
+) -> bool:
+    """Return True when live characterization is active."""
+    return normalize_characterization_mode(mode, **kwargs) == "on"
 
 
 def predict_viscosity(

@@ -16,7 +16,13 @@ from viscometry.hardware.viscometer.client import ViscometerClient
 from viscometry.hardware.pump import PumpESP32
 from viscometry.measurement.feedback import RotationalDragFeedbackController
 from viscometry.web.app import web_interface
-from viscometry.rheology.viscosity import normalize_viscosity_prediction_mode, predict_viscosity
+from viscometry.rheology.viscosity import (
+    characterization_enabled,
+    normalize_characterization_mode,
+    normalize_viscosity_prediction_mode,
+    predict_viscosity,
+)
+from viscometry.rheology.live_engine import CharacterizationManager
 from viscometry.rheology.live_adapter import SUMMARY_KEY
 from viscometry.measurement.hitpoint import extract_hitpoint, extract_rough_hitpoint
 from viscometry.calibration.store import (
@@ -124,6 +130,7 @@ _RUNTIME_SETTING_NAMES = (
     "LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED",
     "LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT",
     "VISCOSITY_PREDICTION_MODE",
+    "CHARACTERIZATION_MODE",
     "SAVE_ALL_SAMPLE_DATA",
     "Z_START_OFFSET_MM",
     "DISCOVERY_MODE_ENABLED",
@@ -200,6 +207,14 @@ def apply_runtime_settings_from_web():
         web_settings.get('viscosity_prediction_mode'),
         legacy_enabled=web_settings.get('predicted_viscosity_enabled'),
     )
+    rs.CHARACTERIZATION_MODE = normalize_characterization_mode(
+        web_settings.get('characterization_mode'),
+        legacy_enabled=web_settings.get('characterization_enabled'),
+        viscosity_prediction_mode=web_settings.get('viscosity_prediction_mode'),
+        predicted_viscosity_enabled=web_settings.get('predicted_viscosity_enabled'),
+    )
+    if rs.CHARACTERIZATION_MODE == "on":
+        rs.VISCOSITY_PREDICTION_MODE = "on"
     rs.SAVE_ALL_SAMPLE_DATA = bool(web_settings.get('save_all_sample_data', rs.SAVE_ALL_SAMPLE_DATA))
     try:
         z_offset = float(web_settings.get('z_start_offset_mm', rs.Z_START_OFFSET_MM))
@@ -719,6 +734,113 @@ def _read_valid_torque_packet(
     return None
 
 
+_characterization_manager: Optional[CharacterizationManager] = None
+_hit_point_applied_cells: Set[int] = set()
+
+
+def _characterization_is_enabled() -> bool:
+    return characterization_enabled(CHARACTERIZATION_MODE)
+
+
+def _init_characterization_manager() -> CharacterizationManager:
+    global _characterization_manager, _hit_point_applied_cells
+    _hit_point_applied_cells = set()
+    _characterization_manager = CharacterizationManager(
+        torque_floor_pct=LOW_TORQUE_LIQUID_CONTACT_THRESHOLD_PCT,
+    )
+    return _characterization_manager
+
+
+def _get_characterization_manager() -> CharacterizationManager:
+    global _characterization_manager
+    if _characterization_manager is None:
+        return _init_characterization_manager()
+    return _characterization_manager
+
+
+def _reset_characterization_manager() -> None:
+    global _characterization_manager, _hit_point_applied_cells
+    if _characterization_manager is not None:
+        _characterization_manager.reset_all()
+    _characterization_manager = None
+    _hit_point_applied_cells = set()
+
+
+def _emit_characterization_events(events: List[Dict]) -> None:
+    for event in events:
+        try:
+            web_interface.emit_characterization(event)
+        except AttributeError:
+            print(f"  [characterization] {event.get('type')} cell={event.get('cell_id')}")
+        except Exception as exc:
+            print(f"  Warning: characterization emit failed: {exc}")
+
+
+def _characterization_ingest_point(
+    cell_id: int,
+    h_mm: float,
+    rpm: float,
+    torque_pct: float,
+    *,
+    timestamp: Optional[float] = None,
+) -> None:
+    if not _characterization_is_enabled():
+        return
+    mgr = _get_characterization_manager()
+    events = mgr.ingest_point(cell_id, h_mm, rpm, torque_pct, timestamp=timestamp)
+    _emit_characterization_events(events)
+
+
+def _characterization_on_z_slice(cell_id: int, z_mm: float) -> None:
+    if not _characterization_is_enabled():
+        return
+    mgr = _get_characterization_manager()
+    events = mgr.on_z_slice_complete(cell_id, z_mm)
+    _emit_characterization_events(events)
+
+
+def _characterization_apply_hit_point(cell_id: int, hit_z: Optional[float]) -> None:
+    global _hit_point_applied_cells
+    if not _characterization_is_enabled() or hit_z is None:
+        return
+    cid = int(cell_id)
+    if cid in _hit_point_applied_cells:
+        return
+    _hit_point_applied_cells.add(cid)
+    mgr = _get_characterization_manager()
+    events = mgr.set_hit_point_z(cid, hit_z)
+    _emit_characterization_events(events)
+
+
+def run_characterization_for_cell(
+    cell_id: int,
+    *,
+    is_partial: bool = False,
+) -> None:
+    """Finalize incremental characterization."""
+    global CELL_VISCOSITY_RESULTS
+
+    if not _characterization_is_enabled():
+        return
+
+    mgr = _get_characterization_manager()
+    events = mgr.finalize_cell(int(cell_id), is_partial=is_partial)
+    _emit_characterization_events(events)
+
+    session = mgr.get_session(int(cell_id))
+    if session is not None:
+        CELL_VISCOSITY_RESULTS[int(cell_id)] = session.snapshot()
+
+    summary_evt = next((e for e in events if e.get("type") == "summary"), None)
+    if summary_evt and summary_evt.get("success"):
+        print(
+            f"  Characterization Cell {cell_id}: {summary_evt.get('regime')} "
+            f"n_idx={summary_evt.get('n_idx')} "
+            f"K_Pas_n={summary_evt.get('K_Pas_n')} "
+            f"K_stress={summary_evt.get('K_stress')}"
+        )
+
+
 def _publish_torque_sample_to_web(
     z_height: float,
     rpm: float,
@@ -745,6 +867,15 @@ def _publish_torque_sample_to_web(
         elapsed_time=elapsed_since_start,
         sample_count=sample_count,
     )
+    cell_id = web_interface.current_cell
+    if cell_id is not None and _characterization_is_enabled():
+        _characterization_ingest_point(
+            int(cell_id),
+            float(z_height),
+            float(rpm),
+            abs(float(torque_percent)),
+            timestamp=time.time(),
+        )
 
 
 def measure_torque_at_rpm(
@@ -1096,6 +1227,10 @@ def test_cell_dynamic_z_series(
         print("Discovery handoff: in-sample Z-scan (no safe retract on first step)")
     print(f"Feedback Control: {'ENABLED' if FEEDBACK_CONTROL_ENABLED else 'DISABLED'}")
     print(f"{'='*60}")
+
+    if _characterization_is_enabled():
+        mgr = _get_characterization_manager()
+        _emit_characterization_events(mgr.start_cell(global_cell, cell_rpms))
     
     # Initialize feedback controller with configuration
     feedback_controller = RotationalDragFeedbackController(
@@ -1417,6 +1552,10 @@ def test_cell_dynamic_z_series(
                         web_interface.update_status(f"Cell {global_cell} terminated early - hit-point detected{hit_z_msg}")
                         # Store metrics before breaking
                         cell_exit_reason = "hit_detected"
+                        _characterization_apply_hit_point(
+                            global_cell,
+                            summary.get("hit_point_z"),
+                        )
                         break
 
                     # Fail-safe: sustained confidence above 75% of hit threshold (requires feedback metrics above).
@@ -1531,6 +1670,8 @@ def test_cell_dynamic_z_series(
                     }
                 cell_z_rpm_data[z_rounded]['_metrics'] = error_metrics_data
             
+            _characterization_on_z_slice(global_cell, z_rounded)
+
             # Move to next Z position
             current_z += Z_STEP_SIZE
     except KeyboardInterrupt:
@@ -1938,6 +2079,8 @@ def main():
         termination_by_cell: Dict[int, str] = {}
         active_threads: List[threading.Thread] = []
         run_settings.CELL_VISCOSITY_RESULTS = {}
+        if _characterization_is_enabled():
+            _init_characterization_manager()
         
         try:
             print(f"\nStarting dynamic analysis...")
@@ -2167,7 +2310,12 @@ def main():
                             global_cell,
                             termination_reason=cell_term,
                         )
-                        if normalize_viscosity_prediction_mode(VISCOSITY_PREDICTION_MODE) != "off":
+                        if _characterization_is_enabled():
+                            run_characterization_for_cell(
+                                global_cell,
+                                is_partial=is_partial_termination(cell_term),
+                            )
+                        elif normalize_viscosity_prediction_mode(VISCOSITY_PREDICTION_MODE) != "off":
                             run_predicted_viscosity_for_cell(
                                 global_cell, cell_rpms, cell_data, feedback_summary
                             )
@@ -2312,6 +2460,7 @@ def main():
         finally:
             # Cleanup hardware
             print("Cleaning up hardware...")
+            _reset_characterization_manager()
             web_interface.update_status("Cleaning up hardware...")
             web_interface.set_running_state(False)
             web_interface.set_instrument_status(cnc=False, viscometer=False, pump=False)

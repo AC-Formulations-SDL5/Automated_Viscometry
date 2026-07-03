@@ -67,7 +67,7 @@
             <button class="tab-button" data-tab="calibrate-tab" id="calibrate-tab-button">Calibrate</button>
             <button class="tab-button" data-tab="controls-tab" id="controls-tab-button">Perform Experiment</button>
             <button class="tab-button tab-button-discovery" data-tab="discovery-tab" id="discovery-tab-button">Discovery</button>
-            <button class="tab-button" data-tab="data-processing-tab">Data and Processing</button>
+            <button class="tab-button" data-tab="characterization-tab" id="characterization-tab-button">Characterization</button>
             <button class="tab-button" data-tab="testing-tab" id="testing-tab-button">Testing</button>
             <button class="tab-button" data-tab="summary-tab">Experimental Summary</button>
         </nav>
@@ -472,7 +472,7 @@
                                             <input id="viscosity-prediction-enabled" name="viscosity_prediction_enabled" type="checkbox">
                                             <span class="ui-switch-track" aria-hidden="true"></span>
                                         </span>
-                                        <span class="ui-switch-label">Enable viscosity predictions</span>
+                                        <span class="ui-switch-label">Enable characterization</span>
                                     </label>
                                     <label class="ui-switch-row">
                                         <span class="ui-switch">
@@ -774,7 +774,7 @@
 
                     <section class="card live-viscosity-card">
                         <div class="card-title-row">
-                            <h2>Live Viscosity Predictions</h2>
+                            <h2>Live Characterization</h2>
                         </div>
                         <div class="table-wrap">
                             <table class="duration-table live-viscosity-table">
@@ -783,7 +783,8 @@
                                         <th>Cell No.</th>
                                         <th>Cell Label</th>
                                         <th>RPM</th>
-                                        <th>Predicted Viscosity (kCp)</th>
+                                        <th>Regime</th>
+                                        <th>η (kCp)</th>
                                         <th>R²</th>
                                         <th>Status</th>
                                     </tr>
@@ -927,7 +928,7 @@
                                             <input id="discovery-viscosity-prediction-enabled" name="viscosity_prediction_enabled" type="checkbox">
                                             <span class="ui-switch-track" aria-hidden="true"></span>
                                         </span>
-                                        <span class="ui-switch-label">Enable viscosity predictions</span>
+                                        <span class="ui-switch-label">Enable characterization</span>
                                     </label>
                                     <label class="ui-switch-row">
                                         <span class="ui-switch">
@@ -1089,27 +1090,31 @@
                 </footer>
             </div>
 
-            <!-- Tab 4: Data and Processing -->
-            <div id="data-processing-tab" class="tab-panel">
+            <!-- Tab: Characterization (legacy id data-processing-tab) -->
+            <div id="characterization-tab" class="tab-panel" data-legacy-tab-id="data-processing-tab">
                 <section class="card predicted-viscosity-info-card">
                     <div class="card-title-row">
-                        <h2>Predicted Viscosity</h2>
+                        <h2>Characterization</h2>
+                    </div>
+                    <div id="characterization-status-strip" class="characterization-status-strip hidden">
+                        <span id="characterization-status-cell">Cell —</span>
+                        <span id="characterization-status-z">Z —</span>
+                        <span id="characterization-status-badge" class="characterization-badge characterization-provisional">Provisional</span>
                     </div>
                     <div class="predicted-viscosity-explainer">
                         <p>Rotational drag <em>D = T%/RPM</em> is fit at each spindle speed as:</p>
                         <p class="predicted-viscosity-formula">D(h) = A / (h + h<sub>c</sub>) + B</p>
-                        <p>with a universal geometric offset <em>h<sub>c</sub></em> and silicone-oil calibration <em>A = k·μ<sup>p</sup></em> to recover apparent viscosity.</p>
-                        <p><strong>Single RPM:</strong> Newtonian estimate (one η). <strong>Multiple RPMs:</strong> power-law flow curve with automatic regime classification (Newtonian, shear-thinning, shear-thickening).</p>
-                        <p>Points below the torque floor and deeper than the detected hitpoint (contact plateau) are excluded; the hitpoint and shallower in-gap points are kept. Sweeps with fit <em>R² &lt; 0.70</em> are rejected.</p>
+                        <p>with universal <em>h<sub>c</sub></em> and silicone calibration <em>A = k·μ<sup>p</sup></em>. Multi-RPM sweeps yield amplitude power-law (<em>K</em><sub>amp</sub>, <em>n</em><sub>idx</sub>) and independent stress regression (<em>K</em><sub>stress</sub>, <em>n</em><sub>stress</sub>).</p>
+                        <p>Hit-point trim applies only after feedback declares contact. Provisional fits update during Z-descent; final fits lock at cell completion.</p>
                     </div>
                 </section>
 
                 <section id="predicted-viscosity-charts-card" class="card predicted-viscosity-charts-card hidden">
                     <div class="card-title-row">
-                        <h2>Predicted Viscosity Curves</h2>
+                        <h2>Characterization Curves</h2>
                     </div>
                     <div id="predicted-viscosity-charts" class="predicted-viscosity-charts-grid"></div>
-                    <p id="predicted-viscosity-charts-empty" class="plot-empty">Complete a cell with viscosity predictions enabled to see fits here.</p>
+                    <p id="predicted-viscosity-charts-empty" class="plot-empty">Complete a cell with characterization enabled to see fits here.</p>
                 </section>
 
                 <section class="card status-log-card">
