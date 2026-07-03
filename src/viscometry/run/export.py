@@ -156,21 +156,28 @@ def _append_discovery_csv_metadata(csv_writer) -> None:
 
 
 def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
-    """Write predicted viscosity summary rows into CSV metadata comments."""
-    csv_writer.writerow([f"# Viscosity prediction mode: {settings.VISCOSITY_PREDICTION_MODE}"])
-    if settings.VISCOSITY_PREDICTION_MODE == "off" or not settings.CELL_VISCOSITY_RESULTS:
+    """Write characterization / predicted viscosity summary rows into CSV metadata comments."""
+    from viscometry.rheology.live_adapter import SUMMARY_KEY
+
+    mode = getattr(settings, "CHARACTERIZATION_MODE", None) or settings.VISCOSITY_PREDICTION_MODE
+    csv_writer.writerow([f"# Characterization mode: {mode}"])
+    if mode == "off" or not settings.CELL_VISCOSITY_RESULTS:
         csv_writer.writerow([])
         return
-    csv_writer.writerow(["# Predicted Viscosity Results"])
+    csv_writer.writerow(["# Characterization Results"])
     csv_writer.writerow([
-        "# Cell,Cell_Label,RPM,Viscosity_kCp,A,B,R2,regime,n,n_points_used,fit_success"
+        "# Cell,Cell_Label,RPM,Viscosity_kCp,A,B,R2,regime,n,n_stress,K_Pas_n,K_stress,R2_stress,n_points_used,fit_success"
     ])
     for global_cell in sorted(settings.CELL_VISCOSITY_RESULTS.keys()):
         rpm_map = settings.CELL_VISCOSITY_RESULTS[global_cell]
         label = settings.CELL_CONTENT_MAP.get(global_cell, "")
         summary = rpm_map.get(SUMMARY_KEY) if isinstance(rpm_map, dict) else {}
         cell_regime = summary.get("regime") if isinstance(summary, dict) else ""
-        cell_n = summary.get("n") if isinstance(summary, dict) else ""
+        cell_n = summary.get("n_idx") or summary.get("n") if isinstance(summary, dict) else ""
+        cell_n_stress = summary.get("n_stress") if isinstance(summary, dict) else ""
+        k_pas = summary.get("K_Pas_n") if isinstance(summary, dict) else ""
+        k_stress = summary.get("K_stress") if isinstance(summary, dict) else ""
+        r2_stress = summary.get("R2_stress") if isinstance(summary, dict) else ""
         for rpm in sorted(k for k in rpm_map.keys() if k != SUMMARY_KEY):
             result = rpm_map[rpm]
             if not isinstance(result, dict):
@@ -178,7 +185,7 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
             visc = result.get("viscosity_kcp")
             a_val = result.get("A")
             b_val = result.get("B")
-            r2_val = result.get("R2")
+            r2_val = result.get("R2") or result.get("R2_drag")
             csv_writer.writerow([
                 f"# {global_cell},{label},{rpm},"
                 f"{'' if visc is None else visc},"
@@ -187,6 +194,10 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
                 f"{'' if r2_val is None else r2_val},"
                 f"{cell_regime},"
                 f"{'' if cell_n is None else cell_n},"
+                f"{'' if cell_n_stress is None else cell_n_stress},"
+                f"{'' if k_pas is None else k_pas},"
+                f"{'' if k_stress is None else k_stress},"
+                f"{'' if r2_stress is None else r2_stress},"
                 f"{result.get('n_points_used', 0)},"
                 f"{bool(result.get('success'))}",
             ])

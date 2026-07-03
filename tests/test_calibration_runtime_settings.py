@@ -56,6 +56,8 @@ def _default_runtime_payload() -> dict:
         "low_torque_liquid_contact_skip_enabled": True,
         "low_torque_liquid_contact_threshold_pct": 25.0,
         "viscosity_prediction_mode": "off",
+        "characterization_mode": "off",
+        "characterization_enabled": False,
         "save_all_sample_data": False,
         "z_start_offset_mm": 0.4,
         "discovery_mode_enabled": False,
@@ -158,6 +160,35 @@ class TestCalibrationRuntimeSettings(unittest.TestCase):
         self.assertFalse(ctrl.LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED)
         self.assertFalse(run_settings.LOW_TORQUE_LIQUID_CONTACT_SKIP_ENABLED)
         self.assertFalse(run_settings.use_liquid_z_skip())
+
+    def test_characterization_mode_syncs_from_web(self):
+        payload = _default_runtime_payload()
+        payload.update(
+            {
+                "characterization_mode": "on",
+                "characterization_enabled": True,
+                "viscosity_prediction_mode": "off",
+            }
+        )
+        self._apply(payload)
+
+        self.assertEqual(ctrl.CHARACTERIZATION_MODE, "on")
+        self.assertEqual(run_settings.CHARACTERIZATION_MODE, "on")
+        self.assertEqual(ctrl.VISCOSITY_PREDICTION_MODE, "on")
+
+    def test_legacy_viscosity_prediction_without_characterization(self):
+        payload = _default_runtime_payload()
+        payload.update(
+            {
+                "viscosity_prediction_mode": "on",
+                "predicted_viscosity_enabled": True,
+                "characterization_mode": "off",
+            }
+        )
+        self._apply(payload)
+
+        self.assertEqual(ctrl.CHARACTERIZATION_MODE, "off")
+        self.assertEqual(ctrl.VISCOSITY_PREDICTION_MODE, "on")
 
 
 if __name__ == "__main__":

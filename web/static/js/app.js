@@ -356,8 +356,8 @@ class ViscometryDashboard {
 
         // Restore active tab from localStorage
         let activeTab = localStorage.getItem("activeTab") || "layout-tab";
-        if (activeTab === "data-tab") {
-            activeTab = "data-processing-tab";
+        if (activeTab === "data-tab" || activeTab === "data-processing-tab") {
+            activeTab = "characterization-tab";
         }
         this.switchTab(activeTab);
         this.connectSocket();
@@ -433,6 +433,10 @@ class ViscometryDashboard {
             liveViscosityEmpty: document.getElementById("live-viscosity-empty"),
             predictedViscosityCharts: document.getElementById("predicted-viscosity-charts"),
             predictedViscosityChartsEmpty: document.getElementById("predicted-viscosity-charts-empty"),
+            characterizationStatusStrip: document.getElementById("characterization-status-strip"),
+            characterizationStatusCell: document.getElementById("characterization-status-cell"),
+            characterizationStatusZ: document.getElementById("characterization-status-z"),
+            characterizationStatusBadge: document.getElementById("characterization-status-badge"),
             r2DragMin: document.getElementById("r2-drag-min"),
             r2CvMin: document.getElementById("r2-cv-min"),
             r2SlopeMin: document.getElementById("r2-slope-min"),
@@ -945,6 +949,9 @@ class ViscometryDashboard {
 
     switchTab(tabId, options = {}) {
         const force = Boolean(options.force);
+        if (tabId === "data-processing-tab" || tabId === "data-tab") {
+            tabId = "characterization-tab";
+        }
         if (!force && tabId === "testing-tab" && this.isRunning) {
             this.pushStatusMessage("Testing is disabled while a viscometry run is active");
             return;
@@ -1763,13 +1770,15 @@ class ViscometryDashboard {
             fetch("/api/measurement_data").then((r) => r.json()),
             fetch("/api/calibration/status").then((r) => r.json()),
             fetch("/api/predicted_viscosity").then((r) => r.json()),
+            fetch("/api/characterization").then((r) => r.json()),
             fetch("/api/testing/status").then((r) => r.json()),
         ])
-            .then(([statusRes, measurementRes, calRes, predictedRes, testingRes]) => {
+            .then(([statusRes, measurementRes, calRes, predictedRes, characterizationRes, testingRes]) => {
                 const status = statusRes.status === "fulfilled" ? statusRes.value : null;
                 const measurementData = measurementRes.status === "fulfilled" ? measurementRes.value : null;
                 const calSummary = calRes.status === "fulfilled" ? calRes.value : null;
                 const predictedViscosity = predictedRes.status === "fulfilled" ? predictedRes.value : null;
+                const characterization = characterizationRes.status === "fulfilled" ? characterizationRes.value : null;
                 const testingStatus = testingRes.status === "fulfilled" ? testingRes.value : null;
 
                 if (status && typeof status === "object") {
@@ -1787,7 +1796,8 @@ class ViscometryDashboard {
                     this._refreshActiveTabCharts({ force: true });
                 }
                 this._hydratePredictedViscosityFromServer(
-                    predictedViscosity || status?.predicted_viscosity_results
+                    characterization || predictedViscosity || status?.characterization_results
+                        || status?.predicted_viscosity_results
                 );
                 if (calSummary && typeof calSummary === "object") {
                     this.applyCalibrationStatus(calSummary);
@@ -1875,8 +1885,8 @@ class ViscometryDashboard {
             this.el.lowTorqueLiquidContactThresholdPct.value = settings.low_torque_liquid_contact_threshold_pct ?? 25;
         }
         const mode = this._normalizeViscosityPredictionMode(
-            settings.viscosity_prediction_mode,
-            settings.predicted_viscosity_enabled
+            settings.characterization_mode || settings.viscosity_prediction_mode,
+            settings.characterization_enabled ?? settings.predicted_viscosity_enabled
         );
         this._setViscosityPredictionModeUI(mode);
         this._updatePredictedViscosityChartsCardVisibility(mode !== "off");
@@ -2874,6 +2884,9 @@ class ViscometryDashboard {
             baseline_z_threshold: Number(this.el.baselineZThreshold?.value ?? 5),
             feedback_control_enabled: this.el.feedbackEnabled.checked,
             viscosity_prediction_mode: this._getViscosityPredictionMode(),
+            predicted_viscosity_enabled: this._getViscosityPredictionMode() === "on",
+            characterization_mode: this._getViscosityPredictionMode(),
+            characterization_enabled: this._getViscosityPredictionMode() === "on",
             save_all_sample_data: Boolean(this.el.saveAllSampleData?.checked),
             z_start_offset_mm: Number(this.el.zStartOffsetMm?.value ?? 0.4),
             cell_rpm_map: this.buildCellRpmMapPayload(),
@@ -3378,6 +3391,22 @@ class ViscometryDashboard {
 
         this.socket.on("predicted_viscosity_summary_update", (payload) => {
             this._ingestPredictedViscositySummaryUpdate(payload);
+        });
+
+        this.socket.on("characterization_point", (payload) => {
+            this._updateCharacterizationStatusStrip(payload);
+        });
+        this.socket.on("characterization_z_slice", (payload) => {
+            this._updateCharacterizationStatusStrip(payload);
+        });
+        this.socket.on("characterization_rpm_fit", (payload) => {
+            this._ingestCharacterizationRpmFit(payload);
+        });
+        this.socket.on("characterization_summary", (payload) => {
+            this._ingestCharacterizationSummary(payload);
+        });
+        this.socket.on("characterization_reset", () => {
+            this._updateCharacterizationStatusStrip(null);
         });
 
         this.socket.on("rpm_torque_status_update", (payload) => {
@@ -5868,6 +5897,8 @@ class ViscometryDashboard {
             "min_data_points_for_trend",
             "viscosity_prediction_mode",
             "predicted_viscosity_enabled",
+            "characterization_mode",
+            "characterization_enabled",
             "save_all_sample_data",
             "z_start_offset_mm",
             "cell_rpm_map",
@@ -6333,9 +6364,15 @@ class ViscometryDashboard {
             csv: csvHeader + csvBody,
             cell_termination_reasons: Object.fromEntries(this.cellTerminationReasons),
             viscosity_prediction_mode:
-                settingsSnapshot.viscosity_prediction_mode
+                settingsSnapshot.characterization_mode
+                || settingsSnapshot.viscosity_prediction_mode
+                || (hasPredictedViscosityData ? "on" : "off"),
+            characterization_mode:
+                settingsSnapshot.characterization_mode
+                || settingsSnapshot.viscosity_prediction_mode
                 || (hasPredictedViscosityData ? "on" : "off"),
             predicted_viscosity: predictedViscosity,
+            characterization: predictedViscosity,
             run_type: settingsSnapshot.discovery_mode_enabled ? "discovery" : "regular",
             discovery_results: settingsSnapshot.discovery_mode_enabled
                 ? JSON.parse(JSON.stringify(this.discoveryResultsByCell || {}))
@@ -6437,21 +6474,21 @@ class ViscometryDashboard {
             tile("Feedback", feedbackOn, feedbackOn ? "On" : "Off", feedbackDetail),
             tile("Smart Early Exit", smartExitOn, smartExitOn ? "On" : "Off", smartDetail),
             tile("1st Sample Torque Floor", torqueFloorOn, torqueFloorOn ? "On" : "Off", torqueDetail),
-            tile("Viscosity Prediction", predMode !== "off", predMode !== "off" ? "On" : "Off", viscosityDetail),
+            tile("Characterization", predMode !== "off", predMode !== "off" ? "On" : "Off", viscosityDetail),
             tile("Save All Sample Data", saveAllOn, saveAllOn ? "On" : "Off", saveAllDetail),
             tile("Z-Start Offset", Number.isFinite(zOffset), Number.isFinite(zOffset) ? `${zOffset.toFixed(3)} mm` : "0.4 mm", zOffsetDetail),
         ].join("");
     }
 
     _buildPredictedViscosityTableHtml(exp, s) {
-        const predData = exp.predicted_viscosity || {};
+        const predData = exp.characterization || exp.predicted_viscosity || {};
         const hasPredData = this._predictedViscosityEntryHasData(predData);
         const predMode = this._normalizeViscosityPredictionMode(
-            exp.viscosity_prediction_mode ?? s.viscosity_prediction_mode,
-            exp.predicted_viscosity_enabled ?? s.predicted_viscosity_enabled
+            exp.characterization_mode ?? exp.viscosity_prediction_mode ?? s.characterization_mode ?? s.viscosity_prediction_mode,
+            exp.characterization_enabled ?? exp.predicted_viscosity_enabled ?? s.characterization_enabled ?? s.predicted_viscosity_enabled
         );
         if (predMode === "off" && !hasPredData) {
-            return "<p class=\"summary-empty\"><em>Viscosity predictions were off for this run.</em></p>";
+            return "<p class=\"summary-empty\"><em>Characterization was off for this run.</em></p>";
         }
         const summaryBlocks = [];
         const rows = [];
@@ -6953,8 +6990,65 @@ class ViscometryDashboard {
         this._refreshPredictedViscosityViews();
     }
 
+    _normalizeCharacterizationRpmPayload(payload) {
+        const out = { ...payload };
+        if (out.R2_drag != null && out.R2 == null) {
+            out.R2 = out.R2_drag;
+        }
+        return out;
+    }
+
+    _ingestCharacterizationRpmFit(payload) {
+        if (!payload || typeof payload !== "object") {
+            return;
+        }
+        this._ingestPredictedViscosityUpdate(this._normalizeCharacterizationRpmPayload(payload));
+        this._updateCharacterizationStatusStrip(payload);
+    }
+
+    _ingestCharacterizationSummary(payload) {
+        if (!payload || typeof payload !== "object") {
+            return;
+        }
+        const normalized = { ...payload };
+        if (normalized.n_idx != null && normalized.n == null) {
+            normalized.n = normalized.n_idx;
+        }
+        if (normalized.R2_amplitude != null && normalized.R2_powerlaw == null) {
+            normalized.R2_powerlaw = normalized.R2_amplitude;
+        }
+        this._ingestPredictedViscositySummaryUpdate(normalized);
+        this._updateCharacterizationStatusStrip(payload);
+    }
+
+    _updateCharacterizationStatusStrip(payload) {
+        const strip = this.el.characterizationStatusStrip;
+        if (!strip) {
+            return;
+        }
+        if (!payload || payload.type === "reset") {
+            strip.classList.add("hidden");
+            return;
+        }
+        strip.classList.remove("hidden");
+        if (this.el.characterizationStatusCell) {
+            const cellId = payload.cell_id != null ? payload.cell_id : "—";
+            this.el.characterizationStatusCell.textContent = `Cell ${cellId}`;
+        }
+        if (this.el.characterizationStatusZ && payload.z != null) {
+            this.el.characterizationStatusZ.textContent = `Z ${Number(payload.z).toFixed(3)} mm`;
+        }
+        if (this.el.characterizationStatusBadge) {
+            const provisional = payload.provisional !== false
+                && payload.type !== "summary";
+            this.el.characterizationStatusBadge.textContent = provisional ? "Provisional" : "Final";
+            this.el.characterizationStatusBadge.classList.toggle("characterization-provisional", provisional);
+            this.el.characterizationStatusBadge.classList.toggle("characterization-final", !provisional);
+        }
+    }
+
     _refreshPredictedViscosityViews() {
-        if (this.activeTabId === "data-processing-tab") {
+        if (this.activeTabId === "characterization-tab" || this.activeTabId === "data-processing-tab") {
             this.renderPredictedViscosityCharts();
         }
         if (this.activeTabId === "controls-tab") {
@@ -7000,6 +7094,9 @@ class ViscometryDashboard {
                         const label = contentMap[cellId]
                             ?? contentMap[String(cellId)]
                             ?? "";
+                        const regime = summary?.regime && summary.regime !== "undetermined"
+                            ? String(summary.regime)
+                            : "—";
                         const visc = summary?.success && summary?.viscosity_kcp != null
                             ? this._fmtPredictedViscosity3(summary.viscosity_kcp)
                             : (result?.success && result?.viscosity_kcp != null
@@ -7009,12 +7106,12 @@ class ViscometryDashboard {
                             ? Number(result.R2).toFixed(3)
                             : "—";
                         const status = result?.success
-                            ? "OK"
+                            ? (result.provisional ? "Provisional" : "OK")
                             : (result?.error ? String(result.error) : "—");
                         const rpmLabel = Number(rpm).toFixed(3);
                         rows.push(
                             `<tr><td>${cellId}</td><td>${label || "—"}</td><td class="mono">${rpmLabel}</td>`
-                            + `<td class="mono">${visc}</td><td class="mono">${r2}</td>`
+                            + `<td>${regime}</td><td class="mono">${visc}</td><td class="mono">${r2}</td>`
                             + `<td class="pv-status-cell">${status}</td></tr>`
                         );
                     });
@@ -7044,6 +7141,14 @@ class ViscometryDashboard {
     }
 
     _getViscosityPredictionMode() {
+        const settings = this.latestControlSettings || this.readControlSettings() || {};
+        const charMode = settings.characterization_mode;
+        if (charMode === "on" || charMode === "off") {
+            return charMode;
+        }
+        if (settings.characterization_enabled === true) {
+            return "on";
+        }
         return this._normalizeViscosityPredictionMode(this.viscosityPredictionMode);
     }
 
@@ -7342,7 +7447,8 @@ class ViscometryDashboard {
                             </aside>
                             <aside class="discovery-rheology-panel" data-dr-panel="${cellId}"></aside>
                         </div>
-                    </div>`;
+                    </div>
+                    <div class="characterization-flow-plot" data-pv-flow="${cellId}"></div>`;
             }
 
             const headingEl = wrap.querySelector(`[data-pv-heading="${cellId}"]`);
@@ -7367,7 +7473,16 @@ class ViscometryDashboard {
                     headingHtml += `<span class="cell-eta-label">η = ${cellEta} kCp</span>`;
                 }
                 if (nVal != null) {
-                    headingHtml += `<span class="cell-eta-label">n = ${nVal}</span>`;
+                    headingHtml += `<span class="cell-eta-label">n<sub>idx</sub> = ${nVal}</span>`;
+                }
+                if (summary?.K_Pas_n != null && Number.isFinite(Number(summary.K_Pas_n))) {
+                    headingHtml += `<span class="cell-eta-label" title="Amplitude-derived consistency">K<sub>amp</sub> = ${Number(summary.K_Pas_n).toExponential(3)} Pa·sⁿ</span>`;
+                }
+                if (summary?.K_stress != null && Number.isFinite(Number(summary.K_stress))) {
+                    headingHtml += `<span class="cell-eta-label" title="Stress regression consistency">K<sub>stress</sub> = ${Number(summary.K_stress).toExponential(3)} Pa·sⁿ</span>`;
+                }
+                if (summary?.n_stress != null && Number.isFinite(Number(summary.n_stress))) {
+                    headingHtml += `<span class="cell-eta-label">n<sub>stress</sub> = ${Number(summary.n_stress).toFixed(3)}</span>`;
                 }
                 headingEl.className = "predicted-viscosity-cell-heading predicted-viscosity-cell-meta";
                 headingEl.innerHTML = headingHtml;
@@ -7403,14 +7518,15 @@ class ViscometryDashboard {
                     });
                 }
                 if (fitZ.length > 0) {
+                    const lineStyle = result.provisional ? { color, width: 2, dash: "dash" } : { color, width: 2 };
                     traces.push({
                         x: fitZ,
                         y: fitD,
                         mode: "lines",
                         type: "scatter",
-                        name: `RPM ${rpm} fit`,
+                        name: `RPM ${rpm} fit${result.provisional ? " (provisional)" : ""}`,
                         legendgroup: `rpm${rpm}`,
-                        line: { color, width: 2 },
+                        line: lineStyle,
                         showlegend: idx === 0,
                     });
                 }
@@ -7453,6 +7569,7 @@ class ViscometryDashboard {
             };
 
             Plotly.react(plotEl, traces, layout, { responsive: true, displayModeBar: false });
+            this._renderCharacterizationFlowCurves(wrap, cellId, rpmMap, summary);
         });
 
         // Remove plot wrappers for cells no longer in data
@@ -7464,6 +7581,75 @@ class ViscometryDashboard {
         });
 
         this._refreshDiscoveryRheologyPanels();
+    }
+
+    _renderCharacterizationFlowCurves(wrap, cellId, rpmMap, summary) {
+        const flowEl = wrap?.querySelector(`[data-pv-flow="${cellId}"]`);
+        if (!flowEl) {
+            return;
+        }
+        const rpmKeys = Object.keys(rpmMap || {}).filter((k) => this._isPredictedViscosityRpmKey(k));
+        if (rpmKeys.length < 2) {
+            flowEl.innerHTML = "";
+            return;
+        }
+        const gamma = [];
+        const tau = [];
+        const eta = [];
+        rpmKeys
+            .map((k) => Number(k))
+            .sort((a, b) => a - b)
+            .forEach((rpm) => {
+                const row = rpmMap[rpm];
+                if (!row?.success) {
+                    return;
+                }
+                const g = rpm * 2.0;
+                const muCp = row.viscosity_kcp != null ? Number(row.viscosity_kcp) * 1000.0 : null;
+                if (!Number.isFinite(g) || !Number.isFinite(muCp)) {
+                    return;
+                }
+                const t = muCp * 0.001 * g;
+                gamma.push(g);
+                tau.push(t);
+                eta.push(muCp);
+            });
+        if (gamma.length < 2) {
+            flowEl.innerHTML = "";
+            return;
+        }
+        const traces = [
+            {
+                x: gamma,
+                y: tau,
+                mode: "markers+lines",
+                type: "scatter",
+                name: "τ vs γ̇",
+                xaxis: "x",
+                yaxis: "y",
+            },
+            {
+                x: gamma,
+                y: eta,
+                mode: "markers+lines",
+                type: "scatter",
+                name: "η vs γ̇",
+                xaxis: "x2",
+                yaxis: "y2",
+            },
+        ];
+        const pvBase = this._buildLivePlotLayout({ yTitle: "τ (Pa)", showLegend: true });
+        const layout = {
+            ...pvBase,
+            grid: { rows: 1, columns: 2, pattern: "independent" },
+            showlegend: true,
+            margin: { t: 24, r: 16, b: 40, l: 52 },
+            xaxis: { ...pvBase.xaxis, title: "γ̇ (1/s)", type: "log" },
+            yaxis: { ...pvBase.yaxis, title: "τ (Pa)", type: "log" },
+            xaxis2: { ...pvBase.xaxis, title: "γ̇ (1/s)", type: "log", anchor: "y2" },
+            yaxis2: { ...pvBase.yaxis, title: "η (cP)", type: "log", anchor: "x2" },
+        };
+        Plotly.react(flowEl, traces, layout, { responsive: true, displayModeBar: false });
     }
 
     updateTable() {

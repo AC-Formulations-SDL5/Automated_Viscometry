@@ -235,6 +235,9 @@ class ViscometryWebInterface:
             'low_torque_liquid_contact_skip_enabled': True,
             'low_torque_liquid_contact_threshold_pct': 25.0,
             'viscosity_prediction_mode': 'off',
+            'predicted_viscosity_enabled': False,
+            'characterization_mode': 'off',
+            'characterization_enabled': False,
             'save_all_sample_data': False,
             'z_start_offset_mm': 0.4,
             'discovery_mode_enabled': False,
@@ -244,6 +247,7 @@ class ViscometryWebInterface:
             'discovery_handoff_pause_s': 10.0,
         }
         self.predicted_viscosity_results: Dict = {}
+        self.characterization_results: Dict = {}
         self.discovery_results_by_cell: Dict[str, dict] = {}
         self.rpm_torque_status_by_cell: Dict[int, Dict[str, str]] = {}
         # ========== Calibration state ==========
@@ -345,6 +349,15 @@ class ViscometryWebInterface:
                     return jsonify(self.predicted_viscosity_results)
             except Exception as e:
                 print(f"Error in get_predicted_viscosity: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/characterization')
+        def get_characterization():
+            try:
+                with self.control_lock:
+                    return jsonify(self.characterization_results)
+            except Exception as e:
+                print(f"Error in get_characterization: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/control_settings', methods=['GET', 'POST'])
@@ -742,6 +755,7 @@ class ViscometryWebInterface:
                 'recalibration_mode_active': recalibration_mode_active,
                 'recalibration_target_count': recalibration_target_count,
                 'predicted_viscosity_results': self._copy_predicted_viscosity_results(),
+                'characterization_results': self._copy_characterization_results(),
                 'discovery_results_by_cell': self._copy_discovery_results_by_cell(),
                 'discovery_mode_active': bool(self.is_running and discovery_enabled),
                 'calibration_review': self.get_calibration_review_session(),
@@ -1169,6 +1183,7 @@ class ViscometryWebInterface:
                 "run_start_ts": self.experiment_start_ts,
                 "runtime_settings": settings,
                 "predicted_viscosity_results": self._copy_predicted_viscosity_results_unlocked(),
+                "characterization_results": self._copy_characterization_results_unlocked(),
                 "discovery_results_by_cell": self._copy_discovery_results_by_cell_unlocked(),
             }
 
@@ -1285,6 +1300,16 @@ class ViscometryWebInterface:
         except Exception as e:
             print(f"Warning: failed to emit experiment_review_update: {e}")
         return public
+
+    def _normalize_characterization_mode(self, settings: Dict) -> str:
+        from viscometry.rheology.viscosity import normalize_characterization_mode
+
+        return normalize_characterization_mode(
+            settings.get("characterization_mode"),
+            legacy_enabled=settings.get("characterization_enabled"),
+            viscosity_prediction_mode=settings.get("viscosity_prediction_mode"),
+            predicted_viscosity_enabled=settings.get("predicted_viscosity_enabled"),
+        )
 
     def _normalize_viscosity_prediction_mode(self, settings: Dict) -> str:
         from viscometry.rheology.viscosity import normalize_viscosity_prediction_mode
@@ -1662,6 +1687,22 @@ class ViscometryWebInterface:
                 settings.get('viscosity_prediction_mode'),
                 legacy_enabled=settings.get('predicted_viscosity_enabled'),
             )
+            from viscometry.rheology.viscosity import normalize_characterization_mode
+
+            normalized['characterization_mode'] = normalize_characterization_mode(
+                settings.get('characterization_mode'),
+                legacy_enabled=settings.get('characterization_enabled'),
+                viscosity_prediction_mode=settings.get('viscosity_prediction_mode'),
+                predicted_viscosity_enabled=settings.get('predicted_viscosity_enabled'),
+            )
+            if normalized['characterization_mode'] == 'on':
+                normalized['viscosity_prediction_mode'] = 'on'
+            if 'characterization_enabled' in settings:
+                normalized['characterization_enabled'] = bool(settings['characterization_enabled'])
+            if 'predicted_viscosity_enabled' in settings:
+                normalized['predicted_viscosity_enabled'] = bool(
+                    settings['predicted_viscosity_enabled']
+                )
             if 'low_torque_liquid_contact_skip_enabled' in settings:
                 normalized['low_torque_liquid_contact_skip_enabled'] = bool(
                     settings['low_torque_liquid_contact_skip_enabled']
@@ -2040,6 +2081,13 @@ class ViscometryWebInterface:
         with self.control_lock:
             return self._copy_predicted_viscosity_results_unlocked()
 
+    def _copy_characterization_results_unlocked(self) -> Dict:
+        return json.loads(json.dumps(self.characterization_results))
+
+    def _copy_characterization_results(self) -> Dict:
+        with self.control_lock:
+            return self._copy_characterization_results_unlocked()
+
     def _copy_discovery_results_by_cell_unlocked(self) -> Dict:
         try:
             return copy.deepcopy(self.discovery_results_by_cell)
@@ -2065,6 +2113,7 @@ class ViscometryWebInterface:
             self.completed_cells = []
             self.cell_termination_reasons = {}
             self.predicted_viscosity_results = {}
+            self.characterization_results = {}
             self.discovery_results_by_cell = {}
             self.rpm_torque_status_by_cell = {}
         self.clear_terminate_current_cell_request()
@@ -2120,6 +2169,47 @@ class ViscometryWebInterface:
             self.socketio.emit('predicted_viscosity_summary_update', payload)
         except Exception as e:
             print(f"Warning: Failed to emit predicted viscosity summary: {e}")
+
+    def emit_characterization(self, event: Dict):
+        """Store and broadcast a characterization engine event."""
+        try:
+            from viscometry.rheology.live_adapter import SUMMARY_KEY
+
+            if not isinstance(event, dict):
+                return
+            event_type = str(event.get("type") or "")
+            cell_id = event.get("cell_id")
+            if cell_id is None:
+                return
+            cell_key = str(int(cell_id))
+            payload = dict(event)
+
+            with self.control_lock:
+                if event_type == "reset":
+                    self.characterization_results.pop(cell_key, None)
+                elif event_type == "rpm_fit":
+                    rpm = payload.get("rpm")
+                    if rpm is not None:
+                        if cell_key not in self.characterization_results:
+                            self.characterization_results[cell_key] = {}
+                        self.characterization_results[cell_key][str(float(rpm))] = payload
+                elif event_type == "summary":
+                    if cell_key not in self.characterization_results:
+                        self.characterization_results[cell_key] = {}
+                    self.characterization_results[cell_key][SUMMARY_KEY] = payload
+
+            socket_event = {
+                "point": "characterization_point",
+                "z_slice": "characterization_z_slice",
+                "rpm_fit": "characterization_rpm_fit",
+                "summary": "characterization_summary",
+                "reset": "characterization_reset",
+            }.get(event_type)
+            if socket_event:
+                self.socketio.emit(socket_event, payload)
+
+        except Exception as e:
+            print(f"Warning: Failed to emit characterization: {e}")
 
     def emit_discovery_update(self, payload: Dict):
         """Store and broadcast Discovery Mode probe / convergence status."""
