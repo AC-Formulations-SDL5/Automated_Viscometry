@@ -7141,13 +7141,10 @@ class ViscometryDashboard {
     }
 
     _getViscosityPredictionMode() {
-        const settings = this.latestControlSettings || this.readControlSettings() || {};
-        const charMode = settings.characterization_mode;
-        if (charMode === "on" || charMode === "off") {
-            return charMode;
-        }
-        if (settings.characterization_enabled === true) {
-            return "on";
+        // Prefer live UI state so a user toggle is not overwritten by cached
+        // server settings (latestControlSettings) when applyControlSettings runs.
+        if (this.el.viscosityPredictionEnabled) {
+            return this.el.viscosityPredictionEnabled.checked ? "on" : "off";
         }
         return this._normalizeViscosityPredictionMode(this.viscosityPredictionMode);
     }
