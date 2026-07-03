@@ -37,28 +37,53 @@ class TestLiveEngineSession(unittest.TestCase):
         ev3 = session.add_point(2.5, 10.0, 52.0)
         self.assertAlmostEqual(ev3[0]["h_norm"], 1.0, places=3)
 
-    def test_min_four_points_before_rpm_fit(self):
+    def test_z_slice_emits_no_rpm_fit(self):
+        session = LiveCellSession(1, [10.0], torque_floor_pct=0.0)
+        for i in range(4):
+            session.add_point(1.0 + i * 0.3, 10.0, 40.0 + i)
+            events = session.on_z_slice_complete(1.0 + i * 0.3)
+            fit_events = [e for e in events if e.get("type") == "rpm_fit"]
+            self.assertEqual(len(fit_events), 0)
+            self.assertEqual(events[0]["type"], "z_slice")
+
+    def test_fit_only_after_finalize_with_min_four_points(self):
         session = LiveCellSession(1, [10.0], torque_floor_pct=0.0)
         for i in range(3):
             session.add_point(1.0 + i * 0.3, 10.0, 40.0 + i)
-            events = session.on_z_slice_complete(1.0 + i * 0.3)
+            session.on_z_slice_complete(1.0 + i * 0.3)
+        events = session.finalize_cell()
         fit_events = [e for e in events if e.get("type") == "rpm_fit"]
         self.assertEqual(len(fit_events), 0)
-        session.add_point(2.0, 10.0, 45.0)
-        events = session.on_z_slice_complete(2.0)
-        fit_events = [e for e in events if e.get("type") == "rpm_fit"]
-        self.assertEqual(len(fit_events), 1)
-        self.assertTrue(fit_events[0]["provisional"])
 
-    def test_hit_point_refit_drops_deeper_points(self):
-        session = LiveCellSession(1, [10.0], torque_floor_pct=0.0)
-        for z in (-65.20, -65.24, -65.28, -65.32, -65.36, -65.40):
-            session.add_point(z, 10.0, 50.0)
-            session.on_z_slice_complete(z)
-        before = session._rpm_fits[10.0]["n_points_used"]
-        session.set_hit_point_z(-65.28)
-        after = session._rpm_fits[10.0]["n_points_used"]
-        self.assertLess(after, before)
+        session2 = LiveCellSession(1, [10.0], torque_floor_pct=0.0)
+        for i in range(4):
+            session2.add_point(1.0 + i * 0.3, 10.0, 40.0 + i)
+            session2.on_z_slice_complete(1.0 + i * 0.3)
+        events2 = session2.finalize_cell()
+        fit_events2 = [e for e in events2 if e.get("type") == "rpm_fit"]
+        self.assertEqual(len(fit_events2), 1)
+        self.assertFalse(fit_events2[0]["provisional"])
+
+    def test_hit_point_applied_at_finalize_drops_deeper_points(self):
+        zs = (-65.20, -65.24, -65.28, -65.32, -65.36, -65.40)
+        session_no_hit = LiveCellSession(1, [10.0], torque_floor_pct=0.0)
+        for z in zs:
+            session_no_hit.add_point(z, 10.0, 50.0)
+            session_no_hit.on_z_slice_complete(z)
+        session_no_hit.finalize_cell()
+        without_hit = session_no_hit._rpm_fits[10.0]["n_points_used"]
+
+        session_hit = LiveCellSession(1, [10.0], torque_floor_pct=0.0)
+        for z in zs:
+            session_hit.add_point(z, 10.0, 50.0)
+            session_hit.on_z_slice_complete(z)
+        events = session_hit.set_hit_point_z(-65.28)
+        self.assertEqual(events, [])
+        self.assertEqual(session_hit.hit_point_z, -65.28)
+        self.assertEqual(session_hit._rpm_fits, {})
+        session_hit.finalize_cell()
+        with_hit = session_hit._rpm_fits[10.0]["n_points_used"]
+        self.assertLess(with_hit, without_hit)
 
     def test_finalize_marks_non_provisional(self):
         session = LiveCellSession(1, [10.0], torque_floor_pct=0.0)
