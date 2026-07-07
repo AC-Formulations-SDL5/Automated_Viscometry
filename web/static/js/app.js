@@ -6486,7 +6486,7 @@ class ViscometryDashboard {
         ].join("");
     }
 
-    _buildPredictedViscosityTableHtml(exp, s) {
+    _buildCharacterizationSummaryHtml(exp, s) {
         const predData = exp.characterization || exp.predicted_viscosity || {};
         const hasPredData = this._predictedViscosityEntryHasData(predData);
         const predMode = this._normalizeViscosityPredictionMode(
@@ -6496,8 +6496,16 @@ class ViscometryDashboard {
         if (predMode === "off" && !hasPredData) {
             return "<p class=\"summary-empty\"><em>Characterization was off for this run.</em></p>";
         }
-        const summaryBlocks = [];
-        const rows = [];
+
+        const fmtCoeff = (val, expFmt = false) => {
+            if (val == null || !Number.isFinite(Number(val))) {
+                return "—";
+            }
+            const n = Number(val);
+            return expFmt ? n.toExponential(3) : n.toFixed(3);
+        };
+
+        const cards = [];
         Object.keys(predData).forEach((cellKey) => {
             const cellId = Number(cellKey);
             const rpmMap = predData[cellKey];
@@ -6505,52 +6513,79 @@ class ViscometryDashboard {
                 return;
             }
             const summary = rpmMap[this.predictedViscositySummaryKey];
-            if (summary && typeof summary === "object") {
-                const cellEta = summary.success && summary.viscosity_kcp != null
-                    ? Number(summary.viscosity_kcp).toFixed(3)
-                    : "—";
-                const nVal = summary.n != null && Number.isFinite(Number(summary.n))
-                    ? Number(summary.n).toFixed(3)
-                    : "—";
-                summaryBlocks.push(
-                    `<div class="predicted-viscosity-cell-meta">`
-                    + `<strong>Cell ${cellId}</strong> `
-                    + this._buildRegimeBadgeHtml(summary.regime || (summary.success ? summary.mode : "failed"))
-                    + `<span class="cell-eta-label">η = ${cellEta} kCp · n = ${nVal}</span>`
-                    + `</div>`
-                );
+            const rpmKeys = Object.keys(rpmMap).filter((k) => this._isPredictedViscosityRpmKey(k));
+            if (rpmKeys.length === 0) {
+                return;
             }
-            Object.keys(rpmMap).forEach((rpmKey) => {
-                if (!this._isPredictedViscosityRpmKey(rpmKey)) {
-                    return;
-                }
-                const result = rpmMap[rpmKey];
-                const label = s.cell_content_map?.[cellId] ?? s.cell_content_map?.[String(cellId)] ?? "";
-                const visc = result?.success && result?.viscosity_kcp != null
-                    ? Number(result.viscosity_kcp).toFixed(3)
-                    : "—";
-                const r2 = result?.R2 != null && Number.isFinite(Number(result.R2))
-                    ? Number(result.R2).toFixed(3)
-                    : "—";
-                const regime = summary?.regime
-                    ?? (result?.success ? "per-RPM" : "failed");
-                rows.push(
-                    `<tr><td>${cellId}</td><td>${label || "—"}</td><td>${rpmKey}</td>`
-                    + `<td>${visc}</td><td>${r2}</td>`
-                    + `<td>${this._buildRegimeBadgeHtml(regime)}</td></tr>`
-                );
-            });
+            const label = s.cell_content_map?.[cellId] ?? s.cell_content_map?.[String(cellId)] ?? "";
+            const regime = summary?.regime || (summary?.success ? summary?.mode : null);
+
+            const rpmRows = rpmKeys
+                .map((k) => Number(k))
+                .sort((a, b) => a - b)
+                .map((rpm) => {
+                    const result = rpmMap[rpm];
+                    if (!result) {
+                        return "";
+                    }
+                    const eta = result.success && result.viscosity_kcp != null
+                        ? this._fmtPredictedViscosity3(result.viscosity_kcp)
+                        : "—";
+                    const r2 = result.R2 != null && Number.isFinite(Number(result.R2))
+                        ? Number(result.R2).toFixed(3)
+                        : "—";
+                    const pts = result.n_points_used ?? "—";
+                    const status = result.success
+                        ? "OK"
+                        : (result.error ? this._escapeHtml(String(result.error)) : "—");
+                    return `<tr>`
+                        + `<td>${this._escapeHtml(Number(rpm).toFixed(1))}</td>`
+                        + `<td class="mono">${eta}</td>`
+                        + `<td class="mono">${r2}</td>`
+                        + `<td class="mono">${pts}</td>`
+                        + `<td>${status}</td>`
+                        + `</tr>`;
+                })
+                .filter(Boolean);
+
+            let coeffsHtml = "";
+            if (rpmKeys.length >= 2 && summary) {
+                const nIdx = summary.n_idx ?? summary.n;
+                const r2Amp = summary.R2_amplitude ?? summary.R2_powerlaw;
+                coeffsHtml = `
+                    <div class="char-summary-coeffs">
+                        <div class="char-summary-coeffs-title">Coefficients</div>
+                        <dl class="char-summary-coeff-grid">
+                            <div class="char-summary-coeff-item"><dt>K<sub>stress</sub></dt><dd>${fmtCoeff(summary.K_stress, true)}</dd></div>
+                            <div class="char-summary-coeff-item"><dt>n<sub>stress</sub></dt><dd>${fmtCoeff(summary.n_stress)}</dd></div>
+                            <div class="char-summary-coeff-item"><dt>R²<sub>stress</sub></dt><dd>${fmtCoeff(summary.R2_stress)}</dd></div>
+                            <div class="char-summary-coeff-item"><dt>K<sub>amp</sub></dt><dd>${fmtCoeff(summary.K_Pas_n, true)}</dd></div>
+                            <div class="char-summary-coeff-item"><dt>n<sub>idx</sub></dt><dd>${fmtCoeff(nIdx)}</dd></div>
+                            <div class="char-summary-coeff-item"><dt>R²<sub>amp</sub></dt><dd>${fmtCoeff(r2Amp)}</dd></div>
+                        </dl>
+                    </div>`;
+            }
+
+            const headerHtml = `<div class="char-summary-card-header">`
+                + `<strong>Cell ${cellId}</strong>`
+                + (label ? `<span class="char-summary-card-label">${this._escapeHtml(label)}</span>` : "")
+                + (regime ? ` ${this._buildRegimeBadgeHtml(regime)}` : "")
+                + `</div>`;
+            const tableHtml = `
+                <table class="char-summary-rpm-table">
+                    <thead><tr><th>RPM</th><th>η (kCp)</th><th>R²</th><th>pts</th><th>Status</th></tr></thead>
+                    <tbody>${rpmRows.join("")}</tbody>
+                </table>`;
+
+            cards.push(`<div class="char-summary-card">${headerHtml}${tableHtml}${coeffsHtml}</div>`);
         });
-        if (rows.length === 0) {
+
+        if (cards.length === 0) {
             return "<p class=\"summary-empty\"><em>No predicted viscosity results were recorded.</em></p>";
         }
         return `
-            <h3 class="summary-table-heading">Predicted viscosity</h3>
-            ${summaryBlocks.join("")}
-            <table class="duration-table predicted-viscosity-summary-table">
-                <thead><tr><th>Cell No.</th><th>Cell Label</th><th>RPM</th><th>Predicted Viscosity (kCp)</th><th>R²</th><th>Regime</th></tr></thead>
-                <tbody>${rows.join("")}</tbody>
-            </table>`;
+            <h3 class="summary-table-heading">Characterization Summary</h3>
+            <div class="char-summary-grid">${cards.join("")}</div>`;
     }
 
     renderExperimentCards() {
@@ -6659,7 +6694,7 @@ class ViscometryDashboard {
             rightEl.innerHTML = this._buildSummaryFeatureTiles(s);
         }
         if (predEl) {
-            predEl.innerHTML = this._buildPredictedViscosityTableHtml(exp, s);
+            predEl.innerHTML = this._buildCharacterizationSummaryHtml(exp, s);
         }
 
         const discoveryResults = exp.discovery_results || {};
@@ -7599,6 +7634,7 @@ class ViscometryDashboard {
         const gamma = [];
         const tau = [];
         const eta = [];
+        const rpmLabels = [];
         rpmKeys
             .map((k) => Number(k))
             .sort((a, b) => a - b)
@@ -7616,6 +7652,7 @@ class ViscometryDashboard {
                 gamma.push(g);
                 tau.push(t);
                 eta.push(muCp);
+                rpmLabels.push(`${Number(rpm).toFixed(1)} RPM`);
             });
         if (gamma.length < 2) {
             flowEl.innerHTML = "";
@@ -7625,28 +7662,81 @@ class ViscometryDashboard {
             {
                 x: gamma,
                 y: tau,
-                mode: "markers+lines",
+                text: rpmLabels,
+                textposition: "top center",
+                mode: "markers+lines+text",
                 type: "scatter",
                 name: "τ vs γ̇",
                 xaxis: "x",
                 yaxis: "y",
+                showlegend: false,
             },
             {
                 x: gamma,
                 y: eta,
-                mode: "markers+lines",
+                text: rpmLabels,
+                textposition: "top center",
+                mode: "markers+lines+text",
                 type: "scatter",
                 name: "η vs γ̇",
                 xaxis: "x2",
                 yaxis: "y2",
+                showlegend: false,
             },
         ];
-        const pvBase = this._buildLivePlotLayout({ yTitle: "τ (Pa)", showLegend: true });
+        const annotations = [
+            {
+                text: "Stress curve — τ(γ̇)",
+                xref: "paper",
+                yref: "paper",
+                x: 0.23,
+                y: 1.02,
+                xanchor: "center",
+                yanchor: "bottom",
+                showarrow: false,
+                font: { size: 12 },
+            },
+            {
+                text: "Viscosity curve — η(γ̇)",
+                xref: "paper",
+                yref: "paper",
+                x: 0.77,
+                y: 1.02,
+                xanchor: "center",
+                yanchor: "bottom",
+                showarrow: false,
+                font: { size: 12 },
+            },
+        ];
+        if (summary?.K_stress != null && Number.isFinite(Number(summary.K_stress))) {
+            const kStress = Number(summary.K_stress).toExponential(3);
+            const nStress = summary.n_stress != null && Number.isFinite(Number(summary.n_stress))
+                ? Number(summary.n_stress).toFixed(3)
+                : "—";
+            const r2Stress = summary.R2_stress != null && Number.isFinite(Number(summary.R2_stress))
+                ? Number(summary.R2_stress).toFixed(3)
+                : "—";
+            annotations.push({
+                text: `K_stress = ${kStress} Pa·sⁿ · n_stress = ${nStress} · R² = ${r2Stress}`,
+                xref: "x",
+                yref: "y",
+                x: gamma[gamma.length - 1],
+                y: Math.max(...tau),
+                xanchor: "right",
+                yanchor: "top",
+                showarrow: false,
+                font: { size: 10 },
+                bgcolor: "rgba(255,255,255,0.75)",
+                borderpad: 4,
+            });
+        }
+        const pvBase = this._buildLivePlotLayout({ yTitle: "τ (Pa)", showLegend: false });
         const layout = {
             ...pvBase,
             grid: { rows: 1, columns: 2, pattern: "independent" },
-            showlegend: true,
-            margin: { t: 24, r: 16, b: 40, l: 52 },
+            showlegend: false,
+            margin: { t: 36, r: 16, b: 40, l: 52 },
+            annotations,
             xaxis: { ...pvBase.xaxis, title: "γ̇ (1/s)", type: "log" },
             yaxis: { ...pvBase.yaxis, title: "τ (Pa)", type: "log" },
             xaxis2: { ...pvBase.xaxis, title: "γ̇ (1/s)", type: "log", anchor: "y2" },
