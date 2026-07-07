@@ -1195,7 +1195,13 @@ body.running .header-sweep {
 
 .characterization-flow-plot {
     min-height: 220px;
-    margin-top: 10px;
+    margin-top: 6px;
+}
+
+.characterization-flow-plot:empty {
+    display: none;
+    min-height: 0;
+    margin-top: 0;
 }
 
 /* Testing Tab */
@@ -1484,7 +1490,7 @@ body.running .header-sweep {
 .predicted-viscosity-plot-wrap {
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
-    padding: 12px;
+    padding: 8px;
     background: rgba(255, 255, 255, 0.45);
 }
 
@@ -1492,12 +1498,12 @@ body.running .header-sweep {
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--text-primary);
-    margin: 0 0 10px;
+    margin: 0 0 6px;
 }
 
 .predicted-viscosity-plot-row {
     display: flex;
-    gap: 16px;
+    gap: 10px;
     align-items: stretch;
 }
 
@@ -3288,6 +3294,125 @@ body.spinning .gauge-value {
     margin-bottom: 12px;
 }
 
+.char-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+}
+
+.char-summary-card {
+    --char-accent: var(--discovery-accent, rgb(88, 140, 230));
+    --char-glass: var(--discovery-glass, rgba(235, 242, 255, 0.72));
+    --char-border: var(--discovery-border, rgba(100, 150, 220, 0.22));
+    padding: 10px 12px;
+    border-radius: var(--radius-card);
+    background: var(--char-glass);
+    border: 1px solid var(--char-border);
+    border-left: 3px solid var(--char-accent);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.char-summary-card:nth-child(4n+1) {
+    --char-accent: rgb(88, 140, 230);
+    --char-glass: rgba(235, 242, 255, 0.72);
+    --char-border: rgba(100, 150, 220, 0.22);
+}
+
+.char-summary-card:nth-child(4n+2) {
+    --char-accent: rgb(48, 160, 100);
+    --char-glass: rgba(230, 248, 238, 0.72);
+    --char-border: rgba(48, 160, 100, 0.22);
+}
+
+.char-summary-card:nth-child(4n+3) {
+    --char-accent: rgb(200, 130, 40);
+    --char-glass: rgba(255, 244, 220, 0.72);
+    --char-border: rgba(200, 130, 40, 0.25);
+}
+
+.char-summary-card:nth-child(4n+4) {
+    --char-accent: rgb(140, 90, 210);
+    --char-glass: rgba(242, 235, 255, 0.72);
+    --char-border: rgba(140, 90, 210, 0.22);
+}
+
+.char-summary-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.char-summary-card-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.char-summary-rpm-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.72rem;
+    margin-bottom: 8px;
+}
+
+.char-summary-rpm-table th,
+.char-summary-rpm-table td {
+    padding: 4px 6px;
+    text-align: left;
+    border-bottom: 1px solid var(--char-border);
+}
+
+.char-summary-rpm-table th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.char-summary-coeffs {
+    padding-top: 6px;
+    border-top: 1px solid var(--char-border);
+}
+
+.char-summary-coeffs-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--char-accent);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.char-summary-coeff-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+    font-size: 0.72rem;
+}
+
+.char-summary-coeff-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.char-summary-coeff-item dt {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.char-summary-coeff-item dd {
+    margin: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: var(--text-primary);
+}
+
 .summary-table-heading {
     margin: 0 0 8px;
     font-size: 0.82rem;
@@ -4980,7 +5105,7 @@ body.discovery-active {
 .predicted-viscosity-side-panels {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     min-width: 220px;
 }
 
@@ -4992,6 +5117,12 @@ body.discovery-active {
     border-left: 3px solid var(--discovery-accent);
     backdrop-filter: blur(var(--glass-blur));
     font-size: 0.8rem;
+}
+
+.discovery-rheology-panel:empty {
+    display: none;
+    padding: 0;
+    border: none;
 }
 
 .discovery-rheology-title {
