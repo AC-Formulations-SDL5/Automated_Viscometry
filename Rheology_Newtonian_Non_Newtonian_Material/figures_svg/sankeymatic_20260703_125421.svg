@@ -1,0 +1,96 @@
+<svg height="800" width="2000" xmlns="http://www.w3.org/2000/svg">
+<title>Your Diagram Title</title>
+<!-- Generated with SankeyMATIC: 7/3/2026, 12:54:21 PM -->
+<rect height="800" width="2000" fill="#ffffff"></rect>
+<g transform="translate(12,0)">
+<g id="sankey_flows">
+<path id="flow0" d="M12 184.54018C143.04538 184.54018 225.81087 216.32056 356.85625 216.32056" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Direct Control → Python   64-bit: 1</title></path>
+<path id="flow1" d="M12 244.81518C143.04538 244.81518 225.81087 460.70631 356.85625 460.70631" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Direct Control → Python   32-bit: 1</title></path>
+<path id="flow2" d="M12 368.65093C143.04538 368.65093 225.81087 276.59556 356.85625 276.59556" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Workflow Design → Python   64-bit: 1</title></path>
+<path id="flow3" d="M12 428.92593C143.04538 428.92593 225.81087 520.98131 356.85625 520.98131" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Workflow Design → Python   32-bit: 1</title></path>
+<path id="flow4" d="M12 552.76168C143.04538 552.76168 225.81087 336.87056 356.85625 336.87056" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Execution   Management → Python   64-bit: 1</title></path>
+<path id="flow5" d="M12 613.03668C143.04538 613.03668 225.81087 581.25631 356.85625 581.25631" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Execution   Management → Python   32-bit: 1</title></path>
+<path id="flow6" d="M368.85625 216.32056C499.90163 216.32056 582.66712 186.96332 713.7125 186.96332" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Python   64-bit → Cartesian Motion   (CNC): 1</title></path>
+<path id="flow7" d="M368.85625 276.59556C499.90163 276.59556 582.66712 371.07407 713.7125 371.07407" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Python   64-bit → Cone-Shaped  Torquemeter: 1</title></path>
+<path id="flow8" d="M368.85625 336.87056C499.90163 336.87056 582.66712 555.18482 713.7125 555.18482" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Python   64-bit → Washing   Module: 1</title></path>
+<path id="flow9" d="M368.85625 460.70631C499.90163 460.70631 582.66712 247.23832 713.7125 247.23832" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Python   32-bit → Cartesian Motion   (CNC): 1</title></path>
+<path id="flow10" d="M368.85625 520.98131C499.90163 520.98131 582.66712 431.34907 713.7125 431.34907" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Python   32-bit → Cone-Shaped  Torquemeter: 1</title></path>
+<path id="flow11" d="M368.85625 581.25631C499.90163 581.25631 582.66712 615.45982 713.7125 615.45982" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Python   32-bit → Washing   Module: 1</title></path>
+<path id="flow12" d="M725.7125 186.96332C856.75787 186.96332 939.52337 304.85198 1070.56875 304.85198" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Cartesian Motion   (CNC) → Workflow   Module: 1</title></path>
+<path id="flow13" d="M725.7125 371.07407C856.75787 371.07407 939.52337 365.12698 1070.56875 365.12698" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Cone-Shaped  Torquemeter → Workflow   Module: 1</title></path>
+<path id="flow14" d="M725.7125 555.18482C856.75787 555.18482 939.52337 425.40198 1070.56875 425.40198" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Washing   Module → Workflow   Module: 1</title></path>
+<path id="flow15" d="M1082.56875 304.85198C1213.61413 304.85198 1296.37962 293.6317 1427.425 293.6317" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Workflow   Module → Data-Analysis   Pipeline: 1</title></path>
+<path id="flow16" d="M1439.425 293.6317C1570.47037 293.6317 1653.23587 228.63519 1784.28125 228.63519" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Data-Analysis   Pipeline → Rheology   Behavior: 1</title></path>
+<path id="flow17" d="M1439.425 323.7692v60.275L1784.28125 382.60844v-60.275z" fill="#999999" stroke-width="0.5" stroke="#999999" opacity="0.2"><title>Data-Analysis   Pipeline → Stress   Shear-Rate: 1</title></path>
+<path id="flow18" d="M1439.425 414.1817C1570.47037 414.1817 1653.23587 476.30669 1784.28125 476.30669" fill="none" stroke-width="60.275" stroke="#999999" opacity="0.2"><title>Data-Analysis   Pipeline → Power-Law   Equation: 1</title></path>
+</g>
+<g id="sankey_nodes">
+<g class="node">
+<rect id="r0" class="for_r0" x="0" y="154.40268" height="120.55" width="12" fill="#bcbd22" fill-opacity="1"><title>Direct Control:
+2</title></rect>
+</g>
+<g class="node">
+<rect id="r1" class="for_r1" x="356.85625" y="186.18306" height="180.825" width="12" fill="#17becf" fill-opacity="1"><title>Python   64-bit:
+3</title></rect>
+</g>
+<g class="node">
+<rect id="r2" class="for_r2" x="356.85625" y="430.56881" height="180.825" width="12" fill="#17becf" fill-opacity="1"><title>Python   32-bit:
+3</title></rect>
+</g>
+<g class="node">
+<rect id="r3" class="for_r3" x="0" y="338.51343" height="120.55" width="12" fill="#1f77b4" fill-opacity="1"><title>Workflow Design:
+2</title></rect>
+</g>
+<g class="node">
+<rect id="r4" class="for_r4" x="0" y="522.62418" height="120.55" width="12" fill="#ff7f0e" fill-opacity="1"><title>Execution   Management:
+2</title></rect>
+</g>
+<g class="node">
+<rect id="r5" class="for_r5" x="713.7125" y="156.82582" height="120.55" width="12" fill="#2ca02c" fill-opacity="1"><title>Cartesian Motion   (CNC):
+2</title></rect>
+</g>
+<g class="node">
+<rect id="r6" class="for_r6" x="713.7125" y="340.93657" height="120.55" width="12" fill="#d62728" fill-opacity="1"><title>Cone-Shaped  Torquemeter:
+2</title></rect>
+</g>
+<g class="node">
+<rect id="r7" class="for_r7" x="713.7125" y="525.04732" height="120.55" width="12" fill="#9467bd" fill-opacity="1"><title>Washing   Module:
+2</title></rect>
+</g>
+<g class="node">
+<rect id="r8" class="for_r8" x="1070.56875" y="274.71448" height="180.825" width="12" fill="#1f77b4" fill-opacity="1"><title>Workflow   Module:
+3</title></rect>
+</g>
+<g class="node">
+<rect id="r9" class="for_r9" x="1427.425" y="263.4942" height="180.825" width="12" fill="#8c564b" fill-opacity="1"><title>Data-Analysis   Pipeline:
+3</title></rect>
+</g>
+<g class="node">
+<rect id="r10" class="for_r10" x="1784.28125" y="198.49769" height="60.275" width="12" fill="#e377c2" fill-opacity="1"><title>Rheology   Behavior:
+1</title></rect>
+</g>
+<g class="node">
+<rect id="r11" class="for_r11" x="1784.28125" y="322.33344" height="60.275" width="12" fill="#7f7f7f" fill-opacity="1"><title>Stress   Shear-Rate:
+1</title></rect>
+</g>
+<g class="node">
+<rect id="r12" class="for_r12" x="1784.28125" y="446.16919" height="60.275" width="12" fill="#bcbd22" fill-opacity="1"><title>Power-Law   Equation:
+1</title></rect>
+</g>
+</g>
+<g id="sankey_labels" font-family="sans-serif" font-size="30px" fill="#000000">
+<text id="label0" class="for_r0" text-anchor="start" x="23.8125" y="214.67768" font-weight="400" font-size="30px" dy="9.57">Direct Control</text>
+<text id="label1" class="for_r1" text-anchor="start" x="380.66875" y="276.59556" font-weight="400" font-size="30px" dy="-12.93">Python <tspan x="380.66875" dy="45" font-weight="400" font-size="30px"> 64-bit</tspan></text>
+<text id="label2" class="for_r2" text-anchor="start" x="380.66875" y="520.98131" font-weight="400" font-size="30px" dy="-12.93">Python <tspan x="380.66875" dy="45" font-weight="400" font-size="30px"> 32-bit</tspan></text>
+<text id="label3" class="for_r3" text-anchor="start" x="23.8125" y="398.78843" font-weight="400" font-size="30px" dy="9.57">Workflow Design</text>
+<text id="label4" class="for_r4" text-anchor="start" x="23.8125" y="582.89918" font-weight="400" font-size="30px" dy="-12.93">Execution <tspan x="23.8125" dy="45" font-weight="400" font-size="30px"> Management</tspan></text>
+<text id="label5" class="for_r5" text-anchor="start" x="737.525" y="217.10082" font-weight="400" font-size="30px" dy="-12.93">Cartesian Motion <tspan x="737.525" dy="45" font-weight="400" font-size="30px"> (CNC)</tspan></text>
+<text id="label6" class="for_r6" text-anchor="start" x="737.525" y="401.21157" font-weight="400" font-size="30px" dy="-12.93">Cone-Shaped <tspan x="737.525" dy="45" font-weight="400" font-size="30px">Torquemeter</tspan></text>
+<text id="label7" class="for_r7" text-anchor="start" x="737.525" y="585.32232" font-weight="400" font-size="30px" dy="-12.93">Washing <tspan x="737.525" dy="45" font-weight="400" font-size="30px"> Module</tspan></text>
+<text id="label8" class="for_r8" text-anchor="start" x="1094.38125" y="365.12698" font-weight="400" font-size="30px" dy="-12.93">Workflow <tspan x="1094.38125" dy="45" font-weight="400" font-size="30px"> Module</tspan></text>
+<text id="label9" class="for_r9" text-anchor="start" x="1451.2375" y="353.9067" font-weight="400" font-size="30px" dy="-12.93">Data-Analysis <tspan x="1451.2375" dy="45" font-weight="400" font-size="30px"> Pipeline</tspan></text>
+<text id="label10" class="for_r10" text-anchor="start" x="1808.09375" y="228.63519" font-weight="400" font-size="30px" dy="-12.93">Rheology <tspan x="1808.09375" dy="45" font-weight="400" font-size="30px"> Behavior</tspan></text>
+<text id="label11" class="for_r11" text-anchor="start" x="1808.09375" y="352.47094" font-weight="400" font-size="30px" dy="-12.93">Stress <tspan x="1808.09375" dy="45" font-weight="400" font-size="30px"> Shear-Rate</tspan></text>
+<text id="label12" class="for_r12" text-anchor="start" x="1808.09375" y="476.30669" font-weight="400" font-size="30px" dy="-12.93">Power-Law <tspan x="1808.09375" dy="45" font-weight="400" font-size="30px"> Equation</tspan></text>
+</g>
+</g></svg>

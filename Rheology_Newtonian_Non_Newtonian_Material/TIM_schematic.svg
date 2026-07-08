@@ -1,0 +1,96 @@
+<?xml version="1.0" ?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 591 387" width="591" height="387">
+  <style>.chain{fill:none;stroke:#222;stroke-width:3.3;stroke-linecap:round;stroke-linejoin:round;opacity:0.95;}.small{stroke:#2f343b;stroke-width:2.6;}.large{stroke:#2f343b;stroke-width:4.2;}</style>
+  <g>
+    <g>
+      <path class="chain" d="M 30.00 96.00 C 52.13 93.60 69.47 101.60 82.00 120.00 C 104.50 127.50 122.50 121.50 136.00 102.00 C 153.40 108.60 165.40 120.60 172.00 138.00 C 194.00 146.67 214.00 143.33 232.00 128.00 C 257.00 123.83 275.00 133.17 286.00 156.00 C 307.23 155.13 324.57 146.47 338.00 130.00 C 364.67 132.13 383.33 145.47 394.00 170.00 C 419.67 174.67 438.33 165.33 450.00 142.00 C 475.23 141.07 496.57 149.73 514.00 168.00"/>
+      <path class="chain" d="M 42.00 168.00 C 65.07 176.40 85.73 172.40 104.00 156.00 C 133.33 150.67 154.67 161.33 168.00 188.00 C 190.77 192.63 211.43 187.97 230.00 174.00 C 253.07 170.13 271.73 177.47 286.00 196.00 C 307.50 204.83 325.50 200.17 340.00 182.00 C 365.97 179.13 388.63 186.47 408.00 204.00 C 433.87 207.73 454.53 199.07 470.00 178.00 C 503.33 165.50 530.67 173.50 552.00 202.00"/>
+      <path class="chain" d="M 24.00 246.00 C 34.53 224.27 51.87 212.93 76.00 212.00 C 90.00 235.00 110.00 243.00 136.00 236.00 C 152.70 219.67 172.70 212.33 196.00 214.00 C 211.87 234.40 232.53 242.40 258.00 238.00 C 277.00 217.50 299.00 213.50 324.00 226.00 C 342.77 244.87 365.43 253.53 392.00 252.00 C 410.53 230.00 433.87 222.00 462.00 228.00 C 479.50 250.50 501.50 256.50 528.00 246.00"/>
+      <path class="chain" d="M 8.00 342.00 C 27.87 337.60 40.53 325.60 46.00 306.00 C 57.33 285.00 74.67 277.00 98.00 282.00 C 109.33 303.13 126.67 316.47 150.00 322.00 C 171.87 316.13 190.53 321.47 206.00 338.00 C 226.17 350.00 244.83 348.00 262.00 332.00 C 283.60 331.90 301.60 339.90 316.00 356.00 C 341.87 355.20 360.53 343.20 372.00 320.00"/>
+      <path class="chain" d="M 120.00 198.00 C 123.07 215.20 117.73 229.20 104.00 240.00 C 83.83 244.67 73.17 257.33 72.00 278.00 C 64.73 295.70 52.07 307.70 34.00 314.00"/>
+      <path class="chain" d="M 488.00 42.00 C 478.53 56.27 477.87 70.93 486.00 86.00 C 500.17 99.33 502.83 114.67 494.00 132.00 C 486.00 144.43 484.00 157.77 488.00 172.00 C 489.20 187.60 483.20 199.60 470.00 208.00 C 470.00 228.83 480.00 242.17 500.00 248.00 C 519.03 254.67 532.37 267.33 540.00 286.00 C 555.33 295.20 570.67 295.20 586.00 286.00"/>
+      <path class="chain" d="M 226.00 74.00 C 227.33 91.33 220.67 104.67 206.00 114.00 C 201.83 130.67 207.17 143.33 222.00 152.00 C 238.93 154.00 252.27 162.00 262.00 176.00 C 279.33 177.33 292.67 170.67 302.00 156.00 C 316.50 158.67 324.50 167.33 326.00 182.00 C 335.30 193.40 347.30 199.40 362.00 200.00 C 370.13 183.33 383.47 174.67 402.00 174.00"/>
+      <path class="chain" d="M 136.00 224.00 C 156.67 222.80 171.33 212.80 180.00 194.00 C 193.50 182.83 207.50 182.17 222.00 192.00 C 232.03 205.33 245.37 212.67 262.00 214.00 C 282.53 218.00 295.87 230.00 302.00 250.00 C 285.50 255.33 277.50 266.67 278.00 284.00 C 266.40 295.63 252.40 300.97 236.00 300.00 C 217.73 301.73 205.07 311.07 198.00 328.00"/>
+    </g>
+    <g>
+      <circle class="large" cx="42.00" cy="212.00" r="44.00" fill="#C41423" fill-opacity="1.00"/>
+      <circle cx="31.88" cy="201.00" r="27.28" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="138.00" cy="252.00" r="56.00" fill="#1C9DD3" fill-opacity="1.00"/>
+      <circle cx="125.12" cy="238.00" r="34.72" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="288.00" cy="54.00" r="46.00" fill="#5F6368" fill-opacity="1.00"/>
+      <circle cx="277.42" cy="42.50" r="28.52" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="392.00" cy="90.00" r="54.00" fill="#1C9DD3" fill-opacity="1.00"/>
+      <circle cx="379.58" cy="76.50" r="33.48" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="542.00" cy="212.00" r="52.00" fill="#C41423" fill-opacity="1.00"/>
+      <circle cx="530.04" cy="199.00" r="32.24" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="222.00" cy="182.00" r="40.00" fill="#5F6368" fill-opacity="1.00"/>
+      <circle cx="212.80" cy="172.00" r="24.80" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="258.00" cy="276.00" r="34.00" fill="#4DA251" fill-opacity="1.00"/>
+      <circle cx="250.18" cy="267.50" r="21.08" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="468.00" cy="228.00" r="32.00" fill="#4DA251" fill-opacity="1.00"/>
+      <circle cx="460.64" cy="220.00" r="19.84" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="350.00" cy="252.00" r="30.00" fill="#C41423" fill-opacity="1.00"/>
+      <circle cx="343.10" cy="244.50" r="18.60" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="334.00" cy="218.00" r="29.00" fill="#4DA251" fill-opacity="1.00"/>
+      <circle cx="327.33" cy="210.75" r="17.98" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="large" cx="214.00" cy="278.00" r="31.00" fill="#4DA251" fill-opacity="1.00"/>
+      <circle cx="206.87" cy="270.25" r="19.22" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="80.00" cy="120.00" r="18.00" fill="#F2BC93" fill-opacity="1.00"/>
+      <circle cx="75.86" cy="115.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="136.00" cy="102.00" r="18.00" fill="#5EB7E6" fill-opacity="1.00"/>
+      <circle cx="131.86" cy="97.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="172.00" cy="144.00" r="18.00" fill="#5EB7E6" fill-opacity="1.00"/>
+      <circle cx="167.86" cy="139.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="228.00" cy="130.00" r="18.00" fill="#C41423" fill-opacity="1.00"/>
+      <circle cx="223.86" cy="125.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="356.00" cy="160.00" r="10.00" fill="#AFD9E7" fill-opacity="1.00"/>
+      <circle cx="353.70" cy="157.50" r="6.20" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="372.00" cy="182.00" r="11.00" fill="#7EA5C2" fill-opacity="1.00"/>
+      <circle cx="369.47" cy="179.25" r="6.82" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="400.00" cy="182.00" r="11.00" fill="#F2BC93" fill-opacity="1.00"/>
+      <circle cx="397.47" cy="179.25" r="6.82" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="430.00" cy="178.00" r="11.00" fill="#7EA5C2" fill-opacity="1.00"/>
+      <circle cx="427.47" cy="175.25" r="6.82" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="514.00" cy="168.00" r="18.00" fill="#5EB7E6" fill-opacity="1.00"/>
+      <circle cx="509.86" cy="163.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="514.00" cy="92.00" r="18.00" fill="#F2BC93" fill-opacity="1.00"/>
+      <circle cx="509.86" cy="87.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="98.00" cy="172.00" r="21.00" fill="#C41423" fill-opacity="1.00"/>
+      <circle cx="93.17" cy="166.75" r="13.02" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="96.00" cy="226.00" r="15.00" fill="#F2BC93" fill-opacity="1.00"/>
+      <circle cx="92.55" cy="222.25" r="9.30" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="178.00" cy="214.00" r="18.00" fill="#7EA5C2" fill-opacity="1.00"/>
+      <circle cx="173.86" cy="209.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="266.00" cy="218.00" r="18.00" fill="#A5BF84" fill-opacity="1.00"/>
+      <circle cx="261.86" cy="213.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="50.00" cy="316.00" r="17.00" fill="#5EB7E6" fill-opacity="1.00"/>
+      <circle cx="46.09" cy="311.75" r="10.54" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="102.00" cy="322.00" r="16.00" fill="#7EA5C2" fill-opacity="1.00"/>
+      <circle cx="98.32" cy="318.00" r="9.92" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="160.00" cy="354.00" r="17.00" fill="#F2BC93" fill-opacity="1.00"/>
+      <circle cx="156.09" cy="349.75" r="10.54" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="224.00" cy="330.00" r="18.00" fill="#7EA5C2" fill-opacity="1.00"/>
+      <circle cx="219.86" cy="325.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="296.00" cy="356.00" r="11.00" fill="#AFD9E7" fill-opacity="1.00"/>
+      <circle cx="293.47" cy="353.25" r="6.82" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="372.00" cy="318.00" r="18.00" fill="#7EA5C2" fill-opacity="1.00"/>
+      <circle cx="367.86" cy="313.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="438.00" cy="300.00" r="18.00" fill="#5EB7E6" fill-opacity="1.00"/>
+      <circle cx="433.86" cy="295.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="518.00" cy="286.00" r="18.00" fill="#7EA5C2" fill-opacity="1.00"/>
+      <circle cx="513.86" cy="281.50" r="11.16" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="332.00" cy="356.00" r="10.00" fill="#AFD9E7" fill-opacity="0.95"/>
+      <circle cx="329.70" cy="353.50" r="6.20" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="78.00" cy="274.00" r="7.00" fill="#7EA5C2" fill-opacity="0.95"/>
+      <circle cx="76.39" cy="272.25" r="4.34" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="286.00" cy="160.00" r="7.00" fill="#F2BC93" fill-opacity="0.95"/>
+      <circle cx="284.39" cy="158.25" r="4.34" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="438.00" cy="170.00" r="8.00" fill="#F2BC93" fill-opacity="0.95"/>
+      <circle cx="436.16" cy="168.00" r="4.96" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="472.00" cy="156.00" r="8.00" fill="#AFD9E7" fill-opacity="0.95"/>
+      <circle cx="470.16" cy="154.00" r="4.96" fill="#ffffff" fill-opacity="0.10"/>
+      <circle class="small" cx="548.00" cy="252.00" r="8.00" fill="#AFD9E7" fill-opacity="0.95"/>
+      <circle cx="546.16" cy="250.00" r="4.96" fill="#ffffff" fill-opacity="0.10"/>
+    </g>
+  </g>
+</svg>
