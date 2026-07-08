@@ -9,14 +9,13 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from viscometry.rheology.constants import FIT_R2_MIN, H_C_UNIVERSAL_MM, shear_rate
+from viscometry.rheology.constants import FIT_R2_MIN, H_C_UNIVERSAL_MM, PCT_TO_PA
+from viscometry.rheology.characterization import compute_cell_characterization
 from viscometry.rheology.prediction import (
     amplitude_to_viscosity,
     drag_model_curve,
     fit_drag,
     passes_r2_gate,
-    predict_rheology,
-    serialize_rheology_result,
 )
 
 _RPM_TOL = 1e-6
@@ -116,6 +115,48 @@ def _apply_pretrims(
     return pre_h, pre_d, pre_t, pre_h.copy()
 
 
+def _hitpoint_stress_from_sweep(
+    h_norm: np.ndarray,
+    torque_pct: np.ndarray,
+    rpm: float,
+    *,
+    A: Optional[float] = None,
+    B: Optional[float] = None,
+    hc: float = H_C_UNIVERSAL_MM,
+) -> Dict[str, Optional[float]]:
+    """Torque, drag, and shear stress at the hitpoint (h_norm = 0)."""
+    rpm_f = float(rpm)
+    torque_raw: Optional[float] = None
+    if len(torque_pct) > 0:
+        t0 = float(torque_pct[0])
+        if np.isfinite(t0):
+            torque_raw = t0
+
+    torque_hit = torque_raw
+    drag_hit: Optional[float] = None
+    tau_hit: Optional[float] = None
+
+    if A is not None and B is not None and np.isfinite(A) and np.isfinite(B):
+        drag_fit = float(A) / float(hc) + float(B)
+        if np.isfinite(drag_fit) and drag_fit > 0 and rpm_f > 0:
+            drag_hit = drag_fit
+            torque_fit = drag_fit * rpm_f
+            if np.isfinite(torque_fit) and torque_fit > 0:
+                torque_hit = torque_fit
+                tau_hit = PCT_TO_PA * torque_fit
+
+    if tau_hit is None and torque_hit is not None and np.isfinite(torque_hit) and torque_hit > 0:
+        tau_hit = PCT_TO_PA * torque_hit
+        if rpm_f > 0:
+            drag_hit = torque_hit / rpm_f
+
+    return {
+        "torque_pct_hit": torque_hit,
+        "drag_hit": drag_hit,
+        "tau_Pa_hit": tau_hit,
+    }
+
+
 def _lists_from_arrays(
     heights: np.ndarray,
     values: np.ndarray,
@@ -162,7 +203,12 @@ def fit_sweep_drag(
         "success": False,
         "error": None,
         "viscosity_kcp": None,
+        "torque_pct_hit": None,
+        "drag_hit": None,
+        "tau_Pa_hit": None,
     }
+    hit_pre = _hitpoint_stress_from_sweep(h_norm, torque_pct, rpm_f, hc=hc)
+    base.update(hit_pre)
     if len(h_norm) < 4 or np.ptp(h_norm) <= 0:
         base["error"] = f"Insufficient points after pre-trim ({len(h_norm)} < 4)"
         return base
@@ -186,6 +232,16 @@ def fit_sweep_drag(
     mu_cp = float(amplitude_to_viscosity([a_val])[0])
     base["viscosity_kcp"] = mu_cp / 1000.0
     base["success"] = True
+    base.update(
+        _hitpoint_stress_from_sweep(
+            h_norm,
+            torque_pct,
+            rpm_f,
+            A=float(a_val),
+            B=float(fit["B"]),
+            hc=hc,
+        )
+    )
 
     x_line = np.linspace(float(np.min(h_norm)), float(np.max(h_norm)), 80)
     y_line = drag_model_curve(x_line, float(a_val), float(fit["B"]), hc)
@@ -202,11 +258,8 @@ def predict_cell_rheology(
     hit_point_z: Optional[float] = None,
     min_r2: float = FIT_R2_MIN,
 ) -> Tuple[Dict[float, Dict[str, Any]], Dict[str, Any]]:
-    """Fit each RPM sweep and run cell-level predict_rheology."""
+    """Fit each RPM sweep and run three-pathway cell characterization."""
     per_rpm: Dict[float, Dict[str, Any]] = {}
-    valid_h: List[np.ndarray] = []
-    valid_t: List[np.ndarray] = []
-    valid_r: List[float] = []
 
     for rpm in rpms:
         rpm_f = float(rpm)
@@ -245,45 +298,54 @@ def predict_cell_rheology(
             )
             sweep_base.update(fit_result)
             per_rpm[rpm_f] = sweep_base
-
-            if sweep_base.get("success"):
-                valid_h.append(h_norm)
-                valid_t.append(np.asarray(torque_pct, float))
-                valid_r.append(rpm_f)
         except Exception as exc:
             sweep_base["error"] = str(exc)
             per_rpm[rpm_f] = sweep_base
 
-    summary: Dict[str, Any] = {
-        "cell_id": int(cell_id),
-        "success": False,
-        "error": None,
-        "mode": None,
-        "regime": "undetermined",
-        "n": None,
-        "K_Pas_n": None,
-        "viscosity_kcp": None,
-        "mu_app_cP": None,
-        "R2_powerlaw": None,
-        "A_per_rpm": [],
+    successful = {
+        rpm: fit for rpm, fit in per_rpm.items() if fit.get("success")
     }
-
-    try:
-        if len(valid_r) == 0:
-            summary["error"] = "No valid RPM sweeps passed quality gate"
-            return per_rpm, summary
-
-        if len(valid_r) == 1:
-            rheo = predict_rheology(valid_h[0], valid_t[0], valid_r[0])
-        else:
-            rheo = predict_rheology(valid_h, valid_t, valid_r)
-
-        gamma_ref = float(shear_rate(np.median(valid_r)))
-        serialized = serialize_rheology_result(rheo, gamma_dot_ref=gamma_ref)
-        summary.update(serialized)
-        summary["success"] = True
-        summary["A_per_rpm"] = serialized.get("A_per_rpm", [])
-    except Exception as exc:
-        summary["error"] = str(exc)
-
+    summary = compute_cell_characterization(
+        successful,
+        cell_id=int(cell_id),
+    )
+    for rpm, fit in successful.items():
+        per_rpm[rpm] = fit
     return per_rpm, summary
+
+
+def recompute_characterization_from_measurements(
+    cells: Sequence[int],
+    measurements: Sequence[Dict[str, Any]],
+    *,
+    torque_floor_pct: float = 0.0,
+    hit_point_z_by_cell: Optional[Dict[int, float]] = None,
+    min_r2: float = FIT_R2_MIN,
+) -> Dict[str, Any]:
+    """Recompute per-cell characterization from saved measurement rows."""
+    hit_map = hit_point_z_by_cell or {}
+    out: Dict[str, Any] = {}
+    for cell_id in cells:
+        cid = int(cell_id)
+        rpms = sorted(
+            {
+                float(m["rpm"])
+                for m in measurements
+                if int(m.get("cell_id", -1)) == cid and m.get("rpm") is not None
+            }
+        )
+        if not rpms:
+            continue
+        per_rpm, summary = predict_cell_rheology(
+            cid,
+            rpms,
+            measurements,
+            torque_floor_pct=torque_floor_pct,
+            hit_point_z=hit_map.get(cid),
+            min_r2=min_r2,
+        )
+        cell_map: Dict[str, Any] = {SUMMARY_KEY: summary}
+        for rpm, fit in per_rpm.items():
+            cell_map[str(float(rpm))] = fit
+        out[str(cid)] = cell_map
+    return out

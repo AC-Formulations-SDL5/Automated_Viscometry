@@ -12,16 +12,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
-from viscometry.rheology.constants import (
-    CP_TO_PAS,
-    FIT_R2_MIN,
-    THICKENING_THRESHOLD,
-    THINNING_THRESHOLD,
-    shear_rate,
-)
+from viscometry.rheology.characterization import compute_cell_characterization
 from viscometry.rheology.live_adapter import SUMMARY_KEY, fit_sweep_drag, prepare_sweep_arrays
-from viscometry.rheology.prediction import amplitude_to_viscosity, fit_powerlaw
-from viscometry.rheology.stress_powerlaw import fit_stress_powerlaw, stage_powerlaw_points
 
 SUMMARY_KEY_ALIAS = SUMMARY_KEY
 
@@ -199,6 +191,8 @@ class LiveCellSession:
                 (fit.get("viscosity_kcp") or 0) * 1000.0 if fit.get("viscosity_kcp") else None
             ),
             "viscosity_kcp": _json_float(fit.get("viscosity_kcp")),
+            "torque_pct_hit": _json_float(fit.get("torque_pct_hit")),
+            "tau_Pa_hit": _json_float(fit.get("tau_Pa_hit")),
             "n_points_used": int(fit.get("n_points_used") or 0),
             "fit_curve_z": fit.get("fit_curve_z") or [],
             "fit_curve_drag": fit.get("fit_curve_drag") or [],
@@ -213,25 +207,6 @@ class LiveCellSession:
             if f.get("success") and _json_float(f.get("A")) is not None
         }
 
-    def _build_stress_rows(self, fits: Dict[float, Dict[str, Any]]) -> List[Dict[str, Any]]:
-        rows: List[Dict[str, Any]] = []
-        for rpm, fit in fits.items():
-            a_val = float(fit["A"])
-            g = float(shear_rate(rpm))
-            mu_cp = float(amplitude_to_viscosity([a_val])[0])
-            tau = mu_cp * CP_TO_PAS * g
-            rows.append(
-                {
-                    "RPM": float(rpm),
-                    "gamma_dot_1_s": g,
-                    "mu_app_cP": mu_cp,
-                    "tau_Pa": tau,
-                    "R2_drag": _json_float(fit.get("R2")) or 0.0,
-                    "A": a_val,
-                }
-            )
-        return rows
-
     def _compute_summary(
         self,
         *,
@@ -239,103 +214,15 @@ class LiveCellSession:
         is_partial: bool = False,
     ) -> Dict[str, Any]:
         fits = self._successful_fits()
-        base: Dict[str, Any] = {
-            "cell_id": self.cell_id,
-            "success": False,
-            "error": None,
-            "provisional": provisional,
-            "is_partial": is_partial,
-            "mode": None,
-            "regime": "undetermined",
-            "n_idx": None,
-            "n": None,
-            "K_Pas_n": None,
-            "R2_amplitude": None,
-            "R2_powerlaw": None,
-            "K_stress": None,
-            "n_stress": None,
-            "R2_stress": None,
-            "viscosity_kcp": None,
-            "mu_app_cP": None,
-            "A_per_rpm": [],
-        }
-
-        if not fits:
-            base["error"] = "No valid RPM sweeps passed quality gate"
-            return base
-
-        rpms = sorted(fits.keys())
-        as_arr = np.array([float(fits[r]["A"]) for r in rpms])
-        g_arr = shear_rate(np.array(rpms))
-
-        if len(rpms) == 1:
-            rpm0 = rpms[0]
-            mu_cp = float(amplitude_to_viscosity([as_arr[0]])[0])
-            base.update(
-                {
-                    "success": True,
-                    "mode": "newtonian",
-                    "regime": "Newtonian",
-                    "n_idx": 1.0,
-                    "n": 1.0,
-                    "K_Pas_n": mu_cp * CP_TO_PAS,
-                    "viscosity_kcp": mu_cp / 1000.0,
-                    "mu_app_cP": mu_cp,
-                    "A_per_rpm": [[rpm0, float(as_arr[0])]],
-                }
-            )
-            stress_rows = self._build_stress_rows(fits)
-            if stress_rows:
-                pl = fit_stress_powerlaw(
-                    [stress_rows[0]["gamma_dot_1_s"]],
-                    [stress_rows[0]["tau_Pa"]],
-                )
-                base["K_stress"] = _json_float(pl.get("K_stress"))
-                base["n_stress"] = _json_float(pl.get("n_stress"))
-                base["R2_stress"] = _json_float(pl.get("R2_stress"))
-            return base
-
-        pl_amp = fit_powerlaw(g_arr, as_arr)
-        n_idx = pl_amp["n"]
-        mu0 = float(amplitude_to_viscosity([as_arr[np.argmin(g_arr)]])[0])
-        g0 = float(g_arr.min())
-        k_cp = mu0 * (g0 ** (1.0 - n_idx))
-        k_pas = k_cp * CP_TO_PAS
-
-        if n_idx > THICKENING_THRESHOLD:
-            regime = "shear-thickening"
-        elif n_idx < THINNING_THRESHOLD:
-            regime = "shear-thinning"
-        else:
-            regime = "Newtonian"
-
-        base.update(
-            {
-                "success": True,
-                "mode": "powerlaw",
-                "regime": regime,
-                "n_idx": _json_float(n_idx),
-                "n": _json_float(n_idx),
-                "K_Pas_n": _json_float(k_pas),
-                "R2_amplitude": _json_float(pl_amp.get("R2")),
-                "R2_powerlaw": _json_float(pl_amp.get("R2")),
-                "viscosity_kcp": mu0 / 1000.0,
-                "mu_app_cP": mu0,
-                "A_per_rpm": [[float(r), float(fits[r]["A"])] for r in rpms],
-            }
+        summary = compute_cell_characterization(
+            fits,
+            cell_id=self.cell_id,
+            provisional=provisional,
+            is_partial=is_partial,
         )
-
-        stress_rows = self._build_stress_rows(fits)
-        staged = stage_powerlaw_points(stress_rows)
-        if len(staged) >= 2:
-            g_st = [r["gamma_dot_1_s"] for r in staged]
-            tau_st = [r["tau_Pa"] for r in staged]
-            pl_st = fit_stress_powerlaw(g_st, tau_st)
-            base["K_stress"] = _json_float(pl_st.get("K_stress"))
-            base["n_stress"] = _json_float(pl_st.get("n_stress"))
-            base["R2_stress"] = _json_float(pl_st.get("R2_stress"))
-
-        return base
+        for rpm, fit in fits.items():
+            self._rpm_fits[rpm] = fit
+        return summary
 
     def _maybe_emit_summary(self, *, provisional: bool) -> Optional[Dict[str, Any]]:
         fits = self._successful_fits()

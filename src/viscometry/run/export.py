@@ -166,13 +166,14 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
         return
     csv_writer.writerow(["# Characterization Results"])
     csv_writer.writerow([
-        "# Cell,Cell_Label,RPM,Viscosity_kCp,A,B,R2,regime,n,n_stress,K_Pas_n,K_stress,R2_stress,n_points_used,fit_success"
+        "# Cell,Cell_Label,RPM,Viscosity_kCp,A,B,R2,pathway,regime,n,n_stress,K_Pas_n,K_stress,R2_stress,n_points_used,fit_success"
     ])
     for global_cell in sorted(settings.CELL_VISCOSITY_RESULTS.keys()):
         rpm_map = settings.CELL_VISCOSITY_RESULTS[global_cell]
         label = settings.CELL_CONTENT_MAP.get(global_cell, "")
         summary = rpm_map.get(SUMMARY_KEY) if isinstance(rpm_map, dict) else {}
         cell_regime = summary.get("regime") if isinstance(summary, dict) else ""
+        cell_pathway = summary.get("pathway") if isinstance(summary, dict) else ""
         cell_n = summary.get("n_idx") or summary.get("n") if isinstance(summary, dict) else ""
         cell_n_stress = summary.get("n_stress") if isinstance(summary, dict) else ""
         k_pas = summary.get("K_Pas_n") if isinstance(summary, dict) else ""
@@ -192,6 +193,7 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
                 f"{'' if a_val is None else a_val},"
                 f"{'' if b_val is None else b_val},"
                 f"{'' if r2_val is None else r2_val},"
+                f"{cell_pathway},"
                 f"{cell_regime},"
                 f"{'' if cell_n is None else cell_n},"
                 f"{'' if cell_n_stress is None else cell_n_stress},"

@@ -150,7 +150,10 @@ def predict_rheology(
     thickening_thr: float = THICKENING_THRESHOLD,
 ) -> Dict[str, Any]:
     """
-    Unified Newtonian / power-law rheology estimator.
+    Unified Newtonian / power-law rheology estimator (amplitude-only).
+
+    For three-pathway cell characterization (Newtonian / mild / strong stress routing),
+    use ``predict_cell_rheology`` or ``compute_cell_characterization`` instead.
 
     Single-RPM: h_mm, torque_pct are 1-D arrays; rpm is scalar.
     Multi-RPM: h_mm, torque_pct are sequences of 1-D arrays; rpm is a sequence.

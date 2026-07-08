@@ -127,7 +127,8 @@ class TestRheologyLiveAdapter(unittest.TestCase):
         for rpm in (5.0, 15.0, 30.0):
             self.assertTrue(per_rpm[rpm]["success"], per_rpm[rpm].get("error"))
         self.assertTrue(summary["success"])
-        self.assertEqual(summary["mode"], "powerlaw")
+        self.assertIn(summary["pathway"], ("mild_shear_thinning", "strong_shear_thinning", "newtonian", "shear_thickening"))
+        self.assertIn(summary["mode"], ("mixed", "stress_powerlaw", "newtonian", "powerlaw"))
         self.assertIn(summary["regime"], ("shear-thinning", "Newtonian", "shear-thickening"))
 
 

@@ -513,6 +513,37 @@ class ViscometryWebInterface:
                 print(f"Error in experiment_history_delete: {e}")
                 return jsonify({'error': str(e)}), 500
 
+        @self.app.route('/api/recompute_characterization', methods=['POST'])
+        def recompute_characterization():
+            try:
+                from viscometry.rheology.live_adapter import recompute_characterization_from_measurements
+
+                payload = request.get_json(silent=True) or {}
+                cells = payload.get("cells") or []
+                measurements = payload.get("measurements") or []
+                settings = payload.get("settings") or {}
+                torque_floor = float(
+                    settings.get("first_sample_torque_floor_pct")
+                    or settings.get("torque_floor_pct")
+                    or 0.0
+                )
+                hit_raw = payload.get("hit_point_z_by_cell") or {}
+                hit_map = {
+                    int(k): float(v)
+                    for k, v in hit_raw.items()
+                    if v is not None
+                }
+                result = recompute_characterization_from_measurements(
+                    cells,
+                    measurements,
+                    torque_floor_pct=torque_floor,
+                    hit_point_z_by_cell=hit_map or None,
+                )
+                return jsonify(result)
+            except Exception as e:
+                print(f"Error in recompute_characterization: {e}")
+                return jsonify({'error': str(e)}), 500
+
         @self.app.route('/api/calibration/status', methods=['GET'])
         def calibration_status():
             try:
@@ -1413,6 +1444,15 @@ class ViscometryWebInterface:
             if key in pred_all:
                 pred_filtered[key] = pred_all[key]
 
+        char_all = run_context.get("characterization_results") or {}
+        char_filtered = {}
+        for cell_id in cells_sorted:
+            key = str(int(cell_id))
+            if key in char_all:
+                char_filtered[key] = char_all[key]
+        if not char_filtered and pred_filtered:
+            char_filtered = pred_filtered
+
         pred_mode = self._normalize_viscosity_prediction_mode(settings)
         if pred_mode == "off" and self._predicted_viscosity_has_data(pred_filtered):
             pred_mode = "on"
@@ -1442,6 +1482,7 @@ class ViscometryWebInterface:
             "cell_partial_flags": partial_flags,
             "viscosity_prediction_mode": pred_mode,
             "predicted_viscosity": pred_filtered,
+            "characterization": char_filtered,
             "run_type": "discovery" if is_discovery else "regular",
             "discovery_results": discovery_filtered,
         }

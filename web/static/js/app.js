@@ -6233,6 +6233,81 @@ class ViscometryDashboard {
         return `<span class="rheology-regime-badge regime-${slug}">${label}</span>`;
     }
 
+    _pathwayDisplayLabel(pathway) {
+        const labels = {
+            newtonian: "Linear (p=1)",
+            strong_shear_thinning: "Direct stress",
+            mild_shear_thinning: "Mixed",
+            shear_thickening: "Amplitude power-law",
+        };
+        return labels[pathway] || pathway || "—";
+    }
+
+    _buildPathwayBadgeHtml(pathway) {
+        if (!pathway) {
+            return "";
+        }
+        const slug = String(pathway).toLowerCase().replace(/_/g, "-");
+        const label = this._pathwayDisplayLabel(pathway);
+        return `<span class="char-pathway-badge pathway-${slug}">${this._escapeHtml(label)}</span>`;
+    }
+
+    async ensureExperimentCharacterization(exp) {
+        if (!exp) {
+            return;
+        }
+        const predData = exp.characterization || exp.predicted_viscosity || {};
+        const summaryHasPathway = Object.keys(predData).some((cellKey) => {
+            const summary = predData[cellKey]?.[this.predictedViscositySummaryKey];
+            return summary && summary.pathway;
+        });
+        const measurements = Array.isArray(exp.latestPerZ) ? exp.latestPerZ : [];
+        const charMode = this._normalizeViscosityPredictionMode(
+            exp.characterization_mode ?? exp.viscosity_prediction_mode ?? exp.settings?.characterization_mode,
+            exp.characterization_enabled ?? exp.predicted_viscosity_enabled ?? exp.settings?.characterization_enabled
+        );
+        const needsRecompute = (
+            charMode !== "off"
+            && measurements.length > 0
+            && (!this._predictedViscosityEntryHasData(predData) || !summaryHasPathway)
+        );
+        if (!needsRecompute) {
+            return;
+        }
+        try {
+            const res = await fetch("/api/recompute_characterization", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    cells: exp.cells || [],
+                    measurements: measurements.map((p) => ({
+                        cell_id: p.cell_id,
+                        rpm: p.rpm,
+                        height: p.height,
+                        torque_percent: p.torque_percent,
+                        rotational_drag: p.rotational_drag,
+                        timestamp: p.timestamp || 0,
+                    })),
+                    settings: exp.settings || {},
+                }),
+            });
+            if (!res.ok) {
+                return;
+            }
+            const data = await res.json();
+            if (data && typeof data === "object" && !data.error) {
+                exp.characterization = data;
+                const idx = this.experimentHistory.findIndex((e) => e.id === exp.id);
+                if (idx >= 0) {
+                    this.experimentHistory[idx] = exp;
+                }
+                this.saveExperimentHistoryEntry(exp).catch(() => {});
+            }
+        } catch (_err) {
+            // Keep stored summary if recompute fails offline.
+        }
+    }
+
     _experimentHistoryIdForRun(runStartTsSec) {
         const ts = Number(runStartTsSec);
         if (Number.isFinite(ts) && ts > 0) {
@@ -6519,6 +6594,7 @@ class ViscometryDashboard {
             }
             const label = s.cell_content_map?.[cellId] ?? s.cell_content_map?.[String(cellId)] ?? "";
             const regime = summary?.regime || (summary?.success ? summary?.mode : null);
+            const pathway = summary?.pathway || null;
 
             const rpmRows = rpmKeys
                 .map((k) => Number(k))
@@ -6569,6 +6645,7 @@ class ViscometryDashboard {
             const headerHtml = `<div class="char-summary-card-header">`
                 + `<strong>Cell ${cellId}</strong>`
                 + (label ? `<span class="char-summary-card-label">${this._escapeHtml(label)}</span>` : "")
+                + (pathway ? ` ${this._buildPathwayBadgeHtml(pathway)}` : "")
                 + (regime ? ` ${this._buildRegimeBadgeHtml(regime)}` : "")
                 + `</div>`;
             const tableHtml = `
@@ -6612,7 +6689,7 @@ class ViscometryDashboard {
         });
     }
 
-    selectExperiment(id) {
+    async selectExperiment(id) {
         const exp = this.experimentHistory.find((e) => e.id === id);
         if (!exp) {
             return;
@@ -6694,6 +6771,8 @@ class ViscometryDashboard {
             rightEl.innerHTML = this._buildSummaryFeatureTiles(s);
         }
         if (predEl) {
+            predEl.innerHTML = "<p class=\"summary-empty\"><em>Computing characterization…</em></p>";
+            await this.ensureExperimentCharacterization(exp);
             predEl.innerHTML = this._buildCharacterizationSummaryHtml(exp, s);
         }
 

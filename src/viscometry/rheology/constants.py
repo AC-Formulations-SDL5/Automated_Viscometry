@@ -15,13 +15,20 @@ PCT_TO_PA = (3.0 * (M_FULL_NM / 100.0)) / (2.0 * np.pi * R_CONE_M**3)
 CP_TO_PAS = 1.0e-3
 
 H_C_UNIVERSAL_MM = 0.2774
-SILICONE_K = 5.893e-09
-SILICONE_P = 2.007
+# Linear silicone calibration (p=1): mu_cP = A / SILICONE_K
+SILICONE_K = 3.0e-04
+SILICONE_P = 1.0
 
 FIT_R2_MIN = 0.7
 
-THINNING_THRESHOLD = 0.95
-THICKENING_THRESHOLD = 1.05
+# Three-pathway characterization routing on n_stress
+NEWTONIAN_N_LOW = 0.9
+NEWTONIAN_N_HIGH = 1.1
+STRONG_THINNING_N_MAX = 0.5
+
+# Amplitude power-law regime labels (aligned with Newtonian band)
+THINNING_THRESHOLD = NEWTONIAN_N_LOW
+THICKENING_THRESHOLD = NEWTONIAN_N_HIGH
 
 
 def shear_rate(rpm) -> np.ndarray:
