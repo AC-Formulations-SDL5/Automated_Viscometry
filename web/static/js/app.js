@@ -6597,10 +6597,11 @@ class ViscometryDashboard {
             const pathway = summary?.pathway || null;
 
             const rpmRows = rpmKeys
-                .map((k) => Number(k))
-                .sort((a, b) => a - b)
-                .map((rpm) => {
-                    const result = rpmMap[rpm];
+                .map((k) => ({ key: k, rpm: Number(k) }))
+                .filter(({ rpm }) => Number.isFinite(rpm))
+                .sort((a, b) => a.rpm - b.rpm)
+                .map(({ key, rpm }) => {
+                    const result = rpmMap[key];
                     if (!result) {
                         return "";
                     }
@@ -6615,7 +6616,7 @@ class ViscometryDashboard {
                         ? "OK"
                         : (result.error ? this._escapeHtml(String(result.error)) : "—");
                     return `<tr>`
-                        + `<td>${this._escapeHtml(Number(rpm).toFixed(1))}</td>`
+                        + `<td>${this._escapeHtml(rpm.toFixed(1))}</td>`
                         + `<td class="mono">${eta}</td>`
                         + `<td class="mono">${r2}</td>`
                         + `<td class="mono">${pts}</td>`
@@ -7207,10 +7208,11 @@ class ViscometryDashboard {
                 const summary = this._getPredictedViscositySummary(cellId);
                 Object.keys(rpmMap)
                     .filter((k) => this._isPredictedViscosityRpmKey(k))
-                    .map((k) => Number(k))
-                    .sort((a, b) => a - b)
-                    .forEach((rpm) => {
-                        const result = rpmMap[rpm];
+                    .map((k) => ({ key: k, rpm: Number(k) }))
+                    .filter(({ rpm }) => Number.isFinite(rpm))
+                    .sort((a, b) => a.rpm - b.rpm)
+                    .forEach(({ key, rpm }) => {
+                        const result = rpmMap[key];
                         const label = contentMap[cellId]
                             ?? contentMap[String(cellId)]
                             ?? "";
@@ -7228,7 +7230,7 @@ class ViscometryDashboard {
                         const status = result?.success
                             ? (result.provisional ? "Provisional" : "OK")
                             : (result?.error ? String(result.error) : "—");
-                        const rpmLabel = Number(rpm).toFixed(3);
+                        const rpmLabel = rpm.toFixed(3);
                         rows.push(
                             `<tr><td>${cellId}</td><td>${label || "—"}</td><td class="mono">${rpmLabel}</td>`
                             + `<td>${regime}</td><td class="mono">${visc}</td><td class="mono">${r2}</td>`
@@ -7605,14 +7607,15 @@ class ViscometryDashboard {
                 headingEl.innerHTML = headingHtml;
             }
 
-            const rpms = rpmKeys
-                .map((k) => Number(k))
-                .sort((a, b) => a - b);
+            const rpmEntries = rpmKeys
+                .map((k) => ({ key: k, rpm: Number(k) }))
+                .filter(({ rpm }) => Number.isFinite(rpm))
+                .sort((a, b) => a.rpm - b.rpm);
 
             const traces = [];
             const paramRows = [];
-            rpms.forEach((rpm, idx) => {
-                const result = rpmMap[rpm];
+            rpmEntries.forEach(({ key, rpm }, idx) => {
+                const result = rpmMap[key];
                 if (!result) {
                     return;
                 }
@@ -7715,10 +7718,11 @@ class ViscometryDashboard {
         const eta = [];
         const rpmLabels = [];
         rpmKeys
-            .map((k) => Number(k))
-            .sort((a, b) => a - b)
-            .forEach((rpm) => {
-                const row = rpmMap[rpm];
+            .map((k) => ({ key: k, rpm: Number(k) }))
+            .filter(({ rpm }) => Number.isFinite(rpm))
+            .sort((a, b) => a.rpm - b.rpm)
+            .forEach(({ key, rpm }) => {
+                const row = rpmMap[key];
                 if (!row?.success) {
                     return;
                 }
