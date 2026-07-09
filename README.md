@@ -28,10 +28,12 @@ Master flow-curve comparison of representative formulations across material fami
 
 ## Autonomous Experiment Video
 
-<video autoplay muted loop playsinline controls width="100%" preload="auto">
-    <source src="https://github.com/user-attachments/assets/9825e222-a667-4881-9abe-172b20759f9a" type="video/mp4">
-    Your browser does not support the video tag.
+<video controls width="100%">
+    <source src="Media/Video.MP4" type="video/mp4">
+    Your browser does not support the video tag. You can download the video <a href="Media/Video.MP4">here</a>.
 </video>
+
+Direct hosted video link: [Autonomous Experiment Video](https://github.com/user-attachments/assets/9825e222-a667-4881-9abe-172b20759f9a)
 
 ## Required Docs And Paths
 
