@@ -292,6 +292,64 @@
     }
     .summary-panel, .author-panel {
       flex: initial;
+      overflow-y: visible;
+    }
+    header {
+      padding: 22px clamp(14px, 4vw, 32px);
+    }
+    header .logo-row img {
+      height: 48px;
+    }
+    header h1 {
+      font-size: clamp(1.25rem, 5vw, 1.7rem);
+    }
+  }
+
+  @media (max-width: 480px) {
+    header {
+      flex-wrap: wrap;
+      justify-content: center;
+      text-align: center;
+      gap: 10px;
+      padding: 18px 14px;
+    }
+    header .logo-row img {
+      height: 40px;
+    }
+    header h1 {
+      font-size: 1.25rem;
+    }
+    main {
+      padding: 16px;
+      gap: 16px;
+    }
+    .left-panel, .summary-panel, .author-panel {
+      padding: 16px;
+      border-radius: 12px;
+    }
+    .summary-panel h2, .author-panel h2 {
+      font-size: 1rem;
+    }
+    .summary-panel p {
+      font-size: 0.92rem;
+    }
+    .summary-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .gbtn {
+      justify-content: center;
+      padding: 10px 16px;
+    }
+    .author-item {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    footer {
+      flex-wrap: wrap;
+      text-align: center;
+      padding: 14px 16px;
     }
   }
 </style>
