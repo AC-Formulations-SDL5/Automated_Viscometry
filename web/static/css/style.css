@@ -3341,19 +3341,17 @@ body.spinning .gauge-value {
 }
 
 .char-summary-card {
-    --char-accent: rgb(140, 90, 210);
-    --char-glass: rgba(242, 235, 255, 0.72);
-    --char-border: rgba(140, 90, 210, 0.28);
+    --char-accent: rgb(168, 150, 210);
+    --char-glass: rgba(248, 245, 255, 0.68);
+    --char-border: rgba(168, 150, 210, 0.22);
     padding: 10px 12px;
     border-radius: var(--radius-card);
     background: var(--char-glass);
     border: 1px solid var(--char-border);
-    border-left: 3px solid var(--char-accent);
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
     box-shadow:
-        0 0 18px rgba(140, 90, 210, 0.22),
-        0 0 40px rgba(140, 90, 210, 0.10),
+        0 0 14px rgba(168, 150, 210, 0.10),
         inset 0 1px 0 rgba(255, 255, 255, 0.7);
     transition: none;
 }
@@ -3361,8 +3359,7 @@ body.spinning .gauge-value {
 .char-summary-card:hover {
     transform: none;
     box-shadow:
-        0 0 18px rgba(140, 90, 210, 0.22),
-        0 0 40px rgba(140, 90, 210, 0.10),
+        0 0 14px rgba(168, 150, 210, 0.10),
         inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
