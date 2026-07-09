@@ -6,13 +6,17 @@
 <title>Automated Viscometry</title>
 <style>
   :root {
+    --header-bg: #0a0e17;
+    --header-border: #1c2230;
+    --header-text: #f2f4f8;
+    --header-text-muted: #9aa3b5;
     --bg: #f5f6f8;
     --panel: #ffffff;
     --border: #e2e4e9;
     --text: #1a1d23;
     --text-muted: #5b6270;
-    --accent: #2f6fed;
-    --accent-hover: #2559c4;
+    --accent: #2dd4bf;
+    --accent-hover: #22b8a4;
     --shadow: 0 1px 3px rgba(20,22,28,0.06), 0 1px 2px rgba(20,22,28,0.08);
   }
 
@@ -23,13 +27,15 @@
       --border: #2c303a;
       --text: #eef0f3;
       --text-muted: #9aa1ad;
-      --accent: #5b8def;
-      --accent-hover: #7ba2f4;
       --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.5);
     }
   }
 
   * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+  }
 
   body {
     margin: 0;
@@ -42,106 +48,135 @@
   }
 
   header {
-    padding: 28px clamp(16px, 4vw, 48px) 20px;
-    border-bottom: 1px solid var(--border);
+    background: var(--header-bg);
+    border-bottom: 1px solid var(--header-border);
+    padding: 34px clamp(16px, 4vw, 48px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
   }
 
   header h1 {
-    margin: 0 0 6px;
-    font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+    margin: 0;
+    font-size: clamp(1.6rem, 3vw, 2.4rem);
     font-weight: 700;
     letter-spacing: -0.01em;
+    color: var(--header-text);
   }
 
-  header p.tagline {
-    margin: 0 0 18px;
-    color: var(--text-muted);
-    font-size: 0.98rem;
-    max-width: 70ch;
+  header .logo-row img {
+    height: 68px;
+    width: auto;
+    object-fit: contain;
+    display: block;
   }
 
-  .btn-row {
+  .summary-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 12px;
+    margin-top: 20px;
   }
 
-  .btn {
+  .gbtn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 9px 16px;
-    border-radius: 8px;
+    padding: 10px 22px;
+    border-radius: 24px;
     font-size: 0.9rem;
     font-weight: 600;
     text-decoration: none;
-    border: 1px solid var(--border);
-    color: var(--text);
-    background: var(--panel);
-    box-shadow: var(--shadow);
-    transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+    color: #ffffff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.12);
+    transition: transform 0.08s ease, box-shadow 0.15s ease, background 0.15s ease;
   }
 
-  .btn:hover {
+  .gbtn:hover {
     transform: translateY(-1px);
-    border-color: var(--accent);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.22), 0 3px 7px rgba(0,0,0,0.14);
   }
 
-  .btn.primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
+  .gbtn.gbtn-blue {
+    background: #4285f4;
   }
 
-  .btn.primary:hover {
-    background: var(--accent-hover);
-    border-color: var(--accent-hover);
+  .gbtn.gbtn-blue:hover {
+    background: #3367d6;
   }
 
-  .btn.disabled {
+  .gbtn.gbtn-red {
+    background: #ea4335;
+  }
+
+  .gbtn.gbtn-red:hover {
+    background: #c5221f;
+  }
+
+  .gbtn.disabled {
     opacity: 0.5;
     cursor: default;
     pointer-events: none;
+    transform: none;
   }
 
   main {
     flex: 1;
+    min-height: 0;
     display: grid;
     grid-template-columns: minmax(280px, 38%) 1fr;
     gap: 20px;
     padding: 24px clamp(16px, 4vw, 48px);
-    align-items: stretch;
   }
 
-  .poster-panel {
+  .left-panel {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 14px;
     box-shadow: var(--shadow);
-    padding: 16px;
+    padding: 20px;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    min-height: 420px;
+    gap: 10px;
+    overflow-y: auto;
+    min-height: 0;
   }
 
-  .poster-panel img {
+  .left-panel img {
     max-width: 100%;
-    max-height: 78vh;
-    width: auto;
+    width: 100%;
     height: auto;
     object-fit: contain;
     border-radius: 6px;
+  }
+
+  .left-panel .panel-heading {
+    align-self: flex-start;
+    margin: 10px 0 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .left-panel hr {
+    width: 100%;
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 6px 0;
   }
 
   .right-col {
     display: flex;
     flex-direction: column;
     gap: 20px;
+    min-height: 0;
   }
 
   .summary-panel {
-    flex: 0 0 75%;
+    flex: 3 1 0%;
+    min-height: 0;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 14px;
@@ -163,7 +198,8 @@
   }
 
   .author-panel {
-    flex: 0 0 25%;
+    flex: 1 1 0%;
+    min-height: 0;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 14px;
@@ -172,8 +208,8 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 10px;
-    min-height: 140px;
+    gap: 12px;
+    overflow-y: auto;
   }
 
   .author-panel h2 {
@@ -185,16 +221,23 @@
     color: var(--text-muted);
   }
 
-  .author-row {
+  .author-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .author-item {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 8px 18px;
+    gap: 6px 18px;
   }
 
   .author-name {
-    font-size: 1.05rem;
+    font-size: 1.02rem;
     font-weight: 700;
+    flex: 0 0 100%;
   }
 
   .author-meta {
@@ -202,12 +245,19 @@
     flex-wrap: wrap;
     gap: 14px;
     font-size: 0.9rem;
-    color: var(--text-muted);
   }
 
   .author-meta a {
-    color: var(--accent);
     text-decoration: none;
+    font-weight: 600;
+  }
+
+  .author-meta a.link-email {
+    color: #4285f4;
+  }
+
+  .author-meta a.link-github {
+    color: #34a853;
   }
 
   .author-meta a:hover {
@@ -234,9 +284,11 @@
   @media (max-width: 860px) {
     main {
       grid-template-columns: 1fr;
+      height: auto;
     }
-    .poster-panel {
-      min-height: 300px;
+    .left-panel {
+      overflow-y: visible;
+      max-height: none;
     }
     .summary-panel, .author-panel {
       flex: initial;
@@ -248,17 +300,20 @@
 
 <header>
   <h1>Automated Viscometry</h1>
-  <p class="tagline">An autonomous viscometry platform integrating hardware control, asynchronous orchestration, and rheology-interpretation pipelines through a web-enabled workflow.</p>
-  <div class="btn-row">
-    <a class="btn primary" href="https://github.com/AC-Formulations-SDL5/Automated_Viscometry" target="_blank" rel="noopener">GitHub Repository</a>
-    <a class="btn disabled" href="#" aria-disabled="true">Article (coming soon)</a>
-    <a class="btn" href="https://github.com/mahdi-rstgr" target="_blank" rel="noopener">Author: Mahdi Rastegar</a>
+  <div class="logo-row">
+    <img src="../Media/AC.png" alt="Acceleration Consortium logo">
   </div>
 </header>
 
 <main>
-  <div class="poster-panel">
+  <div class="left-panel">
     <img src="../Media/Automated_Viscometry.png" alt="Automated Viscometry poster">
+
+    <h3 class="panel-heading">Multi-Layer Orchestration Architecture</h3>
+    <img src="../Media/Flow-Stream.svg" alt="Multi-layer orchestration architecture diagram">
+
+    <h3 class="panel-heading">Rheology Behavior Model</h3>
+    <img src="../Media/Figure%209.svg" alt="Rheology behavior model chart">
   </div>
 
   <div class="right-col">
@@ -267,16 +322,29 @@
       <p>The rheological characterization of viscous fluids is a recognized bottleneck in formulation science: manual cone-and-plate rheometry requires tens-of-micrometre gap-setting tolerances incompatible with robotic execution. We present an automated viscometry platform that reframes viscosity acquisition as a signal-interpretation problem rather than a geometric-precision one. A cone-shaped rotational torquemeter, Cartesian motion stage, and dual-stage washing module operate under an asynchronous multi-runtime control architecture; the spindle's descent generates torque-displacement signatures decoded by a physics-constrained pipeline calibrated once on Newtonian silicone oils, recovering viscosity at 3.4% mean absolute error with 95.7% of samples within &plusmn;10%.</p>
       <p>The pipeline converts each descent into a calibrated stress&ndash;shear-rate curve and, at multiple rotation rates, the fitted power-law equation &tau; = K&gamma;&#775;<sup>n</sup>. Across six chemistries spanning five orders of magnitude in viscosity (1&ndash;125,000 cP), the platform reproduces reference rheology within &plusmn;2&times;, recovers the flow-behaviour index n from 1.00 (Newtonian) to 0.39 (yield-pseudoplastic), and processes 18 samples in ~5 hours autonomously using under 20 minutes (7%) of human time &mdash; a 4.7-fold reduction versus manual operation.</p>
       <p>Both outputs come from one universal pipeline with no per-chemistry retuning, evidence that an information-rich workflow can substitute for the precision hardware of manual rheometry. The platform is positioned as the measurement layer for closed-loop rheology-discovery campaigns, where Bayesian optimization and active learning propose formulations that it characterizes autonomously.</p>
+
+      <div class="summary-actions">
+        <a class="gbtn gbtn-blue" href="https://github.com/AC-Formulations-SDL5/Automated_Viscometry" target="_blank" rel="noopener">GitHub Repository</a>
+        <a class="gbtn gbtn-red disabled" href="#" aria-disabled="true">Article (coming soon)</a>
+      </div>
     </section>
 
     <section class="author-panel">
-      <h2>Author</h2>
-      <div class="author-row">
-        <span class="author-name">Mahdi Rastegar</span>
-      </div>
-      <div class="author-meta">
-        <a href="mailto:m.rastegardoost@utoronto.ca">m.rastegardoost@utoronto.ca</a>
-        <a href="https://github.com/mahdi-rstgr" target="_blank" rel="noopener">github.com/mahdi-rstgr</a>
+      <h2>Authors</h2>
+      <div class="author-list">
+        <div class="author-item">
+          <span class="author-name">Mahdi Rastegar</span>
+          <div class="author-meta">
+            <a class="link-email" href="mailto:m.rastegardoost@utoronto.ca">m.rastegardoost@utoronto.ca</a>
+            <a class="link-github" href="https://github.com/mahdi-rstgr" target="_blank" rel="noopener">github.com/mahdi-rstgr</a>
+          </div>
+        </div>
+        <div class="author-item">
+          <span class="author-name">Frantz Le Devedec</span>
+          <div class="author-meta">
+            <a class="link-email" href="mailto:frantz.ledevedec@utoronto.ca">frantz.ledevedec@utoronto.ca</a>
+          </div>
+        </div>
       </div>
     </section>
   </div>
