@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automated Viscometry Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version }}">
+    <script src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body class="theme-dark loading">
+    <div id="disconnect-banner" class="disconnect-banner hidden" role="alert" aria-live="polite">
+        <span class="banner-icon">!</span>
+        <span>Disconnected from instrument, attempting to reconnect...</span>
+    </div>
+
+    <header class="app-header">
+        <div class="header-left">
+            <div class="wordmark-wrap">
+                <img id="ac-logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="Acceleration Consortium logo">
+                <div id="logo-fallback" class="logo-fallback hidden">AC</div>
+            </div>
+            <div class="lab-tag">SELF-DRIVING LAB #5 - FORMULATION</div>
+        </div>
+        <div class="header-center">AUTOMATED VISCOMETRY PLATFORM</div>
+        <div class="header-right">
+            <div id="run-pill" class="run-pill idle">IDLE</div>
+            <div id="completion-chip" class="completion-chip">0 / 18 cells completed</div>
+            <div id="experiment-complete-banner" class="experiment-complete-banner hidden">
+                ✓ Experiment complete
+            </div>
+            <div class="connection-wrap">
+                <span class="connection-label">LINK</span>
+                <span id="connection-dot" class="connection-dot disconnected"></span>
+            </div>
+        </div>
+        <div id="header-sweep" class="header-sweep"></div>
+    </header>
+
+    <div class="instrument-status-strip">
+        <div id="cnc-status" class="instrument-pill disconnected">
+            <span class="instrument-dot"></span>
+            <span class="instrument-name">CNC</span>
+            <span class="instrument-state">not yet initialized</span>
+        </div>
+        <div id="viscometer-status" class="instrument-pill disconnected">
+            <span class="instrument-dot"></span>
+            <span class="instrument-name">Viscometer</span>
+            <span class="instrument-state">not yet initialized</span>
+        </div>
+        <div id="pump-status" class="instrument-pill disconnected">
+            <span class="instrument-dot"></span>
+            <span class="instrument-name">Pump</span>
+            <span class="instrument-state">not yet initialized</span>
+        </div>
+    </div>
+
+    <main class="dashboard">
+        <!-- Tab Navigation -->
+        <nav class="tab-nav">
+            <button class="tab-button active" data-tab="layout-tab">Layout & Timeline</button>
+            <button class="tab-button" data-tab="controls-tab">Parameters & Tracking</button>
+            <button class="tab-button" data-tab="data-tab">Data and Processing</button>
+            <button class="tab-button" data-tab="summary-tab">Experimental Summary</button>
+        </nav>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+            <!-- Tab 1: Layout & Timeline -->
+            <div id="layout-tab" class="tab-panel active">
+                <section class="card map-card skeleton-host">
+                    <div class="card-title-row">
+                        <h2>Platform Map</h2>
+                        <div class="legend-inline">
+                            <span><i class="swatch pending"></i>Pending</span>
+                            <span><i class="swatch active"></i>Active</span>
+                            <span><i class="swatch measuring"></i>Measuring</span>
+                            <span><i class="swatch washing"></i>Washing</span>
+                            <span><i class="swatch completed"></i>Done</span>
+                        </div>
+                    </div>
+                    <div id="platform-map" class="platform-map">
+                        <div class="platform-grid-wrap">
+                            <div class="pg-header-row">
+                                <div class="pg-col-header pump-col">Pump Station</div>
+                                <div class="pg-col-header">Row 1</div>
+                                <div class="pg-col-header">Row 2</div>
+                                <div class="pg-col-header">Row 3</div>
+                                <div class="pg-col-header">Row 4</div>
+                                <div class="pg-col-header">Row 5</div>
+                                <div class="pg-col-header">Row 6</div>
+                                <div class="pg-col-header">Row 7</div>
+                            </div>
+                            <div class="pg-body" id="platform-grid-body"></div>
+                            <div id="arm-dot" class="arm-dot" title="Viscometer arm"></div>
+                        </div>
+                    </div>
+                    <div class="map-meta">
+                        <span>Bounds: X 0-450 mm</span>
+                        <span>Y 0-400 mm</span>
+                        <span>Z 0 to -75 mm</span>
+                    </div>
+                    <div class="skeleton-lines">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                    </div>
+                </section>
+
+                <section class="card timeline-card skeleton-host">
+                    <div class="card-title-row">
+                        <h2>Protocol Timeline</h2>
+                    </div>
+                    <ol id="timeline" class="timeline">
+                        <li data-phase="1">Move to Cell</li>
+                        <li data-phase="2">Auto-Zero</li>
+                        <li data-phase="3">Z-Descent + Measure</li>
+                        <li data-phase="4">Raise Z</li>
+                        <li data-phase="5">Wash Station 1</li>
+                        <li data-phase="6">Drying Station</li>
+                    </ol>
+                    <div id="timeline-fill" class="timeline-fill"></div>
+                    <div class="skeleton-lines">
+                        <div class="skeleton-line"></div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Tab 2: Parameters & Tracking -->
+            <div id="controls-tab" class="tab-panel">
+                <div class="controls-tracking-grid">
+                    <section class="card parameters-card">
+                        <div class="card-title-row">
+                            <h2>Design Experiment</h2>
+                        </div>
+                        <form id="run-settings-form" class="run-settings-form">
+                            <label>
+                                <span>Experiment Name</span>
+                                <input id="experiment-name" name="experiment_name" type="text" value="" placeholder="e.g. Honey batch A - Apr 17">
+                            </label>
+                            <label>
+                                <span>Mode</span>
+                                <select id="testing-mode" name="testing_mode">
+                                    <option value="full">Full</option>
+                                    <option value="row">Row</option>
+                                    <option value="custom" selected>Custom</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>Target RPMs</span>
+                                <input id="test-rpms" name="test_rpms" type="text" value="0.8" placeholder="0.8,1.0">
+                            </label>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Rows</span>
+                                    <input id="selected-rows" name="selected_rows" type="text" value="2" placeholder="1,3">
+                                </label>
+                                <label>
+                                    <span>Cells</span>
+                                    <input id="selected-cells" name="selected_cells" type="text" value="1" placeholder="1,4,7">
+                                </label>
+                            </div>
+                            <!-- Per-cell RPM assignment — shown only in custom mode -->
+                            <div id="cell-rpm-panel" class="cell-rpm-panel hidden">
+                                <div class="cell-rpm-header">
+                                    <span class="form-label">Per-Cell RPM Assignment</span>
+                                    <span class="form-hint">Leave blank to use the global RPMs above</span>
+                                </div>
+                                <div id="cell-rpm-table" class="cell-rpm-table">
+                                    <!-- Rows injected by JS whenever selected cells change -->
+                                </div>
+                            </div>
+                            <div id="cell-content-panel" class="cell-rpm-panel hidden">
+                                <div class="cell-rpm-header">
+                                    <span class="form-label">Per-Cell Sample Labels</span>
+                                    <span class="form-hint">Optional labels for what each selected cell contains</span>
+                                </div>
+                                <div id="cell-content-table" class="cell-rpm-table">
+                                    <!-- Rows injected by JS whenever selected cells change -->
+                                </div>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Z Step</span>
+                                    <input id="z-step-size" name="z_step_size" type="number" step="0.001" value="-0.02">
+                                </label>
+                                <label>
+                                    <span>Measure (s)</span>
+                                    <input id="measurement-duration" name="measurement_duration" type="number" step="1" value="40">
+                                </label>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Sample Interval</span>
+                                    <input id="sample-interval" name="sample_interval" type="number" step="0.1" value="5">
+                                </label>
+                                <label>
+                                    <span>Dwell (s)</span>
+                                    <input id="dwell-seconds" name="dwell_seconds" type="number" step="0.1" value="2">
+                                </label>
+                            </div>
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Inter-RPM Pause</span>
+                                    <input id="inter-rpm-pause" name="inter_rpm_pause" type="number" step="0.1" value="2">
+                                </label>
+                                <label>
+                                    <span>Torque Break %</span>
+                                    <input id="torque-break-threshold" name="torque_break_threshold" type="number" step="0.1" value="100">
+                                </label>
+                            </div>
+                            <label class="checkbox-row">
+                                <input id="feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
+                                <span>Feedback control enabled</span>
+                            </label>
+                            <label class="checkbox-row">
+                                <input id="smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox" checked>
+                                <span>Smart Early Exit (CV-based)</span>
+                            </label>
+                            <label class="checkbox-row">
+                                <input id="low-torque-liquid-contact-skip-enabled" name="low_torque_liquid_contact_skip_enabled" type="checkbox" checked>
+                                <span>Skip Z-levels until liquid contact (regular runs only; not calibration / recalibration)</span>
+                            </label>
+                            <label class="checkbox-row">
+                                <input id="predicted-viscosity-enabled" name="predicted_viscosity_enabled" type="checkbox">
+                                <span>Predicted Viscosity (enable estimated viscosity prediction)</span>
+                            </label>
+                            <label>
+                                <span>First-sample torque floor (%)</span>
+                                <input id="low-torque-liquid-contact-threshold-pct" name="low_torque_liquid_contact_threshold_pct" type="number" step="0.1" min="0" max="100" value="25" title="Z-levels are skipped when the first torque sample at elapsed ≥ Sample interval (s) is below this value. Earlier samples are ignored for this gate. Skipped rows use torque label &lt;x% and SKIPPED metrics.">
+                            </label>
+                            <details id="smart-exit-params-details" class="feedback-params-section">
+                                <summary class="feedback-params-toggle">
+                                    Smart Early Exit Parameters
+                                    <span class="feedback-params-hint">(expand to tune)</span>
+                                </summary>
+                                <div class="feedback-params-grid">
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Smart CV Threshold</span>
+                                            <input id="smart-cv-threshold" name="smart_cv_threshold" type="number" min="0" step="0.001" value="0.005">
+                                        </label>
+                                        <label>
+                                            <span>Smart Window Size</span>
+                                            <input id="smart-window-size" name="smart_window_size" type="number" min="2" step="1" value="3">
+                                        </label>
+                                    </div>
+                                </div>
+                            </details>
+                            <!-- Feedback detection parameters — collapsed by default -->
+                            <details id="feedback-params-details" class="feedback-params-section">
+                                <summary class="feedback-params-toggle">
+                                    Feedback Detection Parameters
+                                    <span class="feedback-params-hint">(expand to tune)</span>
+                                </summary>
+
+                                <div class="feedback-params-grid">
+                                    <p class="feedback-section-label">Thresholds</p>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>R² Threshold: Rotational Drag</span>
+                                            <input id="r2-drag-min" name="r2_drag_min" type="number" min="0" max="1" step="0.005" value="0.975">
+                                        </label>
+                                        <label>
+                                            <span>R² Threshold: CV</span>
+                                            <input id="r2-cv-min" name="r2_cv_min" type="number" min="0" max="1" step="0.005" value="0.975">
+                                        </label>
+                                    </div>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>R² Threshold: Trend Slope</span>
+                                            <input id="r2-slope-min" name="r2_slope_min" type="number" min="0" max="1" step="0.005" value="0.975">
+                                        </label>
+                                        <label>
+                                            <span>Hit Confidence Threshold</span>
+                                            <input id="hit-point-confidence-threshold" name="hit_point_confidence_threshold" type="number" step="0.05" value="0.8">
+                                        </label>
+                                    </div>
+
+                                    <p class="feedback-section-label" style="margin-top:8px;">Confidence Weights</p>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Weight: 2nd Deriv Drag</span>
+                                            <input id="weight-2nd-deriv-drag" name="weight_2nd_deriv_drag" type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                        <label>
+                                            <span>Weight: 2nd Deriv CV</span>
+                                            <input id="weight-2nd-deriv-cv" name="weight_2nd_deriv_cv" type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                    </div>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Weight: 2nd Deriv Slope</span>
+                                            <input id="weight-2nd-deriv-slope" name="weight_2nd_deriv_slope" type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                        <label>
+                                            <span>Weight: R² Drag</span>
+                                            <input id="weight-r2-drag" name="weight_r2_drag" type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                    </div>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Weight: R² CV</span>
+                                            <input id="weight-r2-cv" name="weight_r2_cv" type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                        <label>
+                                            <span>Weight: R² Slope</span>
+                                            <input id="weight-r2-slope" name="weight_r2_slope" type="number" step="0.05" value="0.2" min="0" max="1">
+                                        </label>
+                                    </div>
+
+                                    <p class="feedback-section-label" style="margin-top:8px;">Auto-Detection Baseline</p>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Baseline Calibration Points (n)</span>
+                                            <input id="baseline-n-calibration" name="baseline_n_calibration" type="number" step="1" min="1" value="10">
+                                        </label>
+                                        <label>
+                                            <span>Auto-detect Z-Score Threshold</span>
+                                            <input id="baseline-z-threshold" name="baseline_z_threshold" type="number" step="0.1" min="0.1" value="5.0">
+                                        </label>
+                                    </div>
+                                </div>
+                            </details>
+                            <div class="control-actions">
+                                <button type="button" id="apply-settings" class="btn control-btn control-btn-neutral">Apply Settings</button>
+                                <button type="button" id="start-run" class="btn btn-start control-btn control-btn-start">Start Run</button>
+                                <button type="button" id="stop-run" class="btn btn-stop control-btn control-btn-stop">Stop Run</button>
+                            </div>
+                            <div id="control-status" class="control-status">Ready</div>
+                        </form>
+                    </section>
+
+                            <div class="controls-right-stack">
+                            <!-- ===== CALIBRATION PANEL ===== -->
+                            <section id="calibration-panel-section" class="card calibration-card">
+                                <div class="card-title-row">
+                                    <h2>Per-Cell Z-Height Calibration</h2>
+                                    <!-- Status pill: toggled between .cal-status-ok and .cal-status-none by JS -->
+                                    <div id="cal-status-pill" class="cal-status-pill cal-status-none">
+                                        <span id="cal-status-dot" class="cal-status-dot"></span>
+                                        <span id="cal-status-text">No Z-Height Calibration Performed</span>
+                                    </div>
+                                </div>
+
+                                <details id="cal-panel-details" class="feedback-params-section cal-panel-details">
+                                    <summary class="feedback-params-toggle">
+                                        Calibration Options
+                                        <span class="feedback-params-hint">(expand to configure and run)</span>
+                                    </summary>
+
+                                <div id="cal-panel-body" class="cal-panel-body">
+
+                                    <div class="cal-checklist">
+                                        <p class="cal-checklist-title">⚠ Pre-Calibration Checklist</p>
+                                        <label class="cal-check-item">
+                                            <input type="checkbox" id="cal-check-empty" class="cal-checkbox">
+                                            <span>All cells are <strong>empty and clean</strong> — no sample loaded in any cell</span>
+                                        </label>
+                                        <label class="cal-check-item">
+                                            <input type="checkbox" id="cal-check-feedback" class="cal-checkbox">
+                                            <span>Feedback (hit-point detection) is <strong>enabled</strong> in the experiment settings above</span>
+                                        </label>
+                                        <label class="cal-check-item">
+                                            <input type="checkbox" id="cal-check-smart-exit" class="cal-checkbox">
+                                            <span>Smart Early Exit is <strong>disabled</strong> (unchecked above)</span>
+                                        </label>
+                                    </div>
+
+                                    <div class="cal-recommended-settings">
+                                        <p class="cal-section-label">Recommended Settings for Fast Calibration</p>
+                                        <div class="cal-settings-grid">
+                                            <div class="cal-setting-item">
+                                                <span class="cal-setting-label">Z Step Size</span>
+                                                <span class="cal-setting-value">−0.02 mm</span>
+                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-z-step">Apply</button>
+                                            </div>
+                                            <div class="cal-setting-item">
+                                                <span class="cal-setting-label">Measurement Duration</span>
+                                                <span class="cal-setting-value">5 s</span>
+                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-duration">Apply</button>
+                                            </div>
+                                            <div class="cal-setting-item">
+                                                <span class="cal-setting-label">Sample Interval</span>
+                                                <span class="cal-setting-value">4 s</span>
+                                                <button type="button" class="btn subtle cal-apply-btn" id="cal-apply-interval">Apply</button>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn subtle" id="cal-apply-all-recommended" style="margin-top:8px;">
+                                            Apply All Recommended Settings
+                                        </button>
+                                    </div>
+
+                                    <div class="cal-calibrated-info hidden" id="cal-existing-info">
+                                        <p class="cal-section-label">Current Calibration Data</p>
+                                        <select id="cal-existing-select" class="cal-existing-select"></select>
+                                        <div id="cal-existing-detail" class="cal-existing-detail"></div>
+                                        <button type="button" class="btn subtle" id="cal-clear-btn" style="margin-top:6px;">
+                                            Clear Calibration Data
+                                        </button>
+                                    </div>
+
+                                    <!-- Recalibration Mode Toggle and Cell Selector -->
+                                    <div class="cal-recalibration-section">
+                                        <label class="cal-recalibration-toggle">
+                                            <input type="checkbox" id="cal-recalibrate-individual" class="cal-checkbox">
+                                            <span>Recalibrate Individual Cells</span>
+                                        </label>
+                                        <div id="cal-cell-selector-container" class="cal-cell-selector-container hidden">
+                                            <p class="cal-section-label">Select Cells to Recalibrate</p>
+                                            <div class="cal-cell-grid">
+                                                <div class="cal-cell-row">
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="1"> Cell 1</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="2"> Cell 2</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="3"> Cell 3</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="4"> Cell 4</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="5"> Cell 5</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="6"> Cell 6</label>
+                                                </div>
+                                                <div class="cal-cell-row">
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="7"> Cell 7</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="8"> Cell 8</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="9"> Cell 9</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="10"> Cell 10</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="11"> Cell 11</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="12"> Cell 12</label>
+                                                </div>
+                                                <div class="cal-cell-row">
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="13"> Cell 13</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="14"> Cell 14</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="15"> Cell 15</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="16"> Cell 16</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="17"> Cell 17</label>
+                                                    <label class="cal-cell-checkbox"><input type="checkbox" class="cal-cell-check" value="18"> Cell 18</label>
+                                                </div>
+                                            </div>
+                                            <div id="cal-custom-z-container" class="cal-custom-z-container">
+                                                <p class="cal-section-label">Custom Starting Z-Height (Optional)</p>
+                                                <p class="cal-custom-z-hint">Leave empty to auto-detect. Enter custom Z value to start recalibration from a specific height.</p>
+                                                <div id="cal-cell-z-inputs" class="cal-cell-z-inputs"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="cal-actions">
+                                        <button
+                                            type="button"
+                                            id="cal-start-btn"
+                                            class="btn cal-start-btn"
+                                            disabled
+                                            title="Check all items above before starting">
+                                            Start Calibration (All 18 Cells)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            id="cal-start-recalibration-btn"
+                                            class="btn cal-start-btn hidden"
+                                            disabled
+                                            title="Select at least one cell to recalibrate">
+                                            Start Recalibration
+                                        </button>
+                                        <span id="cal-action-hint" class="cal-action-hint">
+                                            Complete the checklist above to enable calibration
+                                        </span>
+                                    </div>
+                                </div>
+                                </details>
+                            </section>
+                            <!-- ===== END CALIBRATION PANEL ===== -->
+
+                    <section class="card tracking-card">
+                        <div class="card-title-row">
+                            <h2>Live Tracking</h2>
+                        </div>
+                        <div class="tracking-grid">
+                            <div class="status-block gauge-block">
+                                <div class="status-label">RPM Gauge</div>
+                                <svg id="rpm-gauge" viewBox="0 0 220 220" class="rpm-gauge">
+                                    <circle cx="110" cy="110" r="72" class="gauge-track"></circle>
+                                    <circle id="gauge-value" cx="110" cy="110" r="72" class="gauge-value"></circle>
+                                    <line id="gauge-needle" x1="110" y1="110" x2="110" y2="44" class="gauge-needle"></line>
+                                    <circle cx="110" cy="110" r="5" class="gauge-core"></circle>
+                                    <text id="gauge-rpm" x="110" y="118" text-anchor="middle" class="gauge-text">0.0</text>
+                                    <text x="110" y="136" text-anchor="middle" class="gauge-unit">RPM</text>
+                                </svg>
+                            </div>
+
+                            <div class="status-block xyz-grid mono">
+                                <div class="xyz-item"><span>X</span><strong id="xyz-x">0.0</strong></div>
+                                <div class="xyz-item"><span>Y</span><strong id="xyz-y">0.0</strong></div>
+                                <div class="xyz-item"><span>Z</span><strong id="xyz-z">0.0</strong></div>
+                            </div>
+
+                            <div class="status-block">
+                                <div class="status-label">Torque %</div>
+                                <div class="torque-shell">
+                                    <div id="torque-fill" class="torque-fill"></div>
+                                </div>
+                                <div id="torque-value" class="mono">0.00%</div>
+                                <div class="live-feed-item">
+                                    <span class="live-feed-label">Torque</span>
+                                    <span id="torque-display" class="live-feed-value mono">0.00 %</span>
+                                </div>
+                                <div id="drag-live-box" class="live-feed-item drag-box">
+                                    <span class="live-feed-label">Rotational Drag</span>
+                                    <span id="rotational-drag-display" class="live-feed-value mono">0.00</span>
+                                    <span class="live-feed-unit">torque / RPM</span>
+                                </div>
+                            </div>
+
+                            <div class="status-block">
+                                <div class="status-label">Measuring Z</div>
+                                <div class="mono" id="z-measuring-display">0.000 mm</div>
+                                <div class="status-subtext">Active Z under torque sampling</div>
+                            </div>
+
+                            <div class="status-block">
+                                <div class="status-label">Current Cell</div>
+                                <div id="cell-flip" class="cell-flip" data-cell="-">-</div>
+                                <div id="cell-meta" class="status-subtext">Row -, local -</div>
+                            </div>
+
+                            <div class="status-block">
+                                <div class="status-label">Elapsed</div>
+                                <div id="elapsed" class="mono">00:00:00</div>
+                                <div id="elapsed-cell" class="status-subtext">Cell 00:00:00</div>
+                            </div>
+                        </div>
+                    </section>
+                    </div>
+                </div>
+
+                <section class="card plot-card skeleton-host">
+                    <div class="card-title-row">
+                        <div>
+                            <h2>Live Rotational Drag</h2>
+                            <span id="drag-z-cell-label" class="chart-subtitle">All Cells</span>
+                        </div>
+                        <div class="plot-tools">
+                            <div class="segmented" role="group" aria-label="Z data filter">
+                                <button id="z-filter-all" class="seg active">All Samples</button>
+                                <button id="z-filter-latest" class="seg">Most Recent Per Z-Height</button>
+                            </div>
+                            <button id="z-connect-dots" class="btn subtle">Connect Dots: Off</button>
+                        </div>
+                    </div>
+                    <div id="graph-cell-tabs" class="graph-cell-tabs"></div>
+                    <div class="drag-z-with-sidebar">
+                        <div id="z-sparkline-plot" class="plot-shell drag-z-plot-area"></div>
+                        <aside class="drag-z-sidebar" id="drag-z-sidebar">
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">Active RPM</div>
+                                <div class="sidebar-value mono" id="sidebar-rpm">-</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">2nd Deriv Rotational Drag</div>
+                                <div class="sidebar-value mono" id="sidebar-2nd-deriv-drag">-</div>
+                                <div class="sidebar-method" id="sidebar-method-2nd-deriv-drag">AUTO Z-SCORE (calibrating...)</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">2nd Deriv CV</div>
+                                <div class="sidebar-value mono" id="sidebar-2nd-deriv-cv">-</div>
+                                <div class="sidebar-method" id="sidebar-method-2nd-deriv-cv">AUTO Z-SCORE (calibrating...)</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">2nd Deriv Trend Slope</div>
+                                <div class="sidebar-value mono" id="sidebar-2nd-deriv-slope">-</div>
+                                <div class="sidebar-method" id="sidebar-method-2nd-deriv-slope">AUTO Z-SCORE (calibrating...)</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">R² Rotational Drag</div>
+                                <div class="sidebar-value mono" id="sidebar-r2-drag">-</div>
+                                <div class="sidebar-method" id="sidebar-method-r2-drag">Threshold ≥ 0.975</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">R² CV</div>
+                                <div class="sidebar-value mono" id="sidebar-r2-cv">-</div>
+                                <div class="sidebar-method" id="sidebar-method-r2-cv">Threshold ≥ 0.975</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">R² Trend Slope</div>
+                                <div class="sidebar-value mono" id="sidebar-r2-slope">-</div>
+                                <div class="sidebar-method" id="sidebar-method-r2-slope">Threshold ≥ 0.975</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">Hit Confidence</div>
+                                <div class="sidebar-value mono" id="sidebar-confidence">-</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-label">Hit Detected?</div>
+                                <div class="sidebar-value mono" id="sidebar-hit">-</div>
+                            </div>
+                        </aside>
+                    </div>
+                    <div id="z-sparkline-empty" class="plot-empty">No data yet</div>
+                    <div class="skeleton-lines">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line"></div>
+                    </div>
+                </section>
+
+                <section class="card plot-card skeleton-host">
+                    <div class="card-title-row">
+                        <h2>Torque vs Z-Height</h2>
+                    </div>
+                    <div id="torque-z-plot" class="plot-shell"></div>
+                    <div id="torque-z-empty" class="plot-empty">No data yet</div>
+                    <div class="skeleton-lines">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line"></div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Tab 3: Data Management -->
+            <div id="data-tab" class="tab-panel">
+                <section class="card table-card">
+                    <div class="card-title-row">
+                        <h2>Data Export</h2>
+                    </div>
+                    <p>Download all data for the current run as a CSV identical to the file saved on the host machine.</p>
+                    <button id="table-export" class="btn">Download CSV</button>
+                </section>
+
+                <section class="card model-card">
+                    <div class="card-title-row">
+                        <h2>Viscosity Prediction Model</h2>
+                    </div>
+                    <div class="model-body">
+                        <div class="model-summary-grid">
+                            <div class="model-summary-box">
+                                <h3>Physics</h3>
+                                <p>
+                                    As the spindle descends toward the liquid surface, the rotational drag D increases.
+                                    The drag at a given gap height h follows <strong>(D/ω) = η·K / (h + h₀)</strong>,
+                                    where ω is spindle speed (RPM), η is dynamic viscosity, K is a geometry constant,
+                                    and h₀ is an offset that accounts for the extrapolated contact point. Only valid
+                                    points are fitted: measurements taken before the hit point is detected and above
+                                    the torque floor threshold, so air measurements are excluded. The fitted hyperbola
+                                    parameter a maps to viscosity via <strong>η ≈ |a| × 2.330 kcP</strong>.
+                                </p>
+                            </div>
+                            <div class="model-summary-box">
+                                <h3>Curve Fitting</h3>
+                                <svg width="120" height="80" viewBox="0 0 120 80" aria-label="Hyperbola illustration" role="img">
+                                    <defs>
+                                        <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                                            <path d="M0,0 L6,3 L0,6 Z" fill="#C9D1D9"></path>
+                                        </marker>
+                                    </defs>
+                                    <line x1="14" y1="66" x2="108" y2="66" stroke="#C9D1D9" stroke-width="1" marker-end="url(#arrowhead)" />
+                                    <line x1="18" y1="70" x2="18" y2="10" stroke="#C9D1D9" stroke-width="1" marker-end="url(#arrowhead)" />
+                                    <line x1="44" y1="14" x2="44" y2="66" stroke="#8B949E" stroke-width="1" stroke-dasharray="4 3" />
+                                    <path d="M24 20 C42 20, 54 32, 64 42 S88 60, 102 62" fill="none" stroke="#8B949E" stroke-width="1.75" stroke-dasharray="5 4" />
+                                    <text x="55" y="76" font-size="8" fill="#C9D1D9" text-anchor="middle">Gap height h (mm)</text>
+                                    <text x="8" y="38" font-size="8" fill="#C9D1D9" text-anchor="middle" transform="rotate(-90 8 38)">Rotational Drag</text>
+                                    <text x="44" y="11" font-size="8" fill="#C9D1D9" text-anchor="middle">h₀</text>
+                                </svg>
+                            </div>
+                        </div>
+                        <div id="predicted-viscosity-plots-container" class="plots-container"></div>
+                    </div>
+                </section>
+
+                <section class="card status-log-card">
+                    <div class="card-title-row">
+                        <h2>Status Log</h2>
+                        <button id="clear-log" class="btn subtle">Clear Log</button>
+                    </div>
+                    <ul id="status-log" class="status-log"></ul>
+                </section>
+            </div>
+
+            <div id="summary-tab" class="tab-panel">
+                <div class="summary-layout">
+                    <section class="card summary-list-card">
+                        <div class="card-title-row">
+                            <h2>Recent Experiments</h2>
+                        </div>
+                        <div id="experiment-cards" class="experiment-cards">
+                            <p class="summary-empty" id="summary-empty">
+                                No experiments recorded yet. Completed runs will appear here.
+                            </p>
+                        </div>
+                    </section>
+
+                    <section class="card summary-detail-card hidden" id="summary-detail">
+                        <div class="card-title-row">
+                            <h2>Experiment Detail</h2>
+                            <button id="summary-download" class="btn">Download CSV</button>
+                        </div>
+                        <div id="summary-detail-body" class="summary-detail-body">
+                            <div id="summary-meta-left" class="summary-meta-col"></div>
+                            <div id="summary-meta-right" class="summary-meta-col summary-meta-feedback"></div>
+                        </div>
+                        <div class="run-settings-form" style="margin-top:10px;">
+                            <label class="checkbox-row">
+                                <input id="summary-show-hit-line" type="checkbox">
+                                <span>Show hit point marker (red line)</span>
+                            </label>
+                            <label class="checkbox-row">
+                                <input id="summary-align-hitpoint" type="checkbox">
+                                <span>Align traces to hit point (hit = 0 mm)</span>
+                            </label>
+                        </div>
+                        <div id="summary-custom-hitpoint-controls" style="margin-top:12px;">
+                            <div class="dual-fields">
+                                <label>
+                                    <span>Cell</span>
+                                    <select id="summary-custom-hitpoint-cell"></select>
+                                </label>
+                                <label>
+                                    <span>Hitpoint Z (mm)</span>
+                                    <input id="summary-custom-hitpoint-z" type="number" step="0.001" placeholder="e.g. -12.345">
+                                </label>
+                            </div>
+                            <div style="display:flex; gap:10px; margin-top:10px;">
+                                <button type="button" id="summary-make-custom-hitpoint" class="btn">
+                                    Make custom hitpoint
+                                </button>
+                                <button type="button" id="summary-undo-custom-hitpoint" class="btn subtle" disabled>
+                                    Undo
+                                </button>
+                            </div>
+                            <div id="summary-custom-hitpoint-status" class="form-hint" style="margin-top:6px;"></div>
+                        </div>
+                        <div id="summary-plot" class="summary-plot"></div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}?v={{ asset_version }}"></script>
+</body>
+</html>

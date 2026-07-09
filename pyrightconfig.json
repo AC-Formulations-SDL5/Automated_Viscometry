@@ -1,0 +1,8 @@
+{
+  "pythonVersion": "3.10",
+  "venvPath": ".",
+  "venv": ".venv",
+  "typeCheckingMode": "off",
+  "extraPaths": ["src"],
+  "include": ["src", "scripts", "tests", "run_viscometry.py"]
+}

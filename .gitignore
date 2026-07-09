@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv*/
+venv/
+env/
+
+# Auto-produced experiment outputs
+results/runs/
+results/web_experiment_history.json
+
+# Machine-specific calibration (discovery baseline may be committed separately)
+data/calibration/per_cell_z_calibration.json
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.cursor/debug-*.log
+
+# Build / packaging
+*.egg-info/
+dist/
+build/
+.eggs/
