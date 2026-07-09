@@ -30,7 +30,11 @@ Master flow-curve comparison of representative formulations across material fami
 
 <video controls width="100%">
     <source src="Media/Video.MP4" type="video/mp4">
-    Your browser does not support the video tag. You can download the video <a href="Media/Video.MP4">here</a>.
+    Your browser does not support the video tag. You can download the video <a
+
+https://github.com/user-attachments/assets/9825e222-a667-4881-9abe-172b20759f9a
+
+ href="Media/Video.MP4">here</a>.
 </video>
 
 ## Required Docs And Paths
