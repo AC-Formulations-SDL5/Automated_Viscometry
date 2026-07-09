@@ -1,4 +1,4 @@
-# **Autonomous Rheology Discovery for High-Viscosity Formulation Screening via Physics-Constrained Signal Interpretation**
+# **A Self-Driving Rheometer: Physics-Constrained Signal Interpretation for Autonomous High-Viscosity Characterization of Newtonian and Non-Newtonian Fluids**
 
 Mohammad M Rastegardoosta, Ian Ngungab, Koketso Gaborekwec, Frantz Le Devedeca
 
