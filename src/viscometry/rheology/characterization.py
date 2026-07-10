@@ -93,7 +93,12 @@ def _per_rpm_viscosity_cp(
             a_val = _json_float(fits[rpm].get("A"))
             if a_val is None or a_val <= 0:
                 continue
-            mu = float(amplitude_to_viscosity([a_val])[0])
+            mu = float(
+                amplitude_to_viscosity(
+                    [a_val],
+                    drag_model=str(fits[rpm].get("drag_model") or "app_v6_hyperbola"),
+                )[0]
+            )
             if np.isfinite(mu) and mu > 0:
                 out[rpm] = mu
         return out

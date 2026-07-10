@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from viscometry.rheology.live_adapter import (
     SUMMARY_KEY,
     filter_measurement_points,
-    fit_sweep_drag,
+    fit_newtonian_app_v4_from_points,
     predict_cell_rheology,
     prepare_sweep_arrays,
 )
@@ -125,7 +125,12 @@ def predict_viscosity(
             base["error"] = f"Insufficient points after pre-trim ({len(h_norm)} < 4)"
             return base
 
-        fit_result = fit_sweep_drag(h_norm, torque_pct, float(rpm), norm_offset)
+        fit_result = fit_newtonian_app_v4_from_points(
+            points,
+            float(rpm),
+            torque_floor_pct=torque_floor_pct,
+            hit_point_z=hit_point_z,
+        )
         base.update(fit_result)
         base["cell_id"] = int(cell_id)
         base["viscosity_prediction_mode"] = mode

@@ -15,7 +15,9 @@ from viscometry.rheology.prediction import (
     amplitude_to_viscosity,
     drag_model_curve,
     fit_drag,
+    fit_drag_newtonian_app_v4,
     passes_r2_gate,
+    trim_stat_middle_arrays,
 )
 
 _RPM_TOL = 1e-6
@@ -115,6 +117,53 @@ def _apply_pretrims(
     return pre_h, pre_d, pre_t, pre_h.copy()
 
 
+def _apply_pretrims_newtonian_app_v4(
+    points: List[Dict[str, Any]],
+    torque_floor_pct: float,
+    hit_point_z: Optional[float],
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """APP_V4-style pretrim for Newtonian sweeps."""
+    rows: List[Tuple[float, float, float]] = []
+    for p in points:
+        drag = p.get("rotational_drag")
+        height = p.get("height")
+        if height is None or drag is None:
+            continue
+        try:
+            h = float(height)
+            d = float(drag)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(h) or not math.isfinite(d):
+            continue
+        tp = p.get("torque_percent")
+        try:
+            torque = float(tp) if tp is not None else float("nan")
+        except (TypeError, ValueError):
+            torque = float("nan")
+        rows.append((h, d, torque))
+
+    rows.sort(key=lambda t: t[0])
+    kept: List[Tuple[float, float, float]] = []
+    for h, d, torque in rows:
+        if math.isfinite(torque) and torque < float(torque_floor_pct):
+            continue
+        if hit_point_z is not None and h <= float(hit_point_z):
+            continue
+        kept.append((h, d, torque))
+
+    if not kept:
+        return (
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+        )
+    pre_h = np.array([k[0] for k in kept], dtype=float)
+    pre_d = np.array([k[1] for k in kept], dtype=float)
+    pre_t = np.array([k[2] for k in kept], dtype=float)
+    return pre_h, pre_d, pre_t
+
+
 def _hitpoint_stress_from_sweep(
     h_norm: np.ndarray,
     torque_pct: np.ndarray,
@@ -196,6 +245,7 @@ def fit_sweep_drag(
         "A": None,
         "B": None,
         "hc": hc,
+        "drag_model": "app_v6_hyperbola",
         "R2": None,
         "n_points_used": int(len(h_norm)),
         "fit_curve_z": [],
@@ -218,6 +268,7 @@ def fit_sweep_drag(
     r2 = fit.get("R2")
     base["A"] = fit.get("A")
     base["B"] = fit.get("B")
+    base["drag_model"] = fit.get("drag_model") or "app_v6_hyperbola"
     base["R2"] = r2
 
     if not passes_r2_gate(r2, min_r2):
@@ -247,6 +298,103 @@ def fit_sweep_drag(
     y_line = drag_model_curve(x_line, float(a_val), float(fit["B"]), hc)
     base["fit_curve_z"], base["fit_curve_drag"] = _lists_from_arrays(x_line, y_line, norm_offset)
     return base
+
+
+def refit_sweep_drag_newtonian_app_v4(
+    h_norm: np.ndarray,
+    drag: np.ndarray,
+    rpm: float,
+    norm_offset: float,
+    *,
+    min_r2: float = FIT_R2_MIN,
+) -> Dict[str, Any]:
+    """Refit one RPM sweep with the APP_V4 Newtonian drag model."""
+    rpm_f = float(rpm)
+    base: Dict[str, Any] = {
+        "rpm": rpm_f,
+        "A": None,
+        "B": None,
+        "hc": None,
+        "drag_model": "app_v4_newtonian",
+        "R2": None,
+        "n_points_used": int(len(h_norm)),
+        "fit_curve_z": [],
+        "fit_curve_drag": [],
+        "success": False,
+        "error": None,
+        "viscosity_kcp": None,
+        "torque_pct_hit": None,
+        "drag_hit": None,
+        "tau_Pa_hit": None,
+    }
+    if len(h_norm) < 4 or np.ptp(h_norm) <= 0:
+        base["error"] = f"Insufficient points after pre-trim ({len(h_norm)} < 4)"
+        return base
+
+    d = np.asarray(drag, float)
+    h_trim, d_trim = trim_stat_middle_arrays(h_norm, d)
+    if len(h_trim) < 4 or np.ptp(h_trim) <= 0:
+        base["error"] = "Insufficient distinct points after statistical trim"
+        return base
+    base["n_points_used"] = int(len(h_trim))
+    fit = fit_drag_newtonian_app_v4(h_trim, d_trim)
+    r2 = fit.get("R2")
+    base["A"] = fit.get("A")
+    base["B"] = fit.get("B")
+    base["R2"] = r2
+
+    if not passes_r2_gate(r2, min_r2):
+        base["error"] = f"Fit R² below threshold ({min_r2:.2f})"
+        return base
+
+    a_val = fit.get("A")
+    b_val = fit.get("B")
+    if a_val is None or b_val is None or not np.isfinite(a_val) or a_val <= 0:
+        base["error"] = "Invalid APP_V4 Newtonian coefficients from drag fit"
+        return base
+
+    mu_cp = float(amplitude_to_viscosity([a_val], drag_model="app_v4_newtonian")[0])
+    drag_hit = float(drag_model_curve([0.0], float(a_val), float(b_val), 0.0, drag_model="app_v4_newtonian")[0])
+    torque_hit = drag_hit * rpm_f if np.isfinite(drag_hit) and drag_hit > 0 else None
+    tau_hit = PCT_TO_PA * torque_hit if torque_hit is not None else None
+
+    base["viscosity_kcp"] = mu_cp / 1000.0
+    base["success"] = True
+    base["drag_hit"] = drag_hit
+    base["torque_pct_hit"] = torque_hit
+    base["tau_Pa_hit"] = tau_hit
+
+    x_line = np.linspace(float(np.min(h_trim)), float(np.max(h_trim)), 80)
+    y_line = drag_model_curve(
+        x_line,
+        float(a_val),
+        float(b_val),
+        0.0,
+        drag_model="app_v4_newtonian",
+    )
+    base["fit_curve_z"], base["fit_curve_drag"] = _lists_from_arrays(x_line, y_line, norm_offset)
+    return base
+
+
+def fit_newtonian_app_v4_from_points(
+    points: List[Dict[str, Any]],
+    rpm: float,
+    *,
+    torque_floor_pct: float,
+    hit_point_z: Optional[float],
+    min_r2: float = FIT_R2_MIN,
+) -> Dict[str, Any]:
+    """Full APP_V4 Newtonian sweep path from raw measurement points."""
+    pre_h, pre_d, pre_t = _apply_pretrims_newtonian_app_v4(points, torque_floor_pct, hit_point_z)
+    norm_offset = float(np.min(pre_h)) if len(pre_h) else 0.0
+    h_norm = pre_h - norm_offset if len(pre_h) else np.array([], dtype=float)
+    return refit_sweep_drag_newtonian_app_v4(
+        h_norm,
+        pre_d,
+        float(rpm),
+        norm_offset,
+        min_r2=min_r2,
+    )
 
 
 def predict_cell_rheology(
@@ -292,6 +440,10 @@ def predict_cell_rheology(
             sweep_base["pretrim_z"] = pretrim_z
             sweep_base["pretrim_drag"] = pretrim_drag
             sweep_base["n_points_used"] = int(len(h_norm))
+            sweep_base["_points"] = points
+            sweep_base["_h_norm"] = h_norm
+            sweep_base["_torque_pct"] = torque_pct
+            sweep_base["_norm_offset"] = norm_offset
 
             fit_result = fit_sweep_drag(
                 h_norm, torque_pct, rpm_f, norm_offset, min_r2=min_r2
@@ -309,6 +461,28 @@ def predict_cell_rheology(
         successful,
         cell_id=int(cell_id),
     )
+    if summary.get("pathway") == "newtonian":
+        refit_successful: Dict[float, Dict[str, Any]] = {}
+        for rpm, fit in successful.items():
+            points = fit.get("_points")
+            if not points:
+                refit_successful[rpm] = fit
+                continue
+            legacy_fit = fit_newtonian_app_v4_from_points(
+                list(points),
+                float(rpm),
+                torque_floor_pct=torque_floor_pct,
+                hit_point_z=hit_point_z,
+                min_r2=min_r2,
+            )
+            merged = dict(fit)
+            merged.update(legacy_fit)
+            refit_successful[rpm] = merged
+        successful = {rpm: fit for rpm, fit in refit_successful.items() if fit.get("success")}
+        summary = compute_cell_characterization(
+            successful,
+            cell_id=int(cell_id),
+        )
     for rpm, fit in successful.items():
         per_rpm[rpm] = fit
     return per_rpm, summary
