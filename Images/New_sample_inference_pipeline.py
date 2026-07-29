@@ -1,0 +1,316 @@
+"""Generate the *inference-time* pipeline diagram (SVG).
+
+This figure illustrates what happens when **a brand-new sample** is loaded on
+the automated viscometer: the steps that turn its raw automated-descent
+recordings (height, torque %, RPM) into a final rheology classification and
+flow curve, reusing the previously-calibrated platform constants
+(h_c\\*, k, p, c).
+
+Visual language mirrors ``Workflow_diagram.py`` and
+``Rheology_analysis_pipeline.py``: 1220 px canvas, soft pastel boxes with
+rx/ry=18, drop-shadow, Google Sans typography, arrow markers, dashed branches.
+
+Run with no arguments to drop the SVG next to this script:
+    python New_sample_inference_pipeline.py
+Or supply an explicit output path:
+    python New_sample_inference_pipeline.py C:/somewhere/out.svg
+"""
+
+from pathlib import Path
+import sys
+
+
+SVG_CONTENT = """<svg width="1220" height="1480" viewBox="0 0 1220 1480" xmlns="http://www.w3.org/2000/svg">
+
+  <defs>
+    <style>
+      .bg { fill: #FFFFFF; }
+      .box { rx: 18; ry: 18; stroke-width: 1.5; }
+      .title { font: 600 22px Google Sans, Arial, sans-serif; fill: #202124; text-anchor: middle; }
+      .text  { font: 20px Google Sans, Arial, sans-serif; fill: #3C4043; }
+      .small { font: 17px Google Sans, Arial, sans-serif; fill: #5F6368; font-style: italic; }
+      .calib { font: 600 17px Google Sans, Arial, sans-serif; fill: #188038; }
+      .arrow { fill: none; stroke: #3C4043; stroke-width: 2; marker-end: url(#arrowhead); }
+      .arrow-branch { fill: none; stroke: #5F6368; stroke-width: 2; stroke-dasharray: 6 4; marker-end: url(#arrowhead); }
+      .arrow-calib  { fill: none; stroke: #188038; stroke-width: 1.8; stroke-dasharray: 4 3; marker-end: url(#arrowhead-green); }
+      .icon-bg { fill: #FFFFFF; stroke-width: 1.5; }
+      .icon-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .icon-fill { stroke: none; }
+    </style>
+
+    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <polyline points="1.5,1.5 7,4 1.5,6.5" fill="none" stroke="#3C4043" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrowhead-green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <polyline points="1.5,1.5 7,4 1.5,6.5" fill="none" stroke="#188038" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="1220" height="1480" class="bg"/>
+
+  <!-- ============================================================== -->
+  <!-- HEADER                                                          -->
+  <!-- ============================================================== -->
+  <text x="610" y="34" font="700 24px Google Sans, Arial, sans-serif" fill="#202124" text-anchor="middle">
+    Inference Pipeline — From a New Sample's Raw Trace to its Rheology Behaviour
+  </text>
+
+  <!-- ============================================================== -->
+  <!-- 1  NEW SAMPLE — RAW TRACE                                       -->
+  <!-- ============================================================== -->
+  <rect x="290" y="60" width="640" height="130" fill="#E8F0FE" stroke="#1A73E8" class="box" filter="url(#shadow)"/>
+  <line x1="417" y1="115" x2="417" y2="175" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="673" y="93" class="title" fill="#1A73E8">1. New Sample — Automated Descent Recording</text>
+  <text x="440" y="123" class="text">• Time series of  (h, T%, RPM)  during cone descent</text>
+  <text x="440" y="146" class="text">• One or more RPM sweeps at the same sample cell</text>
+  <text x="440" y="169" class="small">single unknown formulation · viscosity grade unknown</text>
+  <g transform="translate(0 0)">
+    <circle cx="345" cy="130" r="28" class="icon-bg" stroke="#1A73E8"/>
+    <circle cx="345" cy="130" r="22" fill="none" stroke="#D2E3FC" stroke-width="2"/>
+    <polyline points="332,143 339,134 345,138 352,128 358,133" class="icon-line" stroke="#1A73E8"/>
+    <line x1="330" y1="143" x2="360" y2="143" class="icon-line" stroke="#1A73E8"/>
+    <line x1="330" y1="118" x2="330" y2="143" class="icon-line" stroke="#1A73E8"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 2  PREPROCESS                                                   -->
+  <!-- ============================================================== -->
+  <rect x="290" y="220" width="640" height="130" fill="#E8F0FE" stroke="#1A73E8" class="box" filter="url(#shadow)"/>
+  <line x1="417" y1="275" x2="417" y2="335" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="673" y="253" class="title" fill="#1A73E8">2. Preprocess &amp; Group</text>
+  <text x="440" y="283" class="text">• Re-zero h to its minimum;  drop pre-contact rows</text>
+  <text x="440" y="306" class="text">• Group rows by (sample, RPM)  →  one curve per sweep</text>
+  <text x="440" y="329" class="text">• Compute shear rate   γ̇ = 2π·RPM / (60·α)</text>
+  <g transform="translate(0 0)">
+    <circle cx="345" cy="290" r="28" class="icon-bg" stroke="#1A73E8"/>
+    <circle cx="345" cy="290" r="22" fill="none" stroke="#D2E3FC" stroke-width="2"/>
+    <rect x="332" y="278" width="26" height="24" fill="none" stroke="#1A73E8" stroke-width="2" rx="2"/>
+    <line x1="336" y1="285" x2="354" y2="285" class="icon-line" stroke="#1A73E8"/>
+    <line x1="336" y1="291" x2="354" y2="291" class="icon-line" stroke="#1A73E8"/>
+    <line x1="336" y1="297" x2="348" y2="297" class="icon-line" stroke="#1A73E8"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 3  BUILD DRAG PROFILE                                           -->
+  <!-- ============================================================== -->
+  <rect x="290" y="380" width="640" height="130" fill="#F3E8FD" stroke="#A142F4" class="box" filter="url(#shadow)"/>
+  <line x1="417" y1="435" x2="417" y2="495" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="673" y="413" class="title" fill="#A142F4">3. Build Drag Profile  D(h) = T% / RPM</text>
+  <text x="440" y="443" class="text">• Normalises torque against rotation speed</text>
+  <text x="440" y="466" class="text">• Average / smooth replicates at each height</text>
+  <text x="440" y="489" class="small">one D(h) curve per RPM, ready to fit</text>
+  <g transform="translate(0 0)">
+    <circle cx="345" cy="450" r="28" class="icon-bg" stroke="#A142F4"/>
+    <circle cx="345" cy="450" r="22" fill="none" stroke="#E9D7FE" stroke-width="2"/>
+    <polyline points="332,463 339,452 346,456 353,440 360,444" class="icon-line" stroke="#A142F4"/>
+    <line x1="330" y1="463" x2="362" y2="463" class="icon-line" stroke="#A142F4"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 4  HYPERBOLIC FIT WITH FIXED h_c*                               -->
+  <!-- ============================================================== -->
+  <rect x="290" y="540" width="640" height="150" fill="#F3E8FD" stroke="#A142F4" class="box" filter="url(#shadow)"/>
+  <line x1="417" y1="600" x2="417" y2="675" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="673" y="573" class="title" fill="#A142F4">4. Fit Hyperbola with Fixed h_c\\*</text>
+  <text x="440" y="603" class="text">• Model:   D(h) = A / (h + h_c\\*) + B</text>
+  <text x="440" y="626" class="text">• Recover amplitude  A  for every (sample, RPM) sweep</text>
+  <text x="440" y="649" class="text">• Reject sweep if  R² &lt; 0.95  →  flag as low quality</text>
+  <text x="440" y="672" class="calib">uses calibrated  h_c\\* ≈ 0.277 mm</text>
+  <g transform="translate(0 0)">
+    <circle cx="345" cy="610" r="28" class="icon-bg" stroke="#A142F4"/>
+    <circle cx="345" cy="610" r="22" fill="none" stroke="#E9D7FE" stroke-width="2"/>
+    <path d="M330 622 Q336 600 345 600 Q360 600 360 622" class="icon-line" stroke="#A142F4"/>
+    <line x1="328" y1="624" x2="362" y2="624" class="icon-line" stroke="#A142F4"/>
+    <circle cx="336" cy="615" r="2.2" class="icon-fill" fill="#A142F4"/>
+    <circle cx="345" cy="604" r="2.2" class="icon-fill" fill="#A142F4"/>
+    <circle cx="354" cy="615" r="2.2" class="icon-fill" fill="#A142F4"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 5A  AMPLITUDE → APPARENT VISCOSITY     (LEFT)                   -->
+  <!-- ============================================================== -->
+  <rect x="80" y="720" width="541" height="160" fill="#E6F4EA" stroke="#188038" class="box" filter="url(#shadow)"/>
+  <line x1="207" y1="780" x2="207" y2="860" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="350" y="753" class="title" fill="#188038">5A. Amplitude → Apparent Viscosity</text>
+  <text x="230" y="783" class="text">• Invert silicone calib.:  μ_app = (A / k)^(1/p)</text>
+  <text x="230" y="806" class="text">• One μ_app value per (sample, RPM) sweep</text>
+  <text x="230" y="829" class="text">• Carries physical units of  cP / Pa·s</text>
+  <text x="230" y="852" class="calib">uses calibrated  k ≈ 5.9e-9,  p ≈ 2.01</text>
+  <g transform="translate(0 0)">
+    <circle cx="135" cy="795" r="28" class="icon-bg" stroke="#188038"/>
+    <circle cx="135" cy="795" r="22" fill="none" stroke="#CEEAD6" stroke-width="2"/>
+    <polyline points="120,808 128,798 137,794 145,786" class="icon-line" stroke="#188038"/>
+    <circle cx="120" cy="808" r="2.5" class="icon-fill" fill="#188038"/>
+    <circle cx="128" cy="798" r="2.5" class="icon-fill" fill="#188038"/>
+    <circle cx="137" cy="794" r="2.5" class="icon-fill" fill="#188038"/>
+    <circle cx="145" cy="786" r="2.5" class="icon-fill" fill="#188038"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 5B  TORQUE → SHEAR STRESS              (RIGHT)                  -->
+  <!-- ============================================================== -->
+  <rect x="680" y="720" width="541" height="160" fill="#E0F2F1" stroke="#00ACC1" class="box" filter="url(#shadow)"/>
+  <line x1="807" y1="780" x2="807" y2="860" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="950" y="753" class="title" fill="#00ACC1">5B. Torque → Absolute Shear Stress</text>
+  <text x="830" y="783" class="text">• Cone-plate identity:  τ = 3M / (2π R³)</text>
+  <text x="830" y="806" class="text">• Use plateau T%  →  τ(γ̇) = c · T%</text>
+  <text x="830" y="829" class="text">• Per-RPM stress pair  (γ̇,  τ)</text>
+  <text x="830" y="852" class="calib">uses calibrated  c ≈ 1.986 Pa/%</text>
+  <g transform="translate(0 0)">
+    <circle cx="735" cy="795" r="28" class="icon-bg" stroke="#00ACC1"/>
+    <circle cx="735" cy="795" r="22" fill="none" stroke="#CDEFF3" stroke-width="2"/>
+    <path d="M725 788 H745 M725 798 H740 M725 808 H735" class="icon-line" stroke="#00ACC1"/>
+    <polyline points="747,786 753,792 747,798" class="icon-line" stroke="#00ACC1"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 6  DECISION : # OF RPMS                                         -->
+  <!-- ============================================================== -->
+  <rect x="220" y="910" width="780" height="120" fill="#FEF7E0" stroke="#F9AB00" class="box" filter="url(#shadow)"/>
+  <line x1="360" y1="950" x2="360" y2="1020" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="610" y="950" class="title" fill="#F9AB00">6. Decision — How many distinct RPM sweeps does this sample have?</text>
+  <text x="380" y="985" class="text">• Exactly 1 RPM   →   no flow curve possible   →   assume Newtonian</text>
+  <text x="380" y="1010" class="text">• ≥ 2 RPMs   →   fit a power-law to the RPM-dependent amplitude</text>
+  <g transform="translate(0 0)">
+    <circle cx="280" cy="970" r="28" class="icon-bg" stroke="#F9AB00"/>
+    <circle cx="280" cy="970" r="22" fill="none" stroke="#FEEFC3" stroke-width="2"/>
+    <polygon points="280,956 296,970 280,984 264,970" fill="none" stroke="#F9AB00" stroke-width="2"/>
+    <text x="280" y="975" font="600 14px Arial" text-anchor="middle" fill="#F9AB00">?</text>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 7A  NEWTONIAN BRANCH         (LEFT)                             -->
+  <!-- ============================================================== -->
+  <rect x="80" y="1060" width="541" height="170" fill="#E8F0FE" stroke="#1A73E8" class="box" filter="url(#shadow)"/>
+  <line x1="207" y1="1120" x2="207" y2="1210" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="350" y="1095" class="title" fill="#1A73E8">7A. Newtonian Branch  (single RPM)</text>
+  <text x="230" y="1125" class="text">• Report  η  =  μ_app  (from step 5A)</text>
+  <text x="230" y="1148" class="text">• Force flow index  n = 1,   K  =  η · 1e-3   (Pa·s)</text>
+  <text x="230" y="1171" class="text">• τ(γ̇) = η · γ̇   (linear flow curve)</text>
+  <text x="230" y="1194" class="small">label = "Newtonian (single RPM)"</text>
+  <text x="230" y="1215" class="small">cannot distinguish thinning / thickening — need ≥ 2 RPMs</text>
+  <g transform="translate(0 0)">
+    <circle cx="135" cy="1140" r="28" class="icon-bg" stroke="#1A73E8"/>
+    <circle cx="135" cy="1140" r="22" fill="none" stroke="#D2E3FC" stroke-width="2"/>
+    <line x1="120" y1="1155" x2="150" y2="1125" class="icon-line" stroke="#1A73E8"/>
+    <line x1="118" y1="1157" x2="152" y2="1157" class="icon-line" stroke="#1A73E8"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 7B  POWER-LAW BRANCH         (RIGHT)                            -->
+  <!-- ============================================================== -->
+  <rect x="680" y="1060" width="541" height="170" fill="#FCE8E6" stroke="#D93025" class="box" filter="url(#shadow)"/>
+  <line x1="807" y1="1120" x2="807" y2="1210" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="950" y="1095" class="title" fill="#D93025">7B. Power-Law Branch  (≥ 2 RPMs)</text>
+  <text x="830" y="1125" class="text">• Log-log fit:   ln A  =  ln A₀ + (n − 1)·ln γ̇</text>
+  <text x="830" y="1148" class="text">• Recover flow index  n  and consistency  K  (Pa·s^n)</text>
+  <text x="830" y="1171" class="text">• η_app(γ̇) = K·γ̇^(n−1),   τ(γ̇) = K·γ̇^n</text>
+  <text x="830" y="1194" class="small">anchor K from μ_app at γ̇_min</text>
+  <text x="830" y="1215" class="small">log-log R² reports flow-curve quality</text>
+  <g transform="translate(0 0)">
+    <circle cx="735" cy="1140" r="28" class="icon-bg" stroke="#D93025"/>
+    <circle cx="735" cy="1140" r="22" fill="none" stroke="#FAD2CF" stroke-width="2"/>
+    <path d="M722 1155 Q734 1132 750 1126" class="icon-line" stroke="#D93025"/>
+    <line x1="720" y1="1157" x2="752" y2="1157" class="icon-line" stroke="#D93025"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 8  CLASSIFY  (LEFT, joins both branches)                        -->
+  <!-- ============================================================== -->
+  <rect x="80" y="1270" width="541" height="170" fill="#FCE8E6" stroke="#D93025" class="box" filter="url(#shadow)"/>
+  <line x1="207" y1="1330" x2="207" y2="1420" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="350" y="1305" class="title" fill="#D93025">8. Classify Rheology Regime</text>
+  <text x="230" y="1335" class="text">• n &gt; 1.05    →   shear-thickening</text>
+  <text x="230" y="1358" class="text">• 0.95 ≤ n ≤ 1.05    →   Newtonian</text>
+  <text x="230" y="1381" class="text">• n &lt; 0.95    →   shear-thinning</text>
+  <text x="230" y="1404" class="text">• n → 0    →   yield-stress / gel-like</text>
+  <text x="230" y="1427" class="small">threshold band ±5 % around n = 1</text>
+  <g transform="translate(0 0)">
+    <circle cx="135" cy="1345" r="28" class="icon-bg" stroke="#D93025"/>
+    <circle cx="135" cy="1345" r="22" fill="none" stroke="#FAD2CF" stroke-width="2"/>
+    <line x1="120" y1="1358" x2="150" y2="1332" class="icon-line" stroke="#D93025"/>
+    <line x1="120" y1="1358" x2="150" y2="1358" class="icon-line" stroke="#D93025"/>
+    <path d="M120 1358 Q135 1358 150 1332" class="icon-line" stroke="#D93025" stroke-dasharray="3 3"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- 9  REPORT  (RIGHT)                                              -->
+  <!-- ============================================================== -->
+  <rect x="680" y="1270" width="541" height="170" fill="#F1F3F4" stroke="#5F6368" class="box" filter="url(#shadow)"/>
+  <line x1="807" y1="1330" x2="807" y2="1420" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="950" y="1305" class="title" fill="#5F6368">9. Final Rheology Report</text>
+  <text x="830" y="1335" class="text">• Regime label  +  (n,  K,  η_app(γ̇),  τ(γ̇))</text>
+  <text x="830" y="1358" class="text">• Predicted flow curve overlaid on measurement</text>
+  <text x="830" y="1381" class="text">• Optional parity vs Brookfield reference (if known)</text>
+  <text x="830" y="1404" class="text">• Stored to  outputs/  +  per-sample rheogram PNG</text>
+  <text x="830" y="1427" class="small">feeds downstream BO / formulation discovery loop</text>
+  <g transform="translate(0 0)">
+    <circle cx="735" cy="1345" r="28" class="icon-bg" stroke="#5F6368"/>
+    <circle cx="735" cy="1345" r="22" fill="none" stroke="#E8EAED" stroke-width="2"/>
+    <rect x="724" y="1332" width="22" height="26" fill="none" stroke="#5F6368" stroke-width="2" rx="2"/>
+    <line x1="728" y1="1340" x2="742" y2="1340" class="icon-line" stroke="#5F6368"/>
+    <line x1="728" y1="1346" x2="742" y2="1346" class="icon-line" stroke="#5F6368"/>
+    <line x1="728" y1="1352" x2="738" y2="1352" class="icon-line" stroke="#5F6368"/>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- LINEAR / BRANCHING CONNECTORS                                   -->
+  <!-- ============================================================== -->
+  <!-- 1 → 2 → 3 → 4  (straight stack) -->
+  <path d="M610 190 V220" class="arrow"/>
+  <path d="M610 350 V380" class="arrow"/>
+  <path d="M610 510 V540" class="arrow"/>
+  <!-- 4 splits to 5A (left) and 5B (right) -->
+  <path d="M610 690 V705 H350 V720" class="arrow"/>
+  <path d="M610 690 V705 H950 V720" class="arrow"/>
+  <!-- 5A → 6 (decision) -->
+  <path d="M350 880 V895 H460 V910" class="arrow"/>
+  <!-- 5B → 6 (feeds stress into decision regardless of branch) -->
+  <path d="M950 880 V895 H760 V910" class="arrow-branch"/>
+  <!-- 6 → 7A (left branch) -->
+  <path d="M460 1030 V1045 H350 V1060" class="arrow"/>
+  <!-- 6 → 7B (right branch) -->
+  <path d="M760 1030 V1045 H950 V1060" class="arrow"/>
+  <!-- 7A → 8 (classify) -->
+  <path d="M350 1230 V1270" class="arrow"/>
+  <!-- 7B → 8 (right-down-left to classify) -->
+  <path d="M950 1230 V1250 H350 V1270" class="arrow-branch"/>
+  <!-- 8 → 9 -->
+  <path d="M621 1355 H680" class="arrow"/>
+  <!-- 5B → 9 (stress measurement appears directly in the report) -->
+  <path d="M950 880 V900 H1140 V1270" class="arrow-branch"/>
+
+  <!-- ============================================================== -->
+  <!-- LEGEND  (top-right)                                             -->
+  <!-- ============================================================== -->
+  <g transform="translate(960 60)">
+    <rect x="0" y="0" width="250" height="118" rx="10" ry="10" fill="#FFFFFF" stroke="#DADCE0" stroke-width="1"/>
+    <text x="125" y="22" font="600 16px Google Sans, Arial, sans-serif" fill="#202124" text-anchor="middle">Legend</text>
+    <line x1="14" y1="44" x2="46" y2="44" stroke="#3C4043" stroke-width="2"/>
+    <text x="54" y="49" font="14px Google Sans, Arial, sans-serif" fill="#3C4043">main data flow</text>
+    <line x1="14" y1="68" x2="46" y2="68" stroke="#5F6368" stroke-width="2" stroke-dasharray="6 4"/>
+    <text x="54" y="73" font="14px Google Sans, Arial, sans-serif" fill="#3C4043">auxiliary / informational</text>
+    <text x="14" y="100" class="calib">"calibrated"  ≡ reused from the build pipeline</text>
+  </g>
+
+</svg>
+"""
+
+
+def main() -> None:
+    script_dir = Path(__file__).resolve().parent
+    output_path = (
+        Path(sys.argv[1]).resolve()
+        if len(sys.argv) > 1
+        else script_dir / "New_sample_inference_pipeline.svg"
+    )
+    output_path.write_text(SVG_CONTENT, encoding="utf-8")
+    print(f"SVG generated at: {output_path}")
+
+
+if __name__ == "__main__":
+    main()

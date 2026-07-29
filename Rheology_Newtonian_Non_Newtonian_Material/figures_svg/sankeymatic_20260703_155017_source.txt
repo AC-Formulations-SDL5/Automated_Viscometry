@@ -1,0 +1,85 @@
+// SankeyMATIC diagram inputs - Saved: 7/3/2026, 3:50:17 PM
+// https://sankeymatic.com/build/
+
+// === Nodes and Flows ===
+
+Direct Control [1] Python \n 64-bit
+Direct Control [1] Python \n 32-bit
+
+Workflow Design [1] Python \n 64-bit
+Workflow Design [1] Python \n 32-bit
+
+Execution \n Management [1] Python \n 64-bit
+Execution \n Management [1] Python \n 32-bit
+
+Python \n 64-bit [1] Cartesian Motion \n (CNC)
+Python \n 64-bit [1] Cone-Shaped \nTorquemeter
+Python \n 64-bit [1] Washing \n Module
+
+Python \n 32-bit [1] Cartesian Motion \n (CNC)
+Python \n 32-bit [1] Cone-Shaped \nTorquemeter
+Python \n 32-bit [1] Washing \n Module
+
+Cartesian Motion \n (CNC) [1] Workflow \n Module
+Cone-Shaped \nTorquemeter [1] Workflow \n Module
+Washing \n Module [1] Workflow \n Module
+
+Workflow \n Module [1] Data-Analysis \n Pipeline
+
+Data-Analysis \n Pipeline [1] Rheology \n Behavior
+Data-Analysis \n Pipeline [1] Stress \n Shear-Rate
+Data-Analysis \n Pipeline [1] Power-Law \n Equation
+
+// === Settings ===
+
+size w 2000
+ h 800
+margin l 12
+ r 12
+ t 0
+ b 0
+bg color #ffffff
+ transparent N
+node w 12
+ h 45
+ spacing 29
+ border 0
+ theme a
+ color #777777
+ opacity 1
+flow curvature 0.38
+ inheritfrom none
+ color #999999
+ opacity 0.2
+layout order automatic
+ justifyorigins Y
+ justifyends N
+ reversegraph N
+ attachincompletesto leading
+labels color #000000
+ hide N
+ highlight 0
+ fontface sans-serif
+ linespacing 0.55
+ relativesize 100
+ magnify 100
+labelname appears Y
+ size 30
+ weight 400
+labelvalue appears N
+ fullprecision Y
+ position after
+ weight 400
+labelposition autoalign 1
+ scheme per_stage
+ first after
+ breakpoint 7
+value format ',.'
+ prefix ''
+ suffix ''
+themeoffset a 8
+ b 0
+ c 0
+ d 0
+meta mentionsankeymatic N
+ listimbalances Y

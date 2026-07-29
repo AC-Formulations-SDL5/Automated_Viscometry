@@ -1,0 +1,133 @@
+[
+  {
+    "sid": "/abstract",
+    "title": "Abstract",
+    "level": 1,
+    "children": []
+  },
+  {
+    "sid": "/1-introduction",
+    "title": "1. Introduction",
+    "level": 1,
+    "children": []
+  },
+  {
+    "sid": "/2-methods",
+    "title": "2. Methods",
+    "level": 1,
+    "children": [
+      {
+        "sid": "/21-hardware-architecture-and-automated-workflow",
+        "title": "2.1 Hardware Architecture and Automated Workflow",
+        "level": 2,
+        "parent": "/2-methods",
+        "children": []
+      },
+      {
+        "sid": "/22-physics-informed-rheological-framework",
+        "title": "2.2 Physics-Informed Rheological Framework",
+        "level": 2,
+        "parent": "/2-methods",
+        "children": []
+      },
+      {
+        "sid": "/23-data-analysis-pipeline-from-raw-data-to-rheological-behaviour",
+        "title": "2.3 Data-Analysis Pipeline: from Raw Data to Rheological Behaviour",
+        "level": 2,
+        "parent": "/2-methods",
+        "children": [
+          {
+            "sid": "/231-signal-transformation-and-scaling-diagnosis",
+            "title": "2.3.1 Signal transformation and scaling diagnosis",
+            "level": 3,
+            "parent": "/23-data-analysis-pipeline-from-raw-data-to-rheological-behaviour",
+            "children": []
+          },
+          {
+            "sid": "/232-model-selection-in-physical-space",
+            "title": "2.3.2 Model selection in physical space",
+            "level": 3,
+            "parent": "/23-data-analysis-pipeline-from-raw-data-to-rheological-behaviour",
+            "children": []
+          },
+          {
+            "sid": "/233-universality-of-geometry-shape-and-fixed-hc-production-fitting",
+            "title": "2.3.3 Universality of geometry shape and fixed-hc production fitting",
+            "level": 3,
+            "parent": "/23-data-analysis-pipeline-from-raw-data-to-rheological-behaviour",
+            "children": []
+          },
+          {
+            "sid": "/234-calibration-equations-and-constitutive-extension",
+            "title": "2.3.4 Calibration equations and constitutive extension",
+            "level": 3,
+            "parent": "/23-data-analysis-pipeline-from-raw-data-to-rheological-behaviour",
+            "children": []
+          }
+        ]
+      },
+      {
+        "sid": "/24-software-orchestration",
+        "title": "2.4 Software Orchestration",
+        "level": 2,
+        "parent": "/2-methods",
+        "children": []
+      }
+    ]
+  },
+  {
+    "sid": "/3-results-and-discussion",
+    "title": "3. Results and Discussion",
+    "level": 1,
+    "children": [
+      {
+        "sid": "/31-acquisition-performance-and-reproducibility",
+        "title": "3.1 Acquisition Performance and Reproducibility",
+        "level": 2,
+        "parent": "/3-results-and-discussion",
+        "children": []
+      },
+      {
+        "sid": "/32-material-performance-newtonian-and-non-newtonian-materials",
+        "title": "3.2 Material Performance: Newtonian and Non-Newtonian Materials",
+        "level": 2,
+        "parent": "/3-results-and-discussion",
+        "children": [
+          {
+            "sid": "/321-lubricant-newtonian-anchor",
+            "title": "3.2.1 Lubricant (Newtonian Anchor)",
+            "level": 3,
+            "parent": "/32-material-performance-newtonian-and-non-newtonian-materials",
+            "children": []
+          },
+          {
+            "sid": "/322-rheology-modifier-materials",
+            "title": "3.2.2 Rheology Modifier Materials",
+            "level": 3,
+            "parent": "/32-material-performance-newtonian-and-non-newtonian-materials",
+            "children": []
+          },
+          {
+            "sid": "/323-thermal-interface-materials",
+            "title": "3.2.3 Thermal Interface Materials",
+            "level": 3,
+            "parent": "/32-material-performance-newtonian-and-non-newtonian-materials",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "sid": "/4-conclusion",
+    "title": "4. Conclusion",
+    "level": 1,
+    "children": []
+  },
+  {
+    "sid": "/5-supplementary-information",
+    "title": "5. Supplementary Information",
+    "level": 1,
+    "children": []
+  }
+]
