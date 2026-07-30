@@ -971,8 +971,7 @@ body.running .header-sweep {
 }
 
 .controls-right-stack .calibration-card,
-.controls-right-stack .tracking-card,
-.controls-right-stack .live-viscosity-card {
+.controls-right-stack .tracking-card {
     width: 100%;
     align-self: stretch;
 }
@@ -1194,7 +1193,9 @@ body.running .header-sweep {
 }
 
 .characterization-flow-plot {
-    min-height: 220px;
+    width: 100%;
+    min-height: 340px;
+    height: 360px;
     margin-top: 6px;
 }
 
@@ -1350,14 +1351,6 @@ body.running .header-sweep {
     cursor: not-allowed;
     pointer-events: none;
     filter: grayscale(0.25);
-}
-
-.live-viscosity-table {
-    margin-top: 0;
-}
-
-.live-viscosity-card .plot-empty {
-    margin: 8px 0 0;
 }
 
 .predicted-viscosity-info-card .predicted-viscosity-explainer {
