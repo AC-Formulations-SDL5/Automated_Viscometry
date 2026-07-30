@@ -429,8 +429,6 @@ class ViscometryDashboard {
             dwellZSections: document.getElementById("dwell-z-sections"),
             dwellTimeCellLabel: document.getElementById("dwell-time-cell-label"),
             predictedViscosityChartsCard: document.getElementById("predicted-viscosity-charts-card"),
-            liveViscosityTableBody: document.getElementById("live-viscosity-table-body"),
-            liveViscosityEmpty: document.getElementById("live-viscosity-empty"),
             predictedViscosityCharts: document.getElementById("predicted-viscosity-charts"),
             predictedViscosityChartsEmpty: document.getElementById("predicted-viscosity-charts-empty"),
             characterizationStatusStrip: document.getElementById("characterization-status-strip"),
@@ -1010,7 +1008,6 @@ class ViscometryDashboard {
         } else if (tabId === "controls-tab") {
             this.refreshLivePlots({ force: true });
             this.refreshDwellTimePlot({ force: true });
-            this.renderLiveViscosityPredictionsTable();
             this.updateGauge(this.currentRPM, { force: true });
         } else if (tabId === "discovery-tab") {
             this.validateDiscoveryCells();
@@ -3475,7 +3472,6 @@ class ViscometryDashboard {
         if (this.el.predictedViscosityCharts) {
             this.el.predictedViscosityCharts.innerHTML = "";
         }
-        this.renderLiveViscosityPredictionsTable();
         this.measurementsByCell.clear();
         this.latestTorqueByCell.clear();
         this.hitPoints.clear();
@@ -7074,7 +7070,6 @@ class ViscometryDashboard {
             }
         });
         this.renderPredictedViscosityCharts();
-        this.renderLiveViscosityPredictionsTable();
     }
 
     _ingestPredictedViscosityUpdate(payload) {
@@ -7172,81 +7167,11 @@ class ViscometryDashboard {
         if (this.activeTabId === "characterization-tab" || this.activeTabId === "data-processing-tab") {
             this.renderPredictedViscosityCharts();
         }
-        if (this.activeTabId === "controls-tab") {
-            this.renderLiveViscosityPredictionsTable();
-        }
     }
 
     _fmtPredictedViscosity3(value) {
         const n = Number(value);
         return Number.isFinite(n) ? n.toFixed(3) : "—";
-    }
-
-    renderLiveViscosityPredictionsTable() {
-        if (this.activeTabId !== "controls-tab" || this._isDiscoveryRunActive()) {
-            return;
-        }
-        const tbody = this.el.liveViscosityTableBody;
-        if (!tbody) {
-            return;
-        }
-
-        const contentMap = this.latestControlSettings?.cell_content_map
-            || this.readControlSettings().cell_content_map
-            || {};
-        const rows = [];
-
-        Object.keys(this.predictedViscosityData)
-            .map((k) => Number(k))
-            .filter((id) => Number.isFinite(id))
-            .sort((a, b) => a - b)
-            .forEach((cellId) => {
-                const rpmMap = this.predictedViscosityData[cellId];
-                if (!rpmMap || typeof rpmMap !== "object") {
-                    return;
-                }
-                const summary = this._getPredictedViscositySummary(cellId);
-                Object.keys(rpmMap)
-                    .filter((k) => this._isPredictedViscosityRpmKey(k))
-                    .map((k) => ({ key: k, rpm: Number(k) }))
-                    .filter(({ rpm }) => Number.isFinite(rpm))
-                    .sort((a, b) => a.rpm - b.rpm)
-                    .forEach(({ key, rpm }) => {
-                        const result = rpmMap[key];
-                        const label = contentMap[cellId]
-                            ?? contentMap[String(cellId)]
-                            ?? "";
-                        const regime = summary?.regime && summary.regime !== "undetermined"
-                            ? String(summary.regime)
-                            : "—";
-                        const visc = summary?.success && summary?.viscosity_kcp != null
-                            ? this._fmtPredictedViscosity3(summary.viscosity_kcp)
-                            : (result?.success && result?.viscosity_kcp != null
-                                ? this._fmtPredictedViscosity3(result.viscosity_kcp)
-                                : "—");
-                        const r2 = result?.R2 != null && Number.isFinite(Number(result.R2))
-                            ? Number(result.R2).toFixed(3)
-                            : "—";
-                        const status = result?.success
-                            ? (result.provisional ? "Provisional" : "OK")
-                            : (result?.error ? String(result.error) : "—");
-                        const rpmLabel = rpm.toFixed(3);
-                        rows.push(
-                            `<tr><td>${cellId}</td><td>${label || "—"}</td><td class="mono">${rpmLabel}</td>`
-                            + `<td>${regime}</td><td class="mono">${visc}</td><td class="mono">${r2}</td>`
-                            + `<td class="pv-status-cell">${status}</td></tr>`
-                        );
-                    });
-            });
-
-        tbody.innerHTML = rows.join("");
-        if (this.el.liveViscosityEmpty) {
-            this.el.liveViscosityEmpty.classList.toggle("hidden", rows.length > 0);
-        }
-        const table = tbody.closest(".live-viscosity-table");
-        if (table) {
-            table.classList.toggle("hidden", rows.length === 0);
-        }
     }
 
     _normalizeViscosityPredictionMode(mode, legacyEnabled) {
@@ -7741,30 +7666,31 @@ class ViscometryDashboard {
             flowEl.innerHTML = "";
             return;
         }
+        const hoverLabels = rpmLabels.map((label) => label);
         const traces = [
             {
                 x: gamma,
                 y: tau,
-                text: rpmLabels,
-                textposition: "top center",
-                mode: "markers+lines+text",
+                customdata: hoverLabels,
+                mode: "markers+lines",
                 type: "scatter",
                 name: "τ vs γ̇",
                 xaxis: "x",
                 yaxis: "y",
                 showlegend: false,
+                hovertemplate: "%{customdata}<br>γ̇=%{x:.3g} 1/s<br>τ=%{y:.3g} Pa<extra></extra>",
             },
             {
                 x: gamma,
                 y: eta,
-                text: rpmLabels,
-                textposition: "top center",
-                mode: "markers+lines+text",
+                customdata: hoverLabels,
+                mode: "markers+lines",
                 type: "scatter",
                 name: "η vs γ̇",
                 xaxis: "x2",
                 yaxis: "y2",
                 showlegend: false,
+                hovertemplate: "%{customdata}<br>γ̇=%{x:.3g} 1/s<br>η=%{y:.3g} cP<extra></extra>",
             },
         ];
         const annotations = [
@@ -7801,11 +7727,11 @@ class ViscometryDashboard {
                 : "—";
             annotations.push({
                 text: `K_stress = ${kStress} Pa·sⁿ · n_stress = ${nStress} · R² = ${r2Stress}`,
-                xref: "x",
-                yref: "y",
-                x: gamma[gamma.length - 1],
-                y: Math.max(...tau),
-                xanchor: "right",
+                xref: "paper",
+                yref: "paper",
+                x: 0.02,
+                y: 0.98,
+                xanchor: "left",
                 yanchor: "top",
                 showarrow: false,
                 font: { size: 10 },
@@ -7813,17 +7739,61 @@ class ViscometryDashboard {
                 borderpad: 4,
             });
         }
+        const positive = (arr) => arr.filter((v) => Number.isFinite(v) && v > 0);
+        const logRange = (arr, pad = 0.15) => {
+            const vals = positive(arr);
+            if (vals.length === 0) {
+                return undefined;
+            }
+            const lo = Math.min(...vals);
+            const hi = Math.max(...vals);
+            const logLo = Math.log10(lo);
+            const logHi = Math.log10(hi);
+            const span = Math.max(logHi - logLo, 0.2);
+            return [logLo - pad * span, logHi + pad * span];
+        };
+        const gammaRange = logRange(gamma);
+        const tauRange = logRange(tau);
+        const etaRange = logRange(eta);
         const pvBase = this._buildLivePlotLayout({ yTitle: "τ (Pa)", showLegend: false });
         const layout = {
             ...pvBase,
             grid: { rows: 1, columns: 2, pattern: "independent" },
             showlegend: false,
+            autosize: true,
+            height: 360,
             margin: { t: 36, r: 16, b: 40, l: 52 },
             annotations,
-            xaxis: { ...pvBase.xaxis, title: "γ̇ (1/s)", type: "log" },
-            yaxis: { ...pvBase.yaxis, title: "τ (Pa)", type: "log" },
-            xaxis2: { ...pvBase.xaxis, title: "γ̇ (1/s)", type: "log", anchor: "y2" },
-            yaxis2: { ...pvBase.yaxis, title: "η (cP)", type: "log", anchor: "x2" },
+            xaxis: {
+                ...pvBase.xaxis,
+                title: "γ̇ (1/s)",
+                type: "log",
+                range: gammaRange,
+                autorange: !gammaRange,
+            },
+            yaxis: {
+                ...pvBase.yaxis,
+                title: "τ (Pa)",
+                type: "log",
+                range: tauRange,
+                autorange: !tauRange,
+            },
+            xaxis2: {
+                ...pvBase.xaxis,
+                title: "γ̇ (1/s)",
+                type: "log",
+                range: gammaRange,
+                autorange: !gammaRange,
+                anchor: "y2",
+            },
+            yaxis2: {
+                ...pvBase.yaxis,
+                title: "η (cP)",
+                type: "log",
+                range: etaRange,
+                autorange: !etaRange,
+                anchor: "x2",
+            },
         };
         Plotly.react(flowEl, traces, layout, { responsive: true, displayModeBar: false });
     }
