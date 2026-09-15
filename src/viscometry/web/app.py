@@ -150,7 +150,7 @@ def _dedupe_experiment_history_list(entries: List[dict]) -> List[dict]:
 
 
 class ViscometryWebInterface:
-    def __init__(self, port=5001):
+    def __init__(self, port=5002):
         self.project_root = str(WEB_TEMPLATES.parent)
         template_folder = str(WEB_TEMPLATES)
         static_folder = str(WEB_STATIC)
@@ -2639,4 +2639,4 @@ class ViscometryWebInterface:
         return thread
 
 # Global instance for easy access
-web_interface = ViscometryWebInterface(port=5001)
+web_interface = ViscometryWebInterface(port=5002)

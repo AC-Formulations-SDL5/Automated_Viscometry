@@ -243,7 +243,7 @@ python simulate_viscometry.py
 python orchestration_control.py
 
 # 6. Access web interface
-# Navigate to http://localhost:5001
+# Navigate to http://localhost:5002
 ```
 
 ### **Hardware Setup**
@@ -305,7 +305,7 @@ campaign = ViscoMeasurementCampaign(
 # Execute with real-time monitoring
 results = campaign.execute(
     web_interface=True,
-    port=5001,
+    port=5002,
     save_results=True
 )
 ```
@@ -313,7 +313,7 @@ results = campaign.execute(
 ### **Real-Time Monitoring**
 ```python
 # Start web interface for live monitoring
-interface = ViscometryWebInterface(port=5001)
+interface = ViscometryWebInterface(port=5002)
 interface.start_monitoring(
     update_rate=100,  # 10 Hz updates
     live_plotting=True,

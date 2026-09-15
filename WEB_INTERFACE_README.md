@@ -27,7 +27,7 @@ Or: `python -m viscometry` (from repo root, with `pip install -e .` or `PYTHONPA
 
 3. Open your web browser and navigate to:
 ```
-http://localhost:5001
+http://localhost:5002
 ```
 
 4. Use the **Run Control** panel in the sidebar to choose the mode and runtime parameters, then press **Start Run**.

@@ -280,10 +280,10 @@ def main():
     
     # Start web interface
     try:
-        print("Starting web interface on http://localhost:5001")
+        print("Starting web interface on http://localhost:5002")
         web_thread = web_interface.start_in_thread(debug=False)
         print("Web interface started successfully!")
-        print("\nOpen your browser to: http://localhost:5001")
+        print("\nOpen your browser to: http://localhost:5002")
         time.sleep(3)  # Give web server time to start
     except Exception as e:
         print(f"Failed to start web interface: {e}")
@@ -320,7 +320,7 @@ def main():
         
         print("\n" + "="*60)
         print("SIMULATION RUNNING")
-        print("Open http://localhost:5001 to view the web interface")
+        print("Open http://localhost:5002 to view the web interface")
         print("Press Ctrl+C to stop")
         print("="*60)
         

@@ -33,12 +33,12 @@ NUM_CELLS = 6
 BASE_Y = 62
 Y_OFFSET = 67                  
 PYTHON32 = ".\\.venv32\\Scripts\\python.exe"
-VISCO_PORT = "COM6"
+VISCO_PORT = "COM6"  # Viscometer
 VISCO_BAUD = 115200
 VISCO_TOUT = 1.0
 SPINDLE_K = 992.47
 # ESP32 Pump Configuration
-ESP32_PORT = "COM7"                # "COM8"
+ESP32_PORT = "COM7"  # Pump / motors
 ESP32_BAUD = 115200 #9600
 PUMP_VIRTUAL = False
 # Wash / pump timing (seconds)
