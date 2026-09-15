@@ -89,7 +89,7 @@ class OrchestrationController:
             print("✓ CNC initialized and homed")
             
             # Initialize Pump System  
-            self.pump = PumpESP32("COM11", 115200, virtual=virtual_mode)
+            self.pump = PumpESP32("COM7", 115200, virtual=virtual_mode)
             self.pump.open()
             print("✓ Pump system initialized")
             

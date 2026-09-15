@@ -22,7 +22,7 @@ if str(_ROOT / "src") not in sys.path:
 from viscometry.hardware.pump import PumpESP32
 
 # Configuration
-ESP32_PORT = "COM11" 
+ESP32_PORT = "COM7" 
 ESP32_BAUD = 115200
 TEST_VIRTUAL = False
 

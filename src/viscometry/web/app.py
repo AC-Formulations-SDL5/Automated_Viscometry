@@ -188,7 +188,7 @@ class ViscometryWebInterface:
         self.testing_session_connected = False
         self.testing_session_last_error: Optional[str] = None
         self.pump_controller = None
-        self.testing_pump_port = os.getenv('VISCOMETRY_PUMP_PORT', 'COM11')
+        self.testing_pump_port = os.getenv('VISCOMETRY_PUMP_PORT', 'COM7')
         self.testing_pump_baud = int(os.getenv('VISCOMETRY_PUMP_BAUD', '115200'))
         self.testing_pump_virtual = os.getenv('VISCOMETRY_PUMP_VIRTUAL', '0') == '1'
         self.experiment_history_path = str(EXPERIMENT_HISTORY_PATH)

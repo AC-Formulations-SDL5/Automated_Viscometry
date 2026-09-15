@@ -2,7 +2,7 @@ import time
 from move_to_locations import PumpESP32
 
 # Device settings (same as main.py)
-ESP32_PORT = "COM11"  # Updated to match all_cells_with_wash.py
+ESP32_PORT = "COM7"  # Updated to match all_cells_with_wash.py
 ESP32_BAUD = 115200   # Updated to match all_cells_with_wash.py
 PUMP_VIRTUAL = False             # Set to False for actual hardware
 # Updated timing for new washing sequence: 10s pump + 60s DC motor + 15s rinse = 85s total

@@ -20,7 +20,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src', 'python_64'))
 from move_to_locations import PumpESP32
 
 # Configuration
-ESP32_PORT = "COM11" 
+ESP32_PORT = "COM7" 
 ESP32_BAUD = 115200
 TEST_VIRTUAL = False
 

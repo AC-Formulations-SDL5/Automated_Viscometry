@@ -39,7 +39,7 @@ VISCO_BAUD = 115200
 VISCO_TOUT = 1.0
 SPINDLE_K = 992.47
 # ESP32 Pump Configuration
-ESP32_PORT = "COM11"                # "COM8"
+ESP32_PORT = "COM7"                # "COM8"
 ESP32_BAUD = 115200 #9600
 PUMP_VIRTUAL = False
 
