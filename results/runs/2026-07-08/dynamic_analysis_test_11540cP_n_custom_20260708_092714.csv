@@ -1,0 +1,34 @@
+# Dynamic Analysis - Mode: CUSTOM
+# Experiment Name: test_11540cP_n
+# Test RPMs (global fallback): [4.3]
+# Timestamp: 20260708_092714
+"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"
+# Feedback Control: ENABLED
+"# Feedback R2 Thresholds: Drag = 0.975, CV = 0.975, Slope = 0.975, Confidence = 0.8"
+"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = 0.2/0.2/0.2, R2(Drag/CV/Slope) = 0.2/0.2/0.2"
+"# Low-torque liquid-contact hunt: per RPM at each Z, skip RPM when first sample at elapsed >= 5.0s is < 25.00% (regular runs only); skipped RPM rows use <25% and SKIPPED metrics"
+# Characterization mode: on
+
+# Cell termination methods: {7: 'hit_detected'}
+row,cell,Cell_Label,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%,Rotational_Drag,Hit_Detected
+2,7,,-65.940,4.3,15.03,39.690,9.230233,False
+2,7,,-65.960,4.3,15.03,40.970,9.527907,False
+2,7,,-65.980,4.3,15.04,42.130,9.797674,False
+2,7,,-66.000,4.3,15.06,43.520,10.120930,False
+2,7,,-66.020,4.3,15.04,44.850,10.430233,False
+2,7,,-66.040,4.3,15.04,46.500,10.813953,False
+2,7,,-66.060,4.3,15.04,48.020,11.167442,False
+2,7,,-66.080,4.3,15.03,49.990,11.625581,False
+2,7,,-66.100,4.3,15.04,51.900,12.069767,False
+2,7,,-66.120,4.3,15.03,54.270,12.620930,False
+2,7,,-66.140,4.3,20.00,56.580,13.158140,False
+2,7,,-66.160,4.3,15.04,59.650,13.872093,False
+2,7,,-66.180,4.3,20.10,62.570,14.551163,False
+2,7,,-66.200,4.3,35.07,66.120,15.376744,False
+2,7,,-66.220,4.3,35.08,66.510,15.467442,True
+2,7,,-66.240,4.3,35.08,66.860,15.548837,True
+2,7,,-66.260,4.3,35.08,67.010,15.583721,False
+2,7,,-66.280,4.3,35.08,66.330,15.425581,False
+2,7,,-66.300,4.3,35.07,66.290,15.416279,True
+2,7,,-66.320,4.3,35.01,65.360,15.200000,True
+2,7,,-66.340,4.3,35.08,63.690,14.811628,True

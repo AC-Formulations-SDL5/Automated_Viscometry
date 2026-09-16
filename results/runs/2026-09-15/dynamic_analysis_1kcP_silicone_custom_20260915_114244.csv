@@ -1,0 +1,38 @@
+# Dynamic Analysis - Mode: CUSTOM
+# Experiment Name: 1kcP_silicone
+# Test RPMs (global fallback): [43.0]
+# Per-cell RPM overrides: {1: [43.0]}
+# Timestamp: 20260915_114244
+"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"
+# Feedback Control: ENABLED
+"# Feedback R2 Thresholds: Drag = 0.975, CV = 0.975, Slope = 0.975, Confidence = 0.8"
+"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = 0.2/0.2/0.2, R2(Drag/CV/Slope) = 0.2/0.2/0.2"
+"# Low-torque liquid-contact hunt: per RPM at each Z, skip RPM when first sample at elapsed >= 5.0s is < 25.00% (regular runs only); skipped RPM rows use <25% and SKIPPED metrics"
+# Characterization mode: on
+
+# Cell termination methods: {2: 'hit_detected'}
+row,cell,Cell_Label,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%,Rotational_Drag,Hit_Detected
+1,2,,-65.580,43.0,15.04,34.720,0.807442,False
+1,2,,-65.600,43.0,15.05,35.640,0.828837,False
+1,2,,-65.620,43.0,15.05,36.460,0.847907,False
+1,2,,-65.640,43.0,15.07,37.360,0.868837,False
+1,2,,-65.660,43.0,15.07,38.190,0.888140,False
+1,2,,-65.680,43.0,15.07,39.370,0.915581,False
+1,2,,-65.700,43.0,15.06,40.380,0.939070,False
+1,2,,-65.720,43.0,15.07,41.550,0.966279,False
+1,2,,-65.740,43.0,15.06,42.720,0.993488,False
+1,2,,-65.760,43.0,15.08,44.070,1.024884,False
+1,2,,-65.780,43.0,15.04,45.340,1.054419,False
+1,2,,-65.800,43.0,15.03,47.030,1.093721,False
+1,2,,-65.820,43.0,15.03,48.520,1.128372,False
+1,2,,-65.840,43.0,15.03,50.390,1.171860,False
+1,2,,-65.860,43.0,15.06,52.180,1.213488,False
+1,2,,-65.880,43.0,15.02,54.360,1.264186,False
+1,2,,-65.900,43.0,15.03,56.550,1.315116,False
+1,2,,-65.920,43.0,15.02,59.310,1.379302,False
+1,2,,-65.940,43.0,15.03,61.970,1.441163,False
+1,2,,-65.960,43.0,15.03,65.160,1.515349,False
+1,2,,-65.980,43.0,15.02,68.610,1.595581,False
+1,2,,-66.000,43.0,20.10,70.500,1.639535,True
+1,2,,-66.020,43.0,20.08,70.770,1.645814,True
+1,2,,-66.040,43.0,35.08,70.580,1.641395,True
