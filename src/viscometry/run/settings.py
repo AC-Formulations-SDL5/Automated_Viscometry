@@ -104,6 +104,7 @@ DISCOVERY_ETA_GUESS_MAP: Dict[int, Optional[float]] = {}
 DISCOVERY_PROBE_DURATION_S = 60.0
 DISCOVERY_DUCK_TORQUE_PCT = 80.0
 DISCOVERY_HANDOFF_PAUSE_S = 10.0
+DISCOVERY_PROCEED_WITH_RUN = True
 
 
 def _is_calibration_like_run() -> bool:

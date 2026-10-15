@@ -137,6 +137,7 @@ _RUNTIME_SETTING_NAMES = (
     "DISCOVERY_PROBE_DURATION_S",
     "DISCOVERY_DUCK_TORQUE_PCT",
     "DISCOVERY_HANDOFF_PAUSE_S",
+    "DISCOVERY_PROCEED_WITH_RUN",
     "DISCOVERY_ETA_GUESS_MAP",
     "RECALIBRATION_CELLS",
 )
@@ -235,6 +236,9 @@ def apply_runtime_settings_from_web():
         rs.DISCOVERY_HANDOFF_PAUSE_S = max(0.0, pause_s)
     except (TypeError, ValueError):
         rs.DISCOVERY_HANDOFF_PAUSE_S = 10.0
+    rs.DISCOVERY_PROCEED_WITH_RUN = bool(
+        web_settings.get('discovery_proceed_with_run', rs.DISCOVERY_PROCEED_WITH_RUN)
+    )
     raw_eta_map = web_settings.get('discovery_eta_guess_map', {})
     rs.DISCOVERY_ETA_GUESS_MAP = {}
     if isinstance(raw_eta_map, dict):
@@ -705,19 +709,41 @@ def _drain_station1(pump: PumpESP32):
         print("[CONCURRENT] Station 1 drain cancelled due to stop request.")
 
 
+def _overrange_torque_percent(data: Optional[Dict]) -> Optional[float]:
+    """Numeric torque above full scale, or None when the packet is not an overload."""
+    if not isinstance(data, dict):
+        return None
+    try:
+        torque = float(data.get("torque_percent"))
+    except (TypeError, ValueError):
+        return None
+    if torque > 100.0:
+        return torque
+    return None
+
+
 def _read_valid_torque_packet(
     client: ViscometerClient,
     *,
     max_attempts: int = 1,
     retry_delay_s: float = CALIBRATION_READ_RETRY_DELAY_S,
+    accept_overrange: bool = False,
 ) -> Optional[Dict]:
-    """Read viscometer data; retry within a single sample slot when max_attempts > 1."""
+    """Read viscometer data; retry within a single sample slot when max_attempts > 1.
+
+    Discovery probes pass accept_overrange so a torque above 100% is returned as a
+    number. A missing packet still returns None.
+    """
     attempts = max(1, int(max_attempts))
     for attempt in range(1, attempts + 1):
         raise_if_stop_requested()
         try:
             data = client.read_single(timeout=TORQUE_READ_TIMEOUT)
             if data and data.get("torque_valid") and data.get("torque_percent") is not None:
+                return data
+            overrange = _overrange_torque_percent(data) if accept_overrange else None
+            if overrange is not None:
+                print(f"      Over-range torque read: {overrange:.2f}%")
                 return data
             if attempt == 1:
                 torque_valid = data.get("torque_valid") if data else None
@@ -897,6 +923,7 @@ def measure_torque_at_rpm(
     hunting_first_contact_min_pct: Optional[float] = None,
     read_retries_per_slot: int = 1,
     duck_above_pct_on_first_sample: Optional[float] = None,
+    accept_overrange: bool = False,
 ) -> Optional[List[Dict]]:
     """Measure torque at a specific RPM, returning all individual measurements with timestamps.
 
@@ -942,6 +969,7 @@ def measure_torque_at_rpm(
                         client,
                         max_attempts=read_retries_per_slot,
                         retry_delay_s=CALIBRATION_READ_RETRY_DELAY_S,
+                        accept_overrange=accept_overrange,
                     )
                     if data:
                         tp = float(data["torque_percent"])
@@ -1831,6 +1859,39 @@ def _format_hit_point_z(hit_point_z: Optional[float]) -> str:
         return "n/a"
 
 
+def _retract_and_wash_after_in_sample_probe(
+    cnc: CNC_Machine,
+    client: ViscometerClient,
+    pump: Optional[PumpESP32],
+    global_cell: int,
+    exit_reason: str,
+) -> str:
+    """Retract from the sample and wash before leaving a discovery cell."""
+    fill_thread, retracted, reason = _finish_cell_measurement(
+        cnc,
+        client,
+        pump,
+        global_cell,
+        exit_reason,
+        start_wash_prefill=pump is not None,
+    )
+    if reason == "user_stop":
+        return reason
+    if pump and retracted:
+        perform_washing_sequence(cnc, pump, global_cell, fill_thread=fill_thread)
+    elif pump:
+        print(
+            f"Wash skipped for Cell {global_cell}: CNC safe retract failed "
+            f"(exit_reason={reason})"
+        )
+        web_interface.update_status(
+            f"Cell {global_cell}: wash skipped — CNC retract failed"
+        )
+    else:
+        print(f"Warning: Pump not available, skipping washing for Cell {global_cell}")
+    return reason
+
+
 def _merge_discovery_landing_after_descent(
     cell_id: int,
     cell_data: Dict[float, Dict[float, Optional[List[Dict]]]],
@@ -2178,6 +2239,17 @@ def main():
                                     f"Cell {global_cell}: discovery failed ({status}) — skipped"
                                 )
                                 termination_by_cell[global_cell] = f"discovery_{status}"
+                                if status != "uncalibrated_cell":
+                                    leave_reason = _retract_and_wash_after_in_sample_probe(
+                                        cnc,
+                                        client,
+                                        pump,
+                                        global_cell,
+                                        f"discovery_{status}",
+                                    )
+                                    if leave_reason == "user_stop":
+                                        run_ended_early = True
+                                        break
                                 continue
                             try:
                                 from viscometry.discovery.runner import discovery_result_to_web_payload
@@ -2189,14 +2261,52 @@ def main():
                             except Exception:
                                 pass
                             cell_rpms = discovered_rpms
-                            discovery_rpm_for_landing = float(cell_rpms[0])
-                            discovery_handoff_z = discovery_result.get("target_z_mm")
-                            skip_initial_safe_move = True
                             print(
                                 f"  Discovery converged for Cell {global_cell}: "
                                 f"RPM={cell_rpms[0]:.2f}, "
                                 f"status={discovery_result.get('status')}"
                             )
+                            if not DISCOVERY_PROCEED_WITH_RUN:
+                                print(
+                                    f"  Discovery only for Cell {global_cell}: "
+                                    "skipping Z-scan, washing, moving on"
+                                )
+                                web_interface.update_status(
+                                    f"Cell {global_cell}: discovery complete — washing, no Z-scan"
+                                )
+                                leave_reason = _retract_and_wash_after_in_sample_probe(
+                                    cnc,
+                                    client,
+                                    pump,
+                                    global_cell,
+                                    "discovery_only",
+                                )
+                                if leave_reason == "user_stop":
+                                    termination_by_cell[global_cell] = "user_stop"
+                                    run_ended_early = True
+                                    break
+                                termination_by_cell[global_cell] = "discovery_only"
+                                completed_cells.append(global_cell)
+                                snapshot = [
+                                    m for m in web_interface.measurement_data
+                                    if isinstance(m, dict) and int(m.get("cell_id", -1)) == int(global_cell)
+                                ]
+                                web_interface.add_experiment_review_cell(
+                                    global_cell,
+                                    snapshot,
+                                    termination_reason="discovery_only",
+                                    is_partial=False,
+                                    z_level_count=0,
+                                )
+                                web_interface.add_completed_cell(
+                                    global_cell,
+                                    termination_reason="discovery_only",
+                                )
+                                print(f"Cell {global_cell} discovery-only completed")
+                                continue
+                            discovery_rpm_for_landing = float(cell_rpms[0])
+                            discovery_handoff_z = discovery_result.get("target_z_mm")
+                            skip_initial_safe_move = True
                             if discovery_handoff_z is not None:
                                 print(
                                     f"  Discovery handoff: in-sample Z-scan from "
@@ -2218,6 +2328,19 @@ def main():
                                 f"Cell {global_cell}: discovery error — skipped"
                             )
                             termination_by_cell[global_cell] = "discovery_error"
+                            try:
+                                leave_reason = _retract_and_wash_after_in_sample_probe(
+                                    cnc,
+                                    client,
+                                    pump,
+                                    global_cell,
+                                    "discovery_error",
+                                )
+                                if leave_reason == "user_stop":
+                                    run_ended_early = True
+                                    break
+                            except Exception:
+                                traceback.print_exc()
                             continue
 
                     print(f"  RPMs for Cell {global_cell}: {cell_rpms}")

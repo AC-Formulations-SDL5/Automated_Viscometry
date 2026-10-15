@@ -1085,10 +1085,15 @@ class ViscometryDashboard {
         if (options.force) {
             return true;
         }
-        if (this._isDiscoveryTabLocked()) {
+        if (this.activeTabId !== "discovery-tab") {
             return false;
         }
-        return this.activeTabId === "discovery-tab";
+        // A visible discovery tab paints on each sample. The lock flag must not
+        // drop those updates; a hard refresh was the only path that used force.
+        if (this._isDiscoveryRunActive()) {
+            return true;
+        }
+        return !this._isDiscoveryTabLocked();
     }
 
     _shouldSyncMapVisuals() {
@@ -1956,6 +1961,10 @@ class ViscometryDashboard {
         setDiscoveryInput("discovery-probe-duration-s", settings.discovery_probe_duration_s);
         setDiscoveryInput("discovery-duck-torque-pct", settings.discovery_duck_torque_pct);
         setDiscoveryInput("discovery-handoff-pause-s", settings.discovery_handoff_pause_s);
+        const proceedAfterDiscovery = document.getElementById("discovery-proceed-with-run");
+        if (proceedAfterDiscovery && settings.discovery_proceed_with_run !== undefined) {
+            proceedAfterDiscovery.checked = Boolean(settings.discovery_proceed_with_run);
+        }
         if (this.el.discoveryZStartOffsetMm && settings.z_start_offset_mm != null) {
             this.el.discoveryZStartOffsetMm.value = settings.z_start_offset_mm;
         }
@@ -2235,6 +2244,7 @@ class ViscometryDashboard {
             discovery_probe_duration_s: getNum("discovery-probe-duration-s", 60),
             discovery_duck_torque_pct: getNum("discovery-duck-torque-pct", 80),
             discovery_handoff_pause_s: getNum("discovery-handoff-pause-s", 10),
+            discovery_proceed_with_run: getBool("discovery-proceed-with-run", true),
             low_torque_liquid_contact_skip_enabled: false,
             z_step_size: getNum("discovery-z-step-size", -0.02),
             measurement_duration: getNum("discovery-measurement-duration", 40),
@@ -2375,6 +2385,31 @@ class ViscometryDashboard {
             + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`;
     }
 
+    _buildDiscoveryRpmTableHtml(entry) {
+        if (!entry) {
+            return "";
+        }
+        const ladderRows = [30, 40, 50, 60, 70].map((target) => {
+            const rpm = entry[`rpm_${target}`];
+            if (rpm == null) {
+                return "";
+            }
+            const highlight = target === 30 ? " discovery-rpm-highlight" : "";
+            return `<tr class="${highlight.trim()}"><td>${target}%</td><td class="mono">${Number(rpm).toFixed(2)}</td></tr>`;
+        }).filter(Boolean).join("");
+        const discovered = entry.rpm != null
+            ? `<tr class="discovery-rpm-final"><td>Discovered</td><td class="mono">${Number(entry.rpm).toFixed(2)}</td></tr>`
+            : "";
+        if (!ladderRows && !discovered) {
+            return "";
+        }
+        return `
+            <table class="discovery-rpm-table">
+                <thead><tr><th>Torque target</th><th>RPM</th></tr></thead>
+                <tbody>${ladderRows}${discovered}</tbody>
+            </table>`;
+    }
+
     _buildDiscoveryStage2SummaryHtml(entry) {
         if (!entry) {
             return "";
@@ -2385,10 +2420,7 @@ class ViscometryDashboard {
             : "";
         const landing = this._formatDiscoveryLandingChip(entry);
         const landingHtml = `<span class="discovery-landing-chip ${landing.cls}">${this._escapeHtml(landing.text)}</span>`;
-        const ladderRpms = [30, 40, 50, 60, 70].map((t) => {
-            const rpm = entry[`rpm_${t}`];
-            return rpm != null ? `${t}%→${Number(rpm).toFixed(2)}` : null;
-        }).filter(Boolean).join(" · ");
+        const rpmTable = this._buildDiscoveryRpmTableHtml(entry);
         return `
             <div class="summary-discovery-stage2-block">
                 <div><strong>Rheology</strong> ${path}</div>
@@ -2399,7 +2431,7 @@ class ViscometryDashboard {
                     <span>S = <span class="mono">${entry.S != null ? Number(entry.S).toFixed(3) : "—"}</span></span>
                     <span>Landing: ${landingHtml}</span>
                 </div>
-                ${ladderRpms ? `<div class="discovery-ladder-rpm-line">Ladder RPM: ${this._escapeHtml(ladderRpms)}</div>` : ""}
+                ${rpmTable}
             </div>`;
     }
 
@@ -2600,19 +2632,13 @@ class ViscometryDashboard {
             ["S", entry.S != null ? Number(entry.S).toFixed(3) : "—"],
             ["Landing", landing.text],
         ];
-        const ladderRows = [30, 40, 50, 60, 70].map((t) => {
-            const rpm = entry[`rpm_${t}`];
-            if (rpm == null) {
-                return "";
-            }
-            return `<tr><td>${t}%</td><td class="mono">${Number(rpm).toFixed(2)}</td></tr>`;
-        }).filter(Boolean).join("");
+        const rpmTable = this._buildDiscoveryRpmTableHtml(entry);
         return `
             <div class="discovery-rheology-title">Discovery Rheology</div>
             <table class="discovery-rheology-metrics-table">
                 ${rows.map(([k, v]) => `<tr><th>${k}</th><td class="mono">${this._escapeHtml(String(v))}</td></tr>`).join("")}
             </table>
-            ${ladderRows ? `<table class="discovery-rheology-ladder-table"><thead><tr><th>Target</th><th>RPM</th></tr></thead><tbody>${ladderRows}</tbody></table>` : ""}
+            ${rpmTable}
             <div class="discovery-landing-chip ${landing.cls}">${this._escapeHtml(landing.text)}</div>`;
     }
 
@@ -4075,6 +4101,9 @@ class ViscometryDashboard {
     }
 
      _schedulePlotRefresh() {
+        if (this._isDiscoveryRunActive() && this.activeTabId !== "discovery-tab") {
+            this._liveChartsDirty = true;
+        }
         if (this.activeTabId === "calibrate-tab") {
             this._scheduleCalibrationPlotRefresh();
         } else if (this.activeTabId === "discovery-tab") {
@@ -4102,6 +4131,7 @@ class ViscometryDashboard {
 
     _scheduleDiscoveryPlotRefresh() {
         if (!this._discoveryLivePlottingEnabled()) {
+            this._liveChartsDirty = true;
             return;
         }
         if (this._discoveryPlotRefreshTimer) {

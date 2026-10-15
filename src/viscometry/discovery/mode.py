@@ -443,6 +443,26 @@ def _ladder_fields_from_converged(
     return fields
 
 
+def _hello_probe_rpms(cfg: DiscoveryConfig) -> List[float]:
+    """Hello attempts: configured start (5 RPM), then 1 RPM, then the hardware floor."""
+    ordered: List[float] = []
+    for raw in (cfg.hello_probe_rpm, 1.0, cfg.rpm_min):
+        rpm = round_rpm_2dp(
+            clamp_hardware_rpm(raw, rpm_min=cfg.rpm_min, rpm_max=cfg.rpm_max)
+        )
+        if rpm not in ordered:
+            ordered.append(rpm)
+    return ordered
+
+
+def _hello_torque_too_high(torque: float, cfg: DiscoveryConfig) -> bool:
+    """True when a hello reading is above full scale or the configured ceiling."""
+    value = float(torque)
+    if value > 100.0:
+        return True
+    return value >= float(cfg.over_range_torque_pct)
+
+
 def discover_rpm_stage2(
     cell_id: int,
     probe: ProbeExecutor,
@@ -466,28 +486,53 @@ def discover_rpm_stage2(
     converged: Dict[float, Tuple[float, float]] = {}
     tol = cfg.ladder_tolerance_pct
 
-    # Hello probe
-    hello_rpm = round_rpm_2dp(
-        clamp_hardware_rpm(cfg.hello_probe_rpm, rpm_min=cfg.rpm_min, rpm_max=cfg.rpm_max)
-    )
-    hello_torque = probe(cell_id, target_z, hello_rpm)
-    if hello_torque is None:
-        return _empty_stage2_result(
-            cell_id, target_z, material_label, "probe_failed"
+    # Hello probe: 5 RPM, then 1 RPM, then rpm_min when torque is over the ceiling.
+    hello_rpm: Optional[float] = None
+    hello_torque: Optional[float] = None
+    for candidate_rpm in _hello_probe_rpms(cfg):
+        measured = probe(cell_id, target_z, candidate_rpm)
+        if measured is None:
+            return DiscoveryResult(
+                rpm=None,
+                eta_estimate=None,
+                status="probe_failed",
+                iterations=len(probes),
+                probes=probes,
+                target_z_mm=target_z,
+                material_label=material_label,
+                from_cache=False,
+                ladder_status="failed",
+            )
+        hello_record = _append_probe_record(
+            probes,
+            rpm=candidate_rpm,
+            torque=measured,
+            z_mm=target_z,
+            cfg=cfg,
+            ladder_target_pct=None,
         )
-    hello_record = _append_probe_record(
-        probes,
-        rpm=hello_rpm,
-        torque=hello_torque,
-        z_mm=target_z,
-        cfg=cfg,
-        ladder_target_pct=None,
-    )
-    _emit_partial(
-        on_probe,
-        hello_record,
-        _build_partial_result(probes, target_z=target_z, material_label=material_label),
-    )
+        _emit_partial(
+            on_probe,
+            hello_record,
+            _build_partial_result(probes, target_z=target_z, material_label=material_label),
+        )
+        if not _hello_torque_too_high(measured, cfg):
+            hello_rpm = candidate_rpm
+            hello_torque = float(measured)
+            break
+
+    if hello_rpm is None or hello_torque is None:
+        return DiscoveryResult(
+            rpm=None,
+            eta_estimate=None,
+            status="ladder_over_range",
+            iterations=len(probes),
+            probes=probes,
+            target_z_mm=target_z,
+            material_label=material_label,
+            from_cache=False,
+            ladder_status="failed",
+        )
 
     last_rpm = hello_rpm
     last_torque = float(hello_torque)
