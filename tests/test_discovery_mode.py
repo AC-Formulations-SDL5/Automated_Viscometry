@@ -261,7 +261,7 @@ class TestProbeExecutorMoveOnce(unittest.TestCase):
         self.assertEqual(len(measure_calls), 1)
         self.assertEqual(measure_calls[0][0], 5.0)
         self.assertEqual(measure_calls[0][1], -65.0)
-        self.assertEqual(measure_calls[0][2], {})
+        self.assertEqual(measure_calls[0][2], {"accept_overrange": True})
         self.assertEqual(move_calls, [])
 
 
@@ -301,7 +301,7 @@ class TestProbeExecutorDuck(unittest.TestCase):
             duck_torque_pct=0,
         )
         executor(1, -65.0, 5.0)
-        self.assertEqual(captured, {})
+        self.assertEqual(captured, {"accept_overrange": True})
 
 
 class TestDiscoverRpmDuckStepping(unittest.TestCase):
@@ -419,6 +419,92 @@ class TestDiscoverRpmStage2(unittest.TestCase):
         self.assertIsNotNone(result.get("rpm_30"))
         self.assertIsNotNone(result.get("n_probe"))
 
+    def test_hello_retries_when_first_probe_exceeds_ceiling(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2
+
+        class _Probe:
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, cell_id, z_mm, rpm):
+                self.calls.append(float(rpm))
+                if abs(rpm - 5.0) < 1e-6:
+                    return 110.0
+                if abs(rpm - 1.0) < 1e-6:
+                    return 40.0
+                return 30.0
+
+        probe = _Probe()
+        cfg = _default_cfg(
+            discovery_stage2_enabled=True,
+            hello_probe_rpm=5.0,
+            rpm_min=0.1,
+            over_range_torque_pct=85.0,
+            ladder_max_iterations_per_target=2,
+        )
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=-65.0):
+            result = discover_rpm_stage2(1, probe, config=cfg)
+        self.assertEqual(probe.calls[0], 5.0)
+        self.assertEqual(probe.calls[1], 1.0)
+        self.assertNotEqual(probe.calls[2], 0.1)
+        self.assertNotEqual(result.get("status"), "ladder_over_range")
+
+    def test_hello_retries_down_to_floor_when_one_rpm_still_high(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2
+
+        class _Probe:
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, cell_id, z_mm, rpm):
+                self.calls.append(float(rpm))
+                if abs(rpm - 5.0) < 1e-6:
+                    return 95.0
+                if abs(rpm - 1.0) < 1e-6:
+                    return 90.0
+                return 40.0
+
+        probe = _Probe()
+        cfg = _default_cfg(
+            discovery_stage2_enabled=True,
+            hello_probe_rpm=5.0,
+            rpm_min=0.1,
+            over_range_torque_pct=85.0,
+            ladder_max_iterations_per_target=2,
+        )
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=-65.0):
+            result = discover_rpm_stage2(1, probe, config=cfg)
+        self.assertEqual(probe.calls[:3], [5.0, 1.0, 0.1])
+        self.assertGreater(len(probe.calls), 3)
+        self.assertNotEqual(result.get("status"), "probe_failed")
+
+    def test_hello_over_range_skips_cell_after_floor(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2
+
+        class _Probe:
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, cell_id, z_mm, rpm):
+                self.calls.append(float(rpm))
+                return 120.0
+
+        probe = _Probe()
+        cfg = _default_cfg(
+            discovery_stage2_enabled=True,
+            hello_probe_rpm=5.0,
+            rpm_min=0.1,
+            over_range_torque_pct=85.0,
+        )
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=-65.0):
+            result = discover_rpm_stage2(1, probe, config=cfg)
+        self.assertEqual(probe.calls, [5.0, 1.0, 0.1])
+        self.assertEqual(result.get("status"), "ladder_over_range")
+        self.assertIsNone(result.get("rpm"))
+
     def test_stage2_shear_thinning_path(self):
         from viscometry.discovery.mode import discover_rpm_stage2
 
@@ -473,6 +559,17 @@ class TestWebDiscoverySafety(unittest.TestCase):
         self.assertEqual(settings.get("discovery_probe_duration_s"), 60.0)
         self.assertEqual(settings.get("discovery_duck_torque_pct"), 80.0)
         self.assertEqual(settings.get("discovery_handoff_pause_s"), 10.0)
+        self.assertTrue(settings.get("discovery_proceed_with_run"))
+
+    def test_proceed_with_run_round_trip(self):
+        from viscometry.web.app import ViscometryWebInterface
+
+        iface = ViscometryWebInterface()
+        self.assertTrue(iface.get_runtime_settings().get("discovery_proceed_with_run"))
+        disabled = iface.update_runtime_settings({"discovery_proceed_with_run": False})
+        self.assertFalse(disabled.get("discovery_proceed_with_run"))
+        enabled = iface.update_runtime_settings({"discovery_proceed_with_run": True})
+        self.assertTrue(enabled.get("discovery_proceed_with_run"))
 
 
 if __name__ == "__main__":

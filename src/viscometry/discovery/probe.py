@@ -83,7 +83,7 @@ def make_probe_executor(
                 yield
 
         with _maybe_duration():
-            duck_kw = {}
+            duck_kw = {"accept_overrange": True}
             if duck_torque_pct is not None and float(duck_torque_pct) > 0:
                 duck_kw["duck_above_pct_on_first_sample"] = float(duck_torque_pct)
             measurements = measure_torque_fn(client, rpm, z_mm, **duck_kw)

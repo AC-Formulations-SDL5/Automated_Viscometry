@@ -245,6 +245,7 @@ class ViscometryWebInterface:
             'discovery_probe_duration_s': 60.0,
             'discovery_duck_torque_pct': 80.0,
             'discovery_handoff_pause_s': 10.0,
+            'discovery_proceed_with_run': True,
         }
         self.predicted_viscosity_results: Dict = {}
         self.characterization_results: Dict = {}
@@ -1777,6 +1778,8 @@ class ViscometryWebInterface:
                     normalized['discovery_duck_torque_pct'] = max(1.0, min(100.0, duck_pct))
                 except (TypeError, ValueError):
                     normalized['discovery_duck_torque_pct'] = 80.0
+            if 'discovery_proceed_with_run' in settings:
+                normalized['discovery_proceed_with_run'] = bool(settings['discovery_proceed_with_run'])
             if 'discovery_handoff_pause_s' in settings and settings['discovery_handoff_pause_s'] not in (None, ''):
                 try:
                     normalized['discovery_handoff_pause_s'] = max(
