@@ -6587,6 +6587,129 @@ class ViscometryDashboard {
         ].join("");
     }
 
+    _conePlateShearRate(rpm) {
+        // Matches viscometry.rheology.constants.shear_rate for a 3° cone.
+        const coneAngleRad = 3.0 * Math.PI / 180.0;
+        return (2.0 * Math.PI * Number(rpm)) / (60.0 * coneAngleRad);
+    }
+
+    _purgeCharacterizationStressPlots() {
+        const host = this.el.summaryPredictedViscosity;
+        if (!host || typeof Plotly === "undefined") {
+            return;
+        }
+        host.querySelectorAll(".char-summary-stress-plot").forEach((node) => {
+            try {
+                Plotly.purge(node);
+            } catch (err) {
+                // Plotly leaves the node empty when it was never plotted.
+            }
+        });
+    }
+
+    _renderCharacterizationStressPlots(exp) {
+        const host = this.el.summaryPredictedViscosity;
+        if (!host || typeof Plotly === "undefined" || !exp) {
+            return;
+        }
+        const predData = exp.characterization || exp.predicted_viscosity || {};
+        const plotFont = '"DM Sans", -apple-system, BlinkMacSystemFont, sans-serif';
+        const plotText = "rgb(72, 84, 110)";
+        const accent = "rgb(168, 150, 210)";
+        host.querySelectorAll(".char-summary-stress-plot").forEach((node) => {
+            const cellKey = node.dataset.cellId;
+            const rpmMap = predData[cellKey] || predData[String(Number(cellKey))] || {};
+            const summary = rpmMap[this.predictedViscositySummaryKey] || {};
+            const emptyEl = node.parentElement
+                ? node.parentElement.querySelector(".char-summary-stress-empty")
+                : null;
+            const points = Object.keys(rpmMap)
+                .filter((key) => this._isPredictedViscosityRpmKey(key))
+                .map((key) => {
+                    const fit = rpmMap[key] || {};
+                    const gamma = this._conePlateShearRate(key);
+                    const tau = Number(fit.tau_Pa_hit);
+                    if (!Number.isFinite(gamma) || gamma <= 0 || !Number.isFinite(tau) || tau <= 0) {
+                        return null;
+                    }
+                    return { gamma, tau, rpm: Number(key) };
+                })
+                .filter(Boolean)
+                .sort((a, b) => a.gamma - b.gamma);
+
+            if (points.length === 0) {
+                node.classList.add("hidden");
+                if (emptyEl) {
+                    emptyEl.classList.remove("hidden");
+                }
+                return;
+            }
+            node.classList.remove("hidden");
+            if (emptyEl) {
+                emptyEl.classList.add("hidden");
+            }
+
+            const traces = [{
+                x: points.map((p) => p.gamma),
+                y: points.map((p) => p.tau),
+                mode: "markers",
+                type: "scatter",
+                name: "Hit stress",
+                marker: { size: 8, color: accent },
+                hovertemplate: "γ̇ %{x:.3g} s⁻¹<br>τ %{y:.3g} Pa<br>%{text}<extra></extra>",
+                text: points.map((p) => `${p.rpm.toFixed(1)} RPM`),
+            }];
+            const kStress = Number(summary.K_stress);
+            const nStress = Number(summary.n_stress);
+            if (Number.isFinite(kStress) && kStress > 0 && Number.isFinite(nStress) && points.length >= 1) {
+                const gMin = points[0].gamma;
+                const gMax = points[points.length - 1].gamma;
+                const curveCount = 40;
+                const xs = [];
+                const ys = [];
+                for (let i = 0; i < curveCount; i += 1) {
+                    const t = curveCount === 1 ? 0 : i / (curveCount - 1);
+                    const gamma = gMin * ((gMax / gMin) ** t);
+                    xs.push(gamma);
+                    ys.push(kStress * (gamma ** nStress));
+                }
+                traces.push({
+                    x: xs,
+                    y: ys,
+                    mode: "lines",
+                    type: "scatter",
+                    name: "K γ̇ⁿ",
+                    line: { color: accent, width: 2 },
+                    hovertemplate: "Fit<br>γ̇ %{x:.3g} s⁻¹<br>τ %{y:.3g} Pa<extra></extra>",
+                });
+            }
+            const axisFont = { family: plotFont, size: 10, color: plotText };
+            Plotly.react(node, traces, {
+                paper_bgcolor: "rgba(0,0,0,0)",
+                plot_bgcolor: "rgba(0,0,0,0)",
+                font: { family: plotFont, color: plotText, size: 11 },
+                showlegend: false,
+                margin: { t: 4, r: 10, b: 46, l: 52 },
+                xaxis: {
+                    type: "log",
+                    title: { text: "Shear rate (1/s)", font: axisFont, standoff: 4 },
+                    gridcolor: "rgba(168, 150, 210, 0.25)",
+                    linecolor: "rgba(168, 150, 210, 0.45)",
+                    tickfont: axisFont,
+                    zeroline: false,
+                },
+                yaxis: {
+                    type: "log",
+                    title: { text: "Stress (Pa)", font: axisFont, standoff: 4 },
+                    gridcolor: "rgba(168, 150, 210, 0.25)",
+                    linecolor: "rgba(168, 150, 210, 0.45)",
+                    tickfont: axisFont,
+                    zeroline: false,
+                },
+            }, { responsive: true, displayModeBar: false });
+        });
+    }
+
     _buildCharacterizationSummaryHtml(exp, s) {
         const predData = exp.characterization || exp.predicted_viscosity || {};
         const hasPredData = this._predictedViscosityEntryHasData(predData);
@@ -6651,21 +6774,28 @@ class ViscometryDashboard {
                 })
                 .filter(Boolean);
 
-            let coeffsHtml = "";
+            let fitRowHtml = "";
             if (rpmKeys.length >= 2 && summary) {
                 const nIdx = summary.n_idx ?? summary.n;
                 const r2Amp = summary.R2_amplitude ?? summary.R2_powerlaw;
-                coeffsHtml = `
-                    <div class="char-summary-coeffs">
-                        <div class="char-summary-coeffs-title">Coefficients</div>
-                        <dl class="char-summary-coeff-grid">
-                            <div class="char-summary-coeff-item"><dt>K<sub>stress</sub></dt><dd>${fmtCoeff(summary.K_stress, true)}</dd></div>
-                            <div class="char-summary-coeff-item"><dt>n<sub>stress</sub></dt><dd>${fmtCoeff(summary.n_stress)}</dd></div>
-                            <div class="char-summary-coeff-item"><dt>R²<sub>stress</sub></dt><dd>${fmtCoeff(summary.R2_stress)}</dd></div>
-                            <div class="char-summary-coeff-item"><dt>K<sub>amp</sub></dt><dd>${fmtCoeff(summary.K_Pas_n, true)}</dd></div>
-                            <div class="char-summary-coeff-item"><dt>n<sub>idx</sub></dt><dd>${fmtCoeff(nIdx)}</dd></div>
-                            <div class="char-summary-coeff-item"><dt>R²<sub>amp</sub></dt><dd>${fmtCoeff(r2Amp)}</dd></div>
-                        </dl>
+                fitRowHtml = `
+                    <div class="char-summary-fit-row">
+                        <div class="char-summary-coeffs">
+                            <div class="char-summary-coeffs-title">Coefficients</div>
+                            <dl class="char-summary-coeff-grid">
+                                <div class="char-summary-coeff-item"><dt>K<sub>stress</sub></dt><dd>${fmtCoeff(summary.K_stress, true)}</dd></div>
+                                <div class="char-summary-coeff-item"><dt>n<sub>stress</sub></dt><dd>${fmtCoeff(summary.n_stress)}</dd></div>
+                                <div class="char-summary-coeff-item"><dt>R²<sub>stress</sub></dt><dd>${fmtCoeff(summary.R2_stress)}</dd></div>
+                                <div class="char-summary-coeff-item"><dt>K<sub>amp</sub></dt><dd>${fmtCoeff(summary.K_Pas_n, true)}</dd></div>
+                                <div class="char-summary-coeff-item"><dt>n<sub>idx</sub></dt><dd>${fmtCoeff(nIdx)}</dd></div>
+                                <div class="char-summary-coeff-item"><dt>R²<sub>amp</sub></dt><dd>${fmtCoeff(r2Amp)}</dd></div>
+                            </dl>
+                        </div>
+                        <div class="char-summary-stress-well">
+                            <div class="char-summary-coeffs-title">Stress fit</div>
+                            <div class="char-summary-stress-plot" data-cell-id="${cellId}"></div>
+                            <p class="char-summary-stress-empty">No stress points for this cell.</p>
+                        </div>
                     </div>`;
             }
 
@@ -6681,7 +6811,7 @@ class ViscometryDashboard {
                     <tbody>${rpmRows.join("")}</tbody>
                 </table>`;
 
-            cards.push(`<div class="char-summary-card">${headerHtml}${tableHtml}${coeffsHtml}</div>`);
+            cards.push(`<div class="char-summary-card">${headerHtml}${tableHtml}${fitRowHtml}</div>`);
         });
 
         if (cards.length === 0) {
@@ -6798,9 +6928,12 @@ class ViscometryDashboard {
             rightEl.innerHTML = this._buildSummaryFeatureTiles(s);
         }
         if (predEl) {
+            this._purgeCharacterizationStressPlots();
             predEl.innerHTML = "<p class=\"summary-empty\"><em>Computing characterization…</em></p>";
             await this.ensureExperimentCharacterization(exp);
+            this._purgeCharacterizationStressPlots();
             predEl.innerHTML = this._buildCharacterizationSummaryHtml(exp, s);
+            this._renderCharacterizationStressPlots(exp);
         }
 
         const discoveryResults = exp.discovery_results || {};

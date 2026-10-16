@@ -72,6 +72,70 @@ def _coerce_all_data_keys(all_data: dict) -> dict:
 _RUN_START_TS_MATCH_EPS = 1e-3
 
 
+def _csv_field(value) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    if any(ch in text for ch in ",\"\n\r"):
+        return '"' + text.replace('"', '""') + '"'
+    return text
+
+
+def _characterization_csv_prefix(char_by_cell: dict, settings: dict) -> str:
+    """One row per cell of n and K, written ahead of the measurement table."""
+    if not isinstance(char_by_cell, dict) or not char_by_cell:
+        return ""
+    from viscometry.rheology.live_adapter import SUMMARY_KEY
+
+    content = settings.get("cell_content_map") or {}
+    if not isinstance(content, dict):
+        content = {}
+    rows = [
+        "cell_id,cell_label,pathway,regime,n_stress,K_stress,R2_stress,n_idx,K_Pas_n,R2_amplitude"
+    ]
+
+    def _cell_sort_key(key):
+        try:
+            return (0, int(key))
+        except (TypeError, ValueError):
+            return (1, str(key))
+
+    for key in sorted(char_by_cell.keys(), key=_cell_sort_key):
+        cell_map = char_by_cell.get(key)
+        if not isinstance(cell_map, dict):
+            continue
+        summary = cell_map.get(SUMMARY_KEY)
+        if not isinstance(summary, dict):
+            continue
+        label = content.get(key)
+        if label is None:
+            try:
+                label = content.get(int(key), "")
+            except (TypeError, ValueError):
+                label = ""
+        n_idx = summary.get("n_idx")
+        if n_idx is None:
+            n_idx = summary.get("n")
+        r2_amp = summary.get("R2_amplitude")
+        if r2_amp is None:
+            r2_amp = summary.get("R2_powerlaw")
+        rows.append(",".join(_csv_field(value) for value in (
+            key,
+            label or "",
+            summary.get("pathway"),
+            summary.get("regime"),
+            summary.get("n_stress"),
+            summary.get("K_stress"),
+            summary.get("R2_stress"),
+            n_idx,
+            summary.get("K_Pas_n"),
+            r2_amp,
+        )))
+    if len(rows) == 1:
+        return ""
+    return "\n".join(rows) + "\n\n"
+
+
 def _experiment_history_id_for_run(run_start_ts) -> str:
     try:
         ts = float(run_start_ts)
@@ -1457,6 +1521,7 @@ class ViscometryWebInterface:
         pred_mode = self._normalize_viscosity_prediction_mode(settings)
         if pred_mode == "off" and self._predicted_viscosity_has_data(pred_filtered):
             pred_mode = "on"
+        csv_prefix = _characterization_csv_prefix(char_filtered, settings)
 
         discovery_all = run_context.get("discovery_results_by_cell") or {}
         discovery_filtered = {}
@@ -1478,7 +1543,7 @@ class ViscometryWebInterface:
             "cellDurations": cell_durations,
             "runStartTsSec": earliest,
             "runEndTsSec": latest,
-            "csv": csv_header + "\n".join(csv_rows),
+            "csv": csv_prefix + csv_header + "\n".join(csv_rows),
             "cell_termination_reasons": termination_map,
             "cell_partial_flags": partial_flags,
             "viscosity_prediction_mode": pred_mode,
