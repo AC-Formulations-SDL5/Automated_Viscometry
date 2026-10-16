@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2020" height="1150" viewBox="0 0 2020 1150" font-family="Arial, Helvetica, sans-serif">
+<defs><linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="632.0" y1="160" x2="723.5" y2="160"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient><linearGradient id="g2" gradientUnits="userSpaceOnUse" x1="956.5" y1="160" x2="1078.5" y2="160"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient><linearGradient id="g3" gradientUnits="userSpaceOnUse" x1="1351.5" y1="160" x2="1446.0078125" y2="160"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient><linearGradient id="g4" gradientUnits="userSpaceOnUse" x1="1336.515625" y1="565" x2="1276.5" y2="565"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient><linearGradient id="g5" gradientUnits="userSpaceOnUse" x1="753.5" y1="565" x2="647.0" y2="565"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient><linearGradient id="g6" gradientUnits="userSpaceOnUse" x1="500.5" y1="975" x2="576.0078125" y2="975"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient><linearGradient id="g7" gradientUnits="userSpaceOnUse" x1="943.9921875" y1="975" x2="1002.015625" y2="975"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient><linearGradient id="g8" gradientUnits="userSpaceOnUse" x1="1367.984375" y1="975" x2="1393.0" y2="975"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient><linearGradient id="g9" gradientUnits="userSpaceOnUse" x1="1880" y1="290" x2="1850" y2="470"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient><linearGradient id="g11" gradientUnits="userSpaceOnUse" x1="820" y1="712" x2="395" y2="872"><stop offset="0" stop-color="#3B7DDD" stop-opacity="0.05"/><stop offset="0.55" stop-color="#3B7DDD" stop-opacity="1"/></linearGradient></defs>
+<rect width="2020" height="1150" fill="#FFFFFF"/>
+<g transform="translate(10,10)">
+<path d="M155,0H1640A360,360 0 0 1 1640,720H360A50,50 0 0 0 360,820H1845A155,155 0 0 1 1845,1130H360A360,360 0 0 1 360,410H1640A50,50 0 0 0 1640,310H155A155,155 0 0 1 155,0Z" fill="#EEF3FC"/>
+
+<circle cx="155" cy="155" r="96" fill="#FFFFFF"/><text x="155" y="171" text-anchor="middle" font-size="46" font-weight="bold" fill="#3B7DDD">Start</text>
+<circle cx="1845" cy="975" r="96" fill="#FFFFFF"/><text x="1845" y="991" text-anchor="middle" font-size="46" font-weight="bold" fill="#3B7DDD">End</text>
+<g transform="translate(450,82)"><circle r="62" fill="#FFFFFF" stroke="#3B7DDD" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#3B7DDD" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="30.7,-4.0 30.7,4.0 22.2,6.0 19.9,11.5 24.6,18.9 18.9,24.6 11.5,19.9 6.0,22.2 4.0,30.7 -4.0,30.7 -6.0,22.2 -11.5,19.9 -18.9,24.6 -24.6,18.9 -19.9,11.5 -22.2,6.0 -30.7,4.0 -30.7,-4.0 -22.2,-6.0 -19.9,-11.5 -24.6,-18.9 -18.9,-24.6 -11.5,-19.9 -6.0,-22.2 -4.0,-30.7 4.0,-30.7 6.0,-22.2 11.5,-19.9 18.9,-24.6 24.6,-18.9 19.9,-11.5 22.2,-6.0"/><circle r="10"/></g></g>
+<text x="450" y="170" text-anchor="middle" font-size="30" font-weight="bold" fill="#3B7DDD">1. System Initialization</text>
+<text x="298.0" y="206" font-size="21.5" fill="#1F1F1F">•</text><text x="324.0" y="206" font-size="21.5" fill="#1F1F1F">CNC homing</text>
+<text x="298.0" y="234" font-size="21.5" fill="#1F1F1F">•</text><text x="324.0" y="234" font-size="21.5" fill="#1F1F1F">Viscometer initialization</text>
+<text x="298.0" y="262" font-size="21.5" fill="#1F1F1F">•</text><text x="324.0" y="262" font-size="21.5" fill="#1F1F1F">Washing-station initialization</text>
+<g transform="translate(840,82)"><circle r="62" fill="#FFFFFF" stroke="#1E9E50" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#1E9E50" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><circle r="26"/><circle r="15"/><circle r="4" class="f"/><path d="M0,-36V-20M0,20V36M-36,0H-20M20,0H36"/></g></g>
+<text x="840" y="170" text-anchor="middle" font-size="30" font-weight="bold" fill="#1E9E50">2. Calibration</text>
+<text x="753.5" y="206" font-size="21.5" fill="#1F1F1F">•</text><text x="779.5" y="206" font-size="21.5" fill="#1F1F1F">Safe height determination</text>
+<text x="753.5" y="234" font-size="21.5" fill="#1F1F1F">•</text><text x="779.5" y="234" font-size="21.5" fill="#1F1F1F">Spindle-floor reference heights</text>
+<text x="753.5" y="262" font-size="21.5" fill="#1F1F1F">•</text><text x="779.5" y="262" font-size="21.5" fill="#1F1F1F">Store per-cell calibration map</text>
+<g transform="translate(1215,82)"><circle r="62" fill="#FFFFFF" stroke="#EE7B30" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#EE7B30" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><rect x="-21" y="-31" width="42" height="62" rx="2"/><path d="M-14,-20l4,4l7,-8M2,-19H14"/><path d="M-14,-6l4,4l7,-8M2,-5H14"/><path d="M-14,8l4,4l7,-8M2,9H14"/><path d="M-14,22l4,4l7,-8M2,23H14"/></g></g>
+<text x="1215" y="170" text-anchor="middle" font-size="30" font-weight="bold" fill="#EE7B30">3. Cell Selection</text>
+<text x="1108.5" y="206" font-size="21.5" fill="#1F1F1F">•</text><text x="1134.5" y="206" font-size="21.5" fill="#1F1F1F">Select full/row/custom cells</text>
+<text x="1108.5" y="234" font-size="21.5" fill="#1F1F1F">•</text><text x="1134.5" y="234" font-size="21.5" fill="#1F1F1F">Assign RPM profiles</text>
+<g transform="translate(1640,82)"><circle r="62" fill="#FFFFFF" stroke="#A1309B" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#A1309B" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M-26,-26H-12V-12H2V2H16V16H30"/><path d="M-24,-6L-6,12"/><path d="M-6,1V12H-17"/></g></g>
+<text x="1640" y="170" text-anchor="middle" font-size="30" font-weight="bold" fill="#A1309B">4. Automated Z-Descent</text>
+<text x="1476.0078125" y="206" font-size="21.5" fill="#1F1F1F">•</text><text x="1502.0078125" y="206" font-size="21.5" fill="#1F1F1F">Move spindle above sample</text>
+<text x="1476.0078125" y="234" font-size="21.5" fill="#1F1F1F">•</text><text x="1502.0078125" y="234" font-size="21.5" fill="#1F1F1F">Incremental Z-step descent</text>
+<text x="1476.0078125" y="262" font-size="21.5" fill="#1F1F1F">•</text><text x="1502.0078125" y="262" font-size="21.5" fill="#1F1F1F">Standardized ~0.4 mm window</text>
+<g transform="translate(1545,487)"><circle r="62" fill="#FFFFFF" stroke="#F2B705" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#F2B705" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M-30,10A30,30 0 1 1 30,10"/><path d="M-22.6,-8.2L-28.2,-10.3"/><path d="M-15.4,-18.4L-19.3,-23.0"/><path d="M-4.2,-23.6L-5.2,-29.5"/><path d="M8.2,-22.6L10.3,-28.2"/><path d="M18.4,-15.4L23.0,-19.3"/><path d="M22.6,-8.2L28.2,-10.3"/><path d="M2,4L-17,-17"/><circle cx="2" cy="4" r="4"/></g></g>
+<text x="1545" y="575" text-anchor="middle" font-size="30" font-weight="bold" fill="#F2B705">5. RPM Sweep and Torque</text>
+<text x="1366.515625" y="611" font-size="21.5" fill="#1F1F1F">•</text><text x="1392.515625" y="611" font-size="21.5" fill="#1F1F1F">Apply rotational speeds</text>
+<text x="1366.515625" y="639" font-size="21.5" fill="#1F1F1F">•</text><text x="1392.515625" y="639" font-size="21.5" fill="#1F1F1F">Measure torque vs. time</text>
+<text x="1366.515625" y="667" font-size="21.5" fill="#1F1F1F">•</text><text x="1392.515625" y="667" font-size="21.5" fill="#1F1F1F">Compute drag D = T<tspan baseline-shift="-18%" font-size="70%">%</tspan>/Ω</text>
+<text x="1366.515625" y="695" font-size="21.5" fill="#1F1F1F">•</text><text x="1392.515625" y="695" font-size="21.5" fill="#1F1F1F">Live data streaming</text>
+<g transform="translate(1015,487)"><circle r="62" fill="#FFFFFF" stroke="#1C96D3" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#1C96D3" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M-30,-24H24M-26,-24V24M20,-24V24M-32,26H26"/><path d="M-17,-24V12M-7,-24V12M3,-24V12M13,-24L28,4"/><circle cx="-17" cy="16" r="5"/><circle cx="-7" cy="16" r="5"/><circle cx="3" cy="16" r="5"/><circle cx="30" cy="8" r="5"/></g></g>
+<text x="1015" y="575" text-anchor="middle" font-size="30" font-weight="bold" fill="#1C96D3">6. Physics-Constrained Feedback</text>
+<text x="783.5" y="611" font-size="21.5" fill="#1F1F1F">•</text><text x="809.5" y="611" font-size="21.5" fill="#1F1F1F">Six drag-based diagnostics</text>
+<text x="783.5" y="639" font-size="21.5" fill="#1F1F1F">•</text><text x="809.5" y="639" font-size="21.5" fill="#1F1F1F">Confidence-weighted hit score</text>
+<text x="783.5" y="667" font-size="21.5" fill="#1F1F1F">•</text><text x="809.5" y="667" font-size="21.5" fill="#1F1F1F">Hit if score ≥ 0.8 for 3 frames</text>
+<text x="783.5" y="695" font-size="21.5" fill="#1F1F1F">•</text><text x="809.5" y="695" font-size="21.5" fill="#1F1F1F">Torque-overload protection</text>
+<g transform="translate(470,487)"><circle r="62" fill="#FFFFFF" stroke="#1D5C7E" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#1D5C7E" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M-22,-28H22L0,-4Z"/><path d="M-22,-2H22L0,22Z"/><path d="M-22,30H22"/></g></g>
+<text x="470" y="575" text-anchor="middle" font-size="30" font-weight="bold" fill="#1D5C7E">7A. Continue Descent</text>
+<text x="323.0" y="611" font-size="21.5" fill="#1F1F1F">•</text><text x="349.0" y="611" font-size="21.5" fill="#1F1F1F">No hit flagged</text>
+<text x="323.0" y="639" font-size="21.5" fill="#1F1F1F">•</text><text x="349.0" y="639" font-size="21.5" fill="#1F1F1F">Step to next Z increment</text>
+<g transform="translate(322,890)"><circle r="62" fill="#FFFFFF" stroke="#C00000" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#C00000" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="-4" cy="4" r="26"/><circle cx="-4" cy="4" r="16"/><circle cx="-4" cy="4" r="6"/><path d="M-4,4L26,-26M18,-30L26,-26L30,-18"/></g></g>
+<text x="322" y="985" text-anchor="middle" font-size="30" font-weight="bold" fill="#C00000">7B. Hit-point Detected</text>
+<text x="173.5" y="1021" font-size="21.5" fill="#1F1F1F">•</text><text x="199.5" y="1021" font-size="21.5" fill="#1F1F1F">Trim post-contact data</text>
+<text x="173.5" y="1049" font-size="21.5" fill="#1F1F1F">•</text><text x="199.5" y="1049" font-size="21.5" fill="#1F1F1F">End current cell</text>
+<g transform="translate(760,890)"><circle r="62" fill="#FFFFFF" stroke="#3B7DDD" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#3B7DDD" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M-28,-24H28L6,2V28L-6,20V2Z"/></g></g>
+<text x="760" y="985" text-anchor="middle" font-size="30" font-weight="bold" fill="#3B7DDD">8. Viscosity Evaluation</text>
+<text x="606.0078125" y="1021" font-size="21.5" fill="#1F1F1F">•</text><text x="632.0078125" y="1021" font-size="21.5" fill="#1F1F1F">Regularized hyperbolic drag fit</text>
+<text x="606.0078125" y="1049" font-size="21.5" fill="#1F1F1F">•</text><text x="632.0078125" y="1049" font-size="21.5" fill="#1F1F1F">Physics-informed viscosity</text>
+<text x="606.0078125" y="1077" font-size="21.5" fill="#1F1F1F">•</text><text x="632.0078125" y="1077" font-size="21.5" fill="#1F1F1F">Power-law flow curve</text>
+<text x="606.0078125" y="1105" font-size="21.5" fill="#1F1F1F">•</text><text x="632.0078125" y="1105" font-size="21.5" fill="#1F1F1F">Data logging and export</text>
+<g transform="translate(1185,890)"><circle r="62" fill="#FFFFFF" stroke="#2E7D32" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#2E7D32" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M-24,30V-10A16,16 0 0 1 8,-10V-6"/><path d="M-10,8A18,14 0 0 1 26,8Z"/><path d="M-6,16L-10,30M2,16L0,30M10,16L10,30M18,16L20,30"/></g></g>
+<text x="1185" y="985" text-anchor="middle" font-size="30" font-weight="bold" fill="#2E7D32">9. Automated Washing</text>
+<text x="1032.015625" y="1021" font-size="21.5" fill="#1F1F1F">•</text><text x="1058.015625" y="1021" font-size="21.5" fill="#1F1F1F">Detergent / water / IPA rinse</text>
+<text x="1032.015625" y="1049" font-size="21.5" fill="#1F1F1F">•</text><text x="1058.015625" y="1049" font-size="21.5" fill="#1F1F1F">Concurrent with CNC travel</text>
+<text x="1032.015625" y="1077" font-size="21.5" fill="#1F1F1F">•</text><text x="1058.015625" y="1077" font-size="21.5" fill="#1F1F1F">Cross-contamination prevention</text>
+<g transform="translate(1565,890)"><circle r="62" fill="#FFFFFF" stroke="#8C8C8C" stroke-width="1.6" stroke-dasharray="6 5"/><g fill="none" stroke="#8C8C8C" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M-26,-30H4V-12M4,12V30H-26Z"/><path d="M-26,-30L-6,-22V24L-26,30"/><path d="M2,0H30M22,-8L30,0L22,8"/></g></g>
+<text x="1565" y="985" text-anchor="middle" font-size="30" font-weight="bold" fill="#8C8C8C">10. Move to Next Cell</text>
+<text x="1423.0" y="1021" font-size="21.5" fill="#1F1F1F">•</text><text x="1449.0" y="1021" font-size="21.5" fill="#1F1F1F">Repeat automated cycle</text>
+<path d="M632.0,160H723.5" fill="none" stroke="url(#g1)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="726.5,160.0 703.5,170.0 703.5,150.0" fill="#3B7DDD"/>
+<path d="M956.5,160H1078.5" fill="none" stroke="url(#g2)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="1081.5,160.0 1058.5,170.0 1058.5,150.0" fill="#3B7DDD"/>
+<path d="M1351.5,160H1446.0" fill="none" stroke="url(#g3)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="1449.0,160.0 1426.0,170.0 1426.0,150.0" fill="#3B7DDD"/>
+<path d="M1336.5,565H1276.5" fill="none" stroke="url(#g4)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="1273.5,565.0 1296.5,555.0 1296.5,575.0" fill="#3B7DDD"/>
+<path d="M753.5,565H647.0" fill="none" stroke="url(#g5)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="644.0,565.0 667.0,555.0 667.0,575.0" fill="#3B7DDD"/>
+<path d="M500.5,975H576.0" fill="none" stroke="url(#g6)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="579.0,975.0 556.0,985.0 556.0,965.0" fill="#3B7DDD"/>
+<path d="M944.0,975H1002.0" fill="none" stroke="url(#g7)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="1005.0,975.0 982.0,985.0 982.0,965.0" fill="#3B7DDD"/>
+<path d="M1368.0,975H1393.0" fill="none" stroke="url(#g8)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="1396.0,975.0 1373.0,985.0 1373.0,965.0" fill="#3B7DDD"/>
+<text x="700.25" y="600" text-anchor="middle" font-size="19" font-style="italic" fill="#3B7DDD">no hit</text>
+<path d="M1880,290C1905,360 1895,420 1850,470" fill="none" stroke="url(#g9)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="1847.8,472.0 1858.2,449.2 1871.6,464.1" fill="#3B7DDD"/>
+<path d="M470,422V385Q470,360 495,360H1520Q1545,360 1545,385V420" fill="none" stroke="#3B7DDD" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="10 8"/>
+<polygon points="1545.0,423.0 1535.0,400.0 1555.0,400.0" fill="#3B7DDD"/>
+<rect x="845" y="346" width="350" height="28" fill="#FFFFFF"/>
+<text x="1020" y="367" text-anchor="middle" font-size="19" font-style="italic" fill="#3B7DDD">repeat sweep at the next Z increment</text>
+<path d="M820,712C760,790 560,830 395,872" fill="none" stroke="url(#g11)" stroke-width="4.5" stroke-linecap="round"/>
+<polygon points="392.1,872.8 411.5,856.9 417.0,876.1" fill="#3B7DDD"/>
+<text x="800" y="768" text-anchor="start" font-size="19" font-style="italic" fill="#3B7DDD">hit detected</text>
+</g>
+</svg>
