@@ -555,6 +555,44 @@ def _parse_exclusion_map(raw: Any) -> Dict[int, List[float]]:
     return out
 
 
+def _json_safe_value(value: Any) -> Any:
+    """Convert numpy / non-finite values into JSON-serializable Python types."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, (np.floating, np.integer)):
+        f = float(value)
+        return f if math.isfinite(f) else None
+    if isinstance(value, np.ndarray):
+        return [_json_safe_value(v) for v in value.tolist()]
+    if isinstance(value, dict):
+        return {
+            str(k): _json_safe_value(v)
+            for k, v in value.items()
+            if not (isinstance(k, str) and k.startswith("_"))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(v) for v in value]
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    try:
+        if math.isfinite(float(value)):
+            return float(value)
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def _sanitize_fit_for_json(fit: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop private scratch keys and make a fit/summary dict JSON-safe."""
+    return {
+        str(k): _json_safe_value(v)
+        for k, v in fit.items()
+        if not (isinstance(k, str) and k.startswith("_"))
+    }
+
+
 def recompute_characterization_from_measurements(
     cells: Sequence[int],
     measurements: Sequence[Dict[str, Any]],
@@ -591,8 +629,8 @@ def recompute_characterization_from_measurements(
             excluded_rpms=excl_rpms.get(cid),
             excluded_heights=excl_heights.get(cid),
         )
-        cell_map: Dict[str, Any] = {SUMMARY_KEY: summary}
+        cell_map: Dict[str, Any] = {SUMMARY_KEY: _sanitize_fit_for_json(summary)}
         for rpm, fit in per_rpm.items():
-            cell_map[str(float(rpm))] = fit
+            cell_map[str(float(rpm))] = _sanitize_fit_for_json(fit)
         out[str(cid)] = cell_map
     return out
