@@ -186,6 +186,7 @@ class LiveCellSession:
             "A": _json_float(fit.get("A")),
             "B": _json_float(fit.get("B")),
             "hc": _json_float(fit.get("hc")),
+            "R2": _json_float(fit.get("R2")),
             "R2_drag": _json_float(fit.get("R2")),
             "mu_app_cP": _json_float(
                 (fit.get("viscosity_kcp") or 0) * 1000.0 if fit.get("viscosity_kcp") else None

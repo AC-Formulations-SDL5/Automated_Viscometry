@@ -6312,7 +6312,9 @@ class ViscometryDashboard {
         if (!exp) {
             return {};
         }
-        return exp.characterization || exp.predicted_viscosity || {};
+        return this._normalizeCharacterizationMap(
+            exp.characterization || exp.predicted_viscosity || {}
+        );
     }
 
     _getAnalysisOverrides(exp) {
@@ -6347,9 +6349,11 @@ class ViscometryDashboard {
 
     _getDisplayCharacterization(exp) {
         const canon = this._getCanonicalCharacterization(exp);
-        const explore = (exp?.characterization_exploration && typeof exp.characterization_exploration === "object")
-            ? exp.characterization_exploration
-            : {};
+        const explore = this._normalizeCharacterizationMap(
+            (exp?.characterization_exploration && typeof exp.characterization_exploration === "object")
+                ? exp.characterization_exploration
+                : {}
+        );
         const out = {};
         const keys = new Set([
             ...Object.keys(canon),
@@ -7154,9 +7158,7 @@ class ViscometryDashboard {
                     const eta = result.success && result.viscosity_kcp != null
                         ? this._fmtPredictedViscosity3(result.viscosity_kcp)
                         : "—";
-                    const r2 = result.R2 != null && Number.isFinite(Number(result.R2))
-                        ? Number(result.R2).toFixed(3)
-                        : "—";
+                    const r2 = this._fmtRpmFitR2(result);
                     const pts = result.n_points_used ?? "—";
                     const status = dropped
                         ? "Dropped"
@@ -7630,7 +7632,7 @@ class ViscometryDashboard {
                     }
                     const rpm = Number(rpmKey);
                     if (Number.isFinite(rpm) && result) {
-                        this.predictedViscosityData[cellId][rpm] = result;
+                        this.predictedViscosityData[cellId][rpm] = this._normalizeCharacterizationRpmPayload(result);
                     }
                 });
             }
@@ -7673,10 +7675,48 @@ class ViscometryDashboard {
     }
 
     _normalizeCharacterizationRpmPayload(payload) {
-        const out = { ...payload };
-        if (out.R2_drag != null && out.R2 == null) {
-            out.R2 = out.R2_drag;
+        if (!payload || typeof payload !== "object") {
+            return payload;
         }
+        const out = { ...payload };
+        const r2 = out.R2 != null && Number.isFinite(Number(out.R2)) ? Number(out.R2) : null;
+        const r2Drag = out.R2_drag != null && Number.isFinite(Number(out.R2_drag))
+            ? Number(out.R2_drag)
+            : null;
+        if (r2 == null && r2Drag != null) {
+            out.R2 = r2Drag;
+        } else if (r2 != null && r2Drag == null) {
+            out.R2_drag = r2;
+        }
+        return out;
+    }
+
+    _fmtRpmFitR2(result) {
+        const normalized = this._normalizeCharacterizationRpmPayload(result) || {};
+        const r2 = normalized.R2 != null ? Number(normalized.R2) : NaN;
+        return Number.isFinite(r2) ? r2.toFixed(3) : "—";
+    }
+
+    _normalizeCharacterizationMap(predData) {
+        if (!predData || typeof predData !== "object") {
+            return predData || {};
+        }
+        const out = {};
+        Object.entries(predData).forEach(([cellKey, rpmMap]) => {
+            if (!rpmMap || typeof rpmMap !== "object") {
+                out[cellKey] = rpmMap;
+                return;
+            }
+            const cellOut = {};
+            Object.entries(rpmMap).forEach(([rpmKey, result]) => {
+                if (rpmKey === this.predictedViscositySummaryKey) {
+                    cellOut[rpmKey] = result;
+                    return;
+                }
+                cellOut[rpmKey] = this._normalizeCharacterizationRpmPayload(result);
+            });
+            out[cellKey] = cellOut;
+        });
         return out;
     }
 
@@ -8145,9 +8185,7 @@ class ViscometryDashboard {
                 const eta = result.success && result.viscosity_kcp != null
                     ? this._fmtPredictedViscosity3(result.viscosity_kcp)
                     : "—";
-                const r2 = result.R2 != null && Number.isFinite(Number(result.R2))
-                    ? Number(result.R2).toFixed(3)
-                    : "—";
+                const r2 = this._fmtRpmFitR2(result);
                 const status = result.success
                     ? "OK"
                     : (result.error ? String(result.error) : "—");
