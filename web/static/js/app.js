@@ -262,6 +262,8 @@ class ViscometryDashboard {
         this.statusError = false;
         this.sparklineData = [];
         this.uiState = "idle";
+        /** Keep in sync with server history cap in web/app.py (filtered[:200]). */
+        this.experimentHistoryLimit = 200;
         this.experimentHistory = [];
         this.selectedExperimentId = null;
         this.selectedLoadExperimentId = null;
@@ -6705,7 +6707,8 @@ class ViscometryDashboard {
         });
         const merged = [...byRunStart.values(), ...noRunKey];
         merged.sort((a, b) => (Number(b.created_at) || 0) - (Number(a.created_at) || 0));
-        return merged.slice(0, 40);
+        const limit = Number(this.experimentHistoryLimit) || 200;
+        return merged.slice(0, limit);
     }
 
     _upsertExperimentHistoryEntry(entry) {
@@ -6722,7 +6725,8 @@ class ViscometryDashboard {
             return true;
         });
         this.experimentHistory.unshift(entry);
-        this.experimentHistory = this.experimentHistory.slice(0, 40);
+        const limit = Number(this.experimentHistoryLimit) || 200;
+        this.experimentHistory = this.experimentHistory.slice(0, limit);
     }
 
     saveCompletedExperiment() {
