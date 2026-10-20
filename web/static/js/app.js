@@ -314,6 +314,9 @@ class ViscometryDashboard {
         this.cellTerminationReasons = new Map();
         /** @type {Map<number, Map<string, string>>} cellId -> rpmKey -> active|dropped */
         this.rpmTorqueStatusByCell = new Map();
+        /** @type {Set<string>} cell ids whose Customize analysis <details> are open */
+        this._charCustomizeOpenCells = new Set();
+        this._charCustomizeRefitTimer = null;
 
         this.palette = [
             "#5EA1FF", "#F5A623", "#39C5BB", "#2EA043", "#E25A5A", "#9BB5FF",
@@ -727,6 +730,17 @@ class ViscometryDashboard {
             this.el.summaryAlignHitpoint.addEventListener("change", () => {
                 if (this.selectedExperimentId) this.selectExperiment(this.selectedExperimentId);
             });
+        }
+        if (this.el.summaryPredictedViscosity) {
+            this.el.summaryPredictedViscosity.addEventListener("change", (event) => {
+                this._onCharCustomizeChange(event);
+            });
+            this.el.summaryPredictedViscosity.addEventListener("click", (event) => {
+                this._onCharCustomizeClick(event);
+            });
+            this.el.summaryPredictedViscosity.addEventListener("toggle", (event) => {
+                this._onCharCustomizeToggle(event);
+            }, true);
         }
 
         document.addEventListener("keydown", (event) => {
@@ -6278,11 +6292,312 @@ class ViscometryDashboard {
         return `<span class="char-pathway-badge pathway-${slug}">${this._escapeHtml(label)}</span>`;
     }
 
+    _fmtScientificTimesTen(val, digits = 3, { html = true } = {}) {
+        if (val == null || !Number.isFinite(Number(val))) {
+            return "—";
+        }
+        const n = Number(val);
+        if (n === 0) {
+            return "0";
+        }
+        const exp = Math.floor(Math.log10(Math.abs(n)));
+        const mant = n / (10 ** exp);
+        const base = `${mant.toFixed(digits)} × 10`;
+        return html ? `${base}<sup>${exp}</sup>` : `${base}^${exp}`;
+    }
+
+    _getCanonicalCharacterization(exp) {
+        if (!exp) {
+            return {};
+        }
+        return exp.characterization || exp.predicted_viscosity || {};
+    }
+
+    _getAnalysisOverrides(exp) {
+        const raw = exp?.analysis_overrides;
+        return raw && typeof raw === "object" ? raw : {};
+    }
+
+    _getCellAnalysisOverride(exp, cellId) {
+        const overrides = this._getAnalysisOverrides(exp);
+        const entry = overrides[String(cellId)] ?? overrides[cellId];
+        if (!entry || typeof entry !== "object") {
+            return { excluded_rpms: [], excluded_heights: [] };
+        }
+        const excluded_rpms = Array.isArray(entry.excluded_rpms)
+            ? entry.excluded_rpms.map(Number).filter((n) => Number.isFinite(n))
+            : [];
+        const excluded_heights = Array.isArray(entry.excluded_heights)
+            ? entry.excluded_heights.map(Number).filter((n) => Number.isFinite(n))
+            : [];
+        return { excluded_rpms, excluded_heights };
+    }
+
+    _cellHasAnalysisOverrides(exp, cellId) {
+        const { excluded_rpms, excluded_heights } = this._getCellAnalysisOverride(exp, cellId);
+        return excluded_rpms.length > 0 || excluded_heights.length > 0;
+    }
+
+    _experimentHasAnyAnalysisOverrides(exp) {
+        const overrides = this._getAnalysisOverrides(exp);
+        return Object.keys(overrides).some((key) => this._cellHasAnalysisOverrides(exp, key));
+    }
+
+    _getDisplayCharacterization(exp) {
+        const canon = this._getCanonicalCharacterization(exp);
+        const explore = (exp?.characterization_exploration && typeof exp.characterization_exploration === "object")
+            ? exp.characterization_exploration
+            : {};
+        const out = {};
+        const keys = new Set([
+            ...Object.keys(canon),
+            ...Object.keys(explore),
+        ]);
+        keys.forEach((cellKey) => {
+            if (this._cellHasAnalysisOverrides(exp, cellKey) && explore[cellKey]) {
+                out[cellKey] = explore[cellKey];
+            } else if (canon[cellKey]) {
+                out[cellKey] = canon[cellKey];
+            } else if (explore[cellKey]) {
+                out[cellKey] = explore[cellKey];
+            }
+        });
+        return out;
+    }
+
+    _uniqueHeightsForCell(exp, cellId) {
+        const cid = Number(cellId);
+        const heights = new Set();
+        (exp?.latestPerZ || []).forEach((p) => {
+            if (Number(p.cell_id) !== cid) {
+                return;
+            }
+            const h = Number(p.height);
+            if (Number.isFinite(h)) {
+                heights.add(Number(h.toFixed(3)));
+            }
+        });
+        return [...heights].sort((a, b) => a - b);
+    }
+
+    _setCellAnalysisOverride(exp, cellId, nextOverride) {
+        const key = String(cellId);
+        const overrides = { ...this._getAnalysisOverrides(exp) };
+        const excluded_rpms = Array.isArray(nextOverride?.excluded_rpms) ? nextOverride.excluded_rpms : [];
+        const excluded_heights = Array.isArray(nextOverride?.excluded_heights)
+            ? nextOverride.excluded_heights
+            : [];
+        if (excluded_rpms.length === 0 && excluded_heights.length === 0) {
+            delete overrides[key];
+        } else {
+            overrides[key] = { excluded_rpms, excluded_heights };
+        }
+        exp.analysis_overrides = overrides;
+        if (Object.keys(overrides).length === 0) {
+            delete exp.analysis_overrides;
+            delete exp.characterization_exploration;
+        }
+    }
+
+    _buildExclusionPayload(exp) {
+        const excluded_rpms_by_cell = {};
+        const excluded_heights_by_cell = {};
+        const overrides = this._getAnalysisOverrides(exp);
+        Object.keys(overrides).forEach((cellKey) => {
+            const { excluded_rpms, excluded_heights } = this._getCellAnalysisOverride(exp, cellKey);
+            if (excluded_rpms.length) {
+                excluded_rpms_by_cell[cellKey] = excluded_rpms;
+            }
+            if (excluded_heights.length) {
+                excluded_heights_by_cell[cellKey] = excluded_heights;
+            }
+        });
+        return { excluded_rpms_by_cell, excluded_heights_by_cell };
+    }
+
+    async _recomputeCharacterizationExploration(exp) {
+        if (!exp) {
+            return;
+        }
+        const measurements = Array.isArray(exp.latestPerZ) ? exp.latestPerZ : [];
+        if (measurements.length === 0 || !this._experimentHasAnyAnalysisOverrides(exp)) {
+            delete exp.characterization_exploration;
+            return;
+        }
+        const { excluded_rpms_by_cell, excluded_heights_by_cell } = this._buildExclusionPayload(exp);
+        const cellsWithOverrides = Object.keys({
+            ...excluded_rpms_by_cell,
+            ...excluded_heights_by_cell,
+        }).map(Number).filter((n) => Number.isFinite(n));
+        if (cellsWithOverrides.length === 0) {
+            delete exp.characterization_exploration;
+            return;
+        }
+        try {
+            const res = await fetch("/api/recompute_characterization", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    cells: cellsWithOverrides,
+                    measurements: measurements.map((p) => ({
+                        cell_id: p.cell_id,
+                        rpm: p.rpm,
+                        height: p.height,
+                        torque_percent: p.torque_percent,
+                        rotational_drag: p.rotational_drag,
+                        timestamp: p.timestamp || 0,
+                    })),
+                    settings: exp.settings || {},
+                    excluded_rpms_by_cell,
+                    excluded_heights_by_cell,
+                }),
+            });
+            if (!res.ok) {
+                return;
+            }
+            const data = await res.json();
+            if (data && typeof data === "object" && !data.error) {
+                const prev = (exp.characterization_exploration && typeof exp.characterization_exploration === "object")
+                    ? { ...exp.characterization_exploration }
+                    : {};
+                Object.keys(data).forEach((cellKey) => {
+                    prev[cellKey] = data[cellKey];
+                });
+                // Drop exploration for cells that no longer have overrides.
+                Object.keys(prev).forEach((cellKey) => {
+                    if (!this._cellHasAnalysisOverrides(exp, cellKey)) {
+                        delete prev[cellKey];
+                    }
+                });
+                exp.characterization_exploration = prev;
+            }
+        } catch (_err) {
+            // Keep prior exploration if recompute fails.
+        }
+    }
+
+    _scheduleCharCustomizeRefit(exp) {
+        if (this._charCustomizeRefitTimer) {
+            clearTimeout(this._charCustomizeRefitTimer);
+        }
+        this._charCustomizeRefitTimer = setTimeout(async () => {
+            this._charCustomizeRefitTimer = null;
+            await this._recomputeCharacterizationExploration(exp);
+            const idx = this.experimentHistory.findIndex((e) => e.id === exp.id);
+            if (idx >= 0) {
+                this.experimentHistory[idx] = exp;
+            }
+            this.saveExperimentHistoryEntry(exp).catch(() => {});
+            if (this.selectedExperimentId === exp.id) {
+                this._refreshCharacterizationSummaryPanel(exp);
+            }
+        }, 250);
+    }
+
+    _refreshCharacterizationSummaryPanel(exp) {
+        const predEl = this.el.summaryPredictedViscosity;
+        if (!predEl || !exp) {
+            return;
+        }
+        const s = exp.settings || {};
+        this._purgeCharacterizationStressPlots();
+        predEl.innerHTML = this._buildCharacterizationSummaryHtml(exp, s);
+        this._renderCharacterizationStressPlots(exp);
+    }
+
+    _onCharCustomizeToggle(event) {
+        const details = event.target;
+        if (!(details instanceof HTMLDetailsElement) || !details.classList.contains("char-customize")) {
+            return;
+        }
+        const cellId = details.dataset.cellId;
+        if (!cellId) {
+            return;
+        }
+        if (details.open) {
+            this._charCustomizeOpenCells.add(String(cellId));
+        } else {
+            this._charCustomizeOpenCells.delete(String(cellId));
+        }
+    }
+
+    _onCharCustomizeClick(event) {
+        const resetBtn = event.target.closest?.("[data-char-reset]");
+        if (!resetBtn) {
+            return;
+        }
+        event.preventDefault();
+        const cellId = Number(resetBtn.dataset.charReset);
+        if (!Number.isFinite(cellId) || !this.selectedExperimentId) {
+            return;
+        }
+        const exp = this.experimentHistory.find((e) => e.id === this.selectedExperimentId);
+        if (!exp) {
+            return;
+        }
+        if (this._charCustomizeRefitTimer) {
+            clearTimeout(this._charCustomizeRefitTimer);
+            this._charCustomizeRefitTimer = null;
+        }
+        this._setCellAnalysisOverride(exp, cellId, { excluded_rpms: [], excluded_heights: [] });
+        if (exp.characterization_exploration) {
+            delete exp.characterization_exploration[String(cellId)];
+            if (Object.keys(exp.characterization_exploration).length === 0) {
+                delete exp.characterization_exploration;
+            }
+        }
+        const idx = this.experimentHistory.findIndex((e) => e.id === exp.id);
+        if (idx >= 0) {
+            this.experimentHistory[idx] = exp;
+        }
+        this.saveExperimentHistoryEntry(exp).catch(() => {});
+        this._refreshCharacterizationSummaryPanel(exp);
+    }
+
+    _onCharCustomizeChange(event) {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement) || input.type !== "checkbox") {
+            return;
+        }
+        const cellId = Number(input.dataset.charCell);
+        const kind = input.dataset.charKind;
+        if (!Number.isFinite(cellId) || !kind || !this.selectedExperimentId) {
+            return;
+        }
+        const exp = this.experimentHistory.find((e) => e.id === this.selectedExperimentId);
+        if (!exp) {
+            return;
+        }
+        const current = this._getCellAnalysisOverride(exp, cellId);
+        const value = Number(input.dataset.charValue);
+        if (!Number.isFinite(value)) {
+            return;
+        }
+        const listKey = kind === "rpm" ? "excluded_rpms" : "excluded_heights";
+        let list = [...current[listKey]];
+        const matchIdx = list.findIndex((v) => (
+            kind === "rpm" ? Math.abs(v - value) < 1e-6 : Math.abs(v - value) < 1e-4
+        ));
+        if (input.checked) {
+            if (matchIdx >= 0) {
+                list.splice(matchIdx, 1);
+            }
+        } else if (matchIdx < 0) {
+            list.push(value);
+        }
+        this._setCellAnalysisOverride(exp, cellId, {
+            excluded_rpms: listKey === "excluded_rpms" ? list : current.excluded_rpms,
+            excluded_heights: listKey === "excluded_heights" ? list : current.excluded_heights,
+        });
+        this._scheduleCharCustomizeRefit(exp);
+    }
+
     async ensureExperimentCharacterization(exp) {
         if (!exp) {
             return;
         }
-        const predData = exp.characterization || exp.predicted_viscosity || {};
+        // Never overwrite a complete canonical snapshot. Only backfill missing pathway data.
+        const predData = this._getCanonicalCharacterization(exp);
         const summaryHasPathway = Object.keys(predData).some((cellKey) => {
             const summary = predData[cellKey]?.[this.predictedViscositySummaryKey];
             return summary && summary.pathway;
@@ -6612,7 +6927,7 @@ class ViscometryDashboard {
         if (!host || typeof Plotly === "undefined" || !exp) {
             return;
         }
-        const predData = exp.characterization || exp.predicted_viscosity || {};
+        const predData = this._getDisplayCharacterization(exp);
         const plotFont = '"DM Sans", -apple-system, BlinkMacSystemFont, sans-serif';
         const plotText = "rgb(72, 84, 110)";
         const accent = "rgb(168, 150, 210)";
@@ -6623,19 +6938,24 @@ class ViscometryDashboard {
             const emptyEl = node.parentElement
                 ? node.parentElement.querySelector(".char-summary-stress-empty")
                 : null;
+            const override = this._getCellAnalysisOverride(exp, cellKey);
+            const excludedRpms = override.excluded_rpms || [];
             const points = Object.keys(rpmMap)
                 .filter((key) => this._isPredictedViscosityRpmKey(key))
                 .map((key) => {
                     const fit = rpmMap[key] || {};
                     const gamma = this._conePlateShearRate(key);
                     const tau = Number(fit.tau_Pa_hit);
+                    const rpm = Number(key);
                     if (!Number.isFinite(gamma) || gamma <= 0 || !Number.isFinite(tau) || tau <= 0) {
                         return null;
                     }
-                    return { gamma, tau, rpm: Number(key) };
+                    const excluded = excludedRpms.some((ex) => Math.abs(ex - rpm) < 1e-6);
+                    return { gamma, tau, rpm, excluded };
                 })
                 .filter(Boolean)
                 .sort((a, b) => a.gamma - b.gamma);
+            const fitPoints = points.filter((p) => !p.excluded);
 
             if (points.length === 0) {
                 node.classList.add("hidden");
@@ -6649,21 +6969,40 @@ class ViscometryDashboard {
                 emptyEl.classList.add("hidden");
             }
 
+            const included = fitPoints.length ? fitPoints : points;
             const traces = [{
-                x: points.map((p) => p.gamma),
-                y: points.map((p) => p.tau),
+                x: included.map((p) => p.gamma),
+                y: included.map((p) => p.tau),
                 mode: "markers",
                 type: "scatter",
                 name: "Hit stress",
                 marker: { size: 8, color: accent },
                 hovertemplate: "γ̇ %{x:.3g} s⁻¹<br>τ %{y:.3g} Pa<br>%{text}<extra></extra>",
-                text: points.map((p) => `${p.rpm.toFixed(1)} RPM`),
+                text: included.map((p) => `${p.rpm.toFixed(1)} RPM`),
             }];
+            const dropped = points.filter((p) => p.excluded);
+            if (dropped.length) {
+                traces.push({
+                    x: dropped.map((p) => p.gamma),
+                    y: dropped.map((p) => p.tau),
+                    mode: "markers",
+                    type: "scatter",
+                    name: "Excluded",
+                    marker: {
+                        size: 8,
+                        color: "rgba(120, 130, 150, 0.45)",
+                        symbol: "circle-open",
+                        line: { width: 1.5, color: "rgba(120, 130, 150, 0.8)" },
+                    },
+                    hovertemplate: "Excluded<br>γ̇ %{x:.3g} s⁻¹<br>τ %{y:.3g} Pa<br>%{text}<extra></extra>",
+                    text: dropped.map((p) => `${p.rpm.toFixed(1)} RPM`),
+                });
+            }
             const kStress = Number(summary.K_stress);
             const nStress = Number(summary.n_stress);
-            if (Number.isFinite(kStress) && kStress > 0 && Number.isFinite(nStress) && points.length >= 1) {
-                const gMin = points[0].gamma;
-                const gMax = points[points.length - 1].gamma;
+            if (Number.isFinite(kStress) && kStress > 0 && Number.isFinite(nStress) && fitPoints.length >= 1) {
+                const gMin = fitPoints[0].gamma;
+                const gMax = fitPoints[fitPoints.length - 1].gamma;
                 const curveCount = 40;
                 const xs = [];
                 const ys = [];
@@ -6711,8 +7050,10 @@ class ViscometryDashboard {
     }
 
     _buildCharacterizationSummaryHtml(exp, s) {
-        const predData = exp.characterization || exp.predicted_viscosity || {};
-        const hasPredData = this._predictedViscosityEntryHasData(predData);
+        const canonData = this._getCanonicalCharacterization(exp);
+        const predData = this._getDisplayCharacterization(exp);
+        const hasPredData = this._predictedViscosityEntryHasData(canonData)
+            || this._predictedViscosityEntryHasData(predData);
         const predMode = this._normalizeViscosityPredictionMode(
             exp.characterization_mode ?? exp.viscosity_prediction_mode ?? s.characterization_mode ?? s.viscosity_prediction_mode,
             exp.characterization_enabled ?? exp.predicted_viscosity_enabled ?? s.characterization_enabled ?? s.predicted_viscosity_enabled
@@ -6721,12 +7062,11 @@ class ViscometryDashboard {
             return "<p class=\"summary-empty\"><em>Characterization was off for this run.</em></p>";
         }
 
-        const fmtCoeff = (val, expFmt = false) => {
+        const fmtCoeff = (val) => {
             if (val == null || !Number.isFinite(Number(val))) {
                 return "—";
             }
-            const n = Number(val);
-            return expFmt ? n.toExponential(3) : n.toFixed(3);
+            return Number(val).toFixed(3);
         };
 
         const cards = [];
@@ -6744,6 +7084,54 @@ class ViscometryDashboard {
             const label = s.cell_content_map?.[cellId] ?? s.cell_content_map?.[String(cellId)] ?? "";
             const regime = summary?.regime || (summary?.success ? summary?.mode : null);
             const pathway = summary?.pathway || null;
+            const override = this._getCellAnalysisOverride(exp, cellId);
+            const exploring = this._cellHasAnalysisOverrides(exp, cellId);
+            const excludedRpmSet = override.excluded_rpms;
+            const excludedHeightSet = override.excluded_heights;
+            const heights = this._uniqueHeightsForCell(exp, cellId);
+            const detailsOpen = this._charCustomizeOpenCells.has(String(cellId)) ? " open" : "";
+
+            const rpmCheckboxes = rpmKeys
+                .map((k) => ({ key: k, rpm: Number(k) }))
+                .filter(({ rpm }) => Number.isFinite(rpm))
+                .sort((a, b) => a.rpm - b.rpm)
+                .map(({ rpm }) => {
+                    const checked = !excludedRpmSet.some((ex) => Math.abs(ex - rpm) < 1e-6);
+                    return `<label class="char-customize-check">`
+                        + `<input type="checkbox" data-char-cell="${cellId}" data-char-kind="rpm" `
+                        + `data-char-value="${rpm}"${checked ? " checked" : ""}>`
+                        + `<span>${this._escapeHtml(rpm.toFixed(1))} RPM</span>`
+                        + `</label>`;
+                })
+                .join("");
+
+            const heightCheckboxes = heights.map((h) => {
+                const checked = !excludedHeightSet.some((ex) => Math.abs(ex - h) < 1e-4);
+                return `<label class="char-customize-check">`
+                    + `<input type="checkbox" data-char-cell="${cellId}" data-char-kind="height" `
+                    + `data-char-value="${h}"${checked ? " checked" : ""}>`
+                    + `<span>${this._escapeHtml(h.toFixed(3))} mm</span>`
+                    + `</label>`;
+            }).join("");
+
+            const customizeHtml = `
+                <details class="char-customize"${detailsOpen} data-cell-id="${cellId}">
+                    <summary class="char-customize-summary">Customize analysis</summary>
+                    <div class="char-customize-panel">
+                        <div class="char-customize-section">
+                            <div class="char-customize-section-title">RPMs for K / n fit</div>
+                            <div class="char-customize-checks">${rpmCheckboxes || "<span class=\"char-customize-empty\">No RPMs</span>"}</div>
+                        </div>
+                        <div class="char-customize-section">
+                            <div class="char-customize-section-title">Z-heights to include</div>
+                            <div class="char-customize-checks char-customize-checks-scroll">${heightCheckboxes || "<span class=\"char-customize-empty\">No Z-heights</span>"}</div>
+                        </div>
+                        <div class="char-customize-actions">
+                            <button type="button" class="btn subtle char-customize-reset" data-char-reset="${cellId}">Reset</button>
+                            ${exploring ? "<span class=\"char-exploring-chip\">Exploring — CSV unchanged</span>" : ""}
+                        </div>
+                    </div>
+                </details>`;
 
             const rpmRows = rpmKeys
                 .map((k) => ({ key: k, rpm: Number(k) }))
@@ -6754,6 +7142,7 @@ class ViscometryDashboard {
                     if (!result) {
                         return "";
                     }
+                    const dropped = excludedRpmSet.some((ex) => Math.abs(ex - rpm) < 1e-6);
                     const eta = result.success && result.viscosity_kcp != null
                         ? this._fmtPredictedViscosity3(result.viscosity_kcp)
                         : "—";
@@ -6761,10 +7150,12 @@ class ViscometryDashboard {
                         ? Number(result.R2).toFixed(3)
                         : "—";
                     const pts = result.n_points_used ?? "—";
-                    const status = result.success
-                        ? "OK"
-                        : (result.error ? this._escapeHtml(String(result.error)) : "—");
-                    return `<tr>`
+                    const status = dropped
+                        ? "Dropped"
+                        : (result.success
+                            ? "OK"
+                            : (result.error ? this._escapeHtml(String(result.error)) : "—"));
+                    return `<tr class="${dropped ? "char-rpm-dropped" : ""}">`
                         + `<td>${this._escapeHtml(rpm.toFixed(1))}</td>`
                         + `<td class="mono">${eta}</td>`
                         + `<td class="mono">${r2}</td>`
@@ -6783,10 +7174,10 @@ class ViscometryDashboard {
                         <div class="char-summary-coeffs">
                             <div class="char-summary-coeffs-title">Coefficients</div>
                             <dl class="char-summary-coeff-grid">
-                                <div class="char-summary-coeff-item"><dt>K<sub>stress</sub></dt><dd>${fmtCoeff(summary.K_stress, true)}</dd></div>
+                                <div class="char-summary-coeff-item"><dt>K<sub>stress</sub></dt><dd>${this._fmtScientificTimesTen(summary.K_stress)}</dd></div>
                                 <div class="char-summary-coeff-item"><dt>n<sub>stress</sub></dt><dd>${fmtCoeff(summary.n_stress)}</dd></div>
                                 <div class="char-summary-coeff-item"><dt>R²<sub>stress</sub></dt><dd>${fmtCoeff(summary.R2_stress)}</dd></div>
-                                <div class="char-summary-coeff-item"><dt>K<sub>amp</sub></dt><dd>${fmtCoeff(summary.K_Pas_n, true)}</dd></div>
+                                <div class="char-summary-coeff-item"><dt>K<sub>amp</sub></dt><dd>${this._fmtScientificTimesTen(summary.K_Pas_n)}</dd></div>
                                 <div class="char-summary-coeff-item"><dt>n<sub>idx</sub></dt><dd>${fmtCoeff(nIdx)}</dd></div>
                                 <div class="char-summary-coeff-item"><dt>R²<sub>amp</sub></dt><dd>${fmtCoeff(r2Amp)}</dd></div>
                             </dl>
@@ -6800,10 +7191,14 @@ class ViscometryDashboard {
             }
 
             const headerHtml = `<div class="char-summary-card-header">`
+                + `<div class="char-summary-card-header-main">`
                 + `<strong>Cell ${cellId}</strong>`
                 + (label ? `<span class="char-summary-card-label">${this._escapeHtml(label)}</span>` : "")
                 + (pathway ? ` ${this._buildPathwayBadgeHtml(pathway)}` : "")
                 + (regime ? ` ${this._buildRegimeBadgeHtml(regime)}` : "")
+                + (exploring ? ` <span class="char-exploring-chip">Exploring — CSV unchanged</span>` : "")
+                + `</div>`
+                + customizeHtml
                 + `</div>`;
             const tableHtml = `
                 <table class="char-summary-rpm-table">
@@ -7683,10 +8078,10 @@ class ViscometryDashboard {
                     headingHtml += `<span class="cell-eta-label">n<sub>idx</sub> = ${nVal}</span>`;
                 }
                 if (summary?.K_Pas_n != null && Number.isFinite(Number(summary.K_Pas_n))) {
-                    headingHtml += `<span class="cell-eta-label" title="Amplitude-derived consistency">K<sub>amp</sub> = ${Number(summary.K_Pas_n).toExponential(3)} Pa·sⁿ</span>`;
+                    headingHtml += `<span class="cell-eta-label" title="Amplitude-derived consistency">K<sub>amp</sub> = ${this._fmtScientificTimesTen(summary.K_Pas_n)} Pa·sⁿ</span>`;
                 }
                 if (summary?.K_stress != null && Number.isFinite(Number(summary.K_stress))) {
-                    headingHtml += `<span class="cell-eta-label" title="Stress regression consistency">K<sub>stress</sub> = ${Number(summary.K_stress).toExponential(3)} Pa·sⁿ</span>`;
+                    headingHtml += `<span class="cell-eta-label" title="Stress regression consistency">K<sub>stress</sub> = ${this._fmtScientificTimesTen(summary.K_stress)} Pa·sⁿ</span>`;
                 }
                 if (summary?.n_stress != null && Number.isFinite(Number(summary.n_stress))) {
                     headingHtml += `<span class="cell-eta-label">n<sub>stress</sub> = ${Number(summary.n_stress).toFixed(3)}</span>`;
@@ -7881,7 +8276,7 @@ class ViscometryDashboard {
             },
         ];
         if (summary?.K_stress != null && Number.isFinite(Number(summary.K_stress))) {
-            const kStress = Number(summary.K_stress).toExponential(3);
+            const kStress = this._fmtScientificTimesTen(summary.K_stress, 3, { html: false });
             const nStress = summary.n_stress != null && Number.isFinite(Number(summary.n_stress))
                 ? Number(summary.n_stress).toFixed(3)
                 : "—";

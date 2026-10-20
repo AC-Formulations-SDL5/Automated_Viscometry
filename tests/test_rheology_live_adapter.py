@@ -16,9 +16,11 @@ _ROOT = Path(__file__).resolve().parent
 
 from viscometry.rheology.constants import FIT_R2_MIN, H_C_UNIVERSAL_MM
 from viscometry.rheology.live_adapter import (
+    filter_measurement_points,
     fit_sweep_drag,
     predict_cell_rheology,
     prepare_sweep_arrays,
+    recompute_characterization_from_measurements,
 )
 from viscometry.rheology.prediction import drag_model_curve
 
@@ -130,6 +132,49 @@ class TestRheologyLiveAdapter(unittest.TestCase):
         self.assertIn(summary["pathway"], ("mild_shear_thinning", "strong_shear_thinning", "newtonian", "shear_thickening"))
         self.assertIn(summary["mode"], ("mixed", "stress_powerlaw", "newtonian", "powerlaw"))
         self.assertIn(summary["regime"], ("shear-thinning", "Newtonian", "shear-thickening"))
+
+    def test_filter_measurement_points_excludes_heights(self):
+        data = _sweep_rows(rpm=10.0, n_points=8, height_start=1.0, height_step=0.35)
+        all_pts = filter_measurement_points(data, 1, 10.0)
+        filtered = filter_measurement_points(
+            data, 1, 10.0, excluded_heights=[1.0, 1.35]
+        )
+        self.assertEqual(len(all_pts), 8)
+        self.assertEqual(len(filtered), 6)
+        kept = {round(float(p["height"]), 3) for p in filtered}
+        self.assertNotIn(1.0, kept)
+        self.assertNotIn(1.35, kept)
+
+    def test_predict_excludes_rpms_from_summary_but_keeps_fits(self):
+        data = []
+        for rpm, A in ((5.0, 1.0), (15.0, 0.72), (30.0, 0.52)):
+            data.extend(_sweep_rows(rpm=rpm, A=A))
+        per_rpm, summary = predict_cell_rheology(
+            1,
+            [5.0, 15.0, 30.0],
+            data,
+            torque_floor_pct=0.0,
+            excluded_rpms=[30.0],
+        )
+        self.assertTrue(per_rpm[5.0]["success"])
+        self.assertTrue(per_rpm[15.0]["success"])
+        self.assertTrue(per_rpm[30.0]["success"])
+        self.assertTrue(summary["success"])
+        self.assertEqual(len(summary.get("A_per_rpm") or []), 2)
+
+    def test_recompute_passes_exclusion_maps(self):
+        data = []
+        for rpm, A in ((5.0, 1.0), (15.0, 0.72), (30.0, 0.52)):
+            data.extend(_sweep_rows(rpm=rpm, A=A))
+        out = recompute_characterization_from_measurements(
+            [1],
+            data,
+            torque_floor_pct=0.0,
+            excluded_rpms_by_cell={1: [30.0]},
+            excluded_heights_by_cell={1: [1.0]},
+        )
+        self.assertIn("1", out)
+        self.assertTrue(out["1"]["__summary__"]["success"])
 
 
 if __name__ == "__main__":

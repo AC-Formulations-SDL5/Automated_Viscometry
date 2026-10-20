@@ -28,12 +28,44 @@ def _rpm_match(a: float, b: float) -> bool:
     return abs(float(a) - float(b)) < _RPM_TOL
 
 
+def _height_key(height: float) -> str:
+    return f"{float(height):.3f}"
+
+
+def _normalize_excluded_heights(excluded_heights: Optional[Sequence[float]]) -> set:
+    """Round heights to the same .3f keys used by measurement dedupe."""
+    out: set = set()
+    if not excluded_heights:
+        return out
+    for h in excluded_heights:
+        try:
+            out.add(_height_key(float(h)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _normalize_excluded_rpms(excluded_rpms: Optional[Sequence[float]]) -> List[float]:
+    out: List[float] = []
+    if not excluded_rpms:
+        return out
+    for r in excluded_rpms:
+        try:
+            out.append(float(r))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def filter_measurement_points(
     measurement_data: Sequence[Dict[str, Any]],
     cell_id: int,
     rpm: float,
+    *,
+    excluded_heights: Optional[Sequence[float]] = None,
 ) -> List[Dict[str, Any]]:
     """Latest measurement per Z-height for one cell and RPM."""
+    drop_heights = _normalize_excluded_heights(excluded_heights)
     latest: Dict[str, Dict[str, Any]] = {}
     for row in measurement_data:
         try:
@@ -49,8 +81,10 @@ def filter_measurement_points(
         if height is None:
             continue
         try:
-            h_key = f"{float(height):.3f}"
+            h_key = _height_key(float(height))
         except (TypeError, ValueError):
+            continue
+        if h_key in drop_heights:
             continue
         ts = float(row.get("timestamp") or 0)
         prev = latest.get(h_key)
@@ -405,9 +439,12 @@ def predict_cell_rheology(
     torque_floor_pct: float,
     hit_point_z: Optional[float] = None,
     min_r2: float = FIT_R2_MIN,
+    excluded_rpms: Optional[Sequence[float]] = None,
+    excluded_heights: Optional[Sequence[float]] = None,
 ) -> Tuple[Dict[float, Dict[str, Any]], Dict[str, Any]]:
     """Fit each RPM sweep and run three-pathway cell characterization."""
     per_rpm: Dict[float, Dict[str, Any]] = {}
+    excluded_rpm_list = _normalize_excluded_rpms(excluded_rpms)
 
     for rpm in rpms:
         rpm_f = float(rpm)
@@ -428,7 +465,12 @@ def predict_cell_rheology(
             "viscosity_kcp": None,
         }
         try:
-            points = filter_measurement_points(measurement_data, cell_id, rpm_f)
+            points = filter_measurement_points(
+                measurement_data,
+                cell_id,
+                rpm_f,
+                excluded_heights=excluded_heights,
+            )
             if not points:
                 sweep_base["error"] = "No measurement points for this cell and RPM"
                 per_rpm[rpm_f] = sweep_base
@@ -455,7 +497,10 @@ def predict_cell_rheology(
             per_rpm[rpm_f] = sweep_base
 
     successful = {
-        rpm: fit for rpm, fit in per_rpm.items() if fit.get("success")
+        rpm: fit
+        for rpm, fit in per_rpm.items()
+        if fit.get("success")
+        and not any(_rpm_match(rpm, ex) for ex in excluded_rpm_list)
     }
     summary = compute_cell_characterization(
         successful,
@@ -488,16 +533,42 @@ def predict_cell_rheology(
     return per_rpm, summary
 
 
+def _parse_exclusion_map(raw: Any) -> Dict[int, List[float]]:
+    """Normalize {cell_id: [floats]} maps from JSON payloads."""
+    out: Dict[int, List[float]] = {}
+    if not isinstance(raw, dict):
+        return out
+    for key, values in raw.items():
+        try:
+            cid = int(key)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(values, (list, tuple)):
+            continue
+        parsed: List[float] = []
+        for v in values:
+            try:
+                parsed.append(float(v))
+            except (TypeError, ValueError):
+                continue
+        out[cid] = parsed
+    return out
+
+
 def recompute_characterization_from_measurements(
     cells: Sequence[int],
     measurements: Sequence[Dict[str, Any]],
     *,
     torque_floor_pct: float = 0.0,
     hit_point_z_by_cell: Optional[Dict[int, float]] = None,
+    excluded_rpms_by_cell: Optional[Dict[Any, Sequence[float]]] = None,
+    excluded_heights_by_cell: Optional[Dict[Any, Sequence[float]]] = None,
     min_r2: float = FIT_R2_MIN,
 ) -> Dict[str, Any]:
     """Recompute per-cell characterization from saved measurement rows."""
     hit_map = hit_point_z_by_cell or {}
+    excl_rpms = _parse_exclusion_map(excluded_rpms_by_cell)
+    excl_heights = _parse_exclusion_map(excluded_heights_by_cell)
     out: Dict[str, Any] = {}
     for cell_id in cells:
         cid = int(cell_id)
@@ -517,6 +588,8 @@ def recompute_characterization_from_measurements(
             torque_floor_pct=torque_floor_pct,
             hit_point_z=hit_map.get(cid),
             min_r2=min_r2,
+            excluded_rpms=excl_rpms.get(cid),
+            excluded_heights=excl_heights.get(cid),
         )
         cell_map: Dict[str, Any] = {SUMMARY_KEY: summary}
         for rpm, fit in per_rpm.items():
