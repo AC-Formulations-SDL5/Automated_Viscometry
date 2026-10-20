@@ -603,6 +603,8 @@ class ViscometryWebInterface:
                     measurements,
                     torque_floor_pct=torque_floor,
                     hit_point_z_by_cell=hit_map or None,
+                    excluded_rpms_by_cell=payload.get("excluded_rpms_by_cell") or None,
+                    excluded_heights_by_cell=payload.get("excluded_heights_by_cell") or None,
                 )
                 return jsonify(result)
             except Exception as e:
