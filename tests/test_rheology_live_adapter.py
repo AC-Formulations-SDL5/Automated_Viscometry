@@ -176,6 +176,25 @@ class TestRheologyLiveAdapter(unittest.TestCase):
         self.assertIn("1", out)
         self.assertTrue(out["1"]["__summary__"]["success"])
 
+    def test_recompute_result_is_json_serializable(self):
+        """Private numpy scratch fields must not break Flask jsonify."""
+        import json
+
+        data = []
+        for rpm, A in ((5.0, 1.0), (15.0, 0.72), (30.0, 0.52)):
+            data.extend(_sweep_rows(rpm=rpm, A=A))
+        out = recompute_characterization_from_measurements(
+            [1],
+            data,
+            torque_floor_pct=0.0,
+            excluded_rpms_by_cell={1: [30.0]},
+        )
+        for key, fit in out["1"].items():
+            if key == "__summary__":
+                continue
+            self.assertFalse(any(str(k).startswith("_") for k in fit.keys()))
+        json.dumps(out)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6453,6 +6453,8 @@ class ViscometryDashboard {
                 }),
             });
             if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}));
+                console.warn("Characterization recompute failed", res.status, errBody);
                 return;
             }
             const data = await res.json();
@@ -6470,9 +6472,11 @@ class ViscometryDashboard {
                     }
                 });
                 exp.characterization_exploration = prev;
+            } else if (data?.error) {
+                console.warn("Characterization recompute error", data.error);
             }
-        } catch (_err) {
-            // Keep prior exploration if recompute fails.
+        } catch (err) {
+            console.warn("Characterization recompute failed", err);
         }
     }
 
