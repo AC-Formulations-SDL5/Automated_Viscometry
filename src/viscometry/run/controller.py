@@ -24,6 +24,7 @@ from viscometry.rheology.viscosity import (
 )
 from viscometry.rheology.live_engine import CharacterizationManager
 from viscometry.rheology.live_adapter import SUMMARY_KEY
+from viscometry.discovery.rpm_calibration import format_rpm
 from viscometry.measurement.hitpoint import extract_hitpoint, extract_rough_hitpoint
 from viscometry.calibration.store import (
     is_calibrated, load_calibration, get_safe_z_for_cell, get_calibration_summary, clear_calibration
@@ -946,7 +947,7 @@ def measure_torque_at_rpm(
         # Set spindle speed
         client.set_speed(rpm)
         web_interface.set_current_rpm(rpm)
-        web_interface.update_status(f"Measuring at {rpm} RPM")
+        web_interface.update_status(f"Measuring at {format_rpm(rpm)} RPM")
         sleep_with_stop(DWELL_SECONDS)  # Allow spindle to settle at new RPM
         
         # Collect torque measurements over duration
@@ -1058,7 +1059,7 @@ def measure_torque_at_rpm(
                     sample_index += 1
                     next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
                 except Exception as e:
-                    print(f"      Measurement error at RPM {rpm}: {e}")
+                    print(f"      Measurement error at RPM {format_rpm(rpm)}: {e}")
                     sample_index += 1
                     next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
             
@@ -1075,14 +1076,14 @@ def measure_torque_at_rpm(
             avg_torque = sum(torque_values) / len(torque_values)
             min_torque = min(torque_values)
             max_torque = max(torque_values)
-            print(f"      RPM {rpm}: {len(measurements)} samples, Avg: {avg_torque:.2f}%, Range: {min_torque:.2f}% to {max_torque:.2f}%")
+            print(f"      RPM {format_rpm(rpm)}: {len(measurements)} samples, Avg: {avg_torque:.2f}%, Range: {min_torque:.2f}% to {max_torque:.2f}%")
             return measurements
         else:
-            print(f"      RPM {rpm}: No valid measurements collected")
+            print(f"      RPM {format_rpm(rpm)}: No valid measurements collected")
             return None
             
     except Exception as e:
-        print(f"      Error measuring torque at RPM {rpm}: {e}")
+        print(f"      Error measuring torque at RPM {format_rpm(rpm)}: {e}")
         try:
             client.stop()
             web_interface.set_current_rpm(0)
@@ -1141,7 +1142,7 @@ def _mark_rpm_torque_dropped(
     if rpm in dropped_torque_rpms:
         return
     dropped_torque_rpms.add(rpm)
-    print(f"      [RPM DROPPED] RPM {rpm}: {reason} — excluded from future Z-heights")
+    print(f"      [RPM DROPPED] RPM {format_rpm(rpm)}: {reason} — excluded from future Z-heights")
     web_interface.emit_rpm_torque_status(global_cell, cell_rpms, dropped_torque_rpms)
 
 
@@ -1197,7 +1198,7 @@ def test_dynamic_analysis_at_z(
             )
             if not _rpm_liquid_contact_established(measurements, liquid_threshold_pct):
                 print(
-                    f"      [LIQUID CONTACT] RPM {rpm}: below floor after first interval "
+                    f"      [LIQUID CONTACT] RPM {format_rpm(rpm)}: below floor after first interval "
                     f"(≥ {SAMPLE_INTERVAL:.1f}s) at Z={z_height:.3f} — skip RPM, try next"
                 )
                 rpm_torque_data[rpm] = None
@@ -1216,7 +1217,7 @@ def test_dynamic_analysis_at_z(
             _mark_rpm_torque_dropped(rpm, dropped, cell_rpms, global_cell, reason)
         elif should_drop:
             print(
-                f"      [CAL] RPM {rpm}: would drop ({reason}) — continuing for calibration"
+                f"      [CAL] RPM {format_rpm(rpm)}: would drop ({reason}) — continuing for calibration"
             )
 
     z_liquid_skipped = False
@@ -1253,7 +1254,7 @@ def test_cell_dynamic_z_series(
     row_number, local_cell = global_cell_to_row_and_local(global_cell)
     print(f"\n{'='*60}")
     print(f"DYNAMIC ANALYSIS - CELL {global_cell} (Row {row_number}, Local Cell {local_cell})")
-    print(f"Testing RPMs {cell_rpms} across Z-gap range")
+    print(f"Testing RPMs {[format_rpm(r) for r in cell_rpms]} across Z-gap range")
     use_row_z_limit = not (
         RECALIBRATE_INDIVIDUAL_CELLS and RECALIBRATION_IGNORE_MAX_Z_TRAVEL
     )
@@ -1812,17 +1813,17 @@ def run_predicted_viscosity_for_cell(
             web_interface.emit_predicted_viscosity(cell_id, rpm, result)
             if result.get('success'):
                 print(
-                    f"  Predicted viscosity Cell {cell_id} @ {rpm} RPM: "
+                    f"  Predicted viscosity Cell {cell_id} @ {format_rpm(rpm)} RPM: "
                     f"{result.get('viscosity_kcp'):.3f} kCp "
                     f"(R²={result.get('R2')}, pts={result.get('n_points_used')})"
                 )
             else:
                 print(
-                    f"  Predicted viscosity Cell {cell_id} @ {rpm} RPM: failed — "
+                    f"  Predicted viscosity Cell {cell_id} @ {format_rpm(rpm)} RPM: failed — "
                     f"{result.get('error')}"
                 )
         except Exception as e:
-            print(f"  Warning: predicted viscosity failed for Cell {cell_id} RPM {rpm}: {e}")
+            print(f"  Warning: predicted viscosity failed for Cell {cell_id} RPM {format_rpm(rpm)}: {e}")
 
     try:
         from viscometry.rheology.viscosity import predict_cell_viscosity
@@ -1998,7 +1999,7 @@ def main():
     print("="*80)
     print("MULTI-ROW DYNAMIC ANALYSIS - Z-GAP vs TORQUE at MULTIPLE RPMs")
     print("WITH ROTATIONAL DRAG FEEDBACK CONTROLLER")
-    print(f"Testing RPMs: {TEST_RPMS}")
+    print(f"Testing RPMs: {[format_rpm(r) for r in TEST_RPMS]}")
     print(f"Total available: {len(ROWS)} rows x {NUM_CELLS} cells = {len(ROWS) * NUM_CELLS} cells")
     
     # Start web interface in background thread
@@ -2343,7 +2344,7 @@ def main():
                                 traceback.print_exc()
                             continue
 
-                    print(f"  RPMs for Cell {global_cell}: {cell_rpms}")
+                    print(f"  RPMs for Cell {global_cell}: {[format_rpm(r) for r in cell_rpms]}")
                     
                     # Determine status message and custom starting Z for recalibration / discovery handoff
                     custom_z = None
@@ -2359,7 +2360,9 @@ def main():
                     elif CALIBRATION_MODE:
                         web_interface.update_status(f"Calibrating cell {i+1}/{len(selected_cells)} (Cell {global_cell})")
                     else:
-                        web_interface.update_status(f"Testing Cell {global_cell} at RPMs {cell_rpms}")
+                        web_interface.update_status(
+                            f"Testing Cell {global_cell} at RPMs {[format_rpm(r) for r in cell_rpms]}"
+                        )
 
                     result = test_cell_dynamic_z_series(
                         cnc,
