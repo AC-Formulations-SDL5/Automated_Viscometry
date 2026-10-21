@@ -18,6 +18,14 @@ def round_rpm_2dp(rpm: float) -> float:
     return round(float(rpm), 2)
 
 
+def format_rpm(rpm: float) -> str:
+    """Format RPM to two decimal places for UI, logs, and CSV."""
+    try:
+        return f"{float(rpm):.2f}"
+    except (TypeError, ValueError):
+        return str(rpm)
+
+
 def rpm_at_reference_torque(
     eta_cp: float,
     *,

@@ -13,6 +13,8 @@ import statistics
 from collections import deque
 from typing import Dict, List, Optional, Tuple
 
+from viscometry.discovery.rpm_calibration import format_rpm
+
 # Module verification function
 def verify_import():
 
@@ -249,7 +251,7 @@ class RotationalDragFeedbackController:
                     'num_samples': len(drag_values)
                 }
                 self._update_moving_cv(rpm, latest_drag)
-                print(f"      RPM {rpm}: Latest Rotational_Drag = {latest_drag:.4f}, Avg = {avg_drag:.4f}, CV = {cv:.3f}")
+                print(f"      RPM {format_rpm(rpm)}: Latest Rotational_Drag = {latest_drag:.4f}, Avg = {avg_drag:.4f}, CV = {cv:.3f}")
     
     def analyze_trend_for_rpm(self, rpm: float) -> Dict:
         """
@@ -423,7 +425,7 @@ class RotationalDragFeedbackController:
                 r2_cv_str = f"{trend_analysis['moving_r2_cv']:.4f}" if trend_analysis['moving_r2_cv'] is not None else "N/A"
                 r2_slope_str = f"{trend_analysis['moving_r2_slope']:.4f}" if trend_analysis['moving_r2_slope'] is not None else "N/A"
                 print(
-                    f"    RPM {rpm} METRICS: "
+                    f"    RPM {format_rpm(rpm)} METRICS: "
                     f"2nd-Deriv Drag [AUTO-Z] = {second_drag_str}, "
                     f"2nd-Deriv CV [AUTO-Z] = {second_cv_str}, "
                     f"2nd-Deriv Slope [AUTO-Z] = {second_slope_str}, "
@@ -435,11 +437,11 @@ class RotationalDragFeedbackController:
                 if trend_analysis['hit_detected']:
                     hit_detections.append(rpm)
                     total_confidence += trend_analysis['hit_confidence']
-                    print(f"    RPM {rpm}: HIT DETECTED (confidence: {trend_analysis['hit_confidence']:.2f}) - {', '.join(trend_analysis['hit_reasons'])}")
+                    print(f"    RPM {format_rpm(rpm)}: HIT DETECTED (confidence: {trend_analysis['hit_confidence']:.2f}) - {', '.join(trend_analysis['hit_reasons'])}")
                 else:
-                    print(f"    RPM {rpm}: Normal trend (slope: {trend_analysis['trend_slope']:.4f})")
+                    print(f"    RPM {format_rpm(rpm)}: Normal trend (slope: {trend_analysis['trend_slope']:.4f})")
             else:
-                print(f"    RPM {rpm}: {trend_analysis['reason']}")
+                print(f"    RPM {format_rpm(rpm)}: {trend_analysis['reason']}")
         
         # Determine overall hit detection
         avg_confidence = total_confidence / len(test_rpms) if len(test_rpms) > 0 else 0

@@ -6,6 +6,7 @@ import csv
 import time
 from typing import Dict, List, Optional
 
+from viscometry.discovery.rpm_calibration import format_rpm
 from viscometry.paths import runs_dir_for_today
 from viscometry.rheology.live_adapter import SUMMARY_KEY
 from viscometry.run import settings
@@ -67,7 +68,7 @@ def _liquid_skip_csv_row(row_number: int, global_cell: int, z_height: float, rpm
         str(global_cell),
         settings.CELL_CONTENT_MAP.get(global_cell, ""),
         f"{z_height:.3f}",
-        f"{rpm:.1f}",
+        format_rpm(rpm),
         sk,
         torque_label,
         sk,
@@ -218,7 +219,7 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
             b_val = result.get("B")
             r2_val = result.get("R2") or result.get("R2_drag")
             csv_writer.writerow([
-                f"# {global_cell},{label},{rpm},"
+                f"# {global_cell},{label},{format_rpm(rpm)},"
                 f"{'' if visc is None else visc},"
                 f"{'' if a_val is None else a_val},"
                 f"{'' if b_val is None else b_val},"
@@ -378,7 +379,9 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
         else:
             csv_writer.writerow([f"# Dynamic Analysis - Mode: {mode.upper()}"])
         csv_writer.writerow([f"# Experiment Name: {experiment_name}"])
-        csv_writer.writerow([f"# Test RPMs (global fallback): {settings.TEST_RPMS}"])
+        csv_writer.writerow([
+            f"# Test RPMs (global fallback): {[format_rpm(r) for r in settings.TEST_RPMS]}"
+        ])
         if settings.TESTING_MODE == "custom" and settings.CELL_RPM_MAP:
             csv_writer.writerow([f"# Per-cell RPM overrides: {settings.CELL_RPM_MAP}"])
         if settings.CELL_CONTENT_MAP:
@@ -447,7 +450,7 @@ def save_dynamic_analysis_data(all_data: Dict[int, Dict[float, Dict[float, Optio
                                 str(global_cell),
                                 settings.CELL_CONTENT_MAP.get(global_cell, ''),
                                 f"{z_height:.3f}",
-                                f"{rpm:.1f}",
+                                format_rpm(rpm),
                                 f"{latest_measurement['elapsed_time']:.2f}",
                                 f"{latest_measurement['torque_percent']:.3f}",
                                 f"{rotational_drag:.6f}",
@@ -526,7 +529,7 @@ def save_timeseries_data(
                             str(global_cell),
                             settings.CELL_CONTENT_MAP.get(global_cell, ""),
                             f"{float(z_height):.3f}",
-                            f"{rpm_f:.1f}",
+                            format_rpm(rpm_f),
                             f"{elapsed:.2f}",
                             f"{torque_percent:.3f}",
                             f"{rotational_drag:.6f}",

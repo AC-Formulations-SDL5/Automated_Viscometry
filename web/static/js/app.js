@@ -8,6 +8,22 @@ const LIVE_RPM_PASTEL_PALETTE = [
 const LIVE_PLOT_BELOW_FILL = "#f6aea9";
 const LIVE_PLOT_BELOW_LINE = "#e57373";
 
+/** Hardware maximum spindle speed (Brookfield DV2T-RV). */
+const GAUGE_RPM_MAX = 200;
+
+function formatRpm(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n.toFixed(2) : "—";
+}
+
+function formatRpmList(rpms, empty = "") {
+    if (!Array.isArray(rpms) || rpms.length === 0) {
+        return empty;
+    }
+    const parts = rpms.map((r) => formatRpm(r)).filter((s) => s !== "—");
+    return parts.length ? parts.join(", ") : empty;
+}
+
 /** Mode-aware protocol steps and compact orchestration flow (see ORCHESTRATION_SCENARIO.md). */
 const PROTOCOL_DEFINITIONS = {
     idle: {
@@ -856,7 +872,7 @@ class ViscometryDashboard {
         }
         if (this.el.calApplyRpm) {
             this.el.calApplyRpm.addEventListener("click", () => {
-                if (this.el.testRpms) this.el.testRpms.value = "1";
+                if (this.el.testRpms) this.el.testRpms.value = "1.00";
                 this.setUiState("idle");
             });
         }
@@ -875,7 +891,7 @@ class ViscometryDashboard {
         if (this.el.calApplyAll) {
             this.el.calApplyAll.addEventListener("click", () => {
                 if (this.el.zStepSize) this.el.zStepSize.value = "-0.02";
-                if (this.el.testRpms) this.el.testRpms.value = "1";
+                if (this.el.testRpms) this.el.testRpms.value = "1.00";
                 if (this.el.measurementDuration) this.el.measurementDuration.value = "6";
                 if (this.el.sampleInterval) this.el.sampleInterval.value = "3";
                 this.setUiState("idle");
@@ -1878,7 +1894,7 @@ class ViscometryDashboard {
         if (this.el.experimentName) {
             this.el.experimentName.value = settings.experiment_name || "";
         }
-        this.el.testRpms.value = Array.isArray(settings.test_rpms) ? settings.test_rpms.join(", ") : "0.8";
+        this.el.testRpms.value = Array.isArray(settings.test_rpms) ? (formatRpmList(settings.test_rpms) || "0.80") : "0.80";
         this.el.selectedRows.value = Array.isArray(settings.selected_rows) ? settings.selected_rows.join(", ") : "";
         this.el.selectedCells.value = Array.isArray(settings.selected_cells) ? settings.selected_cells.join(", ") : "";
         this.el.zStepSize.value = settings.z_step_size ?? -0.02;
@@ -2026,13 +2042,13 @@ class ViscometryDashboard {
             const input = document.createElement("input");
             input.type = "text";
             input.className = "cell-rpm-input";
-            input.placeholder = "e.g. 0.8, 1.0";
+            input.placeholder = "e.g. 0.80, 1.00";
             input.dataset.cellId = String(cellId);
 
             // Restore any previously entered value
             const existing = this.cellRpmMap[cellId];
             if (existing && existing.length > 0) {
-                input.value = existing.join(", ");
+                input.value = formatRpmList(existing);
             }
 
             // Update cellRpmMap on every change
@@ -2396,7 +2412,7 @@ class ViscometryDashboard {
             ? Number(p.ladder_target_pct).toFixed(0)
             : "—";
         return `<tr><td>${idx + 1}</td><td class="mono">${target}</td>`
-            + `<td class="mono">${Number(p.rpm).toFixed(2)}</td>`
+            + `<td class="mono">${formatRpm(p.rpm)}</td>`
             + `<td class="mono">${Number(p.torque).toFixed(2)}</td>`
             + `<td class="mono">${p.eta_est != null ? Number(p.eta_est).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td></tr>`;
     }
@@ -2411,10 +2427,10 @@ class ViscometryDashboard {
                 return "";
             }
             const highlight = target === 30 ? " discovery-rpm-highlight" : "";
-            return `<tr class="${highlight.trim()}"><td>${target}%</td><td class="mono">${Number(rpm).toFixed(2)}</td></tr>`;
+            return `<tr class="${highlight.trim()}"><td>${target}%</td><td class="mono">${formatRpm(rpm)}</td></tr>`;
         }).filter(Boolean).join("");
         const discovered = entry.rpm != null
-            ? `<tr class="discovery-rpm-final"><td>Discovered</td><td class="mono">${Number(entry.rpm).toFixed(2)}</td></tr>`
+            ? `<tr class="discovery-rpm-final"><td>Discovered</td><td class="mono">${formatRpm(entry.rpm)}</td></tr>`
             : "";
         if (!ladderRows && !discovered) {
             return "";
@@ -2484,7 +2500,7 @@ class ViscometryDashboard {
             this.el.discoveryStatusCell.textContent = payload.cell_id != null ? String(payload.cell_id) : "—";
         }
         if (this.el.discoveryStatusRpm) {
-            this.el.discoveryStatusRpm.textContent = payload.rpm != null ? Number(payload.rpm).toFixed(2) : "—";
+            this.el.discoveryStatusRpm.textContent = payload.rpm != null ? formatRpm(payload.rpm) : "—";
         }
         if (this.el.discoveryStatusEta) {
             this.el.discoveryStatusEta.textContent = payload.eta_estimate != null
@@ -2601,7 +2617,7 @@ class ViscometryDashboard {
             return "";
         }
         const status = entry.status || "—";
-        const rpm = entry.rpm != null ? Number(entry.rpm).toFixed(2) : "—";
+        const rpm = entry.rpm != null ? formatRpm(entry.rpm) : "—";
         const eta = entry.eta_estimate != null
             ? Number(entry.eta_estimate).toLocaleString(undefined, { maximumFractionDigits: 0 })
             : "—";
@@ -2709,7 +2725,7 @@ class ViscometryDashboard {
                 `Below torque floor (${floor}%): red (all RPMs)`;
         }
         this.el.discoveryDragZRpmLegend.innerHTML = orderedRpms.map((rpm) => {
-            const label = Number(rpm).toFixed(2);
+            const label = formatRpm(rpm);
             const color = this.colorForRpm(rpm);
             return (
                 `<div class="rpm-legend-item">`
@@ -4418,7 +4434,7 @@ class ViscometryDashboard {
         const rpmColor = this.getLiveRpmColor(rpm, orderedRpms);
         const sorted = [...points].sort((a, b) => Number(a.height) - Number(b.height));
         const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor);
-        const rpmLabel = Number(rpm).toFixed(3);
+        const rpmLabel = formatRpm(rpm);
         const trace = {
             x: sorted.map((m) => m.height),
             y: sorted.map((m) => m.rotational_drag),
@@ -4446,7 +4462,7 @@ class ViscometryDashboard {
         const rpmColor = this.getLiveRpmColor(rpm, orderedRpms);
         const sorted = [...points].sort((a, b) => Number(a.height) - Number(b.height));
         const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor);
-        const rpmLabel = Number(rpm).toFixed(3);
+        const rpmLabel = formatRpm(rpm);
         return {
             x: sorted.map((m) => m.height),
             y: sorted.map((m) => m.torque_percent),
@@ -4471,7 +4487,7 @@ class ViscometryDashboard {
         const rpmColor = this.getLiveRpmColor(rpm, orderedRpms);
         const sorted = [...points].sort((a, b) => Number(a.height) - Number(b.height));
         const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor, skipFloorColoring);
-        const rpmLabel = Number(rpm).toFixed(3);
+        const rpmLabel = formatRpm(rpm);
         return {
             label: `RPM ${rpmLabel}`,
             data: sorted.map((m) => ({
@@ -4494,7 +4510,7 @@ class ViscometryDashboard {
         const rpmColor = this.getLiveRpmColor(rpm, orderedRpms);
         const sorted = [...points].sort((a, b) => Number(a.height) - Number(b.height));
         const markerPalette = this._markerColorsForRpmTrace(sorted, torqueFloor, rpmColor);
-        const rpmLabel = Number(rpm).toFixed(3);
+        const rpmLabel = formatRpm(rpm);
         return {
             label: `RPM ${rpmLabel}`,
             data: sorted.map((m) => ({
@@ -4529,8 +4545,8 @@ class ViscometryDashboard {
             : null;
         listEl.innerHTML = orderedRpms.map((rpm) => {
             const color = this.getLiveRpmColor(rpm, orderedRpms);
-            const label = Number(rpm).toFixed(3);
-            const rpmKey = label;
+            const label = formatRpm(rpm);
+            const rpmKey = Number(rpm).toFixed(3);
             const dropped = statusMap?.get(rpmKey) === "dropped";
             const dotClass = dropped ? "rpm-status-dropped" : "rpm-status-active";
             const dotTitle = dropped ? "Dropped (torque limit)" : "Actively testing";
@@ -4674,7 +4690,7 @@ class ViscometryDashboard {
         }
         listEl.innerHTML = orderedRpms.map((rpm) => {
             const color = this.getLiveRpmColor(rpm, orderedRpms);
-            const label = Number(rpm).toFixed(3);
+            const label = formatRpm(rpm);
             return (
                 `<div class="rpm-legend-row">`
                 + `<span class="rpm-legend-swatch" style="background:${color}"></span>`
@@ -4783,16 +4799,17 @@ class ViscometryDashboard {
     }
 
     _applyGaugeToElements(value, elements) {
-        const pct = value / 200;
+        const pct = value / GAUGE_RPM_MAX;
         const offset = this.gaugeArcLength * (1 - pct);
         const angle = -135 + 270 * pct;
         elements.gaugeValue.style.strokeDashoffset = String(offset);
         elements.gaugeNeedle.style.transform = `rotate(${angle}deg)`;
-        elements.gaugeText.textContent = value.toFixed(1);
+        elements.gaugeText.textContent = formatRpm(value);
     }
 
     updateGauge(targetRPM, options = {}) {
-        const clamped = Math.max(0, Math.min(100, targetRPM));
+        const numeric = Number(targetRPM);
+        const clamped = Math.max(0, Math.min(GAUGE_RPM_MAX, Number.isFinite(numeric) ? numeric : 0));
         const gaugeSets = this._gaugeElementsForActiveTab();
         if (!gaugeSets.length && !options.force) {
             return;
@@ -4945,7 +4962,7 @@ class ViscometryDashboard {
             return;
         }
         if (elements.rpm) {
-            elements.rpm.textContent = data.rpm != null ? `${Number(data.rpm).toFixed(2)} RPM` : "-";
+            elements.rpm.textContent = data.rpm != null ? `${formatRpm(data.rpm)} RPM` : "-";
         }
         const fmt = (v) => v != null && !Number.isNaN(Number(v)) ? Number(v).toFixed(4) : "-";
         const r2DragThreshold = Number(this.el.r2DragMin?.value ?? 0.975);
@@ -6840,7 +6857,7 @@ class ViscometryDashboard {
                 <span>Cells</span><span>${(exp.cells || []).join(", ") || "-"}</span>
             </div>
             <div class="experiment-card-row">
-                <span>RPMs</span><span>${(exp.rpms || []).join(", ") || "-"}</span>
+                <span>RPMs</span><span>${formatRpmList(exp.rpms, "-")}</span>
             </div>`;
     }
 
@@ -6990,7 +7007,7 @@ class ViscometryDashboard {
                 name: "Hit stress",
                 marker: { size: 8, color: accent },
                 hovertemplate: "γ̇ %{x:.3g} s⁻¹<br>τ %{y:.3g} Pa<br>%{text}<extra></extra>",
-                text: included.map((p) => `${p.rpm.toFixed(1)} RPM`),
+                text: included.map((p) => `${formatRpm(p.rpm)} RPM`),
             }];
             const dropped = points.filter((p) => p.excluded);
             if (dropped.length) {
@@ -7007,7 +7024,7 @@ class ViscometryDashboard {
                         line: { width: 1.5, color: "rgba(120, 130, 150, 0.8)" },
                     },
                     hovertemplate: "Excluded<br>γ̇ %{x:.3g} s⁻¹<br>τ %{y:.3g} Pa<br>%{text}<extra></extra>",
-                    text: dropped.map((p) => `${p.rpm.toFixed(1)} RPM`),
+                    text: dropped.map((p) => `${formatRpm(p.rpm)} RPM`),
                 });
             }
             const kStress = Number(summary.K_stress);
@@ -7112,7 +7129,7 @@ class ViscometryDashboard {
                     return `<label class="char-customize-check">`
                         + `<input type="checkbox" data-char-cell="${cellId}" data-char-kind="rpm" `
                         + `data-char-value="${rpm}"${checked ? " checked" : ""}>`
-                        + `<span>${this._escapeHtml(rpm.toFixed(1))} RPM</span>`
+                        + `<span>${this._escapeHtml(formatRpm(rpm))} RPM</span>`
                         + `</label>`;
                 })
                 .join("");
@@ -7166,7 +7183,7 @@ class ViscometryDashboard {
                             ? "OK"
                             : (result.error ? this._escapeHtml(String(result.error)) : "—"));
                     return `<tr class="${dropped ? "char-rpm-dropped" : ""}">`
-                        + `<td>${this._escapeHtml(rpm.toFixed(1))}</td>`
+                        + `<td>${this._escapeHtml(formatRpm(rpm))}</td>`
                         + `<td class="mono">${eta}</td>`
                         + `<td class="mono">${r2}</td>`
                         + `<td class="mono">${pts}</td>`
@@ -7314,7 +7331,7 @@ class ViscometryDashboard {
                 ? '<strong>Run type:</strong> <span class="experiment-card-badge mode-discovery">Discovery</span>'
                 : "<strong>Run type:</strong> Regular",
             `<strong>Cells tested:</strong> ${exp.cells.join(", ") || "-"}`,
-            `<strong>RPMs:</strong> ${exp.rpms.join(", ") || "-"}`,
+            `<strong>RPMs:</strong> ${formatRpmList(exp.rpms, "-")}`,
             `<strong>Cell labels:</strong> ${cellLabelsSummary || "-"}`,
             `<strong>Z step:</strong> ${s.z_step_size ?? "-"} mm`,
             `<strong>Measurement duration:</strong> ${s.measurement_duration ?? "-"} s`,
@@ -7391,7 +7408,7 @@ class ViscometryDashboard {
             const cellLabel = s.cell_content_map?.[cellId]
                 ? `Cell ${cellId} — ${s.cell_content_map[cellId]}`
                 : `Cell ${cellId}`;
-            const label = `${cellLabel} @ ${rpm.toFixed(3)} RPM`;
+            const label = `${cellLabel} @ ${formatRpm(rpm)} RPM`;
             const refText = Number.isFinite(alignReference) ? alignReference.toFixed(3) : "N/A";
             return {
                 x: xSeries,
@@ -8162,7 +8179,7 @@ class ViscometryDashboard {
                         y: preD,
                         mode: "markers",
                         type: "scatter",
-                        name: `RPM ${rpm} data`,
+                        name: `RPM ${formatRpm(rpm)} data`,
                         legendgroup: `rpm${rpm}`,
                         marker: { size: 7, color, opacity: 0.55 },
                         showlegend: idx === 0,
@@ -8175,7 +8192,7 @@ class ViscometryDashboard {
                         y: fitD,
                         mode: "lines",
                         type: "scatter",
-                        name: `RPM ${rpm} fit${result.provisional ? " (provisional)" : ""}`,
+                        name: `RPM ${formatRpm(rpm)} fit${result.provisional ? " (provisional)" : ""}`,
                         legendgroup: `rpm${rpm}`,
                         line: lineStyle,
                         showlegend: idx === 0,
@@ -8191,7 +8208,7 @@ class ViscometryDashboard {
                     : (result.error ? String(result.error) : "—");
                 paramRows.push(
                     `<tr>`
-                    + `<td class="mono">${Number(rpm).toFixed(3)}</td>`
+                    + `<td class="mono">${formatRpm(rpm)}</td>`
                     + `<td class="mono">${eta}</td>`
                     + `<td class="mono">${this._fmtPredictedViscosity3(result.A)}</td>`
                     + `<td class="mono">${r2}</td>`
@@ -8264,7 +8281,7 @@ class ViscometryDashboard {
                 gamma.push(g);
                 tau.push(t);
                 eta.push(muCp);
-                rpmLabels.push(`${Number(rpm).toFixed(1)} RPM`);
+                rpmLabels.push(`${formatRpm(rpm)} RPM`);
             });
         if (gamma.length < 2) {
             flowEl.innerHTML = "";
@@ -8421,7 +8438,7 @@ class ViscometryDashboard {
                 `<td>${m.cell_id}</td>`,
                 `<td>${m.height.toFixed(3)}</td>`,
                 `<td>${m.rotational_drag.toFixed(2)}</td>`,
-                `<td>${m.rpm.toFixed(2)}</td>`,
+                `<td>${formatRpm(m.rpm)}</td>`,
                 `<td>${dt.toLocaleTimeString()}</td>`
             ].join("");
 
@@ -8654,7 +8671,7 @@ class ViscometryDashboard {
         }
         const offset = Number(this.calibrationReviewSession?.calibration_offset ?? 0.4);
         const rpms = this.getRpmsForCell(cellId);
-        const rpmText = rpms.length ? rpms.map((r) => Number(r).toFixed(3)).join(", ") : "—";
+        const rpmText = formatRpmList(rpms, "—");
         box.innerHTML = `
             <div><strong>Cell ${cellId}</strong></div>
             <div>Rough hitpoint Z: <strong>${Number(entry.rough_z).toFixed(3)} mm</strong></div>
@@ -9067,7 +9084,7 @@ class ViscometryDashboard {
             ?? settings.cell_content_map?.[String(cellId)]
             ?? "";
         const rpms = this.getRpmsForCell(cellId);
-        const rpmText = rpms.length ? rpms.map((r) => Number(r).toFixed(3)).join(", ") : "—";
+        const rpmText = formatRpmList(rpms, "—");
         const zLevelCount = Number(entry.z_level_count);
         const zLevelsText = Number.isFinite(zLevelCount) && zLevelCount > 0
             ? String(zLevelCount)
@@ -9089,7 +9106,7 @@ class ViscometryDashboard {
             discoveryBlock = `
                 <div class="summary-discovery-cell-block">
                     <div><strong>RPM discovery</strong> <span class="protocol-mode-badge mode-discovery">Discovery</span></div>
-                    <div>Status: ${this._escapeHtml(String(discoveryEntry.status || "—"))} · Discovered RPM: ${discoveryEntry.rpm != null ? Number(discoveryEntry.rpm).toFixed(2) : "—"} · η est: ${dEta} cP</div>
+                    <div>Status: ${this._escapeHtml(String(discoveryEntry.status || "—"))} · Discovered RPM: ${discoveryEntry.rpm != null ? formatRpm(discoveryEntry.rpm) : "—"} · η est: ${dEta} cP</div>
                     ${this._buildDiscoveryStage2SummaryHtml(discoveryEntry)}
                     ${this._buildDiscoveryProbeTableHtml(discoveryEntry.probes, { review: true })}
                 </div>`;
@@ -9258,9 +9275,7 @@ class ViscometryDashboard {
         const settings = experiment?.settings || {};
         const labelMap = settings.cell_content_map || {};
         const rpms = Array.isArray(experiment?.rpms) ? experiment.rpms : [];
-        const rpmText = rpms.length
-            ? rpms.map((r) => Number(r).toFixed(3)).join(", ")
-            : null;
+        const rpmText = rpms.length ? formatRpmList(rpms) : null;
         const partialFlags = experiment?.cell_partial_flags || {};
         const items = cellIds
             .map((id) => {

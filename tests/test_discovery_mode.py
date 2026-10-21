@@ -23,6 +23,7 @@ from viscometry.discovery.rpm_calibration import (
     TARGET_TORQUE_REF,
     clamp_hardware_rpm,
     eta_from_rpm_torque,
+    format_rpm,
     initial_rpm_for_discovery,
     round_rpm_2dp,
     rpm_for_target_torque,
@@ -71,6 +72,11 @@ class TestPowerLawCalibration(unittest.TestCase):
     def test_round_rpm_2dp(self):
         self.assertEqual(round_rpm_2dp(7.3456), 7.35)
         self.assertEqual(round_rpm_2dp(10.0), 10.0)
+
+    def test_format_rpm(self):
+        self.assertEqual(format_rpm(0.1), "0.10")
+        self.assertEqual(format_rpm(7.3456), "7.35")
+        self.assertEqual(format_rpm(120), "120.00")
 
     def test_rpm_for_target_torque_1000cp(self):
         rpm = rpm_for_target_torque(1000.0, target_torque=30.0)
