@@ -159,6 +159,23 @@ class TestExperimentReviewCommit(unittest.TestCase):
         rpm = 0.8
         self.assertTrue(rpm > 0)
 
+    def test_discovery_only_flag_reaches_review_and_history(self):
+        self.iface._experiment_review_run_context["runtime_settings"] = {
+            "discovery_mode_enabled": True,
+            "discovery_proceed_with_run": False,
+        }
+        session = self.iface.get_experiment_review_session()
+        self.assertTrue(session["discovery_mode_enabled"])
+        self.assertFalse(session["discovery_proceed_with_run"])
+
+        entry = self.iface._build_experiment_history_entry_from_review(
+            self.iface.experiment_review_session,
+            self.iface._experiment_review_run_context,
+            [1],
+        )
+        self.assertEqual(entry["run_type"], "discovery")
+        self.assertFalse(entry["settings"]["discovery_proceed_with_run"])
+
     def test_history_id_uses_run_start_ts(self):
         entry = self.iface._build_experiment_history_entry_from_review(
             self.iface.experiment_review_session,

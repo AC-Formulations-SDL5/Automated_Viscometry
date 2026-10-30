@@ -303,6 +303,8 @@ class ViscometryDashboard {
         this.discoveryEtaGuessMap = {}; // { cellId: viscosity cP or null }
         this.discoveryContentMap = {};
         this.discoveryModeActive = false;
+        /** False when this discovery run skips the Z-scan. Null when no discovery run is active. */
+        this._discoveryZScanIncluded = null;
         this.discoveryResultsByCell = {};
         /** Converged discovery RPM per cell; survives partial ladder/probing updates during Z-scan. */
         this.discoveryConvergedRpmByCell = {};
@@ -571,6 +573,7 @@ class ViscometryDashboard {
             discoveryZMeasuringDisplay: document.getElementById("discovery-z-measuring-display"),
             discoveryElapsed: document.getElementById("discovery-elapsed"),
             discoveryElapsedCell: document.getElementById("discovery-elapsed-cell"),
+            discoveryLiveDragCard: document.getElementById("discovery-live-drag-card"),
             discoveryZSparklineCanvas: document.getElementById("discovery-z-sparkline-canvas"),
             discoveryZSparklineEmpty: document.getElementById("discovery-z-sparkline-empty"),
             discoveryZConnectDots: document.getElementById("discovery-z-connect-dots"),
@@ -646,6 +649,7 @@ class ViscometryDashboard {
             expReviewTitle: document.getElementById("experiment-review-title"),
             expReviewSubtitle: document.getElementById("experiment-review-subtitle"),
             expReviewTabs: document.getElementById("experiment-review-tabs"),
+            expReviewLadder: document.getElementById("experiment-review-ladder"),
             expReviewPlot: document.getElementById("experiment-review-plot"),
             expReviewSummary: document.getElementById("experiment-review-summary"),
             expReviewSave: document.getElementById("experiment-review-save"),
@@ -1126,6 +1130,143 @@ class ViscometryDashboard {
             return true;
         }
         return !this._isDiscoveryTabLocked();
+    }
+
+    _discoveryDragChartSuppressed() {
+        return this._isDiscoveryRunActive() && this._discoveryZScanIncluded === false;
+    }
+
+    _syncDiscoveryLiveDragVisibility() {
+        const card = this.el.discoveryLiveDragCard;
+        if (!card) {
+            return;
+        }
+        const hide = this._discoveryDragChartSuppressed();
+        const wasHidden = card.classList.contains("hidden");
+        card.classList.toggle("hidden", hide);
+        if (wasHidden && !hide && this._discoveryLivePlottingEnabled({ force: true })) {
+            this.refreshDiscoveryLivePlots({ force: true });
+        }
+    }
+
+    _experimentOmitsDragPlot(exp) {
+        if (!exp) {
+            return false;
+        }
+        const settings = exp.settings || {};
+        const isDiscovery = exp.run_type === "discovery" || Boolean(settings.discovery_mode_enabled);
+        if (!isDiscovery) {
+            return false;
+        }
+        return settings.discovery_proceed_with_run === false
+            || exp.discovery_proceed_with_run === false;
+    }
+
+    _reviewOmitsDragPlot(session) {
+        if (!this._isDiscoveryReviewSession(session)) {
+            return false;
+        }
+        return Boolean(session) && session.discovery_proceed_with_run === false;
+    }
+
+    _formatDiscoveryPathLabel(path) {
+        const raw = String(path || "").trim();
+        if (raw === "newtonian") {
+            return "Newtonian";
+        }
+        if (raw === "non_newtonian") {
+            return "Non-Newtonian";
+        }
+        return raw.replace(/_/g, " ");
+    }
+
+    _rpmsMatch(left, right) {
+        const a = Number(left);
+        const b = Number(right);
+        return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 0.015;
+    }
+
+    _discoveryLadderRungs(entry) {
+        const targets = [30, 40, 50, 60, 70];
+        const probes = Array.isArray(entry?.probes) ? entry.probes : [];
+        return targets.map((target) => {
+            let rpm = entry?.[`rpm_${target}`];
+            let torque = entry?.[`torque_${target}`];
+            if (rpm == null) {
+                const matches = probes.filter((probe) => (
+                    Number(probe?.ladder_target_pct) === target && probe?.rpm != null
+                ));
+                const last = matches[matches.length - 1];
+                if (last) {
+                    rpm = last.rpm;
+                    if (torque == null) {
+                        torque = last.torque;
+                    }
+                }
+            }
+            return { target, rpm, torque };
+        });
+    }
+
+    _buildDiscoveryLadderCardHtml(entry) {
+        if (!entry) {
+            return "";
+        }
+        const rungs = this._discoveryLadderRungs(entry);
+        const hasRung = rungs.some((rung) => rung.rpm != null);
+        if (!hasRung && entry.rpm == null) {
+            return "";
+        }
+        const maxRpm = Math.max(1, ...rungs.map((rung) => {
+            const rpm = Number(rung.rpm);
+            return Number.isFinite(rpm) && rpm > 0 ? rpm : 0;
+        }));
+        const rungHtml = rungs.map((rung) => {
+            const rpm = Number(rung.rpm);
+            const hasRpm = Number.isFinite(rpm);
+            const width = hasRpm ? Math.max(8, (rpm / maxRpm) * 100) : 0;
+            const matched = this._rpmsMatch(rung.rpm, entry.rpm);
+            const cls = [
+                "discovery-ladder-rung",
+                matched ? "is-discovered" : "",
+                hasRpm ? "" : "is-missing",
+            ].filter(Boolean).join(" ");
+            const torqueText = rung.torque != null && Number.isFinite(Number(rung.torque))
+                ? `${Number(rung.torque).toFixed(1)}%`
+                : "";
+            return `<div class="${cls}">`
+                + `<span class="discovery-ladder-target">${rung.target}%</span>`
+                + `<span class="discovery-ladder-track" aria-hidden="true">`
+                + `<span class="discovery-ladder-fill" style="width:${width.toFixed(1)}%"></span>`
+                + `</span>`
+                + `<span class="discovery-ladder-rpm mono">${hasRpm ? formatRpm(rpm) : "—"}</span>`
+                + `<span class="discovery-ladder-torque mono">${torqueText}</span>`
+                + `</div>`;
+        }).join("");
+        const discoveredText = entry.rpm != null ? formatRpm(entry.rpm) : "—";
+        const pathLabel = this._formatDiscoveryPathLabel(entry.discovery_path);
+        const path = pathLabel
+            ? `<span class="protocol-mode-badge mode-discovery">${this._escapeHtml(pathLabel)}</span>`
+            : "";
+        const nProbe = entry.n_probe != null && Number.isFinite(Number(entry.n_probe))
+            ? Number(entry.n_probe).toFixed(3)
+            : "";
+        const nProbeHtml = nProbe
+            ? `<span class="discovery-ladder-discovered-meta">n<sub>probe</sub> ${nProbe}</span>`
+            : "";
+        return `
+            <section class="discovery-ladder-card">
+                <div class="discovery-ladder-card-head">
+                    <h3>Torque ladder</h3>
+                    ${path}
+                </div>
+                <div class="discovery-ladder-discovered">
+                    <span class="discovery-ladder-discovered-kicker">Discovered RPM</span>
+                    ${nProbeHtml}
+                    <strong class="discovery-ladder-discovered-value mono">${discoveredText}</strong>
+                </div>
+                <div class="discovery-ladder-rungs">${rungHtml}</div>
+            </section>`;
     }
 
     _shouldSyncMapVisuals() {
@@ -1973,6 +2114,10 @@ class ViscometryDashboard {
 
         // Sync discovery-tab fields so settings are shared across all connected devices
         if (settings.discovery_mode_enabled) {
+            if (settings.discovery_proceed_with_run !== undefined) {
+                this._discoveryZScanIncluded = Boolean(settings.discovery_proceed_with_run);
+                this._syncDiscoveryLiveDragVisibility();
+            }
             if (this.el.discoveryExperimentName) {
                 this.el.discoveryExperimentName.value = settings.experiment_name || "";
             }
@@ -2367,6 +2512,8 @@ class ViscometryDashboard {
                     this.runSettingsSnapshot = settings;
                 }
                 this._syncPlannedCells(settings);
+                this._discoveryZScanIncluded = Boolean(settings.discovery_proceed_with_run);
+                this._syncDiscoveryLiveDragVisibility();
                 return fetch("/api/run/start_discovery", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -2380,9 +2527,12 @@ class ViscometryDashboard {
                 }
                 this.setDiscoveryControlStatus("Discovery run started");
                 this.discoveryModeActive = true;
+                this._syncDiscoveryLiveDragVisibility();
             })
             .catch((err) => {
                 this.discoveryModeActive = false;
+                this._discoveryZScanIncluded = null;
+                this._syncDiscoveryLiveDragVisibility();
                 this.setUiState("ready");
                 this.setDiscoveryControlStatus(err.message || "Failed to start discovery run");
             });
@@ -2426,7 +2576,7 @@ class ViscometryDashboard {
             if (rpm == null) {
                 return "";
             }
-            const highlight = target === 30 ? " discovery-rpm-highlight" : "";
+            const highlight = this._rpmsMatch(rpm, entry.rpm) ? " discovery-rpm-highlight" : "";
             return `<tr class="${highlight.trim()}"><td>${target}%</td><td class="mono">${formatRpm(rpm)}</td></tr>`;
         }).filter(Boolean).join("");
         const discovered = entry.rpm != null
@@ -2442,17 +2592,20 @@ class ViscometryDashboard {
             </table>`;
     }
 
-    _buildDiscoveryStage2SummaryHtml(entry) {
+    _buildDiscoveryStage2SummaryHtml(entry, options = {}) {
         if (!entry) {
             return "";
         }
         const nProbe = entry.n_probe != null ? Number(entry.n_probe).toFixed(3) : "—";
-        const path = entry.discovery_path
-            ? `<span class="protocol-mode-badge mode-discovery">${this._escapeHtml(String(entry.discovery_path))}</span>`
+        const pathLabel = this._formatDiscoveryPathLabel(entry.discovery_path);
+        const path = pathLabel
+            ? `<span class="protocol-mode-badge mode-discovery">${this._escapeHtml(pathLabel)}</span>`
             : "";
         const landing = this._formatDiscoveryLandingChip(entry);
         const landingHtml = `<span class="discovery-landing-chip ${landing.cls}">${this._escapeHtml(landing.text)}</span>`;
-        const rpmTable = this._buildDiscoveryRpmTableHtml(entry);
+        const rpmTable = options.includeRpmTable === false
+            ? ""
+            : this._buildDiscoveryRpmTableHtml(entry);
         return `
             <div class="summary-discovery-stage2-block">
                 <div><strong>Rheology</strong> ${path}</div>
@@ -2625,7 +2778,8 @@ class ViscometryDashboard {
             <div class="summary-discovery-cell-block">
                 <strong>Cell ${cellId} — RPM discovery</strong>
                 <div>Status: ${this._escapeHtml(String(status))} · Discovered RPM: ${rpm} · η est: ${eta} cP</div>
-                ${this._buildDiscoveryStage2SummaryHtml(entry)}
+                ${this._buildDiscoveryLadderCardHtml(entry)}
+                ${this._buildDiscoveryStage2SummaryHtml(entry, { includeRpmTable: false })}
                 ${this._buildDiscoveryProbeTableHtml(entry.probes)}
             </div>`;
     }
@@ -2737,6 +2891,9 @@ class ViscometryDashboard {
     }
 
     refreshDiscoveryLivePlots(options = {}) {
+        if (this._discoveryDragChartSuppressed()) {
+            return;
+        }
         if (!this._discoveryLivePlottingEnabled(options)) {
             if (!options.force) {
                 this._liveChartsDirty = true;
@@ -3754,6 +3911,9 @@ class ViscometryDashboard {
                 this.discoveryModeActive = Boolean(discoveryFlag);
             } else if (!this.isRunning) {
                 this.discoveryModeActive = false;
+            }
+            if (status.is_running && settings.discovery_mode_enabled && settings.discovery_proceed_with_run !== undefined) {
+                this._discoveryZScanIncluded = Boolean(settings.discovery_proceed_with_run);
             }
         }
 
@@ -5636,6 +5796,7 @@ class ViscometryDashboard {
 
         if (!isRunning && previous) {
             this.discoveryModeActive = false;
+            this._discoveryZScanIncluded = null;
             this.updateDiscoveryStartGuard();
         }
 
@@ -5675,6 +5836,7 @@ class ViscometryDashboard {
 
         this.updateCalibrationStopControls();
         this.updateLiveTerminationBadge();
+        this._syncDiscoveryLiveDragVisibility();
     }
 
     bindTestingControls() {
@@ -7279,6 +7441,10 @@ class ViscometryDashboard {
 
         if (this.el.summaryDetail) {
             this.el.summaryDetail.classList.remove("hidden");
+            this.el.summaryDetail.classList.toggle(
+                "summary-omit-drag-plot",
+                this._experimentOmitsDragPlot(exp)
+            );
         }
 
         const s = exp.settings || {};
@@ -7367,20 +7533,23 @@ class ViscometryDashboard {
             leftEl.insertAdjacentHTML("beforeend", discoveryBlocks);
         }
 
+        const omitDragPlot = this._experimentOmitsDragPlot(exp);
         const byCellRpm = {};
-        (exp.latestPerZ || []).forEach((p) => {
-            const cellId = Number(p.cell_id);
-            const rpm = Number(p.rpm);
-            if (!Number.isFinite(cellId) || !Number.isFinite(rpm)) {
-                return;
-            }
-            const k = `${cellId}|${rpm.toFixed(3)}`;
-            if (!byCellRpm[k]) byCellRpm[k] = [];
-            byCellRpm[k].push(p);
-        });
+        if (!omitDragPlot) {
+            (exp.latestPerZ || []).forEach((p) => {
+                const cellId = Number(p.cell_id);
+                const rpm = Number(p.rpm);
+                if (!Number.isFinite(cellId) || !Number.isFinite(rpm)) {
+                    return;
+                }
+                const k = `${cellId}|${rpm.toFixed(3)}`;
+                if (!byCellRpm[k]) byCellRpm[k] = [];
+                byCellRpm[k].push(p);
+            });
+        }
         const alignToHit = Boolean(this.el.summaryAlignHitpoint?.checked);
 
-        const traces = Object.entries(byCellRpm)
+        const traces = omitDragPlot ? [] : Object.entries(byCellRpm)
             .sort((a, b) => {
                 const [cellA, rpmA] = a[0].split("|");
                 const [cellB, rpmB] = b[0].split("|");
@@ -9017,8 +9186,16 @@ class ViscometryDashboard {
         }
         this.el.body.classList.remove("experiment-review-active");
         this.el.body.classList.remove("discovery-review-active");
+        this.el.body.classList.remove("discovery-review-ladder-only");
         if (this.el.expReviewModal) {
             this.el.expReviewModal.classList.remove("discovery-review-modal");
+        }
+        if (this.el.expReviewLadder) {
+            this.el.expReviewLadder.classList.add("hidden");
+            this.el.expReviewLadder.innerHTML = "";
+        }
+        if (this.el.expReviewPlot) {
+            this.el.expReviewPlot.classList.remove("hidden");
         }
         this.updateReviewStartGuard();
     }
@@ -9107,7 +9284,7 @@ class ViscometryDashboard {
                 <div class="summary-discovery-cell-block">
                     <div><strong>RPM discovery</strong> <span class="protocol-mode-badge mode-discovery">Discovery</span></div>
                     <div>Status: ${this._escapeHtml(String(discoveryEntry.status || "—"))} · Discovered RPM: ${discoveryEntry.rpm != null ? formatRpm(discoveryEntry.rpm) : "—"} · η est: ${dEta} cP</div>
-                    ${this._buildDiscoveryStage2SummaryHtml(discoveryEntry)}
+                    ${this._buildDiscoveryStage2SummaryHtml(discoveryEntry, { includeRpmTable: false })}
                     ${this._buildDiscoveryProbeTableHtml(discoveryEntry.probes, { review: true })}
                 </div>`;
         }
@@ -9122,12 +9299,32 @@ class ViscometryDashboard {
         `;
     }
 
+    renderExperimentReviewLadder(cellId) {
+        const host = this.el.expReviewLadder;
+        const session = this.experimentReviewSession;
+        const isDiscovery = this._isDiscoveryReviewSession(session);
+        const entry = isDiscovery ? this._getDiscoveryResultForReviewCell(cellId) : null;
+        const html = entry ? this._buildDiscoveryLadderCardHtml(entry) : "";
+        if (host) {
+            host.classList.toggle("hidden", !html);
+            host.innerHTML = html;
+        }
+        const omitPlot = this._reviewOmitsDragPlot(session);
+        this.el.body.classList.toggle("discovery-review-ladder-only", Boolean(isDiscovery && omitPlot));
+        if (this.el.expReviewPlot) {
+            this.el.expReviewPlot.classList.toggle("hidden", omitPlot);
+        }
+    }
+
     renderExperimentReviewCellView(cellId) {
         if (!Number.isFinite(cellId)) {
             return;
         }
+        this.renderExperimentReviewLadder(cellId);
         this.renderExperimentReviewSummary(cellId);
-        this.renderExperimentReviewPlot(cellId);
+        if (!this._reviewOmitsDragPlot(this.experimentReviewSession)) {
+            this.renderExperimentReviewPlot(cellId);
+        }
         const pending = this.getPendingExperimentReviewCellIds();
         const isPending = pending.includes(cellId);
         if (this.el.expReviewSave) {
