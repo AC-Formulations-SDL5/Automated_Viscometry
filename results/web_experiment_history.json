@@ -10645,411 +10645,6 @@
   },
   {
     "cellDurations": {
-      "16": 99058.8755607605
-    },
-    "cell_termination_reasons": {},
-    "cells": [
-      16
-    ],
-    "characterization": {
-      "16": {
-        "0.1": {
-          "A": null,
-          "B": null,
-          "R2": null,
-          "cell_id": 16,
-          "drag_hit": 341.7,
-          "drag_model": "app_v6_hyperbola",
-          "error": "Insufficient points after pre-trim (1 < 4)",
-          "fit_curve_drag": [],
-          "fit_curve_z": [],
-          "hc": 0.2774,
-          "n_points_used": 1,
-          "pretrim_drag": [
-            341.7
-          ],
-          "pretrim_z": [
-            -64.46
-          ],
-          "rpm": 0.1,
-          "success": false,
-          "tau_Pa_hit": 67.85631510758613,
-          "torque_pct_hit": 34.17,
-          "viscosity_kcp": null
-        },
-        "0.11": {
-          "A": null,
-          "B": null,
-          "R2": null,
-          "cell_id": 16,
-          "drag_hit": 878.3636363636364,
-          "drag_model": "app_v6_hyperbola",
-          "error": "Insufficient points after pre-trim (1 < 4)",
-          "fit_curve_drag": [],
-          "fit_curve_z": [],
-          "hc": 0.2774,
-          "n_points_used": 1,
-          "pretrim_drag": [
-            878.3636363636364
-          ],
-          "pretrim_z": [
-            -64.46
-          ],
-          "rpm": 0.11,
-          "success": false,
-          "tau_Pa_hit": 191.87231974524354,
-          "torque_pct_hit": 96.62,
-          "viscosity_kcp": null
-        },
-        "__summary__": {
-          "A_per_rpm": [],
-          "K_Pas_n": null,
-          "K_stress": null,
-          "R2_amplitude": null,
-          "R2_powerlaw": null,
-          "R2_stress": null,
-          "cell_id": 16,
-          "error": "No valid RPM sweeps passed quality gate",
-          "is_partial": false,
-          "mode": null,
-          "mu_app_cP": null,
-          "n": null,
-          "n_idx": null,
-          "n_stress": null,
-          "pathway": null,
-          "provisional": false,
-          "regime": "undetermined",
-          "success": false,
-          "viscosity_kcp": null
-        }
-      }
-    },
-    "characterization_mode": "on",
-    "created_at": 1792609022756,
-    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm,cell_termination_method\n2026-10-21T18:55:09.696Z,16,-64.46,1.7000000000000002,17,0.1,normal\n2026-10-21T18:55:14.651Z,16,-64.46,6.05,60.49999999999999,0.1,normal\n2026-10-21T18:55:19.603Z,16,-64.46,10.63,106.3,0.1,normal\n2026-10-21T18:55:24.658Z,16,-64.46,15.4,154,0.1,normal\n2026-10-21T18:55:29.616Z,16,-64.46,19.96,199.6,0.1,normal\n2026-10-21T18:55:34.676Z,16,-64.46,24.71,247.1,0.1,normal\n2026-10-21T18:55:39.634Z,16,-64.46,29.33,293.29999999999995,0.1,normal\n2026-10-21T18:55:44.692Z,16,-64.46,34.17,341.7,0.1,normal\n2026-10-21T18:55:58.673Z,16,-64.46,44.28,402.54545454545456,0.11,normal\n2026-10-21T18:56:03.732Z,16,-64.46,49.62,451.09090909090907,0.11,normal\n2026-10-21T18:56:08.691Z,16,-64.46,54.87,498.8181818181818,0.11,normal\n2026-10-21T18:56:13.751Z,16,-64.46,60.14999999999999,546.8181818181818,0.11,normal\n2026-10-21T18:56:18.709Z,16,-64.46,65.39,594.4545454545455,0.11,normal\n2026-10-21T18:56:23.664Z,16,-64.46,70.61,641.9090909090909,0.11,normal\n2026-10-21T18:56:28.719Z,16,-64.46,75.84,689.4545454545455,0.11,normal\n2026-10-21T18:56:33.677Z,16,-64.46,81.01,736.4545454545455,0.11,normal\n2026-10-21T18:56:38.737Z,16,-64.46,86.26,784.1818181818182,0.11,normal\n2026-10-21T18:56:43.695Z,16,-64.46,91.36,830.5454545454545,0.11,normal\n2026-10-21T18:56:48.755Z,16,-64.46,96.62,878.3636363636364,0.11,normal",
-    "discovery_results": {},
-    "id": "exp-1792608857622",
-    "latestPerZ": [
-      {
-        "cell_id": 16,
-        "elapsed_time": null,
-        "height": -64.46,
-        "hit_detected": null,
-        "is_final_save": false,
-        "rotational_drag": 341.7,
-        "rpm": 0.1,
-        "sample_count": 1,
-        "timestamp": 1792608944.6929753,
-        "torque_percent": 34.17
-      },
-      {
-        "cell_id": 16,
-        "elapsed_time": null,
-        "height": -64.46,
-        "hit_detected": null,
-        "is_final_save": false,
-        "rotational_drag": 878.3636363636364,
-        "rpm": 0.11,
-        "sample_count": 1,
-        "timestamp": 1792609008.75579,
-        "torque_percent": 96.62
-      }
-    ],
-    "measurement_count": 19,
-    "predicted_viscosity": {},
-    "rpms": [
-      0.1,
-      0.11
-    ],
-    "runEndTsSec": 1792609008.75579,
-    "runStartTsSec": 1792608857.622328,
-    "run_type": "regular",
-    "settings": {
-      "baseline_n_calibration": 10,
-      "baseline_z_threshold": 5,
-      "cell_content_map": {},
-      "cell_rpm_map": {
-        "7": [
-          0.1,
-          0.11,
-          0.12,
-          0.13,
-          0.14,
-          0.15,
-          0.16,
-          0.17,
-          0.18,
-          0.19,
-          0.2
-        ],
-        "16": [
-          0.1,
-          0.11,
-          0.12,
-          0.13,
-          0.14,
-          0.15,
-          0.16,
-          0.17,
-          0.18,
-          0.19,
-          0.2
-        ]
-      },
-      "characterization_enabled": true,
-      "characterization_mode": "on",
-      "dwell_seconds": 2,
-      "experiment_name": "sekisui_thermal_paste_MX-6",
-      "fail_safe_enabled": false,
-      "feedback_control_enabled": true,
-      "hit_point_confidence_threshold": 0.8,
-      "inter_rpm_pause": 2,
-      "low_torque_liquid_contact_skip_enabled": false,
-      "low_torque_liquid_contact_threshold_pct": 1,
-      "measurement_duration": 60,
-      "predicted_viscosity_enabled": true,
-      "r2_cv_min": 0.975,
-      "r2_drag_min": 0.975,
-      "r2_slope_min": 0.975,
-      "sample_interval": 5,
-      "save_all_sample_data": false,
-      "selected_cells": [
-        16
-      ],
-      "selected_rows": [
-        2
-      ],
-      "smart_cv_threshold": 0.005,
-      "smart_early_exit_enabled": true,
-      "smart_window_size": 3,
-      "test_rpms": [
-        0.8
-      ],
-      "testing_mode": "custom",
-      "torque_break_threshold": 100,
-      "viscosity_prediction_mode": "on",
-      "weight_2nd_deriv_cv": 0.2,
-      "weight_2nd_deriv_drag": 0.2,
-      "weight_2nd_deriv_slope": 0.2,
-      "weight_r2_cv": 0.2,
-      "weight_r2_drag": 0.2,
-      "weight_r2_slope": 0.2,
-      "z_start_offset_mm": 0.4,
-      "z_step_size": -0.02
-    },
-    "viscosity_prediction_mode": "on"
-  },
-  {
-    "cellDurations": {
-      "17": 119014.60933685303
-    },
-    "cell_termination_reasons": {},
-    "cells": [
-      17
-    ],
-    "characterization": {
-      "17": {
-        "0.1": {
-          "A": null,
-          "B": null,
-          "R2": null,
-          "cell_id": 17,
-          "drag_hit": 466.7,
-          "drag_model": "app_v6_hyperbola",
-          "error": "Insufficient points after pre-trim (1 < 4)",
-          "fit_curve_drag": [],
-          "fit_curve_z": [],
-          "hc": 0.2774,
-          "n_points_used": 1,
-          "pretrim_drag": [
-            466.7
-          ],
-          "pretrim_z": [
-            -64.46
-          ],
-          "rpm": 0.1,
-          "success": false,
-          "tau_Pa_hit": 92.67937448261763,
-          "torque_pct_hit": 46.67,
-          "viscosity_kcp": null
-        },
-        "0.11": {
-          "A": null,
-          "B": null,
-          "R2": null,
-          "cell_id": 17,
-          "drag_hit": 883.4545454545455,
-          "drag_model": "app_v6_hyperbola",
-          "error": "Insufficient points after pre-trim (1 < 4)",
-          "fit_curve_drag": [],
-          "fit_curve_z": [],
-          "hc": 0.2774,
-          "n_points_used": 1,
-          "pretrim_drag": [
-            883.4545454545455
-          ],
-          "pretrim_z": [
-            -64.46
-          ],
-          "rpm": 0.11,
-          "success": false,
-          "tau_Pa_hit": 192.98439280524497,
-          "torque_pct_hit": 97.18,
-          "viscosity_kcp": null
-        },
-        "__summary__": {
-          "A_per_rpm": [],
-          "K_Pas_n": null,
-          "K_stress": null,
-          "R2_amplitude": null,
-          "R2_powerlaw": null,
-          "R2_stress": null,
-          "cell_id": 17,
-          "error": "No valid RPM sweeps passed quality gate",
-          "is_partial": false,
-          "mode": null,
-          "mu_app_cP": null,
-          "n": null,
-          "n_idx": null,
-          "n_stress": null,
-          "pathway": null,
-          "provisional": false,
-          "regime": "undetermined",
-          "success": false,
-          "viscosity_kcp": null
-        }
-      }
-    },
-    "characterization_mode": "on",
-    "created_at": 1792609622567,
-    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm,cell_termination_method\n2026-10-21T19:03:56.230Z,17,-64.46,1.62,16.2,0.1,normal\n2026-10-21T19:04:01.195Z,17,-64.46,5.14,51.39999999999999,0.1,normal\n2026-10-21T19:04:06.168Z,17,-64.46,9.11,91.1,0.1,normal\n2026-10-21T19:04:11.150Z,17,-64.46,13.219999999999999,132.2,0.1,normal\n2026-10-21T19:04:16.220Z,17,-64.46,17.55,175.5,0.1,normal\n2026-10-21T19:04:21.183Z,17,-64.46,21.84,218.39999999999998,0.1,normal\n2026-10-21T19:04:26.237Z,17,-64.46,26.03,260.3,0.1,normal\n2026-10-21T19:04:31.195Z,17,-64.46,30.159999999999997,301.59999999999997,0.1,normal\n2026-10-21T19:04:36.246Z,17,-64.46,34.39,343.9,0.1,normal\n2026-10-21T19:04:41.202Z,17,-64.46,38.52,385.2,0.1,normal\n2026-10-21T19:04:46.157Z,17,-64.46,42.58,425.79999999999995,0.1,normal\n2026-10-21T19:04:51.214Z,17,-64.46,46.67,466.7,0.1,normal\n2026-10-21T19:05:05.192Z,17,-64.46,56.510000000000005,513.7272727272727,0.11,normal\n2026-10-21T19:05:10.249Z,17,-64.46,60.800000000000004,552.7272727272727,0.11,normal\n2026-10-21T19:05:15.201Z,17,-64.46,64.97,590.6363636363636,0.11,normal\n2026-10-21T19:05:20.258Z,17,-64.46,69.1,628.1818181818181,0.11,normal\n2026-10-21T19:05:25.211Z,17,-64.46,73.2,665.4545454545455,0.11,normal\n2026-10-21T19:05:30.265Z,17,-64.46,77.27,702.4545454545454,0.11,normal\n2026-10-21T19:05:35.223Z,17,-64.46,81.23,738.4545454545455,0.11,normal\n2026-10-21T19:05:40.280Z,17,-64.46,85.29,775.3636363636364,0.11,normal\n2026-10-21T19:05:45.235Z,17,-64.46,89.27,811.5454545454545,0.11,normal\n2026-10-21T19:05:50.188Z,17,-64.46,93.28,848,0.11,normal\n2026-10-21T19:05:55.245Z,17,-64.46,97.18,883.4545454545455,0.11,normal",
-    "discovery_results": {},
-    "id": "exp-1792609395241",
-    "latestPerZ": [
-      {
-        "cell_id": 17,
-        "elapsed_time": null,
-        "height": -64.46,
-        "hit_detected": null,
-        "is_final_save": false,
-        "rotational_drag": 466.7,
-        "rpm": 0.1,
-        "sample_count": 1,
-        "timestamp": 1792609491.2145627,
-        "torque_percent": 46.67
-      },
-      {
-        "cell_id": 17,
-        "elapsed_time": null,
-        "height": -64.46,
-        "hit_detected": null,
-        "is_final_save": false,
-        "rotational_drag": 883.4545454545455,
-        "rpm": 0.11,
-        "sample_count": 1,
-        "timestamp": 1792609555.245284,
-        "torque_percent": 97.18
-      }
-    ],
-    "measurement_count": 23,
-    "predicted_viscosity": {},
-    "rpms": [
-      0.1,
-      0.11
-    ],
-    "runEndTsSec": 1792609555.245284,
-    "runStartTsSec": 1792609395.2411919,
-    "run_type": "regular",
-    "settings": {
-      "baseline_n_calibration": 10,
-      "baseline_z_threshold": 5,
-      "cell_content_map": {},
-      "cell_rpm_map": {
-        "7": [
-          0.1,
-          0.11,
-          0.12,
-          0.13,
-          0.14,
-          0.15,
-          0.16,
-          0.17,
-          0.18,
-          0.19,
-          0.2
-        ],
-        "16": [
-          0.1,
-          0.11,
-          0.12,
-          0.13,
-          0.14,
-          0.15,
-          0.16,
-          0.17,
-          0.18,
-          0.19,
-          0.2
-        ],
-        "17": [
-          0.1,
-          0.11,
-          0.12,
-          0.13,
-          0.14,
-          0.15,
-          0.16,
-          0.17,
-          0.18,
-          0.19,
-          0.2
-        ]
-      },
-      "characterization_enabled": true,
-      "characterization_mode": "on",
-      "dwell_seconds": 2,
-      "experiment_name": "sekisui_thermal_paste_DOWSIL_TC-5888",
-      "fail_safe_enabled": false,
-      "feedback_control_enabled": true,
-      "hit_point_confidence_threshold": 0.8,
-      "inter_rpm_pause": 2,
-      "low_torque_liquid_contact_skip_enabled": false,
-      "low_torque_liquid_contact_threshold_pct": 1,
-      "measurement_duration": 70,
-      "predicted_viscosity_enabled": true,
-      "r2_cv_min": 0.975,
-      "r2_drag_min": 0.975,
-      "r2_slope_min": 0.975,
-      "sample_interval": 5,
-      "save_all_sample_data": false,
-      "selected_cells": [
-        17
-      ],
-      "selected_rows": [
-        2
-      ],
-      "smart_cv_threshold": 0.005,
-      "smart_early_exit_enabled": true,
-      "smart_window_size": 3,
-      "test_rpms": [
-        0.8
-      ],
-      "testing_mode": "custom",
-      "torque_break_threshold": 100,
-      "viscosity_prediction_mode": "on",
-      "weight_2nd_deriv_cv": 0.2,
-      "weight_2nd_deriv_drag": 0.2,
-      "weight_2nd_deriv_slope": 0.2,
-      "weight_r2_cv": 0.2,
-      "weight_r2_drag": 0.2,
-      "weight_r2_slope": 0.2,
-      "z_start_offset_mm": 0.4,
-      "z_step_size": -0.02
-    },
-    "viscosity_prediction_mode": "on"
-  },
-  {
-    "cellDurations": {
       "16": 1243145.2322006226
     },
     "cell_partial_flags": {
@@ -14334,6 +13929,411 @@
     "run_type": "regular",
     "discovery_results": {},
     "csv_filename": "C:\\Users\\accel\\OneDrive\\Documents\\GitHub\\visc_automated_workflow_V3\\results\\runs\\2026-10-22\\dynamic_analysis_sekisui_thermal_paste_HY500_custom_20261021_151316.csv"
+  },
+  {
+    "cellDurations": {
+      "17": 119014.60933685303
+    },
+    "cell_termination_reasons": {},
+    "cells": [
+      17
+    ],
+    "characterization": {
+      "17": {
+        "0.1": {
+          "A": null,
+          "B": null,
+          "R2": null,
+          "cell_id": 17,
+          "drag_hit": 466.7,
+          "drag_model": "app_v6_hyperbola",
+          "error": "Insufficient points after pre-trim (1 < 4)",
+          "fit_curve_drag": [],
+          "fit_curve_z": [],
+          "hc": 0.2774,
+          "n_points_used": 1,
+          "pretrim_drag": [
+            466.7
+          ],
+          "pretrim_z": [
+            -64.46
+          ],
+          "rpm": 0.1,
+          "success": false,
+          "tau_Pa_hit": 92.67937448261763,
+          "torque_pct_hit": 46.67,
+          "viscosity_kcp": null
+        },
+        "0.11": {
+          "A": null,
+          "B": null,
+          "R2": null,
+          "cell_id": 17,
+          "drag_hit": 883.4545454545455,
+          "drag_model": "app_v6_hyperbola",
+          "error": "Insufficient points after pre-trim (1 < 4)",
+          "fit_curve_drag": [],
+          "fit_curve_z": [],
+          "hc": 0.2774,
+          "n_points_used": 1,
+          "pretrim_drag": [
+            883.4545454545455
+          ],
+          "pretrim_z": [
+            -64.46
+          ],
+          "rpm": 0.11,
+          "success": false,
+          "tau_Pa_hit": 192.98439280524497,
+          "torque_pct_hit": 97.18,
+          "viscosity_kcp": null
+        },
+        "__summary__": {
+          "A_per_rpm": [],
+          "K_Pas_n": null,
+          "K_stress": null,
+          "R2_amplitude": null,
+          "R2_powerlaw": null,
+          "R2_stress": null,
+          "cell_id": 17,
+          "error": "No valid RPM sweeps passed quality gate",
+          "is_partial": false,
+          "mode": null,
+          "mu_app_cP": null,
+          "n": null,
+          "n_idx": null,
+          "n_stress": null,
+          "pathway": null,
+          "provisional": false,
+          "regime": "undetermined",
+          "success": false,
+          "viscosity_kcp": null
+        }
+      }
+    },
+    "characterization_mode": "on",
+    "created_at": 1792609622567,
+    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm,cell_termination_method\n2026-10-21T19:03:56.230Z,17,-64.46,1.62,16.2,0.1,normal\n2026-10-21T19:04:01.195Z,17,-64.46,5.14,51.39999999999999,0.1,normal\n2026-10-21T19:04:06.168Z,17,-64.46,9.11,91.1,0.1,normal\n2026-10-21T19:04:11.150Z,17,-64.46,13.219999999999999,132.2,0.1,normal\n2026-10-21T19:04:16.220Z,17,-64.46,17.55,175.5,0.1,normal\n2026-10-21T19:04:21.183Z,17,-64.46,21.84,218.39999999999998,0.1,normal\n2026-10-21T19:04:26.237Z,17,-64.46,26.03,260.3,0.1,normal\n2026-10-21T19:04:31.195Z,17,-64.46,30.159999999999997,301.59999999999997,0.1,normal\n2026-10-21T19:04:36.246Z,17,-64.46,34.39,343.9,0.1,normal\n2026-10-21T19:04:41.202Z,17,-64.46,38.52,385.2,0.1,normal\n2026-10-21T19:04:46.157Z,17,-64.46,42.58,425.79999999999995,0.1,normal\n2026-10-21T19:04:51.214Z,17,-64.46,46.67,466.7,0.1,normal\n2026-10-21T19:05:05.192Z,17,-64.46,56.510000000000005,513.7272727272727,0.11,normal\n2026-10-21T19:05:10.249Z,17,-64.46,60.800000000000004,552.7272727272727,0.11,normal\n2026-10-21T19:05:15.201Z,17,-64.46,64.97,590.6363636363636,0.11,normal\n2026-10-21T19:05:20.258Z,17,-64.46,69.1,628.1818181818181,0.11,normal\n2026-10-21T19:05:25.211Z,17,-64.46,73.2,665.4545454545455,0.11,normal\n2026-10-21T19:05:30.265Z,17,-64.46,77.27,702.4545454545454,0.11,normal\n2026-10-21T19:05:35.223Z,17,-64.46,81.23,738.4545454545455,0.11,normal\n2026-10-21T19:05:40.280Z,17,-64.46,85.29,775.3636363636364,0.11,normal\n2026-10-21T19:05:45.235Z,17,-64.46,89.27,811.5454545454545,0.11,normal\n2026-10-21T19:05:50.188Z,17,-64.46,93.28,848,0.11,normal\n2026-10-21T19:05:55.245Z,17,-64.46,97.18,883.4545454545455,0.11,normal",
+    "discovery_results": {},
+    "id": "exp-1792609395241",
+    "latestPerZ": [
+      {
+        "cell_id": 17,
+        "elapsed_time": null,
+        "height": -64.46,
+        "hit_detected": null,
+        "is_final_save": false,
+        "rotational_drag": 466.7,
+        "rpm": 0.1,
+        "sample_count": 1,
+        "timestamp": 1792609491.2145627,
+        "torque_percent": 46.67
+      },
+      {
+        "cell_id": 17,
+        "elapsed_time": null,
+        "height": -64.46,
+        "hit_detected": null,
+        "is_final_save": false,
+        "rotational_drag": 883.4545454545455,
+        "rpm": 0.11,
+        "sample_count": 1,
+        "timestamp": 1792609555.245284,
+        "torque_percent": 97.18
+      }
+    ],
+    "measurement_count": 23,
+    "predicted_viscosity": {},
+    "rpms": [
+      0.1,
+      0.11
+    ],
+    "runEndTsSec": 1792609555.245284,
+    "runStartTsSec": 1792609395.2411919,
+    "run_type": "regular",
+    "settings": {
+      "baseline_n_calibration": 10,
+      "baseline_z_threshold": 5,
+      "cell_content_map": {},
+      "cell_rpm_map": {
+        "7": [
+          0.1,
+          0.11,
+          0.12,
+          0.13,
+          0.14,
+          0.15,
+          0.16,
+          0.17,
+          0.18,
+          0.19,
+          0.2
+        ],
+        "16": [
+          0.1,
+          0.11,
+          0.12,
+          0.13,
+          0.14,
+          0.15,
+          0.16,
+          0.17,
+          0.18,
+          0.19,
+          0.2
+        ],
+        "17": [
+          0.1,
+          0.11,
+          0.12,
+          0.13,
+          0.14,
+          0.15,
+          0.16,
+          0.17,
+          0.18,
+          0.19,
+          0.2
+        ]
+      },
+      "characterization_enabled": true,
+      "characterization_mode": "on",
+      "dwell_seconds": 2,
+      "experiment_name": "sekisui_thermal_paste_DOWSIL_TC-5888",
+      "fail_safe_enabled": false,
+      "feedback_control_enabled": true,
+      "hit_point_confidence_threshold": 0.8,
+      "inter_rpm_pause": 2,
+      "low_torque_liquid_contact_skip_enabled": false,
+      "low_torque_liquid_contact_threshold_pct": 1,
+      "measurement_duration": 70,
+      "predicted_viscosity_enabled": true,
+      "r2_cv_min": 0.975,
+      "r2_drag_min": 0.975,
+      "r2_slope_min": 0.975,
+      "sample_interval": 5,
+      "save_all_sample_data": false,
+      "selected_cells": [
+        17
+      ],
+      "selected_rows": [
+        2
+      ],
+      "smart_cv_threshold": 0.005,
+      "smart_early_exit_enabled": true,
+      "smart_window_size": 3,
+      "test_rpms": [
+        0.8
+      ],
+      "testing_mode": "custom",
+      "torque_break_threshold": 100,
+      "viscosity_prediction_mode": "on",
+      "weight_2nd_deriv_cv": 0.2,
+      "weight_2nd_deriv_drag": 0.2,
+      "weight_2nd_deriv_slope": 0.2,
+      "weight_r2_cv": 0.2,
+      "weight_r2_drag": 0.2,
+      "weight_r2_slope": 0.2,
+      "z_start_offset_mm": 0.4,
+      "z_step_size": -0.02
+    },
+    "viscosity_prediction_mode": "on"
+  },
+  {
+    "cellDurations": {
+      "16": 99058.8755607605
+    },
+    "cell_termination_reasons": {},
+    "cells": [
+      16
+    ],
+    "characterization": {
+      "16": {
+        "0.1": {
+          "A": null,
+          "B": null,
+          "R2": null,
+          "cell_id": 16,
+          "drag_hit": 341.7,
+          "drag_model": "app_v6_hyperbola",
+          "error": "Insufficient points after pre-trim (1 < 4)",
+          "fit_curve_drag": [],
+          "fit_curve_z": [],
+          "hc": 0.2774,
+          "n_points_used": 1,
+          "pretrim_drag": [
+            341.7
+          ],
+          "pretrim_z": [
+            -64.46
+          ],
+          "rpm": 0.1,
+          "success": false,
+          "tau_Pa_hit": 67.85631510758613,
+          "torque_pct_hit": 34.17,
+          "viscosity_kcp": null
+        },
+        "0.11": {
+          "A": null,
+          "B": null,
+          "R2": null,
+          "cell_id": 16,
+          "drag_hit": 878.3636363636364,
+          "drag_model": "app_v6_hyperbola",
+          "error": "Insufficient points after pre-trim (1 < 4)",
+          "fit_curve_drag": [],
+          "fit_curve_z": [],
+          "hc": 0.2774,
+          "n_points_used": 1,
+          "pretrim_drag": [
+            878.3636363636364
+          ],
+          "pretrim_z": [
+            -64.46
+          ],
+          "rpm": 0.11,
+          "success": false,
+          "tau_Pa_hit": 191.87231974524354,
+          "torque_pct_hit": 96.62,
+          "viscosity_kcp": null
+        },
+        "__summary__": {
+          "A_per_rpm": [],
+          "K_Pas_n": null,
+          "K_stress": null,
+          "R2_amplitude": null,
+          "R2_powerlaw": null,
+          "R2_stress": null,
+          "cell_id": 16,
+          "error": "No valid RPM sweeps passed quality gate",
+          "is_partial": false,
+          "mode": null,
+          "mu_app_cP": null,
+          "n": null,
+          "n_idx": null,
+          "n_stress": null,
+          "pathway": null,
+          "provisional": false,
+          "regime": "undetermined",
+          "success": false,
+          "viscosity_kcp": null
+        }
+      }
+    },
+    "characterization_mode": "on",
+    "created_at": 1792609022756,
+    "csv": "timestamp,cell_id,height_mm,torque_percent,rotational_drag,rpm,cell_termination_method\n2026-10-21T18:55:09.696Z,16,-64.46,1.7000000000000002,17,0.1,normal\n2026-10-21T18:55:14.651Z,16,-64.46,6.05,60.49999999999999,0.1,normal\n2026-10-21T18:55:19.603Z,16,-64.46,10.63,106.3,0.1,normal\n2026-10-21T18:55:24.658Z,16,-64.46,15.4,154,0.1,normal\n2026-10-21T18:55:29.616Z,16,-64.46,19.96,199.6,0.1,normal\n2026-10-21T18:55:34.676Z,16,-64.46,24.71,247.1,0.1,normal\n2026-10-21T18:55:39.634Z,16,-64.46,29.33,293.29999999999995,0.1,normal\n2026-10-21T18:55:44.692Z,16,-64.46,34.17,341.7,0.1,normal\n2026-10-21T18:55:58.673Z,16,-64.46,44.28,402.54545454545456,0.11,normal\n2026-10-21T18:56:03.732Z,16,-64.46,49.62,451.09090909090907,0.11,normal\n2026-10-21T18:56:08.691Z,16,-64.46,54.87,498.8181818181818,0.11,normal\n2026-10-21T18:56:13.751Z,16,-64.46,60.14999999999999,546.8181818181818,0.11,normal\n2026-10-21T18:56:18.709Z,16,-64.46,65.39,594.4545454545455,0.11,normal\n2026-10-21T18:56:23.664Z,16,-64.46,70.61,641.9090909090909,0.11,normal\n2026-10-21T18:56:28.719Z,16,-64.46,75.84,689.4545454545455,0.11,normal\n2026-10-21T18:56:33.677Z,16,-64.46,81.01,736.4545454545455,0.11,normal\n2026-10-21T18:56:38.737Z,16,-64.46,86.26,784.1818181818182,0.11,normal\n2026-10-21T18:56:43.695Z,16,-64.46,91.36,830.5454545454545,0.11,normal\n2026-10-21T18:56:48.755Z,16,-64.46,96.62,878.3636363636364,0.11,normal",
+    "discovery_results": {},
+    "id": "exp-1792608857622",
+    "latestPerZ": [
+      {
+        "cell_id": 16,
+        "elapsed_time": null,
+        "height": -64.46,
+        "hit_detected": null,
+        "is_final_save": false,
+        "rotational_drag": 341.7,
+        "rpm": 0.1,
+        "sample_count": 1,
+        "timestamp": 1792608944.6929753,
+        "torque_percent": 34.17
+      },
+      {
+        "cell_id": 16,
+        "elapsed_time": null,
+        "height": -64.46,
+        "hit_detected": null,
+        "is_final_save": false,
+        "rotational_drag": 878.3636363636364,
+        "rpm": 0.11,
+        "sample_count": 1,
+        "timestamp": 1792609008.75579,
+        "torque_percent": 96.62
+      }
+    ],
+    "measurement_count": 19,
+    "predicted_viscosity": {},
+    "rpms": [
+      0.1,
+      0.11
+    ],
+    "runEndTsSec": 1792609008.75579,
+    "runStartTsSec": 1792608857.622328,
+    "run_type": "regular",
+    "settings": {
+      "baseline_n_calibration": 10,
+      "baseline_z_threshold": 5,
+      "cell_content_map": {},
+      "cell_rpm_map": {
+        "7": [
+          0.1,
+          0.11,
+          0.12,
+          0.13,
+          0.14,
+          0.15,
+          0.16,
+          0.17,
+          0.18,
+          0.19,
+          0.2
+        ],
+        "16": [
+          0.1,
+          0.11,
+          0.12,
+          0.13,
+          0.14,
+          0.15,
+          0.16,
+          0.17,
+          0.18,
+          0.19,
+          0.2
+        ]
+      },
+      "characterization_enabled": true,
+      "characterization_mode": "on",
+      "dwell_seconds": 2,
+      "experiment_name": "sekisui_thermal_paste_MX-6",
+      "fail_safe_enabled": false,
+      "feedback_control_enabled": true,
+      "hit_point_confidence_threshold": 0.8,
+      "inter_rpm_pause": 2,
+      "low_torque_liquid_contact_skip_enabled": false,
+      "low_torque_liquid_contact_threshold_pct": 1,
+      "measurement_duration": 60,
+      "predicted_viscosity_enabled": true,
+      "r2_cv_min": 0.975,
+      "r2_drag_min": 0.975,
+      "r2_slope_min": 0.975,
+      "sample_interval": 5,
+      "save_all_sample_data": false,
+      "selected_cells": [
+        16
+      ],
+      "selected_rows": [
+        2
+      ],
+      "smart_cv_threshold": 0.005,
+      "smart_early_exit_enabled": true,
+      "smart_window_size": 3,
+      "test_rpms": [
+        0.8
+      ],
+      "testing_mode": "custom",
+      "torque_break_threshold": 100,
+      "viscosity_prediction_mode": "on",
+      "weight_2nd_deriv_cv": 0.2,
+      "weight_2nd_deriv_drag": 0.2,
+      "weight_2nd_deriv_slope": 0.2,
+      "weight_r2_cv": 0.2,
+      "weight_r2_drag": 0.2,
+      "weight_r2_slope": 0.2,
+      "z_start_offset_mm": 0.4,
+      "z_step_size": -0.02
+    },
+    "viscosity_prediction_mode": "on"
   },
   {
     "analysis_overrides": {

@@ -1334,17 +1334,16 @@ class ViscometryWebInterface:
         run_ended_early = session.get("run_ended_early")
         if run_ended_early is None and self._experiment_review_run_context:
             run_ended_early = self._experiment_review_run_context.get("run_ended_early", False)
+        runtime = (self._experiment_review_run_context or {}).get("runtime_settings") or {}
+        raw_proceed = runtime.get("discovery_proceed_with_run", True)
         return {
             "session_id": session.get("session_id"),
             "completion_order": list(session.get("completion_order") or []),
             "cells": cells,
             "queued_saves": dict(session.get("queued_saves") or {}),
             "run_ended_early": bool(run_ended_early),
-            "discovery_mode_enabled": bool(
-                (self._experiment_review_run_context or {}).get("runtime_settings", {}).get(
-                    "discovery_mode_enabled", False
-                )
-            ),
+            "discovery_mode_enabled": bool(runtime.get("discovery_mode_enabled", False)),
+            "discovery_proceed_with_run": True if raw_proceed is None else bool(raw_proceed),
             "discovery_results_by_cell": dict(
                 (self._experiment_review_run_context or {}).get("discovery_results_by_cell") or {}
             ),
