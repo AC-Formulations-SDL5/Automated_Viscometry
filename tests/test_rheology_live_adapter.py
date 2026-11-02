@@ -132,9 +132,14 @@ class TestRheologyLiveAdapter(unittest.TestCase):
             hit_point_z=None,
             apply_newtonian_stat_trim=False,
         )
-        self.assertLessEqual(trimmed[12.0]["n_points_used"], 12)
+        self.assertEqual(full[12.0]["drag_model"], "app_v6_hyperbola")
         self.assertEqual(full[12.0]["n_points_used"], 12)
         self.assertTrue(full[12.0]["success"])
+        if _summary_full.get("pathway") == "newtonian":
+            self.assertEqual(trimmed[12.0]["drag_model"], "app_v6_hyperbola")
+            self.assertLess(trimmed[12.0]["n_points_used"], full[12.0]["n_points_used"])
+        else:
+            self.assertEqual(trimmed[12.0]["n_points_used"], 12)
 
     def test_recompute_honors_per_cell_floor_and_trim(self):
         good = _sweep_rows(rpm=12.0, A=0.55, n_points=8, torque_scale=50.0)
