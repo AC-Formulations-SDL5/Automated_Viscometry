@@ -1408,7 +1408,15 @@ class ViscometryDashboard {
         }
 
         const selectedId = this.selectedExperimentId;
-        const prevJson = JSON.stringify(this.experimentHistory.find((e) => e.id === selectedId));
+        const withoutExploration = (entry) => {
+            if (!entry || typeof entry !== "object") {
+                return "";
+            }
+            const copy = { ...entry };
+            delete copy.characterization_exploration;
+            return JSON.stringify(copy);
+        };
+        const prevJson = withoutExploration(this.experimentHistory.find((e) => e.id === selectedId));
 
         fetch("/api/experiment_history")
             .then((r) => r.json())
@@ -1416,7 +1424,7 @@ class ViscometryDashboard {
                 if (!Array.isArray(history)) return;
                 const nextExp = history.find((e) => e.id === selectedId);
                 if (!nextExp) return;
-                const nextJson = JSON.stringify(nextExp);
+                const nextJson = withoutExploration(nextExp);
                 if (nextJson === prevJson) {
                     return;
                 }
@@ -6620,7 +6628,9 @@ class ViscometryDashboard {
             ...Object.keys(explore),
         ]);
         keys.forEach((cellKey) => {
-            if (this._cellHasAnalysisOverrides(exp, cellKey) && explore[cellKey]) {
+            const showRefit = this._cellHasAnalysisOverrides(exp, cellKey)
+                || this._cellWantsNewtonianTrim(exp, cellKey);
+            if (showRefit && explore[cellKey]) {
                 out[cellKey] = explore[cellKey];
             } else if (canon[cellKey]) {
                 out[cellKey] = canon[cellKey];
@@ -6683,16 +6693,41 @@ class ViscometryDashboard {
         }
     }
 
-    _buildExclusionPayload(exp) {
+    _cellPathway(exp, cellId) {
+        const canon = this._getCanonicalCharacterization(exp);
+        const rpmMap = canon[String(cellId)] ?? canon[cellId];
+        return rpmMap?.[this.predictedViscositySummaryKey]?.pathway || null;
+    }
+
+    _cellWantsNewtonianTrim(exp, cellId) {
+        if (this._cellPathway(exp, cellId) !== "newtonian") {
+            return false;
+        }
+        return this._getCellAnalysisOverride(exp, cellId).newtonian_auto_trim !== false;
+    }
+
+    _cellsForCharacterizationRefit(exp) {
+        const ids = new Set();
+        const canon = this._getCanonicalCharacterization(exp);
+        Object.keys(canon).forEach((cellKey) => {
+            if (this._cellWantsNewtonianTrim(exp, cellKey)) {
+                ids.add(String(cellKey));
+            }
+        });
+        Object.keys(this._getAnalysisOverrides(exp)).forEach((cellKey) => {
+            if (this._cellHasAnalysisOverrides(exp, cellKey)) {
+                ids.add(String(cellKey));
+            }
+        });
+        return [...ids];
+    }
+
+    _buildExclusionPayload(exp, cellIds) {
         const excluded_rpms_by_cell = {};
         const excluded_heights_by_cell = {};
         const torque_floor_pct_by_cell = {};
         const newtonian_auto_trim_by_cell = {};
-        const overrides = this._getAnalysisOverrides(exp);
-        Object.keys(overrides).forEach((cellKey) => {
-            if (!this._cellHasAnalysisOverrides(exp, cellKey)) {
-                return;
-            }
+        (cellIds || []).forEach((cellKey) => {
             const override = this._getCellAnalysisOverride(exp, cellKey);
             const autoDropped = this._autoDroppedHeightsForCell(exp, cellKey);
             const droppedHeights = [
@@ -6705,9 +6740,7 @@ class ViscometryDashboard {
             if (droppedHeights.length) {
                 excluded_heights_by_cell[cellKey] = droppedHeights;
             }
-            if (override.newtonian_auto_trim === false) {
-                newtonian_auto_trim_by_cell[cellKey] = false;
-            }
+            newtonian_auto_trim_by_cell[cellKey] = override.newtonian_auto_trim !== false;
             if (override.torque_floor_pct != null) {
                 torque_floor_pct_by_cell[cellKey] = override.torque_floor_pct;
             }
@@ -6725,7 +6758,8 @@ class ViscometryDashboard {
             return;
         }
         const measurements = Array.isArray(exp.latestPerZ) ? exp.latestPerZ : [];
-        if (measurements.length === 0 || !this._experimentHasAnyAnalysisOverrides(exp)) {
+        const cellKeys = this._cellsForCharacterizationRefit(exp);
+        if (measurements.length === 0 || cellKeys.length === 0) {
             delete exp.characterization_exploration;
             return;
         }
@@ -6734,14 +6768,10 @@ class ViscometryDashboard {
             excluded_heights_by_cell,
             torque_floor_pct_by_cell,
             newtonian_auto_trim_by_cell,
-        } = this._buildExclusionPayload(exp);
-        const cellsWithOverrides = Object.keys(this._getAnalysisOverrides(exp))
+        } = this._buildExclusionPayload(exp, cellKeys);
+        const cellsWithOverrides = cellKeys
             .map(Number)
-            .filter((n) => Number.isFinite(n) && this._cellHasAnalysisOverrides(exp, n));
-        if (cellsWithOverrides.length === 0) {
-            delete exp.characterization_exploration;
-            return;
-        }
+            .filter((n) => Number.isFinite(n));
         try {
             const res = await fetch("/api/recompute_characterization", {
                 method: "POST",
@@ -6781,7 +6811,9 @@ class ViscometryDashboard {
                 });
                 // Drop exploration for cells that no longer have overrides.
                 Object.keys(prev).forEach((cellKey) => {
-                    if (!this._cellHasAnalysisOverrides(exp, cellKey)) {
+                    const keep = this._cellHasAnalysisOverrides(exp, cellKey)
+                        || this._cellWantsNewtonianTrim(exp, cellKey);
+                    if (!keep) {
                         delete prev[cellKey];
                     }
                 });
@@ -6805,7 +6837,9 @@ class ViscometryDashboard {
             if (idx >= 0) {
                 this.experimentHistory[idx] = exp;
             }
-            this.saveExperimentHistoryEntry(exp).catch(() => {});
+            if (this._experimentHasAnyAnalysisOverrides(exp)) {
+                this.saveExperimentHistoryEntry(exp).catch(() => {});
+            }
             if (this.selectedExperimentId === exp.id) {
                 this._refreshCharacterizationSummaryPanel(exp);
             }
@@ -6869,7 +6903,7 @@ class ViscometryDashboard {
             this.experimentHistory[idx] = exp;
         }
         this.saveExperimentHistoryEntry(exp).catch(() => {});
-        this._refreshCharacterizationSummaryPanel(exp);
+        this._scheduleCharCustomizeRefit(exp);
     }
 
     _onCharCustomizeChange(event) {
@@ -6989,6 +7023,9 @@ class ViscometryDashboard {
                         timestamp: p.timestamp || 0,
                     })),
                     settings: exp.settings || {},
+                    newtonian_auto_trim_by_cell: Object.fromEntries(
+                        (exp.cells || []).map((cellId) => [String(cellId), false])
+                    ),
                 }),
             });
             if (!res.ok) {
@@ -7711,6 +7748,7 @@ class ViscometryDashboard {
             this._purgeCharacterizationStressPlots();
             predEl.innerHTML = "<p class=\"summary-empty\"><em>Computing characterization…</em></p>";
             await this.ensureExperimentCharacterization(exp);
+            await this._recomputeCharacterizationExploration(exp);
             this._purgeCharacterizationStressPlots();
             predEl.innerHTML = this._buildCharacterizationSummaryHtml(exp, s);
             this._renderCharacterizationStressPlots(exp);

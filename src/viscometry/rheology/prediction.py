@@ -70,7 +70,7 @@ def _rolling_centered(
     return mean_out, std_out
 
 
-def trim_stat_middle_arrays(
+def trim_stat_middle_bounds(
     x: ArrayLike,
     y: ArrayLike,
     *,
@@ -78,18 +78,17 @@ def trim_stat_middle_arrays(
     win: int = 5,
     min_keep_frac: float = 0.5,
     max_keep_frac: float = 0.8,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """APP_V4 statistical middle trim for Newtonian drag fitting."""
+) -> Tuple[int, int]:
+    """Return the [start, end) window kept by the Newtonian statistical trim."""
     x_arr = np.asarray(x, dtype=float)
     y_arr = np.asarray(y, dtype=float)
     n = len(x_arr)
     eps = 1e-9
 
     if n == 0:
-        return x_arr.copy(), y_arr.copy()
+        return 0, 0
     if n < 6:
-        x_out = x_arr - np.min(x_arr)
-        return x_out, y_arr.copy()
+        return 0, n
 
     y_sm, sd = _rolling_centered(y_arr, win, min_periods=2)
     dy = np.gradient(y_sm, x_arr)
@@ -131,6 +130,31 @@ def trim_stat_middle_arrays(
                 best = (score, i, j)
 
     _, i, j = best
+    return int(i), int(j)
+
+
+def trim_stat_middle_arrays(
+    x: ArrayLike,
+    y: ArrayLike,
+    *,
+    q: float = 0.65,
+    win: int = 5,
+    min_keep_frac: float = 0.5,
+    max_keep_frac: float = 0.8,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Statistical middle trim for Newtonian drag fitting."""
+    x_arr = np.asarray(x, dtype=float)
+    y_arr = np.asarray(y, dtype=float)
+    i, j = trim_stat_middle_bounds(
+        x_arr,
+        y_arr,
+        q=q,
+        win=win,
+        min_keep_frac=min_keep_frac,
+        max_keep_frac=max_keep_frac,
+    )
+    if j <= i:
+        return x_arr.copy(), y_arr.copy()
     x_sel = x_arr[i:j].copy()
     y_sel = y_arr[i:j].copy()
     x_sel -= np.min(x_sel)

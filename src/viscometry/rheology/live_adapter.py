@@ -18,6 +18,7 @@ from viscometry.rheology.prediction import (
     fit_drag_newtonian_app_v4,
     passes_r2_gate,
     trim_stat_middle_arrays,
+    trim_stat_middle_bounds,
 )
 
 _RPM_TOL = 1e-6
@@ -515,25 +516,41 @@ def predict_cell_rheology(
         successful,
         cell_id=int(cell_id),
     )
-    if summary.get("pathway") == "newtonian":
-        refit_successful: Dict[float, Dict[str, Any]] = {}
+    if summary.get("pathway") == "newtonian" and apply_newtonian_stat_trim:
+        # Keep the characterization hyperbola. The trim only shortens the window.
+        refit_map: Dict[float, Dict[str, Any]] = {}
         for rpm, fit in successful.items():
-            points = fit.get("_points")
-            if not points:
-                refit_successful[rpm] = fit
+            h_norm = fit.get("_h_norm")
+            torque = fit.get("_torque_pct")
+            norm_offset = fit.get("_norm_offset")
+            if h_norm is None or torque is None or norm_offset is None or len(h_norm) < 6:
+                refit_map[rpm] = fit
                 continue
-            legacy_fit = fit_newtonian_app_v4_from_points(
-                list(points),
+            h_arr = np.asarray(h_norm, dtype=float)
+            t_arr = np.asarray(torque, dtype=float)
+            drag = t_arr / float(rpm) if float(rpm) else t_arr
+            start, end = trim_stat_middle_bounds(h_arr, drag)
+            if end <= start:
+                refit_map[rpm] = fit
+                continue
+            h_slice = h_arr[start:end]
+            t_slice = t_arr[start:end]
+            shift = float(np.min(h_slice))
+            refit = fit_sweep_drag(
+                h_slice - shift,
+                t_slice,
                 float(rpm),
-                torque_floor_pct=torque_floor_pct,
-                hit_point_z=hit_point_z,
+                float(norm_offset) + shift,
                 min_r2=min_r2,
-                apply_stat_trim=apply_newtonian_stat_trim,
             )
-            merged = dict(fit)
-            merged.update(legacy_fit)
-            refit_successful[rpm] = merged
-        successful = {rpm: fit for rpm, fit in refit_successful.items() if fit.get("success")}
+            refit["cell_id"] = fit.get("cell_id")
+            refit["pretrim_z"] = (h_slice + float(norm_offset)).tolist()
+            refit["pretrim_drag"] = (t_slice / float(rpm)).tolist() if float(rpm) else t_slice.tolist()
+            refit["n_points_used"] = int(len(h_slice))
+            refit_map[rpm] = refit
+        for rpm, refit in refit_map.items():
+            per_rpm[rpm] = refit
+        successful = {rpm: fit for rpm, fit in refit_map.items() if fit.get("success")}
         summary = compute_cell_characterization(
             successful,
             cell_id=int(cell_id),
