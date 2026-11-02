@@ -341,6 +341,7 @@ def refit_sweep_drag_newtonian_app_v4(
     norm_offset: float,
     *,
     min_r2: float = FIT_R2_MIN,
+    apply_stat_trim: bool = True,
 ) -> Dict[str, Any]:
     """Refit one RPM sweep with the APP_V4 Newtonian drag model."""
     rpm_f = float(rpm)
@@ -366,9 +367,14 @@ def refit_sweep_drag_newtonian_app_v4(
         return base
 
     d = np.asarray(drag, float)
-    h_trim, d_trim = trim_stat_middle_arrays(h_norm, d)
+    if apply_stat_trim:
+        h_trim, d_trim = trim_stat_middle_arrays(h_norm, d)
+    else:
+        h_trim = np.asarray(h_norm, dtype=float)
+        d_trim = d
     if len(h_trim) < 4 or np.ptp(h_trim) <= 0:
-        base["error"] = "Insufficient distinct points after statistical trim"
+        stage = "statistical trim" if apply_stat_trim else "pre-trim"
+        base["error"] = f"Insufficient distinct points after {stage}"
         return base
     base["n_points_used"] = int(len(h_trim))
     fit = fit_drag_newtonian_app_v4(h_trim, d_trim)
@@ -417,6 +423,7 @@ def fit_newtonian_app_v4_from_points(
     torque_floor_pct: float,
     hit_point_z: Optional[float],
     min_r2: float = FIT_R2_MIN,
+    apply_stat_trim: bool = True,
 ) -> Dict[str, Any]:
     """Full APP_V4 Newtonian sweep path from raw measurement points."""
     pre_h, pre_d, pre_t = _apply_pretrims_newtonian_app_v4(points, torque_floor_pct, hit_point_z)
@@ -428,6 +435,7 @@ def fit_newtonian_app_v4_from_points(
         float(rpm),
         norm_offset,
         min_r2=min_r2,
+        apply_stat_trim=apply_stat_trim,
     )
 
 
@@ -441,6 +449,7 @@ def predict_cell_rheology(
     min_r2: float = FIT_R2_MIN,
     excluded_rpms: Optional[Sequence[float]] = None,
     excluded_heights: Optional[Sequence[float]] = None,
+    apply_newtonian_stat_trim: bool = True,
 ) -> Tuple[Dict[float, Dict[str, Any]], Dict[str, Any]]:
     """Fit each RPM sweep and run three-pathway cell characterization."""
     per_rpm: Dict[float, Dict[str, Any]] = {}
@@ -519,6 +528,7 @@ def predict_cell_rheology(
                 torque_floor_pct=torque_floor_pct,
                 hit_point_z=hit_point_z,
                 min_r2=min_r2,
+                apply_stat_trim=apply_newtonian_stat_trim,
             )
             merged = dict(fit)
             merged.update(legacy_fit)
@@ -593,6 +603,31 @@ def _sanitize_fit_for_json(fit: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _parse_float_map(raw: Any) -> Dict[int, float]:
+    out: Dict[int, float] = {}
+    if not isinstance(raw, dict):
+        return out
+    for key, value in raw.items():
+        try:
+            out[int(key)] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _parse_bool_map(raw: Any) -> Dict[int, bool]:
+    out: Dict[int, bool] = {}
+    if not isinstance(raw, dict):
+        return out
+    for key, value in raw.items():
+        try:
+            cid = int(key)
+        except (TypeError, ValueError):
+            continue
+        out[cid] = bool(value)
+    return out
+
+
 def recompute_characterization_from_measurements(
     cells: Sequence[int],
     measurements: Sequence[Dict[str, Any]],
@@ -601,12 +636,16 @@ def recompute_characterization_from_measurements(
     hit_point_z_by_cell: Optional[Dict[int, float]] = None,
     excluded_rpms_by_cell: Optional[Dict[Any, Sequence[float]]] = None,
     excluded_heights_by_cell: Optional[Dict[Any, Sequence[float]]] = None,
+    torque_floor_pct_by_cell: Optional[Dict[Any, float]] = None,
+    newtonian_auto_trim_by_cell: Optional[Dict[Any, bool]] = None,
     min_r2: float = FIT_R2_MIN,
 ) -> Dict[str, Any]:
     """Recompute per-cell characterization from saved measurement rows."""
     hit_map = hit_point_z_by_cell or {}
     excl_rpms = _parse_exclusion_map(excluded_rpms_by_cell)
     excl_heights = _parse_exclusion_map(excluded_heights_by_cell)
+    floor_by_cell = _parse_float_map(torque_floor_pct_by_cell)
+    trim_by_cell = _parse_bool_map(newtonian_auto_trim_by_cell)
     out: Dict[str, Any] = {}
     for cell_id in cells:
         cid = int(cell_id)
@@ -623,11 +662,12 @@ def recompute_characterization_from_measurements(
             cid,
             rpms,
             measurements,
-            torque_floor_pct=torque_floor_pct,
+            torque_floor_pct=floor_by_cell.get(cid, torque_floor_pct),
             hit_point_z=hit_map.get(cid),
             min_r2=min_r2,
             excluded_rpms=excl_rpms.get(cid),
             excluded_heights=excl_heights.get(cid),
+            apply_newtonian_stat_trim=trim_by_cell.get(cid, True),
         )
         cell_map: Dict[str, Any] = {SUMMARY_KEY: _sanitize_fit_for_json(summary)}
         for rpm, fit in per_rpm.items():

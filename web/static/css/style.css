@@ -3505,6 +3505,40 @@ body.spinning .gauge-value {
     margin-top: 8px;
 }
 
+.char-customize-fit-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+}
+
+.char-customize .char-customize-trim-row {
+    min-height: 32px;
+    width: auto;
+    font-size: 0.72rem;
+}
+
+.char-customize-floor {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.char-customize-floor input {
+    width: 72px;
+    min-height: 28px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--char-border);
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+}
+
 .char-customize-section-title {
     font-size: 0.68rem;
     font-weight: 600;
@@ -3536,6 +3570,19 @@ body.spinning .gauge-value {
 
 .char-customize-check input {
     accent-color: var(--char-accent);
+}
+
+.char-customize-check-hit span {
+    color: var(--text-secondary);
+}
+
+.char-customize-hit-tag {
+    margin-left: 4px;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-muted);
 }
 
 .char-customize-empty {
