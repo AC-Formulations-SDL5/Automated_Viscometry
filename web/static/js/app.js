@@ -6501,24 +6501,105 @@ class ViscometryDashboard {
         return raw && typeof raw === "object" ? raw : {};
     }
 
+    _defaultTorqueFloorPct(exp) {
+        const settings = exp?.settings || {};
+        const candidates = [
+            settings.low_torque_liquid_contact_threshold_pct,
+            settings.first_sample_torque_floor_pct,
+            settings.torque_floor_pct,
+        ];
+        for (const candidate of candidates) {
+            const value = Number(candidate);
+            if (Number.isFinite(value)) {
+                return value;
+            }
+        }
+        return 25;
+    }
+
+    _normalizeCellAnalysisOverride(entry) {
+        const source = entry && typeof entry === "object" ? entry : {};
+        const excluded_rpms = Array.isArray(source.excluded_rpms)
+            ? source.excluded_rpms.map(Number).filter((n) => Number.isFinite(n))
+            : [];
+        const excluded_heights = Array.isArray(source.excluded_heights)
+            ? source.excluded_heights.map(Number).filter((n) => Number.isFinite(n))
+            : [];
+        const reincluded_heights = Array.isArray(source.reincluded_heights)
+            ? source.reincluded_heights.map(Number).filter((n) => Number.isFinite(n))
+            : [];
+        const rawFloor = source.torque_floor_pct;
+        const floor = rawFloor == null || rawFloor === "" ? null : Number(rawFloor);
+        return {
+            excluded_rpms,
+            excluded_heights,
+            reincluded_heights,
+            newtonian_auto_trim: source.newtonian_auto_trim !== false,
+            torque_floor_pct: Number.isFinite(floor) ? floor : null,
+        };
+    }
+
     _getCellAnalysisOverride(exp, cellId) {
         const overrides = this._getAnalysisOverrides(exp);
         const entry = overrides[String(cellId)] ?? overrides[cellId];
-        if (!entry || typeof entry !== "object") {
-            return { excluded_rpms: [], excluded_heights: [] };
+        return this._normalizeCellAnalysisOverride(entry);
+    }
+
+    _cellTorqueFloorPct(exp, cellId) {
+        const override = this._getCellAnalysisOverride(exp, cellId);
+        return override.torque_floor_pct == null
+            ? this._defaultTorqueFloorPct(exp)
+            : override.torque_floor_pct;
+    }
+
+    _heightsMatch(a, b) {
+        return Math.abs(Number(a) - Number(b)) < 1e-3;
+    }
+
+    _heightListHas(list, height) {
+        return (list || []).some((value) => this._heightsMatch(value, height));
+    }
+
+    _autoDroppedHeightsForCell(exp, cellId) {
+        const heights = this._uniqueHeightsForCell(exp, cellId);
+        const canon = this._getCanonicalCharacterization(exp);
+        const rpmMap = canon[String(cellId)] ?? canon[cellId];
+        if (!rpmMap || typeof rpmMap !== "object" || heights.length === 0) {
+            return [];
         }
-        const excluded_rpms = Array.isArray(entry.excluded_rpms)
-            ? entry.excluded_rpms.map(Number).filter((n) => Number.isFinite(n))
-            : [];
-        const excluded_heights = Array.isArray(entry.excluded_heights)
-            ? entry.excluded_heights.map(Number).filter((n) => Number.isFinite(n))
-            : [];
-        return { excluded_rpms, excluded_heights };
+        const pretrims = Object.keys(rpmMap)
+            .filter((key) => this._isPredictedViscosityRpmKey(key))
+            .map((key) => rpmMap[key]?.pretrim_z)
+            .filter((pre) => Array.isArray(pre) && pre.length > 0)
+            .map((pre) => pre.map(Number).filter((n) => Number.isFinite(n)));
+        if (pretrims.length === 0) {
+            return [];
+        }
+        return heights.filter((height) => (
+            pretrims.every((pre) => !pre.some((z) => this._heightsMatch(z, height)))
+        ));
+    }
+
+    _manualExcludedHeights(exp, cellId, override) {
+        const autoDropped = this._autoDroppedHeightsForCell(exp, cellId);
+        return (override?.excluded_heights || []).filter(
+            (height) => !this._heightListHas(autoDropped, height)
+        );
     }
 
     _cellHasAnalysisOverrides(exp, cellId) {
-        const { excluded_rpms, excluded_heights } = this._getCellAnalysisOverride(exp, cellId);
-        return excluded_rpms.length > 0 || excluded_heights.length > 0;
+        const override = this._getCellAnalysisOverride(exp, cellId);
+        const floor = override.torque_floor_pct;
+        const floorChanged = floor != null
+            && Math.abs(floor - this._defaultTorqueFloorPct(exp)) >= 1e-6;
+        const reincluded = (override.reincluded_heights || []).filter((height) => (
+            this._heightListHas(this._autoDroppedHeightsForCell(exp, cellId), height)
+        ));
+        return override.excluded_rpms.length > 0
+            || this._manualExcludedHeights(exp, cellId, override).length > 0
+            || reincluded.length > 0
+            || override.newtonian_auto_trim === false
+            || floorChanged;
     }
 
     _experimentHasAnyAnalysisOverrides(exp) {
@@ -6568,14 +6649,32 @@ class ViscometryDashboard {
     _setCellAnalysisOverride(exp, cellId, nextOverride) {
         const key = String(cellId);
         const overrides = { ...this._getAnalysisOverrides(exp) };
-        const excluded_rpms = Array.isArray(nextOverride?.excluded_rpms) ? nextOverride.excluded_rpms : [];
-        const excluded_heights = Array.isArray(nextOverride?.excluded_heights)
-            ? nextOverride.excluded_heights
-            : [];
-        if (excluded_rpms.length === 0 && excluded_heights.length === 0) {
+        const normalized = this._normalizeCellAnalysisOverride(nextOverride);
+        const autoDropped = this._autoDroppedHeightsForCell(exp, cellId);
+        const excluded_heights = normalized.excluded_heights.filter(
+            (height) => !this._heightListHas(autoDropped, height)
+        );
+        const reincluded_heights = normalized.reincluded_heights.filter(
+            (height) => this._heightListHas(autoDropped, height)
+        );
+        const floor = normalized.torque_floor_pct;
+        const floorChanged = floor != null
+            && Math.abs(floor - this._defaultTorqueFloorPct(exp)) >= 1e-6;
+        const hasOverride = normalized.excluded_rpms.length > 0
+            || excluded_heights.length > 0
+            || reincluded_heights.length > 0
+            || normalized.newtonian_auto_trim === false
+            || floorChanged;
+        if (!hasOverride) {
             delete overrides[key];
         } else {
-            overrides[key] = { excluded_rpms, excluded_heights };
+            overrides[key] = {
+                excluded_rpms: normalized.excluded_rpms,
+                excluded_heights,
+                reincluded_heights,
+                newtonian_auto_trim: normalized.newtonian_auto_trim,
+                torque_floor_pct: floorChanged ? floor : null,
+            };
         }
         exp.analysis_overrides = overrides;
         if (Object.keys(overrides).length === 0) {
@@ -6587,17 +6686,38 @@ class ViscometryDashboard {
     _buildExclusionPayload(exp) {
         const excluded_rpms_by_cell = {};
         const excluded_heights_by_cell = {};
+        const torque_floor_pct_by_cell = {};
+        const newtonian_auto_trim_by_cell = {};
         const overrides = this._getAnalysisOverrides(exp);
         Object.keys(overrides).forEach((cellKey) => {
-            const { excluded_rpms, excluded_heights } = this._getCellAnalysisOverride(exp, cellKey);
-            if (excluded_rpms.length) {
-                excluded_rpms_by_cell[cellKey] = excluded_rpms;
+            if (!this._cellHasAnalysisOverrides(exp, cellKey)) {
+                return;
             }
-            if (excluded_heights.length) {
-                excluded_heights_by_cell[cellKey] = excluded_heights;
+            const override = this._getCellAnalysisOverride(exp, cellKey);
+            const autoDropped = this._autoDroppedHeightsForCell(exp, cellKey);
+            const droppedHeights = [
+                ...this._manualExcludedHeights(exp, cellKey, override),
+                ...autoDropped.filter((height) => !this._heightListHas(override.reincluded_heights, height)),
+            ];
+            if (override.excluded_rpms.length) {
+                excluded_rpms_by_cell[cellKey] = override.excluded_rpms;
+            }
+            if (droppedHeights.length) {
+                excluded_heights_by_cell[cellKey] = droppedHeights;
+            }
+            if (override.newtonian_auto_trim === false) {
+                newtonian_auto_trim_by_cell[cellKey] = false;
+            }
+            if (override.torque_floor_pct != null) {
+                torque_floor_pct_by_cell[cellKey] = override.torque_floor_pct;
             }
         });
-        return { excluded_rpms_by_cell, excluded_heights_by_cell };
+        return {
+            excluded_rpms_by_cell,
+            excluded_heights_by_cell,
+            torque_floor_pct_by_cell,
+            newtonian_auto_trim_by_cell,
+        };
     }
 
     async _recomputeCharacterizationExploration(exp) {
@@ -6609,11 +6729,15 @@ class ViscometryDashboard {
             delete exp.characterization_exploration;
             return;
         }
-        const { excluded_rpms_by_cell, excluded_heights_by_cell } = this._buildExclusionPayload(exp);
-        const cellsWithOverrides = Object.keys({
-            ...excluded_rpms_by_cell,
-            ...excluded_heights_by_cell,
-        }).map(Number).filter((n) => Number.isFinite(n));
+        const {
+            excluded_rpms_by_cell,
+            excluded_heights_by_cell,
+            torque_floor_pct_by_cell,
+            newtonian_auto_trim_by_cell,
+        } = this._buildExclusionPayload(exp);
+        const cellsWithOverrides = Object.keys(this._getAnalysisOverrides(exp))
+            .map(Number)
+            .filter((n) => Number.isFinite(n) && this._cellHasAnalysisOverrides(exp, n));
         if (cellsWithOverrides.length === 0) {
             delete exp.characterization_exploration;
             return;
@@ -6632,9 +6756,14 @@ class ViscometryDashboard {
                         rotational_drag: p.rotational_drag,
                         timestamp: p.timestamp || 0,
                     })),
-                    settings: exp.settings || {},
+                    settings: {
+                        ...(exp.settings || {}),
+                        torque_floor_pct: this._defaultTorqueFloorPct(exp),
+                    },
                     excluded_rpms_by_cell,
                     excluded_heights_by_cell,
+                    torque_floor_pct_by_cell,
+                    newtonian_auto_trim_by_cell,
                 }),
             });
             if (!res.ok) {
@@ -6745,7 +6874,7 @@ class ViscometryDashboard {
 
     _onCharCustomizeChange(event) {
         const input = event.target;
-        if (!(input instanceof HTMLInputElement) || input.type !== "checkbox") {
+        if (!(input instanceof HTMLInputElement)) {
             return;
         }
         const cellId = Number(input.dataset.charCell);
@@ -6758,8 +6887,48 @@ class ViscometryDashboard {
             return;
         }
         const current = this._getCellAnalysisOverride(exp, cellId);
+        if (kind === "auto-trim") {
+            this._setCellAnalysisOverride(exp, cellId, {
+                ...current,
+                newtonian_auto_trim: input.checked,
+            });
+            this._scheduleCharCustomizeRefit(exp);
+            return;
+        }
+        if (kind === "torque-floor") {
+            const raw = input.value.trim();
+            const typed = raw === "" ? null : Number(raw);
+            const floor = typed != null && Number.isFinite(typed) ? typed : null;
+            this._setCellAnalysisOverride(exp, cellId, {
+                ...current,
+                torque_floor_pct: floor,
+            });
+            this._scheduleCharCustomizeRefit(exp);
+            return;
+        }
+        if (input.type !== "checkbox" || (kind !== "rpm" && kind !== "height")) {
+            return;
+        }
         const value = Number(input.dataset.charValue);
         if (!Number.isFinite(value)) {
+            return;
+        }
+        if (kind === "height" && this._heightListHas(this._autoDroppedHeightsForCell(exp, cellId), value)) {
+            let reincluded = [...(current.reincluded_heights || [])];
+            const matchIdx = reincluded.findIndex((v) => this._heightsMatch(v, value));
+            if (input.checked) {
+                if (matchIdx < 0) {
+                    reincluded.push(value);
+                }
+            } else if (matchIdx >= 0) {
+                reincluded.splice(matchIdx, 1);
+            }
+            this._setCellAnalysisOverride(exp, cellId, {
+                ...current,
+                excluded_heights: current.excluded_heights.filter((v) => !this._heightsMatch(v, value)),
+                reincluded_heights: reincluded,
+            });
+            this._scheduleCharCustomizeRefit(exp);
             return;
         }
         const listKey = kind === "rpm" ? "excluded_rpms" : "excluded_heights";
@@ -6775,6 +6944,7 @@ class ViscometryDashboard {
             list.push(value);
         }
         this._setCellAnalysisOverride(exp, cellId, {
+            ...current,
             excluded_rpms: listKey === "excluded_rpms" ? list : current.excluded_rpms,
             excluded_heights: listKey === "excluded_heights" ? list : current.excluded_heights,
         });
@@ -7278,7 +7448,9 @@ class ViscometryDashboard {
             const override = this._getCellAnalysisOverride(exp, cellId);
             const exploring = this._cellHasAnalysisOverrides(exp, cellId);
             const excludedRpmSet = override.excluded_rpms;
-            const excludedHeightSet = override.excluded_heights;
+            const excludedHeightSet = this._manualExcludedHeights(exp, cellId, override);
+            const autoDroppedHeights = this._autoDroppedHeightsForCell(exp, cellId);
+            const reincludedHeights = override.reincluded_heights || [];
             const heights = this._uniqueHeightsForCell(exp, cellId);
             const detailsOpen = this._charCustomizeOpenCells.has(String(cellId)) ? " open" : "";
 
@@ -7297,18 +7469,38 @@ class ViscometryDashboard {
                 .join("");
 
             const heightCheckboxes = heights.map((h) => {
-                const checked = !excludedHeightSet.some((ex) => Math.abs(ex - h) < 1e-4);
-                return `<label class="char-customize-check">`
+                const isHitDrop = this._heightListHas(autoDroppedHeights, h);
+                const checked = isHitDrop
+                    ? this._heightListHas(reincludedHeights, h)
+                    : !this._heightListHas(excludedHeightSet, h);
+                const hitTag = isHitDrop ? ' <span class="char-customize-hit-tag">hit</span>' : "";
+                return `<label class="char-customize-check${isHitDrop ? " char-customize-check-hit" : ""}" `
+                    + `${isHitDrop ? 'title="Dropped after the hit point"' : ""}>`
                     + `<input type="checkbox" data-char-cell="${cellId}" data-char-kind="height" `
                     + `data-char-value="${h}"${checked ? " checked" : ""}>`
-                    + `<span>${this._escapeHtml(h.toFixed(3))} mm</span>`
+                    + `<span>${this._escapeHtml(h.toFixed(3))} mm${hitTag}</span>`
                     + `</label>`;
             }).join("");
 
+            const autoTrimOn = override.newtonian_auto_trim !== false;
+            const torqueFloor = this._cellTorqueFloorPct(exp, cellId);
             const customizeHtml = `
                 <details class="char-customize"${detailsOpen} data-cell-id="${cellId}">
                     <summary class="char-customize-summary">Customize analysis</summary>
                     <div class="char-customize-panel">
+                        <div class="char-customize-section char-customize-fit-controls">
+                            <label class="ui-switch-row char-customize-trim-row">
+                                <span class="ui-switch">
+                                    <input type="checkbox" data-char-cell="${cellId}" data-char-kind="auto-trim"${autoTrimOn ? " checked" : ""}>
+                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                </span>
+                                <span class="ui-switch-label">Newtonian auto-trim</span>
+                            </label>
+                            <label class="char-customize-floor">
+                                <span>Torque floor (%)</span>
+                                <input type="number" step="0.1" min="0" max="100" data-char-cell="${cellId}" data-char-kind="torque-floor" value="${torqueFloor}">
+                            </label>
+                        </div>
                         <div class="char-customize-section">
                             <div class="char-customize-section-title">RPMs for K / n fit</div>
                             <div class="char-customize-checks">${rpmCheckboxes || "<span class=\"char-customize-empty\">No RPMs</span>"}</div>
@@ -7391,7 +7583,7 @@ class ViscometryDashboard {
                 + `</div>`;
             const tableHtml = `
                 <table class="char-summary-rpm-table">
-                    <thead><tr><th>RPM</th><th>η (kCp)</th><th>R²</th><th>pts</th><th>Status</th></tr></thead>
+                    <thead><tr><th>RPM</th><th>η (kCp)</th><th>R²</th><th>pnts after trim</th><th>Status</th></tr></thead>
                     <tbody>${rpmRows.join("")}</tbody>
                 </table>`;
 
@@ -8274,7 +8466,7 @@ class ViscometryDashboard {
                                             <th>η (kCp)</th>
                                             <th>A</th>
                                             <th>R²</th>
-                                            <th>pts</th>
+                                            <th>pnts after trim</th>
                                             <th>Status</th>
                                         </tr>
                                     </thead>

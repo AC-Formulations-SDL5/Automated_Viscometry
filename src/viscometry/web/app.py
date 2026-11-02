@@ -587,11 +587,20 @@ class ViscometryWebInterface:
                 cells = payload.get("cells") or []
                 measurements = payload.get("measurements") or []
                 settings = payload.get("settings") or {}
-                torque_floor = float(
-                    settings.get("first_sample_torque_floor_pct")
-                    or settings.get("torque_floor_pct")
-                    or 0.0
-                )
+                torque_floor = 0.0
+                for floor_key in (
+                    "low_torque_liquid_contact_threshold_pct",
+                    "first_sample_torque_floor_pct",
+                    "torque_floor_pct",
+                ):
+                    raw_floor = settings.get(floor_key)
+                    if raw_floor is None or raw_floor == "":
+                        continue
+                    try:
+                        torque_floor = float(raw_floor)
+                    except (TypeError, ValueError):
+                        continue
+                    break
                 hit_raw = payload.get("hit_point_z_by_cell") or {}
                 hit_map = {
                     int(k): float(v)
@@ -605,6 +614,8 @@ class ViscometryWebInterface:
                     hit_point_z_by_cell=hit_map or None,
                     excluded_rpms_by_cell=payload.get("excluded_rpms_by_cell") or None,
                     excluded_heights_by_cell=payload.get("excluded_heights_by_cell") or None,
+                    torque_floor_pct_by_cell=payload.get("torque_floor_pct_by_cell") or None,
+                    newtonian_auto_trim_by_cell=payload.get("newtonian_auto_trim_by_cell") or None,
                 )
                 return jsonify(result)
             except Exception as e:

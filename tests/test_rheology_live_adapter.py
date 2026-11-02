@@ -119,6 +119,46 @@ class TestRheologyLiveAdapter(unittest.TestCase):
         self.assertEqual(summary["mode"], "newtonian")
         self.assertEqual(summary["regime"], "Newtonian")
 
+    def test_newtonian_auto_trim_can_be_disabled(self):
+        data = _sweep_rows(rpm=12.0, A=0.55, n_points=12)
+        trimmed, _summary = predict_cell_rheology(
+            1, [12.0], data, torque_floor_pct=0.0, hit_point_z=None
+        )
+        full, _summary_full = predict_cell_rheology(
+            1,
+            [12.0],
+            data,
+            torque_floor_pct=0.0,
+            hit_point_z=None,
+            apply_newtonian_stat_trim=False,
+        )
+        self.assertLessEqual(trimmed[12.0]["n_points_used"], 12)
+        self.assertEqual(full[12.0]["n_points_used"], 12)
+        self.assertTrue(full[12.0]["success"])
+
+    def test_recompute_honors_per_cell_floor_and_trim(self):
+        good = _sweep_rows(rpm=12.0, A=0.55, n_points=8, torque_scale=50.0)
+        low = [
+            {
+                "cell_id": 1,
+                "rpm": 12.0,
+                "height": 0.2,
+                "rotational_drag": 0.01,
+                "torque_percent": 5.0,
+                "timestamp": -1.0,
+            }
+        ]
+        out = recompute_characterization_from_measurements(
+            [1],
+            low + good,
+            torque_floor_pct=0.0,
+            torque_floor_pct_by_cell={1: 25.0},
+            newtonian_auto_trim_by_cell={1: False},
+        )
+        fit = out["1"]["12.0"]
+        self.assertTrue(fit["success"], fit.get("error"))
+        self.assertEqual(fit["n_points_used"], 8)
+
     def test_predict_cell_rheology_multi_rpm_powerlaw(self):
         data = []
         for rpm, A in ((5.0, 1.0), (15.0, 0.72), (30.0, 0.52)):
