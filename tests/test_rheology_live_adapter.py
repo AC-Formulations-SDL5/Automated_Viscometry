@@ -119,25 +119,25 @@ class TestRheologyLiveAdapter(unittest.TestCase):
         self.assertEqual(summary["mode"], "newtonian")
         self.assertEqual(summary["regime"], "Newtonian")
 
-    def test_newtonian_auto_trim_can_be_disabled(self):
+    def test_newtonian_stat_trim_is_off_unless_requested(self):
         data = _sweep_rows(rpm=12.0, A=0.55, n_points=12)
-        trimmed, _summary = predict_cell_rheology(
+        default, summary = predict_cell_rheology(
             1, [12.0], data, torque_floor_pct=0.0, hit_point_z=None
         )
-        full, _summary_full = predict_cell_rheology(
+        trimmed, _summary_trimmed = predict_cell_rheology(
             1,
             [12.0],
             data,
             torque_floor_pct=0.0,
             hit_point_z=None,
-            apply_newtonian_stat_trim=False,
+            apply_newtonian_stat_trim=True,
         )
-        self.assertEqual(full[12.0]["drag_model"], "app_v6_hyperbola")
-        self.assertEqual(full[12.0]["n_points_used"], 12)
-        self.assertTrue(full[12.0]["success"])
-        if _summary_full.get("pathway") == "newtonian":
+        self.assertEqual(default[12.0]["drag_model"], "app_v6_hyperbola")
+        self.assertEqual(default[12.0]["n_points_used"], 12)
+        self.assertTrue(default[12.0]["success"])
+        if summary.get("pathway") == "newtonian":
             self.assertEqual(trimmed[12.0]["drag_model"], "app_v6_hyperbola")
-            self.assertLess(trimmed[12.0]["n_points_used"], full[12.0]["n_points_used"])
+            self.assertLess(trimmed[12.0]["n_points_used"], default[12.0]["n_points_used"])
         else:
             self.assertEqual(trimmed[12.0]["n_points_used"], 12)
 

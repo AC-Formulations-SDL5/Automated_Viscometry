@@ -6606,7 +6606,6 @@ class ViscometryDashboard {
         return override.excluded_rpms.length > 0
             || this._manualExcludedHeights(exp, cellId, override).length > 0
             || reincluded.length > 0
-            || override.newtonian_auto_trim === false
             || floorChanged;
     }
 
@@ -6628,9 +6627,7 @@ class ViscometryDashboard {
             ...Object.keys(explore),
         ]);
         keys.forEach((cellKey) => {
-            const showRefit = this._cellHasAnalysisOverrides(exp, cellKey)
-                || this._cellWantsNewtonianTrim(exp, cellKey);
-            if (showRefit && explore[cellKey]) {
+            if (this._cellHasAnalysisOverrides(exp, cellKey) && explore[cellKey]) {
                 out[cellKey] = explore[cellKey];
             } else if (canon[cellKey]) {
                 out[cellKey] = canon[cellKey];
@@ -6673,7 +6670,6 @@ class ViscometryDashboard {
         const hasOverride = normalized.excluded_rpms.length > 0
             || excluded_heights.length > 0
             || reincluded_heights.length > 0
-            || normalized.newtonian_auto_trim === false
             || floorChanged;
         if (!hasOverride) {
             delete overrides[key];
@@ -6682,7 +6678,6 @@ class ViscometryDashboard {
                 excluded_rpms: normalized.excluded_rpms,
                 excluded_heights,
                 reincluded_heights,
-                newtonian_auto_trim: normalized.newtonian_auto_trim,
                 torque_floor_pct: floorChanged ? floor : null,
             };
         }
@@ -6693,33 +6688,10 @@ class ViscometryDashboard {
         }
     }
 
-    _cellPathway(exp, cellId) {
-        const canon = this._getCanonicalCharacterization(exp);
-        const rpmMap = canon[String(cellId)] ?? canon[cellId];
-        return rpmMap?.[this.predictedViscositySummaryKey]?.pathway || null;
-    }
-
-    _cellWantsNewtonianTrim(exp, cellId) {
-        if (this._cellPathway(exp, cellId) !== "newtonian") {
-            return false;
-        }
-        return this._getCellAnalysisOverride(exp, cellId).newtonian_auto_trim !== false;
-    }
-
     _cellsForCharacterizationRefit(exp) {
-        const ids = new Set();
-        const canon = this._getCanonicalCharacterization(exp);
-        Object.keys(canon).forEach((cellKey) => {
-            if (this._cellWantsNewtonianTrim(exp, cellKey)) {
-                ids.add(String(cellKey));
-            }
-        });
-        Object.keys(this._getAnalysisOverrides(exp)).forEach((cellKey) => {
-            if (this._cellHasAnalysisOverrides(exp, cellKey)) {
-                ids.add(String(cellKey));
-            }
-        });
-        return [...ids];
+        return Object.keys(this._getAnalysisOverrides(exp)).filter((cellKey) => (
+            this._cellHasAnalysisOverrides(exp, cellKey)
+        ));
     }
 
     _buildExclusionPayload(exp, cellIds) {
@@ -6740,7 +6712,7 @@ class ViscometryDashboard {
             if (droppedHeights.length) {
                 excluded_heights_by_cell[cellKey] = droppedHeights;
             }
-            newtonian_auto_trim_by_cell[cellKey] = override.newtonian_auto_trim !== false;
+            newtonian_auto_trim_by_cell[cellKey] = false;
             if (override.torque_floor_pct != null) {
                 torque_floor_pct_by_cell[cellKey] = override.torque_floor_pct;
             }
@@ -6811,9 +6783,7 @@ class ViscometryDashboard {
                 });
                 // Drop exploration for cells that no longer have overrides.
                 Object.keys(prev).forEach((cellKey) => {
-                    const keep = this._cellHasAnalysisOverrides(exp, cellKey)
-                        || this._cellWantsNewtonianTrim(exp, cellKey);
-                    if (!keep) {
+                    if (!this._cellHasAnalysisOverrides(exp, cellKey)) {
                         delete prev[cellKey];
                     }
                 });
@@ -6921,14 +6891,6 @@ class ViscometryDashboard {
             return;
         }
         const current = this._getCellAnalysisOverride(exp, cellId);
-        if (kind === "auto-trim") {
-            this._setCellAnalysisOverride(exp, cellId, {
-                ...current,
-                newtonian_auto_trim: input.checked,
-            });
-            this._scheduleCharCustomizeRefit(exp);
-            return;
-        }
         if (kind === "torque-floor") {
             const raw = input.value.trim();
             const typed = raw === "" ? null : Number(raw);
@@ -7519,20 +7481,12 @@ class ViscometryDashboard {
                     + `</label>`;
             }).join("");
 
-            const autoTrimOn = override.newtonian_auto_trim !== false;
             const torqueFloor = this._cellTorqueFloorPct(exp, cellId);
             const customizeHtml = `
                 <details class="char-customize"${detailsOpen} data-cell-id="${cellId}">
                     <summary class="char-customize-summary">Customize analysis</summary>
                     <div class="char-customize-panel">
                         <div class="char-customize-section char-customize-fit-controls">
-                            <label class="ui-switch-row char-customize-trim-row">
-                                <span class="ui-switch">
-                                    <input type="checkbox" data-char-cell="${cellId}" data-char-kind="auto-trim"${autoTrimOn ? " checked" : ""}>
-                                    <span class="ui-switch-track" aria-hidden="true"></span>
-                                </span>
-                                <span class="ui-switch-label">Newtonian auto-trim</span>
-                            </label>
                             <label class="char-customize-floor">
                                 <span>Torque floor (%)</span>
                                 <input type="number" step="0.1" min="0" max="100" data-char-cell="${cellId}" data-char-kind="torque-floor" value="${torqueFloor}">
