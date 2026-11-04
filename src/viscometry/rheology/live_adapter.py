@@ -450,7 +450,7 @@ def predict_cell_rheology(
     min_r2: float = FIT_R2_MIN,
     excluded_rpms: Optional[Sequence[float]] = None,
     excluded_heights: Optional[Sequence[float]] = None,
-    apply_newtonian_stat_trim: bool = True,
+    apply_newtonian_stat_trim: bool = False,
 ) -> Tuple[Dict[float, Dict[str, Any]], Dict[str, Any]]:
     """Fit each RPM sweep and run three-pathway cell characterization."""
     per_rpm: Dict[float, Dict[str, Any]] = {}
@@ -684,7 +684,7 @@ def recompute_characterization_from_measurements(
             min_r2=min_r2,
             excluded_rpms=excl_rpms.get(cid),
             excluded_heights=excl_heights.get(cid),
-            apply_newtonian_stat_trim=trim_by_cell.get(cid, True),
+            apply_newtonian_stat_trim=trim_by_cell.get(cid, False),
         )
         cell_map: Dict[str, Any] = {SUMMARY_KEY: _sanitize_fit_for_json(summary)}
         for rpm, fit in per_rpm.items():
