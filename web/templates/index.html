@@ -65,8 +65,7 @@
         <nav class="tab-nav">
             <button class="tab-button active" data-tab="layout-tab">Layout & Timeline</button>
             <button class="tab-button" data-tab="calibrate-tab" id="calibrate-tab-button">Calibrate</button>
-            <button class="tab-button" data-tab="controls-tab" id="controls-tab-button">Perform Experiment</button>
-            <button class="tab-button tab-button-discovery" data-tab="discovery-tab" id="discovery-tab-button">Discovery</button>
+            <button class="tab-button" data-tab="controls-tab" id="controls-tab-button">Experiment</button>
             <button class="tab-button" data-tab="characterization-tab" id="characterization-tab-button">Characterization</button>
             <button class="tab-button" data-tab="testing-tab" id="testing-tab-button">Testing</button>
             <button class="tab-button" data-tab="summary-tab">Experimental Summary</button>
@@ -336,6 +335,50 @@
             <!-- Tab 3: Perform Experiment -->
             <div id="controls-tab" class="tab-panel">
                 <div class="controls-experiment-stack">
+                    <div class="experiment-mode-bar">
+                        <button type="button" id="experiment-mode-toggle" class="btn subtle">Enter custom mode</button>
+                    </div>
+                    <section id="screening-setup" class="card screening-card">
+                        <div class="card-title-row">
+                            <h2>Automated Discovery Screening</h2>
+                        </div>
+                        <p class="form-hint">Probe 20–45% torque at 0.4 mm above the rough hit, then scan the selected speeds.</p>
+                        <form id="screening-form" class="run-settings-form run-settings-form-grid">
+                            <div class="run-settings-row run-settings-primary-row">
+                                <label>
+                                    <span>Experiment Name</span>
+                                    <input id="screening-experiment-name" type="text" value="" placeholder="e.g. PEG batch A">
+                                </label>
+                                <label>
+                                    <span>Cells</span>
+                                    <input id="screening-selected-cells" type="text" value="1" placeholder="1, 4, 7">
+                                </label>
+                                <label>
+                                    <span>Rows</span>
+                                    <input id="screening-selected-rows" type="text" value="2" placeholder="2">
+                                </label>
+                                <label>
+                                    <span>Measure time (s)</span>
+                                    <input id="screening-measurement-duration" type="number" min="5" step="1" value="40">
+                                </label>
+                                <label>
+                                    <span>Max speeds</span>
+                                    <input id="screening-max-rpms" type="number" min="1" max="15" step="1" value="6">
+                                </label>
+                            </div>
+                        </form>
+                        <div class="control-actions">
+                            <button type="button" id="screening-start-run" class="btn btn-start">Start screening</button>
+                            <button type="button" id="screening-stop-run" class="btn btn-stop">Stop Experiment</button>
+                        </div>
+                        <div id="screening-status" class="control-status">Ready</div>
+                    </section>
+                    <section id="screening-live-card" class="card screening-live-card hidden">
+                        <div class="card-title-row">
+                            <h2>Torque ladder</h2>
+                        </div>
+                        <div id="screening-live-table"></div>
+                    </section>
                     <div class="load-old-experiment-header-row">
                         <section id="load-old-experiment" class="load-old-experiment-card">
                             <details id="load-old-experiment-details" class="load-old-experiment-details">
@@ -353,7 +396,7 @@
                         </div>
                     </div>
 
-                    <section class="card parameters-card">
+                    <section id="custom-experiment-card" class="card parameters-card hidden">
                         <div class="card-title-row">
                             <h2>Design Experiment</h2>
                         </div>
@@ -778,7 +821,7 @@
             </div>
 
             <!-- Tab: Discovery Mode -->
-            <div id="discovery-tab" class="tab-panel">
+            <div id="discovery-tab" class="tab-panel discovery-tab-retired" hidden>
                 <div class="discovery-experiment-stack">
                     <section class="discovery-card discovery-info-banner">
                         <p class="discovery-info-title">Discovery Mode</p>

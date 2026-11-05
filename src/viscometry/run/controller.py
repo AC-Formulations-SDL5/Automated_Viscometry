@@ -25,7 +25,12 @@ from viscometry.rheology.viscosity import (
 from viscometry.rheology.live_engine import CharacterizationManager
 from viscometry.rheology.live_adapter import SUMMARY_KEY
 from viscometry.discovery.rpm_calibration import format_rpm
-from viscometry.measurement.hitpoint import extract_hitpoint, extract_rough_hitpoint
+from viscometry.measurement.hitpoint import (
+    extract_hitpoint,
+    extract_rough_hitpoint,
+    measured_hit_flags,
+    vote_stop_hit,
+)
 from viscometry.calibration.store import (
     is_calibrated, load_calibration, get_safe_z_for_cell, get_calibration_summary, clear_calibration
 )
@@ -139,6 +144,7 @@ _RUNTIME_SETTING_NAMES = (
     "DISCOVERY_DUCK_TORQUE_PCT",
     "DISCOVERY_HANDOFF_PAUSE_S",
     "DISCOVERY_PROCEED_WITH_RUN",
+    "MAX_SCREENING_RPMS",
     "DISCOVERY_ETA_GUESS_MAP",
     "RECALIBRATION_CELLS",
 )
@@ -237,9 +243,15 @@ def apply_runtime_settings_from_web():
         rs.DISCOVERY_HANDOFF_PAUSE_S = max(0.0, pause_s)
     except (TypeError, ValueError):
         rs.DISCOVERY_HANDOFF_PAUSE_S = 10.0
-    rs.DISCOVERY_PROCEED_WITH_RUN = bool(
-        web_settings.get('discovery_proceed_with_run', rs.DISCOVERY_PROCEED_WITH_RUN)
-    )
+    rs.DISCOVERY_PROCEED_WITH_RUN = True
+    try:
+        from viscometry.discovery.torque_ladder import clamp_max_screening_rpms
+
+        rs.MAX_SCREENING_RPMS = clamp_max_screening_rpms(
+            web_settings.get('max_screening_rpms', rs.MAX_SCREENING_RPMS)
+        )
+    except Exception:
+        rs.MAX_SCREENING_RPMS = 6
     raw_eta_map = web_settings.get('discovery_eta_guess_map', {})
     rs.DISCOVERY_ETA_GUESS_MAP = {}
     if isinstance(raw_eta_map, dict):
@@ -1330,6 +1342,7 @@ def test_cell_dynamic_z_series(
     hit_confidence_threshold = 0.80
     required_consecutive_hit_steps = 3
     consecutive_high_confidence_steps = 0
+    last_clean_z: Optional[float] = None
     consecutive_fail_safe_steps = 0
     _fill_thread: Optional[threading.Thread] = None
     cell_exit_reason = "normal"
@@ -1570,6 +1583,24 @@ def test_cell_dynamic_z_series(
                             f"  High-confidence streak: {consecutive_high_confidence_steps}/{required_consecutive_hit_steps} "
                             f"(max confidence={z_level_max_confidence:.2f})"
                         )
+                        vote_hit = vote_stop_hit(
+                            consecutive_high_confidence_steps,
+                            last_clean_z,
+                            measured_hit_flags(metrics_data),
+                        )
+                        if vote_hit is not None:
+                            feedback_controller.hit_point_z = vote_hit
+                            print(
+                                f"  *** VOTE HIT: half of the measured speeds agreed on step "
+                                f"{consecutive_high_confidence_steps}. Hit stays the last clean height "
+                                f"Z={vote_hit:.3f} ***"
+                            )
+                            web_interface.update_status(
+                                f"Cell {global_cell} stopped on a speed vote — hit Z={vote_hit:.3f}"
+                            )
+                            cell_exit_reason = "vote_hit"
+                            _characterization_apply_hit_point(global_cell, vote_hit)
+                            break
                     else:
                         if consecutive_high_confidence_steps > 0:
                             print(
@@ -1577,6 +1608,7 @@ def test_cell_dynamic_z_series(
                                 f"(max confidence={z_level_max_confidence:.2f})"
                             )
                         consecutive_high_confidence_steps = 0
+                        last_clean_z = z_rounded
 
                     if consecutive_high_confidence_steps >= required_consecutive_hit_steps:
                         print(f"  *** FEEDBACK CONTROLLER: PERSISTENT HIT TRIGGER DETECTED ***")
@@ -2229,6 +2261,7 @@ def main():
                                 probe_duration_s=DISCOVERY_PROBE_DURATION_S,
                                 duck_torque_pct=DISCOVERY_DUCK_TORQUE_PCT,
                                 web_emit=True,
+                                max_screening_rpms=MAX_SCREENING_RPMS,
                             )
                             if not discovered_rpms:
                                 status = discovery_result.get("status", "unknown")
@@ -2263,48 +2296,10 @@ def main():
                                 pass
                             cell_rpms = discovered_rpms
                             print(
-                                f"  Discovery converged for Cell {global_cell}: "
-                                f"RPM={cell_rpms[0]:.2f}, "
-                                f"status={discovery_result.get('status')}"
+                                f"  Screening selected {len(cell_rpms)} speed(s) for Cell {global_cell}: "
+                                f"{[format_rpm(r) for r in cell_rpms]} "
+                                f"(status={discovery_result.get('status')})"
                             )
-                            if not DISCOVERY_PROCEED_WITH_RUN:
-                                print(
-                                    f"  Discovery only for Cell {global_cell}: "
-                                    "skipping Z-scan, washing, moving on"
-                                )
-                                web_interface.update_status(
-                                    f"Cell {global_cell}: discovery complete — washing, no Z-scan"
-                                )
-                                leave_reason = _retract_and_wash_after_in_sample_probe(
-                                    cnc,
-                                    client,
-                                    pump,
-                                    global_cell,
-                                    "discovery_only",
-                                )
-                                if leave_reason == "user_stop":
-                                    termination_by_cell[global_cell] = "user_stop"
-                                    run_ended_early = True
-                                    break
-                                termination_by_cell[global_cell] = "discovery_only"
-                                completed_cells.append(global_cell)
-                                snapshot = [
-                                    m for m in web_interface.measurement_data
-                                    if isinstance(m, dict) and int(m.get("cell_id", -1)) == int(global_cell)
-                                ]
-                                web_interface.add_experiment_review_cell(
-                                    global_cell,
-                                    snapshot,
-                                    termination_reason="discovery_only",
-                                    is_partial=False,
-                                    z_level_count=0,
-                                )
-                                web_interface.add_completed_cell(
-                                    global_cell,
-                                    termination_reason="discovery_only",
-                                )
-                                print(f"Cell {global_cell} discovery-only completed")
-                                continue
                             discovery_rpm_for_landing = float(cell_rpms[0])
                             discovery_handoff_z = discovery_result.get("target_z_mm")
                             skip_initial_safe_move = True

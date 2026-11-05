@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 from typing import Dict, List, Optional, Sequence, Tuple
 
-LADDER_TARGETS: Tuple[float, ...] = (30.0, 40.0, 50.0, 60.0, 70.0)
+LADDER_TARGETS: Tuple[float, ...] = (20.0, 25.0, 30.0, 35.0, 40.0, 45.0)
+DEFAULT_MAX_SCREENING_RPMS = 6
+MAX_SCREENING_RPMS_LIMIT = 15
 DEFAULT_LADDER_TOLERANCE_PCT: float = 2.5
 DEFAULT_NEWTONIAN_N_THRESHOLD: float = 0.975
 DEFAULT_SQUEEZE_BOUNDARY_BASE: float = 0.6
@@ -163,3 +165,113 @@ def solve_rpm_for_torque(
 def ladder_target_field_names() -> List[Tuple[str, str]]:
     """Return (rpm_field, torque_field) pairs for ladder targets."""
     return [(f"rpm_{int(t)}", f"torque_{int(t)}") for t in LADDER_TARGETS]
+
+
+def _pick_logspaced(rpms: Sequence[float], count: int) -> List[float]:
+    """Pick ``count`` speeds spaced in log RPM, always keeping both ends."""
+    ordered = sorted(float(r) for r in rpms if float(r) > 0)
+    if len(ordered) <= count:
+        return ordered
+    logs = [math.log(r) for r in ordered]
+    targets = [
+        logs[0] + (logs[-1] - logs[0]) * (i / (count - 1))
+        for i in range(count)
+    ]
+    chosen: List[float] = []
+    for target in targets:
+        best_i = min(
+            range(len(ordered)),
+            key=lambda i: (abs(logs[i] - target), i),
+        )
+        rpm = ordered[best_i]
+        if rpm not in chosen:
+            chosen.append(rpm)
+            continue
+        for i in sorted(range(len(ordered)), key=lambda i: abs(logs[i] - target)):
+            if ordered[i] not in chosen:
+                chosen.append(ordered[i])
+                break
+    return sorted(chosen)
+
+
+def clamp_max_screening_rpms(value: object, *, default: int = DEFAULT_MAX_SCREENING_RPMS) -> int:
+    """Clamp the scan cap to 1–15."""
+    try:
+        n = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        n = int(default)
+    return max(1, min(MAX_SCREENING_RPMS_LIMIT, n))
+
+
+def select_screening_rpms(
+    rungs: Sequence[Dict[str, object]],
+    *,
+    max_rpms: int = DEFAULT_MAX_SCREENING_RPMS,
+    torque_lo: float = 20.0,
+    torque_hi: float = 45.0,
+    rpm_min: float = 0.1,
+    rpm_max: float = 200.0,
+) -> List[float]:
+    """Choose scan speeds from ladder rungs that landed on target.
+
+    When the cap is at most the number of landed rungs, speeds are log-spaced
+    and both ends are kept. When the cap is larger, extra speeds are filled
+    from the ladder fit between the slowest and fastest landed speeds. This
+    does not request additional probes.
+    """
+    from viscometry.discovery.rpm_calibration import clamp_hardware_rpm, round_rpm_2dp
+
+    cap = clamp_max_screening_rpms(max_rpms)
+    landed: List[Tuple[float, float]] = []
+    for row in rungs:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("status") or "") != "on_target":
+            continue
+        try:
+            rpm = float(row.get("rpm"))  # type: ignore[arg-type]
+            torque = float(row.get("torque"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if rpm <= 0 or torque <= 0:
+            continue
+        landed.append((rpm, torque))
+    if not landed:
+        return []
+
+    by_rpm: Dict[float, float] = {}
+    for rpm, torque in landed:
+        by_rpm[round_rpm_2dp(rpm)] = torque
+    ordered = sorted(by_rpm.items())
+    rpms = [rpm for rpm, _torque in ordered]
+    torques = [torque for _rpm, torque in ordered]
+    if len(rpms) >= cap:
+        return [round_rpm_2dp(rpm) for rpm in _pick_logspaced(rpms, cap)]
+    if cap == len(rpms) or rpms[-1] <= rpms[0]:
+        return [round_rpm_2dp(rpm) for rpm in rpms]
+
+    fit = fit_n_probe(rpms, torques)
+    k_coeff = float(fit["k_coeff"])
+    n_probe = float(fit["n_probe"])
+    selected = list(rpms)
+    slots = cap
+    logs = [
+        math.log(rpms[0]) + (math.log(rpms[-1]) - math.log(rpms[0])) * (i / (slots - 1))
+        for i in range(slots)
+    ]
+    for log_rpm in logs:
+        if len(selected) >= cap:
+            break
+        rpm = round_rpm_2dp(clamp_hardware_rpm(math.exp(log_rpm), rpm_min=rpm_min, rpm_max=rpm_max))
+        if any(abs(rpm - have) < 0.015 for have in selected):
+            continue
+        if n_probe <= 0.05 or k_coeff <= 0:
+            continue
+        predicted = k_coeff * (rpm ** n_probe)
+        if predicted < float(torque_lo) - 1e-6 or predicted > float(torque_hi) + 1e-6:
+            continue
+        selected.append(rpm)
+    selected = sorted(set(round_rpm_2dp(rpm) for rpm in selected))
+    if len(selected) > cap:
+        return [round_rpm_2dp(rpm) for rpm in _pick_logspaced(selected, cap)]
+    return selected

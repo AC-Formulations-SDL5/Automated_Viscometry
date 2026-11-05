@@ -5652,3 +5652,52 @@ body.discovery-review-active .experiment-review-summary .discovery-review-table 
     color: rgb(50, 90, 160);
 }
 
+.experiment-mode-bar {
+    display: flex;
+    justify-content: flex-start;
+    margin-bottom: 12px;
+}
+
+.screening-card,
+.screening-live-card,
+.screening-mode-card {
+    border-color: var(--accent-blue-border);
+    box-shadow: var(--shadow-glass), var(--shadow-glass-accent), 0 0 24px var(--accent-blue-glow);
+}
+
+.screening-live-card .screening-live-cell {
+    margin: 8px 0 4px;
+    font-weight: 600;
+}
+
+.screening-rung-table,
+.screening-summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+}
+
+.screening-rung-table th,
+.screening-rung-table td,
+.screening-summary-table th,
+.screening-summary-table td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--glass-border-subtle);
+}
+
+.screening-summary-side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.screening-summary-table {
+    font-size: 0.78rem;
+}
+
+#discovery-tab.discovery-tab-retired {
+    display: none !important;
+}
+

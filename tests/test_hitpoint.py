@@ -17,6 +17,9 @@ from viscometry.measurement.hitpoint import (
     extract_hitpoint,
     extract_hitpoint_from_sequence,
     extract_rough_hitpoint,
+    measured_hit_flags,
+    vote_passes,
+    vote_stop_hit,
 )
 
 
@@ -93,6 +96,39 @@ class TestHitpoint(unittest.TestCase):
         ])
         seq = build_z_hit_sequence(cell)
         self.assertEqual([z for z, _ in seq], [-65.20, -65.24, -65.28])
+
+
+class TestVoteStop(unittest.TestCase):
+    def test_vote_on_step_1_records_last_clean_height(self):
+        flags = [True, True, False, False]
+        self.assertAlmostEqual(vote_stop_hit(1, -65.20, flags), -65.20)
+
+    def test_vote_on_step_2_records_last_clean_height(self):
+        flags = [True, True, False]
+        self.assertAlmostEqual(vote_stop_hit(2, -65.22, flags), -65.22)
+
+    def test_no_majority_waits_for_third_height(self):
+        flags = [True, False, False, False]
+        self.assertIsNone(vote_stop_hit(1, -65.20, flags))
+        self.assertIsNone(vote_stop_hit(2, -65.20, flags))
+        self.assertIsNone(vote_stop_hit(3, -65.20, [True, True, True, True]))
+
+    def test_empty_or_missing_clean_height_does_not_stop(self):
+        self.assertIsNone(vote_stop_hit(1, -65.20, []))
+        self.assertIsNone(vote_stop_hit(1, None, [True, True]))
+        self.assertFalse(vote_passes([]))
+
+    def test_dropped_speeds_are_not_in_the_denominator(self):
+        metrics = {
+            0.5: {"Hit_Detected": True, "Hit_Reasons": "slope"},
+            1.0: {"Hit_Detected": False, "Hit_Reasons": "no_measurements"},
+            2.0: {"Hit_Detected": False, "Hit_Reasons": "feedback_disabled"},
+            4.0: {"Hit_Detected": True, "Hit_Reasons": "cv"},
+        }
+        flags = measured_hit_flags(metrics)
+        self.assertEqual(flags, [True, True])
+        self.assertTrue(vote_passes(flags))
+        self.assertAlmostEqual(vote_stop_hit(1, -65.18, flags), -65.18)
 
 
 if __name__ == "__main__":

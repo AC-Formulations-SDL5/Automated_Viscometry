@@ -205,7 +205,7 @@ def write_discovery_calibration_json(
         "valid_rpms": [float(r) for r in valid_rpms],
         "viscosity_table_path": viscosity_table_path,
         "discovery_stage2_enabled": True,
-        "ladder_targets": [30.0, 40.0, 50.0, 60.0, 70.0],
+        "ladder_targets": [20.0, 25.0, 30.0, 35.0, 40.0, 45.0],
         "ladder_tolerance_pct": 2.5,
         "newtonian_n_threshold": 0.975,
         "squeeze_boundary_base": 0.6,

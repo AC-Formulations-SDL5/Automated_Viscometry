@@ -64,11 +64,12 @@
   "viscosity_table_path": "data/reference/Viscosity Readings - Manual.csv",
   "discovery_stage2_enabled": true,
   "ladder_targets": [
+    20.0,
+    25.0,
     30.0,
+    35.0,
     40.0,
-    50.0,
-    60.0,
-    70.0
+    45.0
   ],
   "ladder_tolerance_pct": 2.5,
   "newtonian_n_threshold": 0.975,

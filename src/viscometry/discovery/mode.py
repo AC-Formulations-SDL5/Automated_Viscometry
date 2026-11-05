@@ -28,6 +28,7 @@ from viscometry.discovery.torque_ladder import (
     LADDER_TARGETS,
     fit_n_probe,
     is_newtonian_probe,
+    select_screening_rpms,
     solve_rpm_for_torque,
     suggest_rpm_for_torque_target,
     t_top_target,
@@ -49,7 +50,7 @@ _CONFIG_PATH = calibration_file("discovery_bulk_calibration.json")
 K_BULK: float = 6.047104982213263e-04
 TARGET_TORQUE_BULK: float = 30.0
 TORQUE_WINDOW_BULK: Tuple[float, float] = (25.0, 35.0)
-HIT_POINT_OFFSET_MM: float = 0.35
+HIT_POINT_OFFSET_MM: float = 0.4
 VALID_RPM_LIST: Tuple[float, ...] = (
     0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0, 1.2, 1.3, 1.4, 1.7, 1.8,
     2.1, 2.2, 2.3, 2.6, 2.7, 3.5, 4.0, 4.2, 5.0, 5.5, 5.6, 5.8, 6.0, 8.0,
@@ -432,15 +433,51 @@ def _build_partial_result(
 
 def _ladder_fields_from_converged(
     converged: Dict[float, Tuple[float, float]],
+    targets: Optional[Tuple[float, ...]] = None,
+    *,
+    tolerance_pct: float = 2.5,
+    max_screening_rpms: int = 6,
 ) -> dict:
+    ladder = tuple(float(t) for t in (targets if targets is not None else LADDER_TARGETS))
     fields: dict = {}
-    for target in LADDER_TARGETS:
+    for target in ladder:
         key = int(target)
-        if target in converged:
-            rpm_val, torque_val = converged[target]
+        if float(target) in converged:
+            rpm_val, torque_val = converged[float(target)]
             fields[f"rpm_{key}"] = float(rpm_val)
             fields[f"torque_{key}"] = float(torque_val)
+    rungs = _screening_rungs(ladder, converged, tolerance_pct=tolerance_pct)
+    fields["screening_rungs"] = rungs
+    fields["screening_rpms"] = select_screening_rpms(rungs, max_rpms=max_screening_rpms)
     return fields
+
+
+def _screening_rungs(
+    targets: Tuple[float, ...],
+    converged: Dict[float, Tuple[float, float]],
+    *,
+    tolerance_pct: float,
+) -> list:
+    rows = []
+    for target in targets:
+        t = float(target)
+        if t in converged:
+            rpm_val, torque_val = converged[t]
+            on_target = torque_in_target_window(torque_val, t, tolerance_pct=tolerance_pct)
+            rows.append({
+                "target_pct": t,
+                "rpm": float(rpm_val),
+                "torque": float(torque_val),
+                "status": "on_target" if on_target else "measured",
+            })
+        else:
+            rows.append({
+                "target_pct": t,
+                "rpm": None,
+                "torque": None,
+                "status": "pending",
+            })
+    return rows
 
 
 def _hello_probe_rpms(cfg: DiscoveryConfig) -> List[float]:
@@ -467,6 +504,7 @@ def discover_rpm_stage2(
     cell_id: int,
     probe: ProbeExecutor,
     *,
+    max_screening_rpms: int = 6,
     eta_guess: Optional[float] = None,
     material_label: Optional[str] = None,
     config: Optional[DiscoveryConfig] = None,
@@ -580,7 +618,12 @@ def discover_rpm_stage2(
                     material_label=material_label,
                     from_cache=False,
                     ladder_status="failed",
-                    **_ladder_fields_from_converged(converged),
+                    **_ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    ),
                 )
 
             record = _append_probe_record(
@@ -591,7 +634,12 @@ def discover_rpm_stage2(
                 cfg=cfg,
                 ladder_target_pct=target,
             )
-            extra = _ladder_fields_from_converged(converged)
+            extra = _ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    )
             if len(converged) >= 2:
                 fit_pts = list(converged.values())
                 fit_r = fit_n_probe(
@@ -631,7 +679,12 @@ def discover_rpm_stage2(
                     material_label=material_label,
                     from_cache=False,
                     ladder_status="failed",
-                    **_ladder_fields_from_converged(converged),
+                    **_ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    ),
                 )
             if range_status == "under_range" and target <= cfg.ladder_targets[0]:
                 return DiscoveryResult(
@@ -644,7 +697,12 @@ def discover_rpm_stage2(
                     material_label=material_label,
                     from_cache=False,
                     ladder_status="failed",
-                    **_ladder_fields_from_converged(converged),
+                    **_ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    ),
                 )
 
             if torque_in_target_window(torque, target, tolerance_pct=tol):
@@ -677,7 +735,12 @@ def discover_rpm_stage2(
                     material_label=material_label,
                     from_cache=False,
                     ladder_status="failed",
-                    **_ladder_fields_from_converged(converged),
+                    **_ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    ),
                 )
             # Higher targets may be skipped if unreachable at max RPM
             continue
@@ -693,7 +756,12 @@ def discover_rpm_stage2(
             material_label=material_label,
             from_cache=False,
             ladder_status="failed",
-            **_ladder_fields_from_converged(converged),
+            **_ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    ),
         )
 
     ladder_rpms = [converged[t][0] for t in sorted(converged.keys())]
@@ -792,7 +860,12 @@ def discover_rpm_stage2(
                     discovery_path=discovery_path,
                     T_top_target=t_target,
                     ladder_status=ladder_status,
-                    **_ladder_fields_from_converged(converged),
+                    **_ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    ),
                 )
 
             record = _append_probe_record(
@@ -816,7 +889,12 @@ def discover_rpm_stage2(
                         "is_newtonian": newtonian,
                         "T_top_target": t_target,
                         "discovery_path": discovery_path,
-                        **_ladder_fields_from_converged(converged),
+                        **_ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    ),
                     },
                 ),
             )
@@ -845,7 +923,12 @@ def discover_rpm_stage2(
                     discovery_path=discovery_path,
                     T_top_target=t_target,
                     ladder_status=ladder_status,
-                    **_ladder_fields_from_converged(converged),
+                    **_ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    ),
                 )
 
             eta_est = record.get("eta_est")
@@ -899,5 +982,10 @@ def discover_rpm_stage2(
         T_top_target=t_target,
         T_top=t_top_measured,
         ladder_status=ladder_status,
-        **_ladder_fields_from_converged(converged),
+        **_ladder_fields_from_converged(
+        converged,
+        cfg.ladder_targets,
+        tolerance_pct=tol,
+        max_screening_rpms=max_screening_rpms,
+    ),
     )

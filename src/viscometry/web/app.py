@@ -310,6 +310,8 @@ class ViscometryWebInterface:
             'discovery_duck_torque_pct': 80.0,
             'discovery_handoff_pause_s': 10.0,
             'discovery_proceed_with_run': True,
+            'screening_enabled': False,
+            'max_screening_rpms': 6,
         }
         self.predicted_viscosity_results: Dict = {}
         self.characterization_results: Dict = {}
@@ -1842,6 +1844,16 @@ class ViscometryWebInterface:
                     normalized['z_start_offset_mm'] = 0.4
             if 'discovery_mode_enabled' in settings:
                 normalized['discovery_mode_enabled'] = bool(settings['discovery_mode_enabled'])
+            if 'screening_enabled' in settings:
+                screening_on = bool(settings['screening_enabled'])
+                normalized['screening_enabled'] = screening_on
+                normalized['discovery_mode_enabled'] = screening_on
+            if 'max_screening_rpms' in settings and settings['max_screening_rpms'] not in (None, ''):
+                try:
+                    cap = int(settings['max_screening_rpms'])
+                except (TypeError, ValueError):
+                    cap = 6
+                normalized['max_screening_rpms'] = max(1, min(15, cap))
             if 'discovery_probe_duration_s' in settings and settings['discovery_probe_duration_s'] not in (None, ''):
                 try:
                     normalized['discovery_probe_duration_s'] = max(
@@ -1951,6 +1963,7 @@ class ViscometryWebInterface:
             'recalibration_cells': {},
             'recalibration_ignore_max_z_travel': False,
             'discovery_mode_enabled': False,
+            'screening_enabled': False,
         }
 
     def _validate_discovery_cells(self, selected_cells: List[int]) -> None:
@@ -1996,6 +2009,9 @@ class ViscometryWebInterface:
             **body,
             **self._regular_run_mode_clear_payload(),
             'discovery_mode_enabled': True,
+            'screening_enabled': True,
+            'discovery_proceed_with_run': True,
+            'max_screening_rpms': body.get('max_screening_rpms', 6),
             'testing_mode': 'custom',
             'selected_cells': selected,
             'low_torque_liquid_contact_skip_enabled': False,
