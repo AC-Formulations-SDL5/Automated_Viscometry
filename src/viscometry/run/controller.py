@@ -24,6 +24,7 @@ from viscometry.rheology.viscosity import (
 )
 from viscometry.rheology.live_engine import CharacterizationManager
 from viscometry.rheology.live_adapter import SUMMARY_KEY
+from viscometry.discovery.probe import sample_window_should_stop
 from viscometry.discovery.rpm_calibration import format_rpm
 from viscometry.measurement.hitpoint import (
     extract_hitpoint,
@@ -953,7 +954,8 @@ def measure_torque_at_rpm(
 
     If ``duck_above_pct_on_first_sample`` is set (Discovery probe ceiling), on the **first**
     recorded sample, if torque is **greater than or equal to** that threshold, sampling stops
-    immediately after recording that point.
+    immediately after recording that point. With Smart Early Exit on, a discovery probe also
+    stops once a full sample window is in and its mean is still under that ceiling.
     """
     try:
         # Set spindle speed
@@ -971,6 +973,8 @@ def measure_torque_at_rpm(
         sample_index = 1
         next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
         hunt_contact_confirmed = False
+        smart_exit_fired = False
+        duration_cap_s = float(MEASUREMENT_DURATION)
 
         while time.time() - start_time < MEASUREMENT_DURATION:
             raise_if_stop_requested()
@@ -1060,14 +1064,28 @@ def measure_torque_at_rpm(
                         if (
                             SMART_EARLY_EXIT_ENABLED
                             and not hunting_unresolved
-                            and len(recent_torques) == SMART_WINDOW_SIZE
+                            and sample_window_should_stop(
+                                recent_torques,
+                                window_size=SMART_WINDOW_SIZE,
+                                cv_threshold=SMART_CV_THRESHOLD,
+                                duck_ceiling_pct=duck_above_pct_on_first_sample,
+                            )
                         ):
                             recent_mean = statistics.mean(recent_torques)
-                            if recent_mean > 0:
-                                cv = statistics.pstdev(recent_torques) / recent_mean
-                                if cv < SMART_CV_THRESHOLD:
-                                    print(f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD}")
-                                    break
+                            under_discovery_ceiling = (
+                                duck_above_pct_on_first_sample is not None
+                                and recent_mean < float(duck_above_pct_on_first_sample)
+                            )
+                            if under_discovery_ceiling:
+                                print(
+                                    f"      [DISCOVERY WINDOW] {len(recent_torques)} samples, "
+                                    f"mean {recent_mean:.2f}% under "
+                                    f"{float(duck_above_pct_on_first_sample):.2f}% — stopping probe"
+                                )
+                            else:
+                                print(f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD}")
+                            smart_exit_fired = True
+                            break
                     sample_index += 1
                     next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
                 except Exception as e:
@@ -1076,6 +1094,27 @@ def measure_torque_at_rpm(
                     next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
             
             sleep_with_stop(0.1)
+
+        wall_elapsed = max(0.0, time.time() - measurement_start_time)
+        n_samples = len(measurements)
+        censored = bool(n_samples > 0 and not smart_exit_fired and wall_elapsed >= max(0.0, duration_cap_s - 0.5))
+        try:
+            cell_id = getattr(web_interface, "current_cell", None)
+            if cell_id is not None and hasattr(web_interface, "record_timing_window"):
+                web_interface.record_timing_window(
+                    int(cell_id),
+                    {
+                        "rpm": float(rpm),
+                        "z": float(z_height),
+                        "n_samples": int(n_samples),
+                        "elapsed_s": float(wall_elapsed),
+                        "duration_cap_s": float(duration_cap_s),
+                        "smart_exit": bool(smart_exit_fired),
+                        "censored": bool(censored),
+                    },
+                )
+        except Exception as timing_exc:
+            print(f"      Warning: timing window log failed: {timing_exc}")
         
         # Stop spindle after measurement
         client.stop()

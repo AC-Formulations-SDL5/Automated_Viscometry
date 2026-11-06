@@ -26,6 +26,10 @@ NEWTONIAN_N_LOW = 0.9
 NEWTONIAN_N_HIGH = 1.1
 STRONG_THINNING_N_MAX = 0.5
 
+# Empirical floor on se(n_stress) so pathway calls are not overconfident vs repeats
+N_STRESS_SE_FLOOR = 0.025
+N_STRESS_CI_LEVEL = 0.95
+
 # Amplitude power-law regime labels (aligned with Newtonian band)
 THINNING_THRESHOLD = NEWTONIAN_N_LOW
 THICKENING_THRESHOLD = NEWTONIAN_N_HIGH

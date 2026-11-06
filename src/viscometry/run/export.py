@@ -167,7 +167,9 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
         return
     csv_writer.writerow(["# Characterization coefficients"])
     csv_writer.writerow([
-        "# Cell,Cell_Label,pathway,regime,n_stress,K_stress,R2_stress,n_idx,K_Pas_n,R2_amplitude"
+        "# Cell,Cell_Label,pathway,regime,n_stress,se_eff_n_stress,n_stress_ci_low,n_stress_ci_high,"
+        "K_stress,se_log_K_stress,K_stress_ci_low,K_stress_ci_high,R2_stress,"
+        "pathway_ambiguous,stress_fit_stage,n_idx,K_Pas_n,R2_amplitude"
     ])
     for global_cell in sorted(settings.CELL_VISCOSITY_RESULTS.keys()):
         rpm_map = settings.CELL_VISCOSITY_RESULTS[global_cell]
@@ -188,8 +190,16 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
             f"{summary.get('pathway') or ''},"
             f"{summary.get('regime') or ''},"
             f"{'' if summary.get('n_stress') is None else summary.get('n_stress')},"
+            f"{'' if summary.get('se_eff_n_stress') is None else summary.get('se_eff_n_stress')},"
+            f"{'' if summary.get('n_stress_ci_low') is None else summary.get('n_stress_ci_low')},"
+            f"{'' if summary.get('n_stress_ci_high') is None else summary.get('n_stress_ci_high')},"
             f"{'' if summary.get('K_stress') is None else summary.get('K_stress')},"
+            f"{'' if summary.get('se_log_K_stress') is None else summary.get('se_log_K_stress')},"
+            f"{'' if summary.get('K_stress_ci_low') is None else summary.get('K_stress_ci_low')},"
+            f"{'' if summary.get('K_stress_ci_high') is None else summary.get('K_stress_ci_high')},"
             f"{'' if summary.get('R2_stress') is None else summary.get('R2_stress')},"
+            f"{summary.get('pathway_ambiguous')},"
+            f"{summary.get('stress_fit_stage') or ''},"
             f"{'' if n_idx is None else n_idx},"
             f"{'' if summary.get('K_Pas_n') is None else summary.get('K_Pas_n')},"
             f"{'' if r2_amp is None else r2_amp}",
@@ -197,7 +207,8 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
     csv_writer.writerow([])
     csv_writer.writerow(["# Characterization Results"])
     csv_writer.writerow([
-        "# Cell,Cell_Label,RPM,Viscosity_kCp,A,B,R2,pathway,regime,n,n_stress,K_Pas_n,K_stress,R2_stress,n_points_used,fit_success"
+        "# Cell,Cell_Label,RPM,Viscosity_kCp,A,B,R2,pathway,regime,n,n_stress,se_eff_n_stress,"
+        "K_Pas_n,K_stress,R2_stress,pathway_ambiguous,n_points_used,fit_success"
     ])
     for global_cell in sorted(settings.CELL_VISCOSITY_RESULTS.keys()):
         rpm_map = settings.CELL_VISCOSITY_RESULTS[global_cell]
@@ -207,9 +218,11 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
         cell_pathway = summary.get("pathway") if isinstance(summary, dict) else ""
         cell_n = summary.get("n_idx") or summary.get("n") if isinstance(summary, dict) else ""
         cell_n_stress = summary.get("n_stress") if isinstance(summary, dict) else ""
+        se_eff = summary.get("se_eff_n_stress") if isinstance(summary, dict) else ""
         k_pas = summary.get("K_Pas_n") if isinstance(summary, dict) else ""
         k_stress = summary.get("K_stress") if isinstance(summary, dict) else ""
         r2_stress = summary.get("R2_stress") if isinstance(summary, dict) else ""
+        ambiguous = summary.get("pathway_ambiguous") if isinstance(summary, dict) else ""
         for rpm in sorted(k for k in rpm_map.keys() if k != SUMMARY_KEY):
             result = rpm_map[rpm]
             if not isinstance(result, dict):
@@ -228,9 +241,11 @@ def _append_predicted_viscosity_csv_metadata(csv_writer) -> None:
                 f"{cell_regime},"
                 f"{'' if cell_n is None else cell_n},"
                 f"{'' if cell_n_stress is None else cell_n_stress},"
+                f"{'' if se_eff is None else se_eff},"
                 f"{'' if k_pas is None else k_pas},"
                 f"{'' if k_stress is None else k_stress},"
                 f"{'' if r2_stress is None else r2_stress},"
+                f"{ambiguous},"
                 f"{result.get('n_points_used', 0)},"
                 f"{bool(result.get('success'))}",
             ])

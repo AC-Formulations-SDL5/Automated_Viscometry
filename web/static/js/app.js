@@ -273,6 +273,9 @@ class ViscometryDashboard {
         this.timerInterval = null;
         this.experimentStart = null;
         this.cellStart = null;
+        this.etaPredictedTotalS = null;
+        this.etaBandLowS = null;
+        this.etaBandHighS = null;
         this.pendingRender = false;
         this.disconnectedBannerTimeout = null;
         this.statusError = false;
@@ -394,6 +397,9 @@ class ViscometryDashboard {
             body: document.body,
             disconnectBanner: document.getElementById("disconnect-banner"),
             runPill: document.getElementById("run-pill"),
+            headerEta: document.getElementById("header-eta"),
+            headerEtaFill: document.getElementById("header-eta-fill"),
+            headerEtaLabel: document.getElementById("header-eta-label"),
             connectionDot: document.getElementById("connection-dot"),
             completionChip: document.getElementById("completion-chip"),
             completionBar: document.getElementById("completion-bar"),
@@ -3821,6 +3827,7 @@ class ViscometryDashboard {
 
         this.socket.on("running_state_update", (data) => {
             this._markSocketConnected();
+            this._applyEtaFields(data);
             const wasRunning = this.isRunning;
             if (data.is_running && data.discovery_mode_active !== undefined) {
                 this.discoveryModeActive = Boolean(data.discovery_mode_active);
@@ -3851,6 +3858,7 @@ class ViscometryDashboard {
             this.lastRunStartTsSec = Number.isFinite(startTs) ? startTs : (this.experimentStart / 1000);
             this._captureRunSettingsSnapshot();
             this.cellStart = Date.now();
+            this._applyEtaFields(data);
             this._hideExperimentCompleteMessage();
             this._hideExperimentTerminatedMessage();
             if (this.el.elapsed) {
@@ -3862,17 +3870,21 @@ class ViscometryDashboard {
             if (this.el.discoveryElapsed) {
                 this.el.discoveryElapsed.textContent = "00:00:00";
             }
+            this.updateEtaProgressBar();
         });
 
         this.socket.on("experiment_stop", () => {
             this.experimentStart = null;
             this.cellStart = null;
+            this._clearEtaFields();
+            this.updateEtaProgressBar();
         });
 
         this.socket.on("completed_cells_update", (data) => {
             if (!Array.isArray(data?.completed_cells)) {
                 return;
             }
+            this._applyEtaFields(data);
             this.completedCells = new Set(
                 data.completed_cells
                     .map((c) => Number(c))
@@ -3891,6 +3903,7 @@ class ViscometryDashboard {
             this.updateCellVisuals();
             this.updateLiveTerminationBadge();
             this.updateRunControlButtons();
+            this.updateEtaProgressBar();
         });
 
         this.socket.on("manual_terminate_current_cell_update", (data) => {
@@ -4377,6 +4390,8 @@ class ViscometryDashboard {
                 this.cellStart = cellStartTs * 1000;
             }
         }
+        this._applyEtaFields(status);
+        this.updateEtaProgressBar();
 
         if (Array.isArray(status.measurement_data) && status.measurement_data.length > 0) {
             status.measurement_data.forEach((m) => this.ingestMeasurement(m, true));
@@ -6157,6 +6172,10 @@ class ViscometryDashboard {
         this.updateTestingTabAvailability();
         this.updateRunTabAvailability();
         this.updateZStartOffsetAvailability();
+        if (!isRunning) {
+            this._clearEtaFields();
+        }
+        this.updateEtaProgressBar();
         if (isRunning && !previous) {
             this.warnAndStopTestingForRunTransition();
             if (!this._isDiscoveryRunActive()) {
@@ -6854,13 +6873,47 @@ class ViscometryDashboard {
         return labels[pathway] || pathway || "—";
     }
 
-    _buildPathwayBadgeHtml(pathway) {
+    _buildPathwayBadgeHtml(pathway, { ambiguous = false } = {}) {
         if (!pathway) {
             return "";
         }
         const slug = String(pathway).toLowerCase().replace(/_/g, "-");
         const label = this._pathwayDisplayLabel(pathway);
-        return `<span class="char-pathway-badge pathway-${slug}">${this._escapeHtml(label)}</span>`;
+        const amb = ambiguous
+            ? ` <span class="char-pathway-ambiguous" title="n_stress interval straddles a pathway threshold">ambiguous</span>`
+            : "";
+        return `<span class="char-pathway-badge pathway-${slug}">${this._escapeHtml(label)}</span>${amb}`;
+    }
+
+    _fmtNStressWithUncertainty(summary) {
+        if (summary?.n_stress == null || !Number.isFinite(Number(summary.n_stress))) {
+            return "—";
+        }
+        const n = Number(summary.n_stress);
+        const se = summary.se_eff_n_stress != null && Number.isFinite(Number(summary.se_eff_n_stress))
+            ? Number(summary.se_eff_n_stress)
+            : (summary.se_n_stress != null && Number.isFinite(Number(summary.se_n_stress))
+                ? Number(summary.se_n_stress)
+                : null);
+        if (se == null) {
+            return n.toFixed(3);
+        }
+        return `${n.toFixed(3)} ± ${se.toFixed(3)}`;
+    }
+
+    _fmtKStressWithUncertainty(summary, { html = true } = {}) {
+        if (summary?.K_stress == null || !Number.isFinite(Number(summary.K_stress))) {
+            return "—";
+        }
+        const kHtml = this._fmtScientificTimesTen(summary.K_stress, 3, { html });
+        const lo = summary.K_stress_ci_low;
+        const hi = summary.K_stress_ci_high;
+        if (lo == null || hi == null || !Number.isFinite(Number(lo)) || !Number.isFinite(Number(hi))) {
+            return kHtml;
+        }
+        const loTxt = this._fmtScientificTimesTen(lo, 2, { html });
+        const hiTxt = this._fmtScientificTimesTen(hi, 2, { html });
+        return `${kHtml} <span class="char-ci-range">[${loTxt}, ${hiTxt}]</span>`;
     }
 
     _fmtScientificTimesTen(val, digits = 3, { html = true } = {}) {
@@ -7924,17 +7977,21 @@ class ViscometryDashboard {
             if (rpmKeys.length >= 2 && summary) {
                 const nIdx = summary.n_idx ?? summary.n;
                 const r2Amp = summary.R2_amplitude ?? summary.R2_powerlaw;
+                const stageNote = summary.stress_fit_stage
+                    ? `<div class="char-summary-coeff-item"><dt>fit stage</dt><dd>${this._escapeHtml(String(summary.stress_fit_stage))}</dd></div>`
+                    : "";
                 fitRowHtml = `
                     <div class="char-summary-fit-row">
                         <div class="char-summary-coeffs">
                             <div class="char-summary-coeffs-title">Coefficients</div>
                             <dl class="char-summary-coeff-grid">
-                                <div class="char-summary-coeff-item"><dt>K<sub>stress</sub></dt><dd>${this._fmtScientificTimesTen(summary.K_stress)}</dd></div>
-                                <div class="char-summary-coeff-item"><dt>n<sub>stress</sub></dt><dd>${fmtCoeff(summary.n_stress)}</dd></div>
+                                <div class="char-summary-coeff-item"><dt>K<sub>stress</sub></dt><dd>${this._fmtKStressWithUncertainty(summary)}</dd></div>
+                                <div class="char-summary-coeff-item"><dt>n<sub>stress</sub></dt><dd>${this._fmtNStressWithUncertainty(summary)}</dd></div>
                                 <div class="char-summary-coeff-item"><dt>R²<sub>stress</sub></dt><dd>${fmtCoeff(summary.R2_stress)}</dd></div>
                                 <div class="char-summary-coeff-item"><dt>K<sub>amp</sub></dt><dd>${this._fmtScientificTimesTen(summary.K_Pas_n)}</dd></div>
                                 <div class="char-summary-coeff-item"><dt>n<sub>idx</sub></dt><dd>${fmtCoeff(nIdx)}</dd></div>
                                 <div class="char-summary-coeff-item"><dt>R²<sub>amp</sub></dt><dd>${fmtCoeff(r2Amp)}</dd></div>
+                                ${stageNote}
                             </dl>
                         </div>
                         <div class="char-summary-stress-well">
@@ -7945,11 +8002,12 @@ class ViscometryDashboard {
                     </div>`;
             }
 
+            const ambiguous = Boolean(summary?.pathway_ambiguous);
             const headerHtml = `<div class="char-summary-card-header">`
                 + `<div class="char-summary-card-header-main">`
                 + `<strong>Cell ${cellId}</strong>`
                 + (label ? `<span class="char-summary-card-label">${this._escapeHtml(label)}</span>` : "")
-                + (pathway ? ` ${this._buildPathwayBadgeHtml(pathway)}` : "")
+                + (pathway ? ` ${this._buildPathwayBadgeHtml(pathway, { ambiguous })}` : "")
                 + (regime ? ` ${this._buildRegimeBadgeHtml(regime)}` : "")
                 + (exploring ? ` <span class="char-exploring-chip">Exploring — CSV unchanged</span>` : "")
                 + `</div>`
@@ -8240,6 +8298,58 @@ class ViscometryDashboard {
                 this.el.discoveryElapsedCell.textContent = cellElapsedText;
             }
         }
+        this.updateEtaProgressBar();
+    }
+
+    _applyEtaFields(payload) {
+        if (!payload || typeof payload !== "object") {
+            return;
+        }
+        if (payload.eta_predicted_total_s !== undefined) {
+            const v = Number(payload.eta_predicted_total_s);
+            this.etaPredictedTotalS = Number.isFinite(v) && v > 0 ? v : null;
+        }
+        if (payload.eta_band_low_s !== undefined) {
+            const v = Number(payload.eta_band_low_s);
+            this.etaBandLowS = Number.isFinite(v) ? v : null;
+        }
+        if (payload.eta_band_high_s !== undefined) {
+            const v = Number(payload.eta_band_high_s);
+            this.etaBandHighS = Number.isFinite(v) ? v : null;
+        }
+    }
+
+    _clearEtaFields() {
+        this.etaPredictedTotalS = null;
+        this.etaBandLowS = null;
+        this.etaBandHighS = null;
+    }
+
+    updateEtaProgressBar() {
+        const bar = this.el?.headerEta;
+        const fill = this.el?.headerEtaFill;
+        const label = this.el?.headerEtaLabel;
+        if (!bar || !fill || !label) {
+            return;
+        }
+        const show = Boolean(
+            this.isRunning
+            && this.experimentStart != null
+            && this.etaPredictedTotalS != null
+            && this.etaPredictedTotalS > 0
+        );
+        bar.classList.toggle("hidden", !show);
+        if (!show) {
+            fill.style.width = "0%";
+            label.textContent = "";
+            return;
+        }
+        const elapsedS = Math.max(0, (Date.now() - this.experimentStart) / 1000);
+        const total = this.etaPredictedTotalS;
+        const frac = Math.max(0, Math.min(1, elapsedS / total));
+        fill.style.width = `${(frac * 100).toFixed(2)}%`;
+        const remaining = Math.max(0, total - elapsedS);
+        label.textContent = `~${this.formatDuration(remaining * 1000)} left`;
     }
 
     formatDuration(ms) {
@@ -8885,10 +8995,13 @@ class ViscometryDashboard {
                     headingHtml += `<span class="cell-eta-label" title="Amplitude-derived consistency">K<sub>amp</sub> = ${this._fmtScientificTimesTen(summary.K_Pas_n)} Pa·sⁿ</span>`;
                 }
                 if (summary?.K_stress != null && Number.isFinite(Number(summary.K_stress))) {
-                    headingHtml += `<span class="cell-eta-label" title="Stress regression consistency">K<sub>stress</sub> = ${this._fmtScientificTimesTen(summary.K_stress)} Pa·sⁿ</span>`;
+                    headingHtml += `<span class="cell-eta-label" title="Stress regression consistency">K<sub>stress</sub> = ${this._fmtKStressWithUncertainty(summary)} Pa·sⁿ</span>`;
                 }
                 if (summary?.n_stress != null && Number.isFinite(Number(summary.n_stress))) {
-                    headingHtml += `<span class="cell-eta-label">n<sub>stress</sub> = ${Number(summary.n_stress).toFixed(3)}</span>`;
+                    headingHtml += `<span class="cell-eta-label">n<sub>stress</sub> = ${this._fmtNStressWithUncertainty(summary)}</span>`;
+                }
+                if (summary?.pathway) {
+                    headingHtml += ` ${this._buildPathwayBadgeHtml(summary.pathway, { ambiguous: Boolean(summary.pathway_ambiguous) })}`;
                 }
                 headingEl.className = "predicted-viscosity-cell-heading predicted-viscosity-cell-meta";
                 headingEl.innerHTML = headingHtml;
@@ -9079,14 +9192,22 @@ class ViscometryDashboard {
         ];
         if (summary?.K_stress != null && Number.isFinite(Number(summary.K_stress))) {
             const kStress = this._fmtScientificTimesTen(summary.K_stress, 3, { html: false });
-            const nStress = summary.n_stress != null && Number.isFinite(Number(summary.n_stress))
-                ? Number(summary.n_stress).toFixed(3)
-                : "—";
+            let nStress = "—";
+            if (summary.n_stress != null && Number.isFinite(Number(summary.n_stress))) {
+                nStress = Number(summary.n_stress).toFixed(3);
+                const se = summary.se_eff_n_stress != null && Number.isFinite(Number(summary.se_eff_n_stress))
+                    ? Number(summary.se_eff_n_stress)
+                    : null;
+                if (se != null) {
+                    nStress += ` ± ${se.toFixed(3)}`;
+                }
+            }
             const r2Stress = summary.R2_stress != null && Number.isFinite(Number(summary.R2_stress))
                 ? Number(summary.R2_stress).toFixed(3)
                 : "—";
+            const amb = summary.pathway_ambiguous ? " · ambiguous pathway" : "";
             annotations.push({
-                text: `K_stress = ${kStress} Pa·sⁿ · n_stress = ${nStress} · R² = ${r2Stress}`,
+                text: `K_stress = ${kStress} Pa·sⁿ · n_stress = ${nStress} · R² = ${r2Stress}${amb}`,
                 xref: "paper",
                 yref: "paper",
                 x: 0.02,

@@ -21,6 +21,10 @@ from viscometry.calibration.store import (
     update_calibration_for_cells,
 )
 from viscometry.paths import EXPERIMENT_HISTORY_PATH, WEB_STATIC, WEB_TEMPLATES
+from viscometry.timing.bootstrap import ensure_training_file
+from viscometry.timing.features import rows_from_commit
+from viscometry.timing.model import load_posterior, predict_run_seconds, update_posterior_from_rows
+from viscometry.timing.training_store import append_rows
 
 _ALL_DATA_Z_META_KEYS = frozenset({
     "_metrics",
@@ -91,7 +95,9 @@ def _characterization_csv_prefix(char_by_cell: dict, settings: dict) -> str:
     if not isinstance(content, dict):
         content = {}
     rows = [
-        "cell_id,cell_label,pathway,regime,n_stress,K_stress,R2_stress,n_idx,K_Pas_n,R2_amplitude"
+        "cell_id,cell_label,pathway,regime,n_stress,se_eff_n_stress,n_stress_ci_low,n_stress_ci_high,"
+        "K_stress,se_log_K_stress,K_stress_ci_low,K_stress_ci_high,R2_stress,"
+        "pathway_ambiguous,stress_fit_stage,n_idx,K_Pas_n,R2_amplitude"
     ]
 
     def _cell_sort_key(key):
@@ -125,8 +131,16 @@ def _characterization_csv_prefix(char_by_cell: dict, settings: dict) -> str:
             summary.get("pathway"),
             summary.get("regime"),
             summary.get("n_stress"),
+            summary.get("se_eff_n_stress"),
+            summary.get("n_stress_ci_low"),
+            summary.get("n_stress_ci_high"),
             summary.get("K_stress"),
+            summary.get("se_log_K_stress"),
+            summary.get("K_stress_ci_low"),
+            summary.get("K_stress_ci_high"),
             summary.get("R2_stress"),
+            summary.get("pathway_ambiguous"),
+            summary.get("stress_fit_stage"),
             n_idx,
             summary.get("K_Pas_n"),
             r2_amp,
@@ -259,6 +273,15 @@ class ViscometryWebInterface:
         self.experiment_history = []
         self.cell_termination_reasons: Dict[int, str] = {}
         self._load_experiment_history()
+        self.timing_windows_by_cell: Dict[str, List[Dict[str, Any]]] = {}
+        self.eta_predicted_total_s: Optional[float] = None
+        self.eta_band_low_s: Optional[float] = None
+        self.eta_band_high_s: Optional[float] = None
+        self.eta_prediction_frozen: Optional[Dict[str, Any]] = None
+        try:
+            ensure_training_file()
+        except Exception as exc:
+            print(f"Warning: timing training bootstrap skipped ({exc})")
         self.runtime_settings = {
             'experiment_name': '',
             'testing_mode': 'custom',
@@ -391,6 +414,9 @@ class ViscometryWebInterface:
                 'manual_terminate_current_cell_requested': self.should_terminate_current_cell(),
                 'testing_status': self.get_testing_status(),
                 'cell_positions': self.get_cell_positions(),
+                'eta_predicted_total_s': self.eta_predicted_total_s,
+                'eta_band_low_s': self.eta_band_low_s,
+                'eta_band_high_s': self.eta_band_high_s,
                 'wash_stations': [
                     {'id': 1, 'x': self.WASH_STATION1_X, 'y': self.WASH_STATION1_Y},
                     {'id': 2, 'x': self.WASH_STATION2_X, 'y': self.WASH_STATION2_Y}
@@ -859,6 +885,9 @@ class ViscometryWebInterface:
                 'status_message': self.status_message,
                 'manual_terminate_current_cell_requested': self.should_terminate_current_cell(),
                 'measurement_data': self.measurement_data,
+                'eta_predicted_total_s': self.eta_predicted_total_s,
+                'eta_band_low_s': self.eta_band_low_s,
+                'eta_band_high_s': self.eta_band_high_s,
                 'control_settings': runtime
                 ,
                 'calibration_summary': self._calibration_summary,
@@ -1296,6 +1325,10 @@ class ViscometryWebInterface:
                 "predicted_viscosity_results": self._copy_predicted_viscosity_results_unlocked(),
                 "characterization_results": self._copy_characterization_results_unlocked(),
                 "discovery_results_by_cell": self._copy_discovery_results_by_cell_unlocked(),
+                "timing_windows_by_cell": copy.deepcopy(self.timing_windows_by_cell or {}),
+                "eta_prediction_frozen": copy.deepcopy(self.eta_prediction_frozen)
+                if self.eta_prediction_frozen
+                else None,
             }
 
     def _build_experiment_review_session_from_pending(self) -> Optional[dict]:
@@ -1641,6 +1674,10 @@ class ViscometryWebInterface:
                     if csv_filename:
                         experiment_entry["csv_filename"] = csv_filename
                     self.add_experiment_history_entry(experiment_entry)
+                    try:
+                        self._append_timing_training_from_commit(experiment_entry, run_context)
+                    except Exception as timing_exc:
+                        print(f"Warning: timing training append failed ({timing_exc})")
         except Exception as e:
             if partial_csv_path and os.path.isfile(partial_csv_path):
                 try:
@@ -2043,8 +2080,16 @@ class ViscometryWebInterface:
         self.experiment_start_ts = time.time()
         self.current_cell_start_ts = None
         self.completed_cells = []
+        self.timing_windows_by_cell = {}
         self.start_requested_event.set()
-        self.socketio.emit('experiment_start', {'start_ts': self.experiment_start_ts})
+        try:
+            self._refresh_eta_prediction(freeze=True)
+        except Exception as exc:
+            print(f"Warning: ETA prediction failed at start ({exc})")
+        self.socketio.emit('experiment_start', {
+            'start_ts': self.experiment_start_ts,
+            **self._eta_status_fields(),
+        })
         self.broadcast_calibration_mode()
         self.broadcast_discovery_mode()
 
@@ -2147,6 +2192,10 @@ class ViscometryWebInterface:
         if normalized not in self.completed_cells:
             self.completed_cells.append(normalized)
         self.cell_termination_reasons[normalized] = str(termination_reason or "normal")
+        try:
+            self._refresh_eta_prediction(freeze=False)
+        except Exception as exc:
+            print(f"Warning: ETA refresh after cell complete failed ({exc})")
         runtime = self.get_runtime_settings()
         recalibration_cells = runtime.get('recalibration_cells') if isinstance(runtime, dict) else {}
         recalibration_target_count = len(recalibration_cells) if isinstance(recalibration_cells, dict) else 0
@@ -2156,6 +2205,7 @@ class ViscometryWebInterface:
             'cell_termination_reasons': self.cell_termination_reasons,
             'recalibration_mode_active': recalibration_mode_active,
             'recalibration_target_count': recalibration_target_count,
+            **self._eta_status_fields(),
         })
         
     def set_current_rpm(self, rpm: float):
@@ -2498,6 +2548,146 @@ class ViscometryWebInterface:
         except Exception as e:
             print(f"Error in add_measurement_point: {e}")
         
+    def record_timing_window(self, cell_id: int, window: Dict[str, Any]) -> None:
+        """Append a per-window timing sample for later training (user-save only)."""
+        try:
+            key = str(int(cell_id))
+            if not isinstance(window, dict):
+                return
+            self.timing_windows_by_cell.setdefault(key, []).append(dict(window))
+        except Exception as exc:
+            print(f"Warning: record_timing_window failed ({exc})")
+
+    def _eta_status_fields(self) -> Dict[str, Any]:
+        return {
+            "eta_predicted_total_s": self.eta_predicted_total_s,
+            "eta_band_low_s": self.eta_band_low_s,
+            "eta_band_high_s": self.eta_band_high_s,
+        }
+
+    def _clear_eta_prediction(self) -> None:
+        # Keep eta_prediction_frozen until the next request_start so commit residuals survive stop.
+        self.eta_predicted_total_s = None
+        self.eta_band_low_s = None
+        self.eta_band_high_s = None
+
+    def _planned_run_geometry(self) -> Dict[str, Any]:
+        runtime = self.get_runtime_settings()
+        cells = runtime.get("selected_cells") or []
+        try:
+            n_cells = max(1, len([int(c) for c in cells]))
+        except Exception:
+            n_cells = 1
+        rpm_map = runtime.get("cell_rpm_map") or {}
+        test_rpms = runtime.get("test_rpms") or []
+        n_rpms = 1
+        try:
+            counts = []
+            for c in cells:
+                key = str(int(c))
+                rpms = rpm_map.get(key) or rpm_map.get(int(c)) or test_rpms
+                if isinstance(rpms, list) and rpms:
+                    counts.append(len(rpms))
+            if counts:
+                n_rpms = max(1, int(max(counts)))
+            elif isinstance(test_rpms, list) and test_rpms:
+                n_rpms = max(1, len(test_rpms))
+        except Exception:
+            n_rpms = 1
+        discovery = bool(runtime.get("discovery_mode_enabled"))
+        probe = float(runtime.get("discovery_probe_duration_s") or 60.0) if discovery else 0.0
+        if discovery:
+            max_screen = int(runtime.get("max_screening_rpms") or n_rpms)
+            n_rpms = max(1, max_screen)
+        mu_cp = None
+        eta_map = runtime.get("discovery_eta_guess_map") or {}
+        try:
+            vals = [float(v) for v in eta_map.values() if v is not None]
+            if vals:
+                # guesses are typically kCp in the UI; convert if small
+                mu_cp = vals[0] * 1000.0 if vals[0] < 500 else vals[0]
+        except Exception:
+            mu_cp = None
+        return {
+            "n_cells": n_cells,
+            "n_rpms": n_rpms,
+            "mu_cp": mu_cp,
+            "measurement_duration_s": float(runtime.get("measurement_duration") or 40.0),
+            "sample_interval_s": float(runtime.get("sample_interval") or 5.0),
+            "dwell_s": float(runtime.get("dwell_seconds") or 2.0),
+            "inter_rpm_pause_s": float(runtime.get("inter_rpm_pause") or 2.0),
+            "discovery_probe_s": probe,
+        }
+
+    def _refresh_eta_prediction(self, *, freeze: bool) -> None:
+        """Compute / refresh total-run ETA from settings and completed progress."""
+        try:
+            geom = self._planned_run_geometry()
+            n_cells = int(geom["n_cells"])
+            done = len(self.completed_cells or [])
+            remaining = max(0, n_cells - done)
+            elapsed_completed = 0.0
+            if self.experiment_start_ts is not None and done > 0:
+                elapsed_completed = max(0.0, time.time() - float(self.experiment_start_ts))
+            posterior = load_posterior()
+            pred = predict_run_seconds(
+                n_cells=n_cells,
+                n_rpms=int(geom["n_rpms"]),
+                mu_cp=geom.get("mu_cp"),
+                measurement_duration_s=float(geom["measurement_duration_s"]),
+                sample_interval_s=float(geom["sample_interval_s"]),
+                dwell_s=float(geom["dwell_s"]),
+                inter_rpm_pause_s=float(geom["inter_rpm_pause_s"]),
+                discovery_probe_s=float(geom["discovery_probe_s"]),
+                remaining_cells=remaining if not freeze else n_cells,
+                elapsed_completed_s=elapsed_completed if not freeze else 0.0,
+                posterior=posterior,
+            )
+            self.eta_predicted_total_s = float(pred.get("expected_s") or 0.0)
+            self.eta_band_low_s = float(pred.get("low_s") or self.eta_predicted_total_s)
+            self.eta_band_high_s = float(pred.get("high_s") or self.eta_predicted_total_s)
+            if freeze:
+                self.eta_prediction_frozen = {
+                    "expected_s": self.eta_predicted_total_s,
+                    "low_s": self.eta_band_low_s,
+                    "high_s": self.eta_band_high_s,
+                    "geometry": geom,
+                    "frozen_at": time.time(),
+                }
+        except Exception as exc:
+            print(f"Warning: _refresh_eta_prediction failed ({exc})")
+
+    def _append_timing_training_from_commit(
+        self,
+        experiment_entry: Dict[str, Any],
+        run_context: Optional[Dict[str, Any]],
+    ) -> None:
+        """Append-only training rows after a user save. Never called on history delete."""
+        frozen_s = None
+        try:
+            if isinstance(run_context, dict):
+                frozen = run_context.get("eta_prediction_frozen") or self.eta_prediction_frozen
+            else:
+                frozen = self.eta_prediction_frozen
+            if isinstance(frozen, dict) and frozen.get("expected_s") is not None:
+                frozen_s = float(frozen["expected_s"])
+        except Exception:
+            frozen_s = None
+        rows = rows_from_commit(
+            experiment_entry,
+            run_context=run_context,
+            frozen_prediction_s=frozen_s,
+        )
+        if not rows:
+            return
+        written = append_rows(rows)
+        if written:
+            print(f"Timing training: appended {written} row(s)")
+            try:
+                update_posterior_from_rows(rows)
+            except Exception as exc:
+                print(f"Warning: timing posterior update failed ({exc})")
+
     def set_running_state(self, is_running: bool):
         """Set running state"""
         previous_state = self.is_running
@@ -2511,6 +2701,7 @@ class ViscometryWebInterface:
         if not is_running:
             self.experiment_start_ts = None
             self.current_cell_start_ts = None
+            self._clear_eta_prediction()
             if previous_state:
                 self.socketio.emit('experiment_stop', {})
         if previous_state != is_running:
@@ -2520,6 +2711,7 @@ class ViscometryWebInterface:
             self.socketio.emit('running_state_update', {
                 'is_running': is_running,
                 'discovery_mode_active': discovery_mode_active,
+                **self._eta_status_fields(),
             })
             if is_running and discovery_enabled:
                 self.broadcast_discovery_mode()

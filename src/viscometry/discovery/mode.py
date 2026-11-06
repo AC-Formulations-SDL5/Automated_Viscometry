@@ -601,6 +601,8 @@ def discover_rpm_stage2(
     last_rpm = hello_rpm
     last_torque = float(hello_torque)
     n_estimate = 1.0
+    # The in-range hello reading is the first ladder observation at that RPM.
+    reusable_hello: Optional[Tuple[float, float]] = (float(hello_rpm), float(hello_torque))
     hardware_edges: List[dict] = []
     floor_torque: Optional[float] = None
     ceiling_torque: Optional[float] = None
@@ -658,34 +660,49 @@ def discover_rpm_stage2(
         torque = None
         for _ in range(cfg.ladder_max_iterations_per_target):
             probed_rpm = rpm
-            torque = probe(cell_id, target_z, rpm)
-            if torque is None:
-                return DiscoveryResult(
-                    rpm=None,
-                    eta_estimate=None,
-                    status="probe_failed",
-                    iterations=len(probes),
-                    probes=probes,
-                    target_z_mm=target_z,
-                    material_label=material_label,
-                    from_cache=False,
-                    ladder_status="failed",
-                    **_ladder_fields_from_converged(
-        converged,
-        cfg.ladder_targets,
-        tolerance_pct=tol,
-        max_screening_rpms=max_screening_rpms,
-    ),
-                )
-
-            record = _append_probe_record(
-                probes,
-                rpm=rpm,
-                torque=torque,
-                z_mm=target_z,
-                cfg=cfg,
-                ladder_target_pct=target,
+            reused_hello = (
+                reusable_hello is not None and _near_rpm(rpm, reusable_hello[0])
             )
+            if reused_hello:
+                torque = float(reusable_hello[1])
+                reusable_hello = None
+                record = next(
+                    (
+                        row
+                        for row in reversed(probes)
+                        if _near_rpm(float(row.get("rpm", -1.0)), rpm)
+                    ),
+                    probes[-1],
+                )
+                record["ladder_target_pct"] = float(target)
+            else:
+                torque = probe(cell_id, target_z, rpm)
+                if torque is None:
+                    return DiscoveryResult(
+                        rpm=None,
+                        eta_estimate=None,
+                        status="probe_failed",
+                        iterations=len(probes),
+                        probes=probes,
+                        target_z_mm=target_z,
+                        material_label=material_label,
+                        from_cache=False,
+                        ladder_status="failed",
+                        **_ladder_fields_from_converged(
+                            converged,
+                            cfg.ladder_targets,
+                            tolerance_pct=tol,
+                            max_screening_rpms=max_screening_rpms,
+                        ),
+                    )
+                record = _append_probe_record(
+                    probes,
+                    rpm=rpm,
+                    torque=torque,
+                    z_mm=target_z,
+                    cfg=cfg,
+                    ladder_target_pct=target,
+                )
             extra = _ladder_fields_from_converged(
         converged,
         cfg.ladder_targets,
