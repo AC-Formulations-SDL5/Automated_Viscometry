@@ -18,6 +18,7 @@ DiscoveryStatus = Literal[
     "ladder_failed",
     "ladder_over_range",
     "ladder_under_range",
+    "ladder_window_unreachable",
 ]
 
 LadderStatus = Literal["complete", "partial", "failed"]
@@ -67,6 +68,8 @@ class DiscoveryResult(TypedDict, total=False):
     torque_70: Optional[float]
     screening_rpms: List[float]
     screening_rungs: List[dict]
+    screening_phase: Optional[str]
+    ladder_failure_reason: Optional[str]
     T_top_target: Optional[float]
     T_top: Optional[float]
     ladder_status: Optional[LadderStatus]
