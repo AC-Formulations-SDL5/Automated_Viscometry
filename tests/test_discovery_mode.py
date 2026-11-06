@@ -643,5 +643,93 @@ class TestScreeningSelection(unittest.TestCase):
         self.assertFalse(result.get("screening_rpms"))
 
 
+class TestReachableTorqueWindow(unittest.TestCase):
+    def _cfg(self, **overrides):
+        base = dict(
+            discovery_stage2_enabled=True,
+            ladder_max_iterations_per_target=6,
+            hello_probe_rpm=5.0,
+            rpm_min=0.1,
+            rpm_max=200.0,
+        )
+        base.update(overrides)
+        return _default_cfg(**base)
+
+    def test_thin_sample_stops_at_max_rpm_and_includes_it(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2
+
+        class _Probe:
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, cell_id, z_mm, rpm):
+                self.calls.append(float(rpm))
+                return min(34.0, 20.0 * (float(rpm) / 86.0))
+
+        probe = _Probe()
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=-65.0):
+            result = discover_rpm_stage2(1, probe, config=self._cfg(), max_screening_rpms=6)
+        speeds = result.get("screening_rpms") or []
+        self.assertTrue(speeds)
+        self.assertAlmostEqual(speeds[0], min(speeds), places=2)
+        self.assertAlmostEqual(speeds[-1], 200.0, places=2)
+        self.assertLessEqual(probe.calls.count(200.0), 2)
+        self.assertEqual(result.get("status"), "converged")
+
+    def test_thick_sample_skips_unreachable_low_targets(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2
+
+        class _Probe:
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, cell_id, z_mm, rpm):
+                self.calls.append(float(rpm))
+                rpm = float(rpm)
+                if rpm <= 0.12:
+                    return 30.0
+                return 30.0 * (rpm / 0.1)
+
+        probe = _Probe()
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=-65.0):
+            result = discover_rpm_stage2(1, probe, config=self._cfg(), max_screening_rpms=6)
+        speeds = result.get("screening_rpms") or []
+        self.assertTrue(speeds)
+        self.assertAlmostEqual(min(speeds), 0.1, places=2)
+        self.assertEqual(result.get("status"), "converged")
+        floor_probes = sum(1 for rpm in probe.calls if abs(rpm - 0.1) < 0.02)
+        self.assertLessEqual(floor_probes, 8)
+
+    def test_below_window_at_max_rpm_returns_no_speeds(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2
+
+        class _Probe:
+            def __call__(self, cell_id, z_mm, rpm):
+                return 10.0
+
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=-65.0):
+            result = discover_rpm_stage2(1, _Probe(), config=self._cfg(), max_screening_rpms=6)
+        self.assertEqual(result.get("status"), "ladder_window_unreachable")
+        self.assertFalse(result.get("screening_rpms"))
+        self.assertIn("20%", result.get("ladder_failure_reason") or "")
+
+    def test_above_window_at_min_rpm_returns_no_speeds(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2
+
+        class _Probe:
+            def __call__(self, cell_id, z_mm, rpm):
+                return 60.0
+
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=-65.0):
+            result = discover_rpm_stage2(1, _Probe(), config=self._cfg(), max_screening_rpms=6)
+        self.assertEqual(result.get("status"), "ladder_window_unreachable")
+        self.assertFalse(result.get("screening_rpms"))
+        self.assertIn("45%", result.get("ladder_failure_reason") or "")
+
+
 if __name__ == "__main__":
     unittest.main()

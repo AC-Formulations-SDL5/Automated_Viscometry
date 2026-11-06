@@ -431,12 +431,32 @@ def _build_partial_result(
     return partial
 
 
+_SCREENING_LO = 20.0
+_SCREENING_HI = 45.0
+
+
+def _near_rpm(rpm: float, limit: float) -> bool:
+    return abs(float(rpm) - float(limit)) <= 0.02
+
+
+def _hardware_edge_rung(rpm: float, torque: float) -> dict:
+    return {
+        "target_pct": float(torque),
+        "rpm": float(rpm),
+        "torque": float(torque),
+        "status": "on_target",
+    }
+
+
 def _ladder_fields_from_converged(
     converged: Dict[float, Tuple[float, float]],
     targets: Optional[Tuple[float, ...]] = None,
     *,
     tolerance_pct: float = 2.5,
     max_screening_rpms: int = 6,
+    extra_rungs: Optional[list] = None,
+    screening_phase: str = "probing",
+    ladder_failure_reason: Optional[str] = None,
 ) -> dict:
     ladder = tuple(float(t) for t in (targets if targets is not None else LADDER_TARGETS))
     fields: dict = {}
@@ -447,8 +467,14 @@ def _ladder_fields_from_converged(
             fields[f"rpm_{key}"] = float(rpm_val)
             fields[f"torque_{key}"] = float(torque_val)
     rungs = _screening_rungs(ladder, converged, tolerance_pct=tolerance_pct)
+    if extra_rungs:
+        rungs = list(rungs) + list(extra_rungs)
     fields["screening_rungs"] = rungs
     fields["screening_rpms"] = select_screening_rpms(rungs, max_rpms=max_screening_rpms)
+    fields["screening_phase"] = screening_phase
+    if ladder_failure_reason:
+        fields["ladder_failure_reason"] = ladder_failure_reason
+        fields["screening_rpms"] = []
     return fields
 
 
@@ -575,9 +601,31 @@ def discover_rpm_stage2(
     last_rpm = hello_rpm
     last_torque = float(hello_torque)
     n_estimate = 1.0
+    hardware_edges: List[dict] = []
+    floor_torque: Optional[float] = None
+    ceiling_torque: Optional[float] = None
+    stop_higher = False
+    window_failed = False
+    failure_reason: Optional[str] = None
+
+    def _remember_edge(rpm_value: float, torque_value: float) -> None:
+        if not (_SCREENING_LO <= float(torque_value) <= _SCREENING_HI):
+            return
+        rounded = round_rpm_2dp(rpm_value)
+        if any(abs(float(row["rpm"]) - rounded) < 0.015 for row in hardware_edges):
+            return
+        hardware_edges.append(_hardware_edge_rung(rounded, float(torque_value)))
+
+    def _window_has_points() -> bool:
+        return bool(converged) or bool(hardware_edges)
 
     for target_pct in cfg.ladder_targets:
         target = float(target_pct)
+        if floor_torque is not None and target + tol < float(floor_torque):
+            continue
+        if ceiling_torque is not None and target - tol > float(ceiling_torque):
+            stop_higher = True
+            break
         if target == cfg.ladder_targets[0]:
             rpm_seed = round_rpm_2dp(
                 initial_rpm_for_discovery(
@@ -605,7 +653,11 @@ def discover_rpm_stage2(
 
         rpm = rpm_seed
         hit = False
+        skipped_floor = False
+        probed_rpm = rpm
+        torque = None
         for _ in range(cfg.ladder_max_iterations_per_target):
+            probed_rpm = rpm
             torque = probe(cell_id, target_z, rpm)
             if torque is None:
                 return DiscoveryResult(
@@ -705,6 +757,27 @@ def discover_rpm_stage2(
     ),
                 )
 
+            if _near_rpm(rpm, cfg.rpm_max):
+                ceiling_torque = float(torque)
+            if _near_rpm(rpm, cfg.rpm_min):
+                floor_torque = float(torque)
+            if _near_rpm(rpm, cfg.rpm_max) and float(torque) < float(target) - tol:
+                _remember_edge(rpm, torque)
+                if float(torque) < _SCREENING_LO and not _window_has_points():
+                    failure_reason = "Torque stays below 20% at maximum RPM"
+                    window_failed = True
+                stop_higher = True
+                break
+            if _near_rpm(rpm, cfg.rpm_min) and float(torque) > float(target) + tol:
+                _remember_edge(rpm, torque)
+                if float(torque) > _SCREENING_HI and not _window_has_points():
+                    failure_reason = "Torque stays above 45% at minimum RPM"
+                    window_failed = True
+                    stop_higher = True
+                else:
+                    skipped_floor = True
+                break
+
             if torque_in_target_window(torque, target, tolerance_pct=tol):
                 converged[target] = (round_rpm_2dp(rpm), float(torque))
                 last_rpm = round_rpm_2dp(rpm)
@@ -723,7 +796,79 @@ def discover_rpm_stage2(
                 )
             )
 
+        if (
+            not hit
+            and not stop_higher
+            and not window_failed
+            and _near_rpm(rpm, cfg.rpm_max)
+            and not _near_rpm(probed_rpm, cfg.rpm_max)
+            and torque is not None
+            and float(torque) < float(target) - tol
+        ):
+                rpm = round_rpm_2dp(cfg.rpm_max)
+                ceiling_reading = probe(cell_id, target_z, rpm)
+                if ceiling_reading is not None:
+                    torque = float(ceiling_reading)
+                    ceiling_torque = torque
+                    _append_probe_record(
+                        probes,
+                        rpm=rpm,
+                        torque=torque,
+                        z_mm=target_z,
+                        cfg=cfg,
+                        ladder_target_pct=target,
+                    )
+                    if torque_in_target_window(torque, target, tolerance_pct=tol):
+                        converged[target] = (rpm, torque)
+                        last_rpm = rpm
+                        last_torque = torque
+                        hit = True
+                    elif torque < float(target) - tol:
+                        _remember_edge(rpm, torque)
+                        if torque < _SCREENING_LO and not _window_has_points():
+                            failure_reason = "Torque stays below 20% at maximum RPM"
+                            window_failed = True
+                        stop_higher = True
+        if (
+            not hit
+            and not stop_higher
+            and not window_failed
+            and _near_rpm(rpm, cfg.rpm_min)
+            and not _near_rpm(probed_rpm, cfg.rpm_min)
+            and torque is not None
+            and float(torque) > float(target) + tol
+        ):
+            rpm = round_rpm_2dp(cfg.rpm_min)
+            floor_reading = probe(cell_id, target_z, rpm)
+            if floor_reading is not None:
+                torque = float(floor_reading)
+                floor_torque = torque
+                _append_probe_record(
+                    probes,
+                    rpm=rpm,
+                    torque=torque,
+                    z_mm=target_z,
+                    cfg=cfg,
+                    ladder_target_pct=target,
+                )
+                if torque_in_target_window(torque, target, tolerance_pct=tol):
+                    converged[target] = (rpm, torque)
+                    last_rpm = rpm
+                    last_torque = torque
+                    hit = True
+                elif torque > float(target) + tol:
+                    _remember_edge(rpm, torque)
+                    if torque > _SCREENING_HI and not _window_has_points():
+                        failure_reason = "Torque stays above 45% at minimum RPM"
+                        window_failed = True
+                        stop_higher = True
+                    else:
+                        skipped_floor = True
+        if window_failed or stop_higher:
+            break
         if not hit:
+            if skipped_floor:
+                continue
             if target <= cfg.ladder_targets[0]:
                 return DiscoveryResult(
                     rpm=None,
@@ -742,8 +887,70 @@ def discover_rpm_stage2(
         max_screening_rpms=max_screening_rpms,
     ),
                 )
-            # Higher targets may be skipped if unreachable at max RPM
             continue
+
+    if window_failed or (stop_higher and not _window_has_points()):
+        reason = failure_reason or "No RPM reached 20–45% torque"
+        return DiscoveryResult(
+            rpm=None,
+            eta_estimate=None,
+            status="ladder_window_unreachable",
+            iterations=len(probes),
+            probes=probes,
+            target_z_mm=target_z,
+            material_label=material_label,
+            from_cache=False,
+            ladder_status="failed",
+            **_ladder_fields_from_converged(
+                converged,
+                cfg.ladder_targets,
+                tolerance_pct=tol,
+                max_screening_rpms=max_screening_rpms,
+                extra_rungs=hardware_edges,
+                screening_phase="probing",
+                ladder_failure_reason=reason,
+            ),
+        )
+
+    if (stop_higher or hardware_edges) and _window_has_points():
+        span_points = [(float(pair[0]), float(pair[1])) for pair in converged.values()]
+        span_points.extend((float(row["rpm"]), float(row["torque"])) for row in hardware_edges)
+        n_span = None
+        newtonian_span = True
+        path_span = "newtonian"
+        if len(span_points) >= 2:
+            span_fit = fit_n_probe(
+                [point[0] for point in span_points],
+                [point[1] for point in span_points],
+            )
+            n_span = span_fit["n_probe"]
+            newtonian_span = is_newtonian_probe(n_span, threshold=cfg.newtonian_n_threshold)
+            path_span = "newtonian" if newtonian_span else "non_newtonian"
+        span_fields = _ladder_fields_from_converged(
+            converged,
+            cfg.ladder_targets,
+            tolerance_pct=tol,
+            max_screening_rpms=max_screening_rpms,
+            extra_rungs=hardware_edges,
+            screening_phase="speeds_selected",
+        )
+        chosen = span_fields.get("screening_rpms") or []
+        return DiscoveryResult(
+            rpm=float(chosen[0]) if chosen else None,
+            eta_estimate=None,
+            status="converged" if chosen else "ladder_window_unreachable",
+            iterations=len(probes),
+            probes=probes,
+            target_z_mm=target_z,
+            material_label=material_label,
+            from_cache=False,
+            n_probe=n_span,
+            is_newtonian=newtonian_span,
+            discovery_path=path_span,
+            ladder_status="partial",
+            ladder_failure_reason=None if chosen else (failure_reason or "No RPM reached 20–45% torque"),
+            **span_fields,
+        )
 
     if len(converged) < cfg.min_ladder_points_for_fit:
         return DiscoveryResult(

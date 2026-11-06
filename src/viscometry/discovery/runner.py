@@ -40,6 +40,8 @@ _STAGE2_PAYLOAD_KEYS = (
     "torque_70",
     "screening_rpms",
     "screening_rungs",
+    "screening_phase",
+    "ladder_failure_reason",
     "T_top_target",
     "T_top",
     "T_bottom",

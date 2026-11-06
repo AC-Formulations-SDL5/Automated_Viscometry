@@ -2265,13 +2265,27 @@ def main():
                             )
                             if not discovered_rpms:
                                 status = discovery_result.get("status", "unknown")
+                                reason = discovery_result.get("ladder_failure_reason") or status
                                 print(
-                                    f"  Discovery failed for Cell {global_cell}: {status} "
+                                    f"  Discovery failed for Cell {global_cell}: {reason} "
                                     f"— skipping cell"
                                 )
-                                web_interface.update_status(
-                                    f"Cell {global_cell}: discovery failed ({status}) — skipped"
-                                )
+                                if status == "ladder_window_unreachable":
+                                    failure_text = f"Cell {global_cell}: Torque Ladder Failure — {reason}"
+                                else:
+                                    failure_text = (
+                                        f"Cell {global_cell}: discovery failed ({reason}) — skipped"
+                                    )
+                                web_interface.update_status(failure_text)
+                                try:
+                                    from viscometry.discovery.runner import discovery_result_to_web_payload
+
+                                    web_interface.record_discovery_result(
+                                        global_cell,
+                                        discovery_result_to_web_payload(global_cell, discovery_result),
+                                    )
+                                except Exception:
+                                    pass
                                 termination_by_cell[global_cell] = f"discovery_{status}"
                                 if status != "uncalibrated_cell":
                                     leave_reason = _retract_and_wash_after_in_sample_probe(
@@ -2288,6 +2302,7 @@ def main():
                             try:
                                 from viscometry.discovery.runner import discovery_result_to_web_payload
 
+                                discovery_result["screening_phase"] = "measuring"
                                 web_interface.record_discovery_result(
                                     global_cell,
                                     discovery_result_to_web_payload(global_cell, discovery_result),
