@@ -30,6 +30,13 @@ _DEFAULT = {
     "updates": 0,
 }
 
+# Ignore aborted/partial cells when updating n_z; keep prediction from collapsing.
+N_Z_MIN_FOR_UPDATE = 10
+N_Z_PRED_FLOOR = 15.0
+# Discovery ladder wall-clock prior (~4 min for typical 6-rung early-exit probing).
+DISCOVERY_PROBE_PHASE_CAP_S = 240.0
+DISCOVERY_PROBE_PER_RUNG_S = 35.0
+
 
 def default_posterior() -> Dict[str, Any]:
     return json.loads(json.dumps(_DEFAULT))
@@ -61,10 +68,31 @@ def load_posterior(path: Optional[Path] = None) -> Dict[str, Any]:
             if isinstance(data, dict) and "wash_s" in data:
                 base = default_posterior()
                 base.update(data)
+                # Repair collapsed n_z from partial-row updates without wiping other params.
+                try:
+                    nz = base.get("n_z") or {}
+                    if float(nz.get("mean", 0)) < N_Z_PRED_FLOOR:
+                        nz = dict(nz)
+                        nz["mean"] = float(N_Z_PRED_FLOOR)
+                        nz["var"] = max(float(nz.get("var", 36.0)), 36.0)
+                        base["n_z"] = nz
+                except Exception:
+                    pass
                 return base
     except Exception as exc:
         print(f"Warning: timing posterior load failed ({exc}); using hand priors")
     return default_posterior()
+
+
+def estimate_discovery_probe_phase_s(
+    *,
+    max_screening_rpms: int = 6,
+    probe_duration_s: float = 60.0,
+) -> float:
+    """Conservative ladder-phase duration before accepted RPMs are known."""
+    n = max(1, int(max_screening_rpms))
+    per = min(float(DISCOVERY_PROBE_PER_RUNG_S), max(15.0, float(probe_duration_s) * 0.55))
+    return float(min(DISCOVERY_PROBE_PHASE_CAP_S, n * per))
 
 
 def save_posterior(posterior: Dict[str, Any], path: Optional[Path] = None) -> None:
@@ -124,7 +152,10 @@ def predict_cell_seconds(
 ) -> Dict[str, float]:
     """Predict one cell sweep duration (seconds) with a low/high band from n_z."""
     post = posterior if isinstance(posterior, dict) else load_posterior()
-    n_z_mean = float(n_z) if n_z is not None and math.isfinite(float(n_z)) else _param_mean(post, "n_z", 21.0)
+    if n_z is not None and math.isfinite(float(n_z)):
+        n_z_mean = float(n_z)
+    else:
+        n_z_mean = max(_param_mean(post, "n_z", 21.0), float(N_Z_PRED_FLOOR))
     n_z_std = _param_std(post, "n_z", 6.0)
     z_move = _param_mean(post, "z_move_s", 2.3)
     n_rpms = max(1, int(n_rpms))
@@ -288,7 +319,7 @@ def update_posterior_from_rows(
             # cell-level
             try:
                 n_z = row.get("n_z")
-                if n_z is not None and float(n_z) > 0:
+                if n_z is not None and float(n_z) >= float(N_Z_MIN_FOR_UPDATE):
                     post["n_z"] = _gaussian_update(
                         post.get("n_z") or _DEFAULT["n_z"],
                         float(n_z),
