@@ -7,10 +7,22 @@ Amplitude-based fits live in prediction.fit_powerlaw; this module fits tau vs ga
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+
+
+def _empty_fit(n_pts: int) -> Dict[str, Any]:
+    return {
+        "K_stress": np.nan,
+        "n_stress": np.nan,
+        "R2_stress": np.nan,
+        "n_pts": int(n_pts),
+        "se_n_stress": np.nan,
+        "se_log_K_stress": np.nan,
+        "cov_logK_n": np.nan,
+    }
 
 
 def fit_stress_powerlaw(
@@ -20,14 +32,17 @@ def fit_stress_powerlaw(
     """
     Fit tau = K * gamma_dot^n in log space.
 
-    Returns dict with K_stress (Pa·s^n), n_stress, R2_stress.
+    Uses OLS on log(tau) vs log(gamma). Slope SE matches a centered design;
+    intercept SE is for the uncentered log(K). Standard errors require
+    n_pts >= 3 (df = n_pts - 2); otherwise SE fields are NaN.
     """
     x = np.asarray(gamma_dot, dtype=float)
     y = np.asarray(tau, dtype=float)
     keep = np.isfinite(x) & np.isfinite(y) & (x > 0) & (y > 0)
     x, y = x[keep], y[keep]
-    if len(x) < 2:
-        return {"K_stress": np.nan, "n_stress": np.nan, "R2_stress": np.nan, "n_pts": int(len(x))}
+    n_pts = int(len(x))
+    if n_pts < 2:
+        return _empty_fit(n_pts)
 
     lx = np.log(x)
     ly = np.log(y)
@@ -36,11 +51,28 @@ def fit_stress_powerlaw(
     ss_res = float(np.sum((ly - yhat) ** 2))
     ss_tot = float(np.sum((ly - np.mean(ly)) ** 2))
     r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 1.0
+
+    se_n = np.nan
+    se_log_k = np.nan
+    cov_logk_n = np.nan
+    df = n_pts - 2
+    if df >= 1:
+        xbar = float(np.mean(lx))
+        sxx = float(np.sum((lx - xbar) ** 2))
+        if sxx > 0 and np.isfinite(ss_res):
+            mse = ss_res / float(df)
+            se_n = float(np.sqrt(mse / sxx))
+            se_log_k = float(np.sqrt(mse * (1.0 / n_pts + (xbar ** 2) / sxx)))
+            cov_logk_n = float(-mse * xbar / sxx)
+
     return {
         "K_stress": float(np.exp(log_k)),
         "n_stress": float(n_slope),
         "R2_stress": float(r2),
-        "n_pts": int(len(x)),
+        "n_pts": n_pts,
+        "se_n_stress": float(se_n) if np.isfinite(se_n) else np.nan,
+        "se_log_K_stress": float(se_log_k) if np.isfinite(se_log_k) else np.nan,
+        "cov_logK_n": float(cov_logk_n) if np.isfinite(cov_logk_n) else np.nan,
     }
 
 
@@ -95,25 +127,28 @@ def clean_for_powerlaw(
 
 def stage_powerlaw_points(
     rows: Sequence[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], str]:
     """
     Apply strict -> relaxed -> raw fallback outlier staging on per-RPM rows.
 
     Each row must include gamma_dot_1_s, tau_Pa; optional R2_drag.
+    Returns (kept_rows, stage_name) where stage_name is strict|relaxed|raw|empty.
     """
     if not rows:
-        return []
+        return [], "empty"
 
     d = pd.DataFrame(list(rows))
 
     keep = clean_for_powerlaw(d)
     d_in = d[keep]
+    stage = "strict"
 
     if len(d_in) < 2:
         keep_relaxed = clean_for_powerlaw(
             d, r2_drag_min=0.0, mad_k=8.0, min_keep=2, max_iter=2
         )
         d_in = d[keep_relaxed]
+        stage = "relaxed"
 
     if len(d_in) < 2:
         raw_mask = (
@@ -123,5 +158,9 @@ def stage_powerlaw_points(
             & (d["tau_Pa"] > 0)
         )
         d_in = d[raw_mask]
+        stage = "raw"
 
-    return d_in.to_dict(orient="records")
+    if len(d_in) < 2:
+        return [], "empty"
+
+    return d_in.to_dict(orient="records"), stage

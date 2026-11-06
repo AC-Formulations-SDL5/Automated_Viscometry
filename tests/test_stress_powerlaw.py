@@ -30,6 +30,18 @@ class TestStressPowerlaw(unittest.TestCase):
         self.assertAlmostEqual(pl["n_stress"], n_true, places=3)
         self.assertAlmostEqual(pl["K_stress"], k_true, places=2)
         self.assertGreater(pl["R2_stress"], 0.99)
+        self.assertEqual(pl["n_pts"], 3)
+        self.assertTrue(np.isfinite(pl["se_n_stress"]))
+        self.assertTrue(np.isfinite(pl["se_log_K_stress"]))
+        self.assertLess(pl["se_n_stress"], 1e-6)
+
+    def test_fit_stress_powerlaw_se_requires_three_points(self):
+        g = np.array([1.0, 10.0])
+        tau = 2.0 * g**0.8
+        pl = fit_stress_powerlaw(g, tau)
+        self.assertEqual(pl["n_pts"], 2)
+        self.assertTrue(np.isnan(pl["se_n_stress"]))
+        self.assertTrue(np.isnan(pl["se_log_K_stress"]))
 
     def test_clean_for_powerlaw_drops_outlier(self):
         rows = []
@@ -52,8 +64,9 @@ class TestStressPowerlaw(unittest.TestCase):
             {"gamma_dot_1_s": 20.0, "tau_Pa": 8.0, "R2_drag": 0.05},
             {"gamma_dot_1_s": 30.0, "tau_Pa": 11.0, "R2_drag": 0.9},
         ]
-        staged = stage_powerlaw_points(rows)
+        staged, stage = stage_powerlaw_points(rows)
         self.assertGreaterEqual(len(staged), 2)
+        self.assertIn(stage, ("strict", "relaxed", "raw"))
 
     def test_clean_for_powerlaw_mask_is_writable(self):
         """Regression: MAD loop must mutate keep without read-only errors."""

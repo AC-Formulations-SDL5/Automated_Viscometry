@@ -16,6 +16,8 @@ WEB_STATIC = PROJECT_ROOT / "web" / "static"
 WORKER32_DIR = PACKAGE_DIR / "hardware" / "viscometer" / "worker32"
 LOCATIONS_YAML = PROJECT_ROOT / "config" / "locations.yaml"
 EXPERIMENT_HISTORY_PATH = PROJECT_ROOT / "results" / "web_experiment_history.json"
+TIMING_TRAINING_CSV = PROJECT_ROOT / "results" / "timing_prediction_training.csv"
+TIMING_MODEL_POSTERIOR = CALIBRATION_DIR / "timing_model_posterior.json"
 
 
 def runs_dir_for_today() -> Path:

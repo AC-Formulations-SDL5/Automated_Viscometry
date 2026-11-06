@@ -206,6 +206,33 @@ class TestExperimentReviewCommit(unittest.TestCase):
         self.assertEqual(len(self.iface.experiment_history), 1)
         self.assertEqual(self.iface.experiment_history[0]["id"], "exp-1700000000000")
 
+    @patch("viscometry.web.app.update_posterior_from_rows")
+    @patch("viscometry.web.app.append_rows")
+    @patch("viscometry.run.export.save_dynamic_analysis_data")
+    def test_commit_appends_timing_training_rows(self, mock_save, mock_append, mock_update):
+        mock_save.return_value = "dynamic_analysis_unit_test_custom_20260608_120000.csv"
+        mock_append.return_value = 1
+        self.iface._experiment_review_run_context["runtime_settings"] = {
+            "experiment_name": "unit_test_label",
+            "measurement_duration": 40.0,
+        }
+        self.iface._experiment_review_run_context["eta_prediction_frozen"] = {
+            "expected_s": 500.0,
+        }
+        self.iface.commit_experiment_review(self.session_id)
+        mock_append.assert_called_once()
+        rows = mock_append.call_args[0][0]
+        self.assertGreaterEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("sample_label"), "unit_test_label")
+        mock_update.assert_called_once()
+
+    @patch("viscometry.web.app.append_rows")
+    def test_delete_history_does_not_touch_timing_training(self, mock_append):
+        self.iface.experiment_history = [{"id": "exp-1", "cells": [1]}]
+        removed = self.iface.delete_experiment_history_entry("exp-1")
+        self.assertTrue(removed)
+        mock_append.assert_not_called()
+
     def test_history_built_from_all_data_not_snapshots(self):
         session = {
             "cells": {

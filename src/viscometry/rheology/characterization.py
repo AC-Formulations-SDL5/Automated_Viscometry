@@ -14,6 +14,8 @@ from viscometry.rheology.constants import (
     CP_TO_PAS,
     NEWTONIAN_N_HIGH,
     NEWTONIAN_N_LOW,
+    N_STRESS_CI_LEVEL,
+    N_STRESS_SE_FLOOR,
     STRONG_THINNING_N_MAX,
     THICKENING_THRESHOLD,
     THINNING_THRESHOLD,
@@ -31,6 +33,87 @@ def _json_float(v: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return f if np.isfinite(f) else None
+
+
+def _t_critical(df: int, level: float = N_STRESS_CI_LEVEL) -> float:
+    """Two-sided Student-t critical value; falls back to ~1.96 when scipy missing."""
+    if df < 1:
+        return float("nan")
+    try:
+        from scipy import stats as scipy_stats
+
+        return float(scipy_stats.t.ppf(0.5 + level / 2.0, df))
+    except Exception:
+        return 1.96
+
+
+def _stress_uncertainty_fields(pl_st: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build SE / CI / ambiguous fields from a fit_stress_powerlaw result."""
+    empty = {
+        "se_n_stress": None,
+        "se_log_K_stress": None,
+        "cov_logK_n": None,
+        "se_eff_n_stress": None,
+        "n_stress_ci_low": None,
+        "n_stress_ci_high": None,
+        "K_stress_ci_low": None,
+        "K_stress_ci_high": None,
+        "pathway_ambiguous": False,
+        "n_pts_stress": None,
+    }
+    if not isinstance(pl_st, dict):
+        return empty
+
+    n_pts = pl_st.get("n_pts")
+    try:
+        n_pts_i = int(n_pts) if n_pts is not None else None
+    except (TypeError, ValueError):
+        n_pts_i = None
+
+    se_n = _json_float(pl_st.get("se_n_stress"))
+    se_log_k = _json_float(pl_st.get("se_log_K_stress"))
+    cov = _json_float(pl_st.get("cov_logK_n"))
+    n_val = _json_float(pl_st.get("n_stress"))
+    k_val = _json_float(pl_st.get("K_stress"))
+
+    se_eff = None
+    if se_n is not None:
+        se_eff = max(float(se_n), float(N_STRESS_SE_FLOOR))
+    elif n_val is not None:
+        se_eff = float(N_STRESS_SE_FLOOR)
+
+    n_lo = n_hi = None
+    k_lo = k_hi = None
+    ambiguous = False
+    if se_eff is not None and n_val is not None and n_pts_i is not None and n_pts_i >= 3:
+        df = n_pts_i - 2
+        tcrit = _t_critical(df)
+        if np.isfinite(tcrit):
+            n_lo = float(n_val - tcrit * se_eff)
+            n_hi = float(n_val + tcrit * se_eff)
+            for thr in (STRONG_THINNING_N_MAX, NEWTONIAN_N_LOW, NEWTONIAN_N_HIGH):
+                if n_lo < thr < n_hi:
+                    ambiguous = True
+                    break
+    if se_log_k is not None and k_val is not None and k_val > 0 and n_pts_i is not None and n_pts_i >= 3:
+        df = n_pts_i - 2
+        tcrit = _t_critical(df)
+        if np.isfinite(tcrit):
+            k_lo = float(k_val * np.exp(-tcrit * se_log_k))
+            k_hi = float(k_val * np.exp(tcrit * se_log_k))
+
+    return {
+        "se_n_stress": se_n,
+        "se_log_K_stress": se_log_k,
+        "cov_logK_n": cov,
+        "se_eff_n_stress": se_eff,
+        "n_stress_ci_low": n_lo,
+        "n_stress_ci_high": n_hi,
+        "K_stress_ci_low": k_lo,
+        "K_stress_ci_high": k_hi,
+        "pathway_ambiguous": bool(ambiguous),
+        "n_pts_stress": n_pts_i,
+    }
 
 
 def _regime_label(n_flow: float) -> str:
@@ -189,6 +272,17 @@ def compute_cell_characterization(
         "K_stress": None,
         "n_stress": None,
         "R2_stress": None,
+        "se_n_stress": None,
+        "se_log_K_stress": None,
+        "cov_logK_n": None,
+        "se_eff_n_stress": None,
+        "n_stress_ci_low": None,
+        "n_stress_ci_high": None,
+        "K_stress_ci_low": None,
+        "K_stress_ci_high": None,
+        "pathway_ambiguous": False,
+        "stress_fit_stage": None,
+        "n_pts_stress": None,
         "viscosity_kcp": None,
         "mu_app_cP": None,
         "A_per_rpm": [],
@@ -209,8 +303,10 @@ def compute_cell_characterization(
 
     stress_rows = _build_stress_rows(good)
     k_stress = n_stress = r2_stress = None
+    pl_st: Optional[Dict[str, Any]] = None
+    stress_fit_stage: Optional[str] = None
     if len(stress_rows) >= 2:
-        staged = stage_powerlaw_points(stress_rows)
+        staged, stress_fit_stage = stage_powerlaw_points(stress_rows)
         if len(staged) >= 2:
             pl_st = fit_stress_powerlaw(
                 [r["gamma_dot_1_s"] for r in staged],
@@ -220,6 +316,7 @@ def compute_cell_characterization(
             n_stress = _json_float(pl_st.get("n_stress"))
             r2_stress = _json_float(pl_st.get("R2_stress"))
     elif len(stress_rows) == 1:
+        stress_fit_stage = "raw"
         pl_st = fit_stress_powerlaw(
             [stress_rows[0]["gamma_dot_1_s"]],
             [stress_rows[0]["tau_Pa"]],
@@ -227,6 +324,9 @@ def compute_cell_characterization(
         k_stress = _json_float(pl_st.get("K_stress"))
         n_stress = _json_float(pl_st.get("n_stress"))
         r2_stress = _json_float(pl_st.get("R2_stress"))
+
+    stress_unc = _stress_uncertainty_fields(pl_st)
+    stress_unc["stress_fit_stage"] = stress_fit_stage
 
     pathway = _pathway_from_n_stress(n_stress, len(rpms))
 
@@ -380,4 +480,6 @@ def compute_cell_characterization(
             }
         )
 
+    if base.get("success"):
+        base.update(stress_unc)
     return base

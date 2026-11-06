@@ -973,6 +973,8 @@ def measure_torque_at_rpm(
         sample_index = 1
         next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
         hunt_contact_confirmed = False
+        smart_exit_fired = False
+        duration_cap_s = float(MEASUREMENT_DURATION)
 
         while time.time() - start_time < MEASUREMENT_DURATION:
             raise_if_stop_requested()
@@ -1082,6 +1084,7 @@ def measure_torque_at_rpm(
                                 )
                             else:
                                 print(f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD}")
+                            smart_exit_fired = True
                             break
                     sample_index += 1
                     next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
@@ -1091,6 +1094,27 @@ def measure_torque_at_rpm(
                     next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
             
             sleep_with_stop(0.1)
+
+        wall_elapsed = max(0.0, time.time() - measurement_start_time)
+        n_samples = len(measurements)
+        censored = bool(n_samples > 0 and not smart_exit_fired and wall_elapsed >= max(0.0, duration_cap_s - 0.5))
+        try:
+            cell_id = getattr(web_interface, "current_cell", None)
+            if cell_id is not None and hasattr(web_interface, "record_timing_window"):
+                web_interface.record_timing_window(
+                    int(cell_id),
+                    {
+                        "rpm": float(rpm),
+                        "z": float(z_height),
+                        "n_samples": int(n_samples),
+                        "elapsed_s": float(wall_elapsed),
+                        "duration_cap_s": float(duration_cap_s),
+                        "smart_exit": bool(smart_exit_fired),
+                        "censored": bool(censored),
+                    },
+                )
+        except Exception as timing_exc:
+            print(f"      Warning: timing window log failed: {timing_exc}")
         
         # Stop spindle after measurement
         client.stop()

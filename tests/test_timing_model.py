@@ -1,0 +1,78 @@
+"""Tests for structured timing model and append-only training store."""
+
+from __future__ import annotations
+
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "src"))
+
+from viscometry.timing.model import (
+    default_posterior,
+    predict_cell_seconds,
+    predict_run_seconds,
+    update_posterior_from_rows,
+)
+from viscometry.timing.training_store import append_rows, ensure_headers, row_count
+
+
+class TestTimingModel(unittest.TestCase):
+    def test_predict_monotonic_in_n_rpms(self):
+        post = default_posterior()
+        low = predict_cell_seconds(n_rpms=3, mu_cp=1e3, posterior=post)
+        high = predict_cell_seconds(n_rpms=8, mu_cp=1e3, posterior=post)
+        self.assertGreater(high["expected_s"], low["expected_s"])
+
+    def test_predict_longer_for_higher_viscosity(self):
+        post = default_posterior()
+        thin = predict_cell_seconds(n_rpms=5, mu_cp=1e2, posterior=post)
+        thick = predict_cell_seconds(n_rpms=5, mu_cp=1e6, posterior=post)
+        self.assertGreater(thick["expected_s"], thin["expected_s"])
+
+    def test_run_prediction_includes_wash_for_multi_cell(self):
+        post = default_posterior()
+        one = predict_run_seconds(n_cells=1, n_rpms=4, mu_cp=1e3, posterior=post)
+        two = predict_run_seconds(n_cells=2, n_rpms=4, mu_cp=1e3, posterior=post)
+        self.assertGreater(two["expected_s"] - one["expected_s"], post["wash_s"]["mean"] * 0.5)
+
+    def test_append_only_store_never_shrinks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "timing.csv"
+            ensure_headers(path)
+            self.assertEqual(row_count(path), 0)
+            n1 = append_rows(
+                [{"sample_label": "A", "experiment_id": "e1", "cell_id": 1, "row_level": "cell"}],
+                path=path,
+            )
+            self.assertEqual(n1, 1)
+            self.assertEqual(row_count(path), 1)
+            n2 = append_rows(
+                [{"sample_label": "B", "experiment_id": "e2", "cell_id": 2, "row_level": "cell"}],
+                path=path,
+            )
+            self.assertEqual(n2, 1)
+            self.assertEqual(row_count(path), 2)
+            # ensure_headers must not wipe
+            ensure_headers(path)
+            self.assertEqual(row_count(path), 2)
+
+    def test_posterior_update_from_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "posterior.json"
+            post = default_posterior()
+            before = post["n_z"]["mean"]
+            updated = update_posterior_from_rows(
+                [{"row_level": "cell", "n_z": 30, "actual_duration_s": 1000, "predicted_duration_s": 900}],
+                posterior=post,
+                path=path,
+            )
+            self.assertNotEqual(updated["n_z"]["mean"], before)
+            self.assertTrue(path.is_file())
+
+
+if __name__ == "__main__":
+    unittest.main()
