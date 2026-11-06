@@ -24,6 +24,7 @@ from viscometry.rheology.viscosity import (
 )
 from viscometry.rheology.live_engine import CharacterizationManager
 from viscometry.rheology.live_adapter import SUMMARY_KEY
+from viscometry.discovery.probe import sample_window_should_stop
 from viscometry.discovery.rpm_calibration import format_rpm
 from viscometry.measurement.hitpoint import (
     extract_hitpoint,
@@ -953,7 +954,8 @@ def measure_torque_at_rpm(
 
     If ``duck_above_pct_on_first_sample`` is set (Discovery probe ceiling), on the **first**
     recorded sample, if torque is **greater than or equal to** that threshold, sampling stops
-    immediately after recording that point.
+    immediately after recording that point. With Smart Early Exit on, a discovery probe also
+    stops once a full sample window is in and its mean is still under that ceiling.
     """
     try:
         # Set spindle speed
@@ -1060,14 +1062,27 @@ def measure_torque_at_rpm(
                         if (
                             SMART_EARLY_EXIT_ENABLED
                             and not hunting_unresolved
-                            and len(recent_torques) == SMART_WINDOW_SIZE
+                            and sample_window_should_stop(
+                                recent_torques,
+                                window_size=SMART_WINDOW_SIZE,
+                                cv_threshold=SMART_CV_THRESHOLD,
+                                duck_ceiling_pct=duck_above_pct_on_first_sample,
+                            )
                         ):
                             recent_mean = statistics.mean(recent_torques)
-                            if recent_mean > 0:
-                                cv = statistics.pstdev(recent_torques) / recent_mean
-                                if cv < SMART_CV_THRESHOLD:
-                                    print(f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD}")
-                                    break
+                            under_discovery_ceiling = (
+                                duck_above_pct_on_first_sample is not None
+                                and recent_mean < float(duck_above_pct_on_first_sample)
+                            )
+                            if under_discovery_ceiling:
+                                print(
+                                    f"      [DISCOVERY WINDOW] {len(recent_torques)} samples, "
+                                    f"mean {recent_mean:.2f}% under "
+                                    f"{float(duck_above_pct_on_first_sample):.2f}% — stopping probe"
+                                )
+                            else:
+                                print(f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD}")
+                            break
                     sample_index += 1
                     next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
                 except Exception as e:

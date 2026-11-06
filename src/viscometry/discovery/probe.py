@@ -12,6 +12,31 @@ MoveFn = Callable[..., Tuple[float, float, float]]
 MeasureFn = Callable[..., Optional[List[Dict[str, Any]]]]
 
 
+def sample_window_should_stop(
+    recent_torques: List[float],
+    *,
+    window_size: int,
+    cv_threshold: float,
+    duck_ceiling_pct: Optional[float] = None,
+) -> bool:
+    """Whether the current sample window is enough to end the measurement.
+
+    Every run can stop when the coefficient of variation is under the threshold.
+    A discovery probe also stops once the window mean is under its torque ceiling,
+    so an in-range sample does not sit through the rest of the probe duration.
+    """
+    if window_size <= 0 or len(recent_torques) < window_size:
+        return False
+    window = [float(value) for value in recent_torques[-window_size:]]
+    mean = sum(window) / len(window)
+    if mean <= 0:
+        return False
+    variance = sum((value - mean) ** 2 for value in window) / len(window)
+    if (variance ** 0.5) / mean < float(cv_threshold):
+        return True
+    return duck_ceiling_pct is not None and mean < float(duck_ceiling_pct)
+
+
 def mean_torque_from_measurements(measurements: Optional[List[dict]]) -> Optional[float]:
     """Average torque_percent from measure_torque_at_rpm output."""
     if not measurements:

@@ -511,6 +511,80 @@ class TestDiscoverRpmStage2(unittest.TestCase):
         self.assertEqual(result.get("status"), "ladder_over_range")
         self.assertIsNone(result.get("rpm"))
 
+    def test_in_range_hello_is_the_first_ladder_point(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2
+
+        class _Probe:
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, cell_id, z_mm, rpm):
+                self.calls.append(float(rpm))
+                return min(40.0, 12.0 * (float(rpm) / 5.0))
+
+        probe = _Probe()
+        cfg = _default_cfg(
+            discovery_stage2_enabled=True,
+            hello_probe_rpm=5.0,
+            rpm_min=0.1,
+            rpm_max=200.0,
+            ladder_max_iterations_per_target=6,
+        )
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=-65.0):
+            result = discover_rpm_stage2(1, probe, config=cfg, max_screening_rpms=6)
+        self.assertEqual(probe.calls.count(5.0), 1)
+        self.assertTrue(result.get("screening_rpms"))
+        self.assertNotIn(result.get("status"), ("ladder_failed", "ladder_over_range"))
+
+
+class TestSampleWindowStop(unittest.TestCase):
+    def test_noisy_in_range_discovery_probe_stops(self):
+        from viscometry.discovery.probe import sample_window_should_stop
+
+        self.assertTrue(
+            sample_window_should_stop(
+                [8.0, 12.0, 9.0],
+                window_size=3,
+                cv_threshold=0.005,
+                duck_ceiling_pct=80.0,
+            )
+        )
+
+    def test_noisy_z_scan_keeps_the_cv_gate(self):
+        from viscometry.discovery.probe import sample_window_should_stop
+
+        self.assertFalse(
+            sample_window_should_stop(
+                [8.0, 12.0, 9.0],
+                window_size=3,
+                cv_threshold=0.005,
+            )
+        )
+
+    def test_stable_window_stops_without_a_discovery_ceiling(self):
+        from viscometry.discovery.probe import sample_window_should_stop
+
+        self.assertTrue(
+            sample_window_should_stop(
+                [30.0, 30.01, 29.99],
+                window_size=3,
+                cv_threshold=0.005,
+            )
+        )
+
+    def test_discovery_probe_over_ceiling_does_not_take_the_shortcut(self):
+        from viscometry.discovery.probe import sample_window_should_stop
+
+        self.assertFalse(
+            sample_window_should_stop(
+                [90.0, 95.0, 88.0],
+                window_size=3,
+                cv_threshold=0.005,
+                duck_ceiling_pct=80.0,
+            )
+        )
+
     def test_stage2_shear_thinning_path(self):
         from viscometry.discovery.mode import discover_rpm_stage2
 
