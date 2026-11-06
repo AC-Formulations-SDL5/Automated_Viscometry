@@ -578,5 +578,70 @@ class TestWebDiscoverySafety(unittest.TestCase):
         self.assertTrue(enabled.get("discovery_proceed_with_run"))
 
 
+class TestScreeningSelection(unittest.TestCase):
+    def _rungs(self, pairs):
+        return [
+            {"target_pct": torque, "rpm": rpm, "torque": torque, "status": "on_target"}
+            for rpm, torque in pairs
+        ]
+
+    def test_cap_4_from_six_keeps_the_ends(self):
+        from viscometry.discovery.torque_ladder import select_screening_rpms
+
+        rungs = self._rungs([
+            (1.0, 20.0),
+            (1.6, 25.0),
+            (2.5, 30.0),
+            (4.0, 35.0),
+            (6.3, 40.0),
+            (10.0, 45.0),
+        ])
+        chosen = select_screening_rpms(rungs, max_rpms=4)
+        self.assertEqual(len(chosen), 4)
+        self.assertEqual(chosen[0], 1.0)
+        self.assertEqual(chosen[-1], 10.0)
+        self.assertEqual(chosen, sorted(chosen))
+
+    def test_cap_10_fills_from_the_fit_without_new_probes(self):
+        from viscometry.discovery.torque_ladder import select_screening_rpms
+
+        rungs = self._rungs([
+            (2.0, 20.0),
+            (2.5, 25.0),
+            (3.0, 30.0),
+            (3.5, 35.0),
+            (4.0, 40.0),
+            (4.5, 45.0),
+        ])
+        chosen = select_screening_rpms(rungs, max_rpms=10)
+        self.assertGreater(len(chosen), 6)
+        self.assertLessEqual(len(chosen), 10)
+        self.assertEqual(chosen[0], 2.0)
+        self.assertEqual(chosen[-1], 4.5)
+        for rpm in chosen:
+            self.assertGreaterEqual(rpm, 2.0)
+            self.assertLessEqual(rpm, 4.5)
+
+    def test_zero_rungs_returns_nothing(self):
+        from viscometry.discovery.torque_ladder import select_screening_rpms
+
+        self.assertEqual(select_screening_rpms([], max_rpms=6), [])
+        missed = [{"target_pct": 20.0, "rpm": None, "torque": None, "status": "pending"}]
+        self.assertEqual(select_screening_rpms(missed, max_rpms=6), [])
+
+    def test_missing_calibration_skips(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2, get_bulk_probe_z
+
+        self.assertIsNone(get_bulk_probe_z(99999))
+        probe = PowerLawFakeProbe(k=6.0, n=1.0)
+        cfg = _default_cfg(discovery_stage2_enabled=True)
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=None):
+            result = discover_rpm_stage2(99999, probe, config=cfg, max_screening_rpms=6)
+        self.assertEqual(result.get("status"), "uncalibrated_cell")
+        self.assertEqual(probe.calls, [])
+        self.assertFalse(result.get("screening_rpms"))
+
+
 if __name__ == "__main__":
     unittest.main()

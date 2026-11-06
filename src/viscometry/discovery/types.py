@@ -47,16 +47,26 @@ class DiscoveryResult(TypedDict, total=False):
     is_newtonian: Optional[bool]
     power_law_r2: Optional[float]
     discovery_path: Optional[DiscoveryPath]
+    rpm_20: Optional[float]
+    rpm_25: Optional[float]
     rpm_30: Optional[float]
+    rpm_35: Optional[float]
     rpm_40: Optional[float]
+    rpm_45: Optional[float]
     rpm_50: Optional[float]
     rpm_60: Optional[float]
     rpm_70: Optional[float]
+    torque_20: Optional[float]
+    torque_25: Optional[float]
     torque_30: Optional[float]
+    torque_35: Optional[float]
     torque_40: Optional[float]
+    torque_45: Optional[float]
     torque_50: Optional[float]
     torque_60: Optional[float]
     torque_70: Optional[float]
+    screening_rpms: List[float]
+    screening_rungs: List[dict]
     T_top_target: Optional[float]
     T_top: Optional[float]
     ladder_status: Optional[LadderStatus]
@@ -89,7 +99,7 @@ class DiscoveryConfig:
     rpm_selection_mode: str = "continuous"
     # Stage 2
     discovery_stage2_enabled: bool = True
-    ladder_targets: Tuple[float, ...] = (30.0, 40.0, 50.0, 60.0, 70.0)
+    ladder_targets: Tuple[float, ...] = (20.0, 25.0, 30.0, 35.0, 40.0, 45.0)
     ladder_tolerance_pct: float = 2.5
     newtonian_n_threshold: float = 0.975
     squeeze_boundary_base: float = 0.6

@@ -20,16 +20,26 @@ _STAGE2_PAYLOAD_KEYS = (
     "is_newtonian",
     "power_law_r2",
     "discovery_path",
+    "rpm_20",
+    "rpm_25",
     "rpm_30",
+    "rpm_35",
     "rpm_40",
+    "rpm_45",
     "rpm_50",
     "rpm_60",
     "rpm_70",
+    "torque_20",
+    "torque_25",
     "torque_30",
+    "torque_35",
     "torque_40",
+    "torque_45",
     "torque_50",
     "torque_60",
     "torque_70",
+    "screening_rpms",
+    "screening_rungs",
     "T_top_target",
     "T_top",
     "T_bottom",
@@ -93,6 +103,7 @@ def run_discovery_for_cell(
     probe_duration_s: float = 60.0,
     duck_torque_pct: float = 80.0,
     web_emit: bool = True,
+    max_screening_rpms: int = 6,
 ) -> Tuple[DiscoveryResult, List[float]]:
     """
     Run RPM discovery for one cell.
@@ -154,20 +165,40 @@ def run_discovery_for_cell(
         if web_emit:
             _emit_discovery_update(cell_id, partial)
 
-    discover_fn = discover_rpm_stage2 if cfg.discovery_stage2_enabled else discover_rpm
-    result = discover_fn(
-        cell_id,
-        probe,
-        eta_guess=eta_guess,
-        material_label=material_label,
-        config=cfg,
-        on_probe=_on_probe if web_emit else None,
-    )
+    if cfg.discovery_stage2_enabled:
+        result = discover_rpm_stage2(
+            cell_id,
+            probe,
+            max_screening_rpms=max_screening_rpms,
+            eta_guess=eta_guess,
+            material_label=material_label,
+            config=cfg,
+            on_probe=_on_probe if web_emit else None,
+        )
+    else:
+        result = discover_rpm(
+            cell_id,
+            probe,
+            eta_guess=eta_guess,
+            material_label=material_label,
+            config=cfg,
+            on_probe=_on_probe if web_emit else None,
+        )
 
     if web_emit:
         _emit_discovery_update(cell_id, result)
 
-    if is_discovery_success(result) and result.get("rpm") is not None:
+    selected = result.get("screening_rpms")
+    if isinstance(selected, list) and selected:
+        speeds: List[float] = []
+        for raw in selected:
+            try:
+                speeds.append(round_rpm_2dp(float(raw)))
+            except (TypeError, ValueError):
+                continue
+        if speeds:
+            return result, speeds
+    # Stage 1 has no screening list. A successful single speed is still usable.
+    if selected is None and is_discovery_success(result) and result.get("rpm") is not None:
         return result, [round_rpm_2dp(float(result["rpm"]))]
-
     return result, []
