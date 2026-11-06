@@ -11,13 +11,15 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_ROOT / "src"))
 
+from viscometry.timing.features import z_geometry_from_heights
 from viscometry.timing.model import (
     default_posterior,
+    estimate_discovery_probe_phase_s,
     predict_cell_seconds,
     predict_run_seconds,
     update_posterior_from_rows,
 )
-from viscometry.timing.training_store import append_rows, ensure_headers, row_count
+from viscometry.timing.training_store import TRAINING_COLUMNS, append_rows, ensure_headers, row_count
 
 
 class TestTimingModel(unittest.TestCase):
@@ -72,6 +74,32 @@ class TestTimingModel(unittest.TestCase):
             )
             self.assertNotEqual(updated["n_z"]["mean"], before)
             self.assertTrue(path.is_file())
+
+    def test_partial_n_z_does_not_update_posterior(self):
+        post = default_posterior()
+        before = post["n_z"]["mean"]
+        updated = update_posterior_from_rows(
+            [{"row_level": "cell", "n_z": 1, "actual_duration_s": 10, "predicted_duration_s": 10}],
+            posterior=post,
+            path=Path(tempfile.mkdtemp()) / "p.json",
+        )
+        self.assertEqual(updated["n_z"]["mean"], before)
+
+    def test_discovery_probe_phase_capped_near_four_minutes(self):
+        s = estimate_discovery_probe_phase_s(max_screening_rpms=6, probe_duration_s=60.0)
+        self.assertGreater(s, 60.0)
+        self.assertLessEqual(s, 240.0)
+
+    def test_hit_relative_is_hit_minus_start(self):
+        geom = z_geometry_from_heights([-65.0, -65.4, -65.8, -66.2])
+        self.assertAlmostEqual(geom["start_z"], -65.0)
+        self.assertAlmostEqual(geom["hit_z"], -66.2)
+        self.assertAlmostEqual(geom["hit_relative_mm"], -1.2)
+        self.assertEqual(geom["n_z"], 4.0)
+
+    def test_training_columns_include_relative_hit(self):
+        self.assertIn("start_z", TRAINING_COLUMNS)
+        self.assertIn("hit_relative_mm", TRAINING_COLUMNS)
 
 
 if __name__ == "__main__":

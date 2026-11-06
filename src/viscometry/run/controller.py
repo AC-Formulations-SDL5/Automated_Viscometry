@@ -2354,6 +2354,13 @@ def main():
                                 f"{[format_rpm(r) for r in cell_rpms]} "
                                 f"(status={discovery_result.get('status')})"
                             )
+                            try:
+                                web_interface.refresh_eta_after_discovery(
+                                    discovered_rpms=list(cell_rpms),
+                                    eta_estimate_cp=discovery_result.get("eta_estimate"),
+                                )
+                            except Exception as eta_exc:
+                                print(f"  Warning: ETA refresh after discovery failed: {eta_exc}")
                             discovery_rpm_for_landing = float(cell_rpms[0])
                             discovery_handoff_z = discovery_result.get("target_z_mm")
                             skip_initial_safe_move = True

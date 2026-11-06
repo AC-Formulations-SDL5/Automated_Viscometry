@@ -5816,6 +5816,11 @@ body.discovery-review-active .experiment-review-summary .discovery-review-table 
     box-shadow: var(--shadow-glass), var(--shadow-glass-accent), 0 0 24px var(--accent-blue-glow);
 }
 
+/* Live torque ladder sits between Live Tracking and Live Rotational Drag */
+.controls-experiment-stack > .screening-live-card {
+    margin: 14px 0;
+}
+
 .screening-live-card .screening-live-cell {
     margin: 8px 0 4px;
     font-weight: 600;

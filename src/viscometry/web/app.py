@@ -23,7 +23,12 @@ from viscometry.calibration.store import (
 from viscometry.paths import EXPERIMENT_HISTORY_PATH, WEB_STATIC, WEB_TEMPLATES
 from viscometry.timing.bootstrap import ensure_training_file
 from viscometry.timing.features import rows_from_commit
-from viscometry.timing.model import load_posterior, predict_run_seconds, update_posterior_from_rows
+from viscometry.timing.model import (
+    estimate_discovery_probe_phase_s,
+    load_posterior,
+    predict_run_seconds,
+    update_posterior_from_rows,
+)
 from viscometry.timing.training_store import append_rows
 
 _ALL_DATA_Z_META_KEYS = frozenset({
@@ -278,6 +283,9 @@ class ViscometryWebInterface:
         self.eta_band_low_s: Optional[float] = None
         self.eta_band_high_s: Optional[float] = None
         self.eta_prediction_frozen: Optional[Dict[str, Any]] = None
+        self.eta_phase: Optional[str] = None  # probing | measuring | None
+        self._eta_n_rpms_override: Optional[int] = None
+        self._eta_mu_cp_override: Optional[float] = None
         try:
             ensure_training_file()
         except Exception as exc:
@@ -2081,8 +2089,16 @@ class ViscometryWebInterface:
         self.current_cell_start_ts = None
         self.completed_cells = []
         self.timing_windows_by_cell = {}
+        self._eta_n_rpms_override = None
+        self._eta_mu_cp_override = None
+        self.eta_phase = None
         self.start_requested_event.set()
         try:
+            runtime = self.get_runtime_settings()
+            if bool(runtime.get("discovery_mode_enabled")):
+                self.eta_phase = "probing"
+            else:
+                self.eta_phase = "measuring"
             self._refresh_eta_prediction(freeze=True)
         except Exception as exc:
             print(f"Warning: ETA prediction failed at start ({exc})")
@@ -2563,6 +2579,7 @@ class ViscometryWebInterface:
             "eta_predicted_total_s": self.eta_predicted_total_s,
             "eta_band_low_s": self.eta_band_low_s,
             "eta_band_high_s": self.eta_band_high_s,
+            "eta_phase": self.eta_phase,
         }
 
     def _clear_eta_prediction(self) -> None:
@@ -2570,6 +2587,9 @@ class ViscometryWebInterface:
         self.eta_predicted_total_s = None
         self.eta_band_low_s = None
         self.eta_band_high_s = None
+        self.eta_phase = None
+        self._eta_n_rpms_override = None
+        self._eta_mu_cp_override = None
 
     def _planned_run_geometry(self) -> Dict[str, Any]:
         runtime = self.get_runtime_settings()
@@ -2595,28 +2615,59 @@ class ViscometryWebInterface:
         except Exception:
             n_rpms = 1
         discovery = bool(runtime.get("discovery_mode_enabled"))
-        probe = float(runtime.get("discovery_probe_duration_s") or 60.0) if discovery else 0.0
-        if discovery:
-            max_screen = int(runtime.get("max_screening_rpms") or n_rpms)
+        max_screen = int(runtime.get("max_screening_rpms") or n_rpms or 6)
+        probe_duration = float(runtime.get("discovery_probe_duration_s") or 60.0)
+        phase = self.eta_phase or ("probing" if discovery else "measuring")
+
+        mu_cp = self._eta_mu_cp_override
+        if mu_cp is None:
+            eta_map = runtime.get("discovery_eta_guess_map") or {}
+            try:
+                vals = [float(v) for v in eta_map.values() if v is not None]
+                if vals:
+                    # guesses are typically kCp in the UI; convert if small
+                    mu_cp = vals[0] * 1000.0 if vals[0] < 500 else vals[0]
+            except Exception:
+                mu_cp = None
+
+        if self._eta_n_rpms_override is not None:
+            n_rpms = max(1, int(self._eta_n_rpms_override))
+        elif discovery and phase == "probing":
             n_rpms = max(1, max_screen)
-        mu_cp = None
-        eta_map = runtime.get("discovery_eta_guess_map") or {}
-        try:
-            vals = [float(v) for v in eta_map.values() if v is not None]
-            if vals:
-                # guesses are typically kCp in the UI; convert if small
-                mu_cp = vals[0] * 1000.0 if vals[0] < 500 else vals[0]
-        except Exception:
-            mu_cp = None
+        elif discovery and phase == "measuring":
+            n_rpms = max(1, int(self._eta_n_rpms_override or max_screen))
+
+        # Probing phase: only estimate the ladder (~4 min), not the full Z-sweep yet.
+        if discovery and phase == "probing":
+            discovery_probe_s = estimate_discovery_probe_phase_s(
+                max_screening_rpms=max_screen,
+                probe_duration_s=probe_duration,
+            )
+            # Sweep contribution deferred until accepted RPMs are known.
+            return {
+                "n_cells": n_cells,
+                "n_rpms": 0,
+                "mu_cp": mu_cp,
+                "measurement_duration_s": float(runtime.get("measurement_duration") or 40.0),
+                "sample_interval_s": float(runtime.get("sample_interval") or 5.0),
+                "dwell_s": float(runtime.get("dwell_seconds") or 2.0),
+                "inter_rpm_pause_s": float(runtime.get("inter_rpm_pause") or 2.0),
+                "discovery_probe_s": float(discovery_probe_s),
+                "eta_phase": phase,
+                "max_screening_rpms": max_screen,
+            }
+
         return {
             "n_cells": n_cells,
-            "n_rpms": n_rpms,
+            "n_rpms": max(1, int(n_rpms)),
             "mu_cp": mu_cp,
             "measurement_duration_s": float(runtime.get("measurement_duration") or 40.0),
             "sample_interval_s": float(runtime.get("sample_interval") or 5.0),
             "dwell_s": float(runtime.get("dwell_seconds") or 2.0),
             "inter_rpm_pause_s": float(runtime.get("inter_rpm_pause") or 2.0),
-            "discovery_probe_s": probe,
+            "discovery_probe_s": 0.0,
+            "eta_phase": phase,
+            "max_screening_rpms": max_screen,
         }
 
     def _refresh_eta_prediction(self, *, freeze: bool) -> None:
@@ -2627,35 +2678,104 @@ class ViscometryWebInterface:
             done = len(self.completed_cells or [])
             remaining = max(0, n_cells - done)
             elapsed_completed = 0.0
-            if self.experiment_start_ts is not None and done > 0:
+            phase = geom.get("eta_phase") or self.eta_phase
+            # During/after probing on the active cell, wall clock already includes ladder time.
+            if self.experiment_start_ts is not None and (
+                done > 0 or phase == "measuring"
+            ):
                 elapsed_completed = max(0.0, time.time() - float(self.experiment_start_ts))
             posterior = load_posterior()
-            pred = predict_run_seconds(
-                n_cells=n_cells,
-                n_rpms=int(geom["n_rpms"]),
-                mu_cp=geom.get("mu_cp"),
-                measurement_duration_s=float(geom["measurement_duration_s"]),
-                sample_interval_s=float(geom["sample_interval_s"]),
-                dwell_s=float(geom["dwell_s"]),
-                inter_rpm_pause_s=float(geom["inter_rpm_pause_s"]),
-                discovery_probe_s=float(geom["discovery_probe_s"]),
-                remaining_cells=remaining if not freeze else n_cells,
-                elapsed_completed_s=elapsed_completed if not freeze else 0.0,
-                posterior=posterior,
-            )
-            self.eta_predicted_total_s = float(pred.get("expected_s") or 0.0)
-            self.eta_band_low_s = float(pred.get("low_s") or self.eta_predicted_total_s)
-            self.eta_band_high_s = float(pred.get("high_s") or self.eta_predicted_total_s)
+            n_rpms = int(geom.get("n_rpms") or 0)
+            if phase == "probing" and n_rpms <= 0:
+                # Probe-only estimate: ladder time + light bookend, no Z-sweep yet.
+                probe_s = float(geom.get("discovery_probe_s") or 0.0)
+                bookend = float((posterior.get("bookend_s") or {}).get("mean") or 45.0)
+                expected = probe_s + bookend
+                self.eta_predicted_total_s = expected
+                self.eta_band_low_s = max(60.0, expected * 0.7)
+                self.eta_band_high_s = expected * 1.35
+            else:
+                pred = predict_run_seconds(
+                    n_cells=n_cells,
+                    n_rpms=max(1, n_rpms),
+                    mu_cp=geom.get("mu_cp"),
+                    measurement_duration_s=float(geom["measurement_duration_s"]),
+                    sample_interval_s=float(geom["sample_interval_s"]),
+                    dwell_s=float(geom["dwell_s"]),
+                    inter_rpm_pause_s=float(geom["inter_rpm_pause_s"]),
+                    discovery_probe_s=float(geom.get("discovery_probe_s") or 0.0),
+                    remaining_cells=remaining if not freeze else n_cells,
+                    elapsed_completed_s=elapsed_completed if not freeze else 0.0,
+                    posterior=posterior,
+                )
+                # When freezing measuring-phase after discovery, include elapsed probe time.
+                if freeze and phase == "measuring" and elapsed_completed > 0:
+                    # predict_run_seconds with freeze uses elapsed=0; add wall time spent probing.
+                    pred = predict_run_seconds(
+                        n_cells=n_cells,
+                        n_rpms=max(1, n_rpms),
+                        mu_cp=geom.get("mu_cp"),
+                        measurement_duration_s=float(geom["measurement_duration_s"]),
+                        sample_interval_s=float(geom["sample_interval_s"]),
+                        dwell_s=float(geom["dwell_s"]),
+                        inter_rpm_pause_s=float(geom["inter_rpm_pause_s"]),
+                        discovery_probe_s=0.0,
+                        remaining_cells=remaining,
+                        elapsed_completed_s=elapsed_completed,
+                        posterior=posterior,
+                    )
+                self.eta_predicted_total_s = float(pred.get("expected_s") or 0.0)
+                self.eta_band_low_s = float(pred.get("low_s") or self.eta_predicted_total_s)
+                self.eta_band_high_s = float(pred.get("high_s") or self.eta_predicted_total_s)
             if freeze:
                 self.eta_prediction_frozen = {
                     "expected_s": self.eta_predicted_total_s,
                     "low_s": self.eta_band_low_s,
                     "high_s": self.eta_band_high_s,
                     "geometry": geom,
+                    "eta_phase": phase,
                     "frozen_at": time.time(),
                 }
         except Exception as exc:
             print(f"Warning: _refresh_eta_prediction failed ({exc})")
+
+    def refresh_eta_after_discovery(
+        self,
+        *,
+        discovered_rpms: Optional[List[float]] = None,
+        eta_estimate_cp: Optional[float] = None,
+    ) -> None:
+        """
+        Rebuild ETA after the torque ladder accepts speeds.
+
+        total ≈ elapsed_so_far + remaining Z-sweep for accepted RPMs (+ later cells).
+        """
+        try:
+            rpms = [float(r) for r in (discovered_rpms or []) if r is not None]
+            self._eta_n_rpms_override = max(1, len(rpms)) if rpms else None
+            if eta_estimate_cp is not None:
+                try:
+                    v = float(eta_estimate_cp)
+                    # Discovery eta_estimate is typically cP already; accept kCp if tiny.
+                    self._eta_mu_cp_override = v * 1000.0 if 0 < v < 500 else v
+                except (TypeError, ValueError):
+                    self._eta_mu_cp_override = None
+            self.eta_phase = "measuring"
+            self._refresh_eta_prediction(freeze=True)
+            self.socketio.emit(
+                "eta_update",
+                {
+                    **self._eta_status_fields(),
+                    "experiment_start_ts": self.experiment_start_ts,
+                },
+            )
+            print(
+                f"ETA refreshed after discovery: "
+                f"{self.eta_predicted_total_s:.0f}s "
+                f"(n_rpms={self._eta_n_rpms_override}, phase=measuring)"
+            )
+        except Exception as exc:
+            print(f"Warning: refresh_eta_after_discovery failed ({exc})")
 
     def _append_timing_training_from_commit(
         self,

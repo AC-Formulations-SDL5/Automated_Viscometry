@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from viscometry.paths import EXPERIMENT_HISTORY_PATH, TIMING_TRAINING_CSV
-from viscometry.timing.features import build_cell_training_row
+from viscometry.timing.features import build_cell_training_row, z_geometry_from_heights
 from viscometry.timing.model import load_posterior, predict_cell_seconds, save_posterior
 from viscometry.timing.training_store import append_rows, ensure_headers, row_count
 
@@ -79,8 +79,9 @@ def bootstrap_from_history(
                 ms = cell_durations.get(key, cell_durations.get(cid))
                 actual_s = float(ms) / 1000.0 if ms is not None else None
                 pts = by_cell.get(cid) or []
-                zs = {round(float(p["height"]), 3) for p in pts if p.get("height") is not None}
-                n_z = len(zs) if zs else None
+                heights = [p["height"] for p in pts if p.get("height") is not None]
+                geom = z_geometry_from_heights(heights)
+                n_z = int(geom["n_z"]) if geom.get("n_z") is not None else None
                 char_block = char.get(key) or char.get(cid)
                 pred = predict_cell_seconds(
                     n_rpms=max(1, len(rpms)),
@@ -100,7 +101,9 @@ def bootstrap_from_history(
                         run_type=run_type,
                         rpms=rpms,
                         n_z=n_z,
-                        hit_z=min(zs) if zs else None,
+                        hit_z=geom.get("hit_z"),
+                        start_z=geom.get("start_z"),
+                        hit_relative_mm=geom.get("hit_relative_mm"),
                         actual_duration_s=actual_s,
                         predicted_duration_s=pred.get("expected_s"),
                         char_block=char_block,

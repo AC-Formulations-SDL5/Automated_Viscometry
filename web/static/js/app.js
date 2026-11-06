@@ -276,6 +276,7 @@ class ViscometryDashboard {
         this.etaPredictedTotalS = null;
         this.etaBandLowS = null;
         this.etaBandHighS = null;
+        this.etaPhase = null;
         this.pendingRender = false;
         this.disconnectedBannerTimeout = null;
         this.statusError = false;
@@ -3877,6 +3878,18 @@ class ViscometryDashboard {
             this.experimentStart = null;
             this.cellStart = null;
             this._clearEtaFields();
+            this.updateEtaProgressBar();
+        });
+
+        this.socket.on("eta_update", (data) => {
+            this._applyEtaFields(data);
+            if (data?.experiment_start_ts != null) {
+                const startTs = Number(data.experiment_start_ts);
+                if (Number.isFinite(startTs)) {
+                    this.experimentStart = startTs * 1000;
+                    this.lastRunStartTsSec = startTs;
+                }
+            }
             this.updateEtaProgressBar();
         });
 
@@ -8317,12 +8330,16 @@ class ViscometryDashboard {
             const v = Number(payload.eta_band_high_s);
             this.etaBandHighS = Number.isFinite(v) ? v : null;
         }
+        if (payload.eta_phase !== undefined) {
+            this.etaPhase = payload.eta_phase ? String(payload.eta_phase) : null;
+        }
     }
 
     _clearEtaFields() {
         this.etaPredictedTotalS = null;
         this.etaBandLowS = null;
         this.etaBandHighS = null;
+        this.etaPhase = null;
     }
 
     updateEtaProgressBar() {
@@ -8349,7 +8366,10 @@ class ViscometryDashboard {
         const frac = Math.max(0, Math.min(1, elapsedS / total));
         fill.style.width = `${(frac * 100).toFixed(2)}%`;
         const remaining = Math.max(0, total - elapsedS);
-        label.textContent = `~${this.formatDuration(remaining * 1000)} left`;
+        const phasePrefix = this.etaPhase === "probing"
+            ? "Probing · "
+            : (this.etaPhase === "measuring" ? "Measuring · " : "");
+        label.textContent = `${phasePrefix}~${this.formatDuration(remaining * 1000)} left`;
     }
 
     formatDuration(ms) {

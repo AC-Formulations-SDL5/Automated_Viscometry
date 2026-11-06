@@ -60,6 +60,33 @@ def _mu_by_rpm_from_block(block: Any) -> Dict[float, float]:
     return out
 
 
+def z_geometry_from_heights(heights: Sequence[float]) -> Dict[str, Optional[float]]:
+    """
+    Derive calibration-invariant Z geometry from measured heights.
+
+    start_z = shallowest (largest Z), hit_z = deepest (smallest Z),
+    hit_relative_mm = hit_z - start_z (negative when descending).
+    """
+    vals = []
+    for h in heights:
+        try:
+            f = float(h)
+        except (TypeError, ValueError):
+            continue
+        if f == f:  # finite
+            vals.append(f)
+    if not vals:
+        return {"start_z": None, "hit_z": None, "hit_relative_mm": None, "n_z": None}
+    start_z = max(vals)
+    hit_z = min(vals)
+    return {
+        "start_z": float(start_z),
+        "hit_z": float(hit_z),
+        "hit_relative_mm": float(hit_z - start_z),
+        "n_z": float(len(set(round(v, 3) for v in vals))),
+    }
+
+
 def build_cell_training_row(
     *,
     sample_label: str,
@@ -75,6 +102,8 @@ def build_cell_training_row(
     char_block: Any = None,
     intercell_gap_s: Optional[float] = None,
     n_rpms_requested: Optional[int] = None,
+    start_z: Optional[float] = None,
+    hit_relative_mm: Optional[float] = None,
 ) -> Dict[str, Any]:
     summary = _summary_from_char_block(char_block)
     mu_by_rpm = _mu_by_rpm_from_block(char_block)
@@ -86,6 +115,13 @@ def build_cell_training_row(
         except (TypeError, ValueError):
             residual = None
     accepted = len(list(rpms)) if rpms is not None else None
+    # Prefer explicit relative depth; fall back from absolute pair.
+    rel = hit_relative_mm
+    if rel is None and hit_z is not None and start_z is not None:
+        try:
+            rel = float(hit_z) - float(start_z)
+        except (TypeError, ValueError):
+            rel = None
     return {
         "sample_label": sample_label or "",
         "experiment_id": experiment_id or "",
@@ -102,7 +138,9 @@ def build_cell_training_row(
         "n_rpms_requested": n_rpms_requested if n_rpms_requested is not None else accepted,
         "n_rpms_accepted": accepted,
         "n_z": n_z,
+        "start_z": start_z,
         "hit_z": hit_z,
+        "hit_relative_mm": rel,
         "pathway": summary.get("pathway"),
         "mu_cp": mu_cp,
         "mu_cp_by_rpm_json": json.dumps(mu_by_rpm, sort_keys=True) if mu_by_rpm else "",
@@ -147,7 +185,9 @@ def build_window_training_row(
         "n_rpms_requested": "",
         "n_rpms_accepted": "",
         "n_z": "",
+        "start_z": "",
         "hit_z": "",
+        "hit_relative_mm": "",
         "pathway": "",
         "mu_cp": mu_cp if mu_cp is not None else window.get("mu_cp"),
         "mu_cp_by_rpm_json": "",
@@ -220,9 +260,9 @@ def rows_from_commit(
                 ms = cell_durations.get(cid)
             actual_s = float(ms) / 1000.0 if ms is not None else None
             pts = by_cell_pts.get(cid) or []
-            zs = {round(float(p["height"]), 3) for p in pts if p.get("height") is not None}
-            n_z = len(zs) if zs else None
-            hit_z = min(zs) if zs else None  # deepest measured as proxy
+            heights = [p["height"] for p in pts if p.get("height") is not None]
+            geom = z_geometry_from_heights(heights)
+            n_z = int(geom["n_z"]) if geom.get("n_z") is not None else None
             char_block = char.get(key) or char.get(cid)
             row = build_cell_training_row(
                 sample_label=sample_label,
@@ -232,7 +272,9 @@ def rows_from_commit(
                 run_type=run_type,
                 rpms=rpms,
                 n_z=n_z,
-                hit_z=hit_z,
+                hit_z=geom.get("hit_z"),
+                start_z=geom.get("start_z"),
+                hit_relative_mm=geom.get("hit_relative_mm"),
                 actual_duration_s=actual_s,
                 predicted_duration_s=pred_per_cell,
                 char_block=char_block,
