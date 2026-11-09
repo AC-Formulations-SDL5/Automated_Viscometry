@@ -586,6 +586,9 @@ class ViscometryDashboard {
             discoveryControlStatus: document.getElementById("discovery-control-status"),
             discoveryProbeTableBody: document.getElementById("discovery-probe-table-body"),
             discoveryProbeEmpty: document.getElementById("discovery-probe-empty"),
+            discoveryRecoveryNotice: document.getElementById("discovery-recovery-notice"),
+            discoveryRecoveryDesc: document.getElementById("discovery-recovery-desc"),
+            discoveryRecoveryMetric: document.getElementById("discovery-recovery-metric"),
             discoveryStatusPill: document.getElementById("discovery-status-pill"),
             discoveryStatusCell: document.getElementById("discovery-status-cell"),
             discoveryStatusRpm: document.getElementById("discovery-status-rpm"),
@@ -2209,6 +2212,13 @@ class ViscometryDashboard {
         setDiscoveryInput("discovery-torque-break-threshold", settings.torque_break_threshold);
         setDiscoveryInput("discovery-probe-duration-s", settings.discovery_probe_duration_s);
         setDiscoveryInput("discovery-duck-torque-pct", settings.discovery_duck_torque_pct);
+        const duckRecoveryEnabled = document.getElementById("discovery-duck-recovery-enabled");
+        if (duckRecoveryEnabled && settings.discovery_duck_recovery_enabled !== undefined) {
+            duckRecoveryEnabled.checked = Boolean(settings.discovery_duck_recovery_enabled);
+        }
+        setDiscoveryInput("discovery-duck-recovery-target-pct", settings.discovery_duck_recovery_target_pct);
+        setDiscoveryInput("discovery-duck-recovery-timeout-s", settings.discovery_duck_recovery_timeout_s);
+        setDiscoveryInput("discovery-duck-recovery-plateau-rate", settings.discovery_duck_recovery_plateau_rate);
         setDiscoveryInput("discovery-handoff-pause-s", settings.discovery_handoff_pause_s);
         const proceedAfterDiscovery = document.getElementById("discovery-proceed-with-run");
         if (proceedAfterDiscovery && settings.discovery_proceed_with_run !== undefined) {
@@ -2492,6 +2502,10 @@ class ViscometryDashboard {
             discovery_eta_guess_map: this.buildDiscoveryEtaGuessMapPayload(),
             discovery_probe_duration_s: getNum("discovery-probe-duration-s", 60),
             discovery_duck_torque_pct: getNum("discovery-duck-torque-pct", 80),
+            discovery_duck_recovery_enabled: getBool("discovery-duck-recovery-enabled", true),
+            discovery_duck_recovery_target_pct: getNum("discovery-duck-recovery-target-pct", 10),
+            discovery_duck_recovery_timeout_s: getNum("discovery-duck-recovery-timeout-s", 90),
+            discovery_duck_recovery_plateau_rate: getNum("discovery-duck-recovery-plateau-rate", 0.1),
             discovery_handoff_pause_s: getNum("discovery-handoff-pause-s", 10),
             discovery_proceed_with_run: getBool("discovery-proceed-with-run", true),
             low_torque_liquid_contact_skip_enabled: false,
@@ -2900,6 +2914,9 @@ class ViscometryDashboard {
                 this.el.discoveryStatusPill.classList.add("failed");
             } else if (status === "probing" || status === "ladder_probing") {
                 this.el.discoveryStatusPill.classList.add("probing");
+            } else if (status === "relaxing" || status === "recovering" || status === "paused") {
+                this.el.discoveryStatusPill.classList.add("relaxing");
+                this.el.discoveryStatusPill.textContent = "Relaxing Stress";
             }
         }
         if (this.el.discoveryStatusCell) {
@@ -2935,6 +2952,38 @@ class ViscometryDashboard {
         this.updateDiscoveryGraphCellTabs();
         this._scheduleDiscoveryPlotRefresh();
         this._refreshDiscoveryRheologyPanels();
+    }
+
+    handleDiscoveryRecoveryUpdate(payload) {
+        if (!payload || typeof payload !== "object") return;
+        const notice = this.el.discoveryRecoveryNotice;
+        const desc = this.el.discoveryRecoveryDesc;
+        const metric = this.el.discoveryRecoveryMetric;
+        const pill = this.el.discoveryStatusPill;
+
+        if (payload.active) {
+            if (notice) notice.classList.remove("hidden");
+            if (desc) {
+                const elapsed = payload.elapsed_s != null ? `${Number(payload.elapsed_s).toFixed(0)}s` : "0s";
+                const timeout = payload.timeout_s != null ? `${Number(payload.timeout_s).toFixed(0)}s` : "90s";
+                const target = payload.target_pct != null ? `${Number(payload.target_pct).toFixed(0)}%` : "10%";
+                desc.textContent = `Spindle stopped. Waiting for torque to relax below ${target}... (${elapsed} elapsed / max ${timeout})`;
+            }
+            if (metric) {
+                const cur = payload.current_torque != null ? `${Number(payload.current_torque).toFixed(1)}%` : "--%";
+                metric.textContent = cur;
+            }
+            if (pill) {
+                pill.textContent = "Relaxing Stress";
+                pill.className = "discovery-status-pill relaxing";
+            }
+        } else {
+            if (notice) notice.classList.add("hidden");
+            if (pill && pill.classList.contains("relaxing")) {
+                pill.textContent = "Probing";
+                pill.className = "discovery-status-pill probing";
+            }
+        }
     }
 
     _isDiscoveryConvergedStatus(status) {
@@ -3804,6 +3853,10 @@ class ViscometryDashboard {
             this.ingestDiscoveryUpdate(payload);
         });
 
+        this.socket.on("discovery_recovery_update", (payload) => {
+            this.handleDiscoveryRecoveryUpdate(payload);
+        });
+
         this.socket.on("torque_update", (data) => {
             if (this.activeTabId !== "controls-tab") {
                 return;
@@ -4233,6 +4286,9 @@ class ViscometryDashboard {
         }
         if (this.el.discoveryProbeEmpty) {
             this.el.discoveryProbeEmpty.classList.remove("hidden");
+        }
+        if (this.el.discoveryRecoveryNotice) {
+            this.el.discoveryRecoveryNotice.classList.add("hidden");
         }
         if (this.el.discoveryStatusPill) {
             this.el.discoveryStatusPill.textContent = "Idle";

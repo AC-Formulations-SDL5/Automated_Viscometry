@@ -9,7 +9,7 @@ import datetime
 import traceback
 import threading
 import statistics
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from viscometry.hardware.cnc import CNC_Machine, CNCMotionError
 from viscometry.hardware.viscometer.client import ViscometerClient
@@ -143,6 +143,10 @@ _RUNTIME_SETTING_NAMES = (
     "DISCOVERY_MODE_ENABLED",
     "DISCOVERY_PROBE_DURATION_S",
     "DISCOVERY_DUCK_TORQUE_PCT",
+    "DISCOVERY_DUCK_RECOVERY_ENABLED",
+    "DISCOVERY_DUCK_RECOVERY_TARGET_PCT",
+    "DISCOVERY_DUCK_RECOVERY_TIMEOUT_S",
+    "DISCOVERY_DUCK_RECOVERY_PLATEAU_RATE",
     "DISCOVERY_HANDOFF_PAUSE_S",
     "DISCOVERY_PROCEED_WITH_RUN",
     "MAX_SCREENING_RPMS",
@@ -239,6 +243,22 @@ def apply_runtime_settings_from_web():
         rs.DISCOVERY_DUCK_TORQUE_PCT = max(1.0, min(100.0, duck_pct))
     except (TypeError, ValueError):
         rs.DISCOVERY_DUCK_TORQUE_PCT = 80.0
+    rs.DISCOVERY_DUCK_RECOVERY_ENABLED = bool(web_settings.get('discovery_duck_recovery_enabled', rs.DISCOVERY_DUCK_RECOVERY_ENABLED))
+    try:
+        target_pct = float(web_settings.get('discovery_duck_recovery_target_pct', rs.DISCOVERY_DUCK_RECOVERY_TARGET_PCT))
+        rs.DISCOVERY_DUCK_RECOVERY_TARGET_PCT = max(1.0, min(50.0, target_pct))
+    except (TypeError, ValueError):
+        rs.DISCOVERY_DUCK_RECOVERY_TARGET_PCT = 10.0
+    try:
+        rec_timeout = float(web_settings.get('discovery_duck_recovery_timeout_s', rs.DISCOVERY_DUCK_RECOVERY_TIMEOUT_S))
+        rs.DISCOVERY_DUCK_RECOVERY_TIMEOUT_S = max(5.0, min(300.0, rec_timeout))
+    except (TypeError, ValueError):
+        rs.DISCOVERY_DUCK_RECOVERY_TIMEOUT_S = 90.0
+    try:
+        plat_rate = float(web_settings.get('discovery_duck_recovery_plateau_rate', rs.DISCOVERY_DUCK_RECOVERY_PLATEAU_RATE))
+        rs.DISCOVERY_DUCK_RECOVERY_PLATEAU_RATE = max(0.001, min(2.0, plat_rate))
+    except (TypeError, ValueError):
+        rs.DISCOVERY_DUCK_RECOVERY_PLATEAU_RATE = 0.1
     try:
         pause_s = float(web_settings.get('discovery_handoff_pause_s', rs.DISCOVERY_HANDOFF_PAUSE_S))
         rs.DISCOVERY_HANDOFF_PAUSE_S = max(0.0, pause_s)
@@ -930,6 +950,136 @@ def _publish_torque_sample_to_web(
         )
 
 
+def wait_for_torque_relaxation(
+    client: ViscometerClient,
+    *,
+    target_pct: float = DISCOVERY_DUCK_RECOVERY_TARGET_PCT,
+    timeout_s: float = DISCOVERY_DUCK_RECOVERY_TIMEOUT_S,
+    plateau_rate_pct_s: float = DISCOVERY_DUCK_RECOVERY_PLATEAU_RATE,
+    poll_interval_s: float = 0.5,
+    min_plateau_time_s: float = 12.0,
+    plateau_window_s: float = 10.0,
+    cell_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Pause spindle and monitor decaying torque until it falls below target_pct.
+
+    Provides three safeguards:
+      1. Target torque floor: exits as soon as torque < target_pct (default: 10%).
+      2. Plateau detection: exits if rate of drop |dτ/dt| <= plateau_rate_pct_s over plateau_window_s.
+      3. Safety timeout: guarantees the run resumes within timeout_s (default: 90s).
+      Plus emergency abort handling via raise_if_stop_requested().
+    """
+    client.stop()
+    web_interface.set_current_rpm(0.0)
+
+    start_time = time.time()
+    recent_samples: List[Tuple[float, float]] = []  # (elapsed_s, torque_pct)
+    last_ui_update = 0.0
+
+    def _emit_ui(active: bool, tp: float, elapsed: float, msg: str, reason: Optional[str] = None):
+        if hasattr(web_interface, "emit_recovery_update"):
+            try:
+                web_interface.emit_recovery_update({
+                    "active": active,
+                    "cell_id": cell_id,
+                    "current_torque": round(float(tp), 2),
+                    "target_pct": round(float(target_pct), 1),
+                    "timeout_s": round(float(timeout_s), 0),
+                    "elapsed_s": round(float(elapsed), 1),
+                    "message": msg,
+                    "reason": reason,
+                })
+            except Exception:
+                pass
+        web_interface.update_status(msg)
+        web_interface.update_live_torque(torque_percent=tp, rpm=0.0, elapsed=elapsed)
+
+    init_msg = (
+        f"Post-overrange recovery: spindle paused, waiting for torque to relax (< {target_pct:.0f}%)"
+    )
+    print(f"      [RECOVERY START] {init_msg} (timeout {timeout_s:.0f}s, target < {target_pct:.1f}%)")
+    _emit_ui(True, 0.0, 0.0, init_msg)
+
+    final_tp = 0.0
+    final_reason = "timeout"
+
+    try:
+        while True:
+            raise_if_stop_requested()
+            elapsed = max(0.0, time.time() - start_time)
+
+            if elapsed >= timeout_s:
+                final_reason = "timeout"
+                break
+
+            data = _read_valid_torque_packet(
+                client,
+                max_attempts=1,
+                retry_delay_s=CALIBRATION_READ_RETRY_DELAY_S,
+                accept_overrange=True,
+            )
+
+            if data and data.get("torque_percent") is not None:
+                try:
+                    tp = float(data["torque_percent"])
+                    final_tp = tp
+                    recent_samples.append((elapsed, tp))
+
+                    if time.time() - last_ui_update >= 1.0:
+                        last_ui_update = time.time()
+                        status_msg = (
+                            f"Post-overrange recovery: waiting for torque to relax (< {target_pct:.0f}%) "
+                            f"— currently {tp:.1f}% ({elapsed:.0f}s/{timeout_s:.0f}s)"
+                        )
+                        _emit_ui(True, tp, elapsed, status_msg)
+                        print(f"      [RECOVERY] {elapsed:.1f}s: torque={tp:.2f}% (target < {target_pct:.1f}%)")
+
+                    # Safeguard 1: Target reached
+                    if tp < target_pct:
+                        final_reason = "target_reached"
+                        print(f"      [RECOVERY SUCCESS] Torque relaxed to {tp:.2f}% (< {target_pct:.1f}%) in {elapsed:.1f}s")
+                        break
+
+                    # Safeguard 2: Plateau rate-of-change check
+                    if elapsed >= min_plateau_time_s:
+                        window = [(t, v) for t, v in recent_samples if t >= elapsed - plateau_window_s]
+                        if len(window) >= 5:
+                            dt = window[-1][0] - window[0][0]
+                            if dt >= 5.0:
+                                dv = window[-1][1] - window[0][1]
+                                rate = abs(dv / dt)
+                                if rate <= plateau_rate_pct_s:
+                                    final_reason = "plateau"
+                                    print(
+                                        f"      [RECOVERY PLATEAU] Torque leveled off at {tp:.2f}% "
+                                        f"(|dτ/dt|={rate:.4f}%/s <= {plateau_rate_pct_s}%/s over {dt:.1f}s)"
+                                    )
+                                    break
+                except (ValueError, TypeError):
+                    pass
+
+            sleep_with_stop(poll_interval_s)
+    finally:
+        total_elapsed = max(0.0, time.time() - start_time)
+        if final_reason == "timeout":
+            print(f"      [RECOVERY TIMEOUT] Reached safety timeout of {timeout_s:.0f}s (final torque: {final_tp:.1f}%)")
+            end_msg = f"Recovery safety timeout reached ({timeout_s:.0f}s) — proceeding with probe"
+        elif final_reason == "plateau":
+            end_msg = f"Recovery complete: torque plateaued at {final_tp:.1f}% — proceeding"
+        else:
+            end_msg = f"Recovery complete: torque relaxed to {final_tp:.1f}% (< {target_pct:.0f}%)"
+
+        _emit_ui(False, final_tp, total_elapsed, end_msg, reason=final_reason)
+        sleep_with_stop(INTER_RPM_PAUSE)
+
+    return {
+        "success": final_reason in ("target_reached", "plateau"),
+        "reason": final_reason,
+        "final_torque": final_tp,
+        "elapsed_s": total_elapsed,
+    }
+
+
 def measure_torque_at_rpm(
     client: ViscometerClient,
     rpm: float,
@@ -974,6 +1124,7 @@ def measure_torque_at_rpm(
         next_sample_time = measurement_start_time + sample_index * SAMPLE_INTERVAL
         hunt_contact_confirmed = False
         smart_exit_fired = False
+        duck_fired = False
         duration_cap_s = float(MEASUREMENT_DURATION)
 
         while time.time() - start_time < MEASUREMENT_DURATION:
@@ -1017,9 +1168,9 @@ def measure_torque_at_rpm(
                             break
                         if (
                             duck_above_pct_on_first_sample is not None
-                            and sample_index == 1
                             and tp >= duck_above_pct_on_first_sample
                         ):
+                            duck_fired = True
                             measurement = {
                                 "timestamp": current_time,
                                 "elapsed_time": elapsed_since_start,
@@ -1119,7 +1270,27 @@ def measure_torque_at_rpm(
         # Stop spindle after measurement
         client.stop()
         web_interface.set_current_rpm(0)
-        sleep_with_stop(INTER_RPM_PAUSE)
+
+        # Post-overrange recovery check for discovery probes
+        needs_recovery = False
+        if duck_above_pct_on_first_sample is not None and DISCOVERY_DUCK_RECOVERY_ENABLED:
+            if duck_fired:
+                needs_recovery = True
+            elif measurements:
+                max_tp = max(float(m.get("torque_percent", 0.0) or 0.0) for m in measurements)
+                if max_tp >= duck_above_pct_on_first_sample:
+                    needs_recovery = True
+
+        if needs_recovery:
+            wait_for_torque_relaxation(
+                client,
+                target_pct=DISCOVERY_DUCK_RECOVERY_TARGET_PCT,
+                timeout_s=DISCOVERY_DUCK_RECOVERY_TIMEOUT_S,
+                plateau_rate_pct_s=DISCOVERY_DUCK_RECOVERY_PLATEAU_RATE,
+                cell_id=getattr(web_interface, "current_cell", None),
+            )
+        else:
+            sleep_with_stop(INTER_RPM_PAUSE)
         
         # Report measurement summary
         if measurements:

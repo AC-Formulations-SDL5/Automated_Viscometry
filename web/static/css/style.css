@@ -5297,6 +5297,61 @@ body.discovery-active {
     color: var(--color-red-text);
 }
 
+.discovery-status-pill.relaxing {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #b45309;
+    font-weight: 700;
+}
+
+.discovery-recovery-notice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    margin: 8px 0 14px 0;
+    border-radius: var(--radius-sm, 6px);
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: var(--text-primary);
+}
+
+.discovery-recovery-notice.hidden {
+    display: none;
+}
+
+.discovery-recovery-icon {
+    font-size: 1.25rem;
+    line-height: 1;
+    color: #d97706;
+}
+
+.discovery-recovery-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.discovery-recovery-title {
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: #b45309;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+}
+
+.discovery-recovery-desc {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.discovery-recovery-metric {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #b45309;
+    white-space: nowrap;
+}
+
 .discovery-status-summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
