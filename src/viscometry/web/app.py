@@ -339,6 +339,10 @@ class ViscometryWebInterface:
             'discovery_eta_guess_map': {},
             'discovery_probe_duration_s': 60.0,
             'discovery_duck_torque_pct': 80.0,
+            'discovery_duck_recovery_enabled': True,
+            'discovery_duck_recovery_target_pct': 10.0,
+            'discovery_duck_recovery_timeout_s': 90.0,
+            'discovery_duck_recovery_plateau_rate': 0.1,
             'discovery_handoff_pause_s': 10.0,
             'discovery_proceed_with_run': True,
             'screening_enabled': False,
@@ -1912,6 +1916,26 @@ class ViscometryWebInterface:
                     normalized['discovery_duck_torque_pct'] = max(1.0, min(100.0, duck_pct))
                 except (TypeError, ValueError):
                     normalized['discovery_duck_torque_pct'] = 80.0
+            if 'discovery_duck_recovery_enabled' in settings:
+                normalized['discovery_duck_recovery_enabled'] = bool(settings['discovery_duck_recovery_enabled'])
+            if 'discovery_duck_recovery_target_pct' in settings and settings['discovery_duck_recovery_target_pct'] not in (None, ''):
+                try:
+                    target_pct = float(settings['discovery_duck_recovery_target_pct'])
+                    normalized['discovery_duck_recovery_target_pct'] = max(1.0, min(50.0, target_pct))
+                except (TypeError, ValueError):
+                    normalized['discovery_duck_recovery_target_pct'] = 10.0
+            if 'discovery_duck_recovery_timeout_s' in settings and settings['discovery_duck_recovery_timeout_s'] not in (None, ''):
+                try:
+                    rec_timeout = float(settings['discovery_duck_recovery_timeout_s'])
+                    normalized['discovery_duck_recovery_timeout_s'] = max(5.0, min(300.0, rec_timeout))
+                except (TypeError, ValueError):
+                    normalized['discovery_duck_recovery_timeout_s'] = 90.0
+            if 'discovery_duck_recovery_plateau_rate' in settings and settings['discovery_duck_recovery_plateau_rate'] not in (None, ''):
+                try:
+                    plat_rate = float(settings['discovery_duck_recovery_plateau_rate'])
+                    normalized['discovery_duck_recovery_plateau_rate'] = max(0.001, min(2.0, plat_rate))
+                except (TypeError, ValueError):
+                    normalized['discovery_duck_recovery_plateau_rate'] = 0.1
             if 'discovery_proceed_with_run' in settings:
                 normalized['discovery_proceed_with_run'] = bool(settings['discovery_proceed_with_run'])
             if 'discovery_handoff_pause_s' in settings and settings['discovery_handoff_pause_s'] not in (None, ''):
@@ -2413,6 +2437,13 @@ class ViscometryWebInterface:
 
         except Exception as e:
             print(f"Warning: Failed to emit characterization: {e}")
+
+    def emit_recovery_update(self, payload: Dict):
+        """Broadcast live post-overrange recovery pause status to web clients."""
+        try:
+            self.socketio.emit('discovery_recovery_update', payload)
+        except Exception as e:
+            print(f"Warning: Failed to emit recovery update: {e}")
 
     def emit_discovery_update(self, payload: Dict):
         """Store and broadcast Discovery Mode probe / convergence status."""

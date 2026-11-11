@@ -904,54 +904,88 @@
                                     <input id="discovery-z-start-offset-mm" name="z_start_offset_mm" type="number" step="0.01" value="0.4" disabled>
                                 </label>
                             </div>
-                            <div class="run-settings-row run-settings-toggles-row">
-                                <div class="run-settings-toggles-col">
-                                    <label class="ui-switch-row">
-                                        <span class="ui-switch">
-                                            <input id="discovery-feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
-                                            <span class="ui-switch-track" aria-hidden="true"></span>
-                                        </span>
-                                        <span class="ui-switch-label">Feedback control enabled</span>
-                                    </label>
-                                    <label class="ui-switch-row">
-                                        <span class="ui-switch">
-                                            <input id="discovery-smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox" checked>
-                                            <span class="ui-switch-track" aria-hidden="true"></span>
-                                        </span>
-                                        <span class="ui-switch-label">Smart Early Exit</span>
-                                    </label>
-                                    <label class="ui-switch-row">
-                                        <span class="ui-switch">
-                                            <input id="discovery-fail-safe-enabled" name="fail_safe_enabled" type="checkbox" checked>
-                                            <span class="ui-switch-track" aria-hidden="true"></span>
-                                        </span>
-                                        <span class="ui-switch-label">Fail-Safe Termination</span>
-                                    </label>
-                                    <label class="ui-switch-row">
-                                        <span class="ui-switch">
-                                            <input id="discovery-proceed-with-run" name="discovery_proceed_with_run" type="checkbox" checked>
-                                            <span class="ui-switch-track" aria-hidden="true"></span>
-                                        </span>
-                                        <span class="ui-switch-label">Proceed with run after discovery?</span>
-                                    </label>
+                            <details id="discovery-advanced-params-details" class="feedback-params-section discovery-advanced-section">
+                                <summary class="feedback-params-toggle">
+                                    Discovery Parameters &amp; Over-Range Recovery
+                                    <span class="feedback-params-hint">(expand to tune)</span>
+                                </summary>
+                                <div class="feedback-params-grid">
+                                    <p class="feedback-section-label">Post-Overrange Recovery (Viscous Samples)</p>
+                                    <div class="dual-fields">
+                                        <label class="ui-switch-row">
+                                            <span class="ui-switch">
+                                                <input id="discovery-duck-recovery-enabled" name="discovery_duck_recovery_enabled" type="checkbox" checked>
+                                                <span class="ui-switch-track" aria-hidden="true"></span>
+                                            </span>
+                                            <span class="ui-switch-label">Enable post-overrange recovery</span>
+                                        </label>
+                                        <label>
+                                            <span>Recovery torque floor (%)</span>
+                                            <input id="discovery-duck-recovery-target-pct" name="discovery_duck_recovery_target_pct" type="number" step="0.5" min="1" max="50" value="10">
+                                        </label>
+                                    </div>
+                                    <div class="dual-fields">
+                                        <label>
+                                            <span>Recovery safety timeout (s)</span>
+                                            <input id="discovery-duck-recovery-timeout-s" name="discovery_duck_recovery_timeout_s" type="number" step="5" min="10" max="300" value="90">
+                                        </label>
+                                        <label>
+                                            <span>Plateau rate limit (%/s)</span>
+                                            <input id="discovery-duck-recovery-plateau-rate" name="discovery_duck_recovery_plateau_rate" type="number" step="0.01" min="0.01" max="1.0" value="0.1" title="Exit recovery early if torque rate-of-change falls below this threshold over a 10s window">
+                                        </label>
+                                    </div>
+
+                                    <p class="feedback-section-label" style="margin-top: 14px;">Toggle-able Discovery Parameters</p>
+                                    <div class="run-settings-row run-settings-toggles-row">
+                                        <div class="run-settings-toggles-col">
+                                            <label class="ui-switch-row">
+                                                <span class="ui-switch">
+                                                    <input id="discovery-feedback-control-enabled" name="feedback_control_enabled" type="checkbox" checked>
+                                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                                </span>
+                                                <span class="ui-switch-label">Feedback control enabled</span>
+                                            </label>
+                                            <label class="ui-switch-row">
+                                                <span class="ui-switch">
+                                                    <input id="discovery-smart-early-exit-enabled" name="smart_early_exit_enabled" type="checkbox" checked>
+                                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                                </span>
+                                                <span class="ui-switch-label">Smart Early Exit</span>
+                                            </label>
+                                            <label class="ui-switch-row">
+                                                <span class="ui-switch">
+                                                    <input id="discovery-fail-safe-enabled" name="fail_safe_enabled" type="checkbox" checked>
+                                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                                </span>
+                                                <span class="ui-switch-label">Fail-Safe Termination</span>
+                                            </label>
+                                            <label class="ui-switch-row">
+                                                <span class="ui-switch">
+                                                    <input id="discovery-proceed-with-run" name="discovery_proceed_with_run" type="checkbox" checked>
+                                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                                </span>
+                                                <span class="ui-switch-label">Proceed with run after discovery?</span>
+                                            </label>
+                                        </div>
+                                        <div class="run-settings-toggles-col run-settings-toggles-col-right">
+                                            <label id="discovery-viscosity-prediction-toggle-row" class="ui-switch-row viscosity-prediction-toggle-row" data-mode="off">
+                                                <span class="ui-switch">
+                                                    <input id="discovery-viscosity-prediction-enabled" name="viscosity_prediction_enabled" type="checkbox">
+                                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                                </span>
+                                                <span class="ui-switch-label">Enable characterization</span>
+                                            </label>
+                                            <label class="ui-switch-row">
+                                                <span class="ui-switch">
+                                                    <input id="discovery-save-all-sample-data" name="save_all_sample_data" type="checkbox">
+                                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                                </span>
+                                                <span class="ui-switch-label">Save all sample data</span>
+                                            </label>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="run-settings-toggles-col run-settings-toggles-col-right">
-                                    <label id="discovery-viscosity-prediction-toggle-row" class="ui-switch-row viscosity-prediction-toggle-row" data-mode="off">
-                                        <span class="ui-switch">
-                                            <input id="discovery-viscosity-prediction-enabled" name="viscosity_prediction_enabled" type="checkbox">
-                                            <span class="ui-switch-track" aria-hidden="true"></span>
-                                        </span>
-                                        <span class="ui-switch-label">Enable characterization</span>
-                                    </label>
-                                    <label class="ui-switch-row">
-                                        <span class="ui-switch">
-                                            <input id="discovery-save-all-sample-data" name="save_all_sample_data" type="checkbox">
-                                            <span class="ui-switch-track" aria-hidden="true"></span>
-                                        </span>
-                                        <span class="ui-switch-label">Save all sample data</span>
-                                    </label>
-                                </div>
-                            </div>
+                            </details>
                             <div class="control-actions control-actions-four">
                                 <button type="button" id="discovery-apply-settings" class="btn control-btn control-btn-neutral">Apply Settings</button>
                                 <button type="button" id="discovery-start-run" class="btn btn-discovery-start control-btn control-btn-start">Start Discovery Run</button>
@@ -968,6 +1002,14 @@
                         <div class="card-title-row">
                             <h2>RPM Discovery Progress</h2>
                             <span id="discovery-status-pill" class="discovery-status-pill idle">Idle</span>
+                        </div>
+                        <div id="discovery-recovery-notice" class="discovery-recovery-notice hidden">
+                            <span class="discovery-recovery-icon">⏸</span>
+                            <div class="discovery-recovery-info">
+                                <div class="discovery-recovery-title">Post-Overrange Recovery Paused</div>
+                                <div id="discovery-recovery-desc" class="discovery-recovery-desc">Spindle stopped. Waiting for torque to relax below 10%...</div>
+                            </div>
+                            <div id="discovery-recovery-metric" class="discovery-recovery-metric mono">--%</div>
                         </div>
                         <div class="discovery-status-summary">
                             <div><span class="discovery-status-label">Cell</span><strong id="discovery-status-cell">—</strong></div>
