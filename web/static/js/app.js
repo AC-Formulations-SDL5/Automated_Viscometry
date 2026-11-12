@@ -2860,32 +2860,6 @@ class ViscometryDashboard {
         return Boolean(settings.discovery_mode_enabled || settings.screening_enabled);
     }
 
-    _buildScreeningTorqueTableHtml(exp) {
-        const results = exp?.discovery_results || {};
-        const keys = Object.keys(results).sort((a, b) => Number(a) - Number(b));
-        const rows = [];
-        keys.forEach((key) => {
-            const entry = results[key];
-            this._screeningRungsFromEntry(entry).forEach((row) => {
-                if (row.rpm == null && row.torque == null) return;
-                const torqueText = row.torque != null && Number.isFinite(Number(row.torque))
-                    ? `${Number(row.torque).toFixed(1)}%`
-                    : "—";
-                rows.push(
-                    `<tr><td>C${this._escapeHtml(String(key))}</td>`
-                    + `<td class="mono">${row.rpm != null ? formatRpm(row.rpm) : "—"}</td>`
-                    + `<td class="mono">${torqueText}</td></tr>`
-                );
-            });
-        });
-        if (!rows.length) return "";
-        return `
-            <table class="screening-summary-table">
-                <thead><tr><th>Cell</th><th>RPM</th><th>Discovery torque</th></tr></thead>
-                <tbody>${rows.join("")}</tbody>
-            </table>`;
-    }
-
     ingestDiscoveryUpdate(payload) {
         if (!payload) return;
         const cellId = payload.cell_id != null ? Number(payload.cell_id) : null;
@@ -2951,7 +2925,6 @@ class ViscometryDashboard {
         }
         this.updateDiscoveryGraphCellTabs();
         this._scheduleDiscoveryPlotRefresh();
-        this._refreshDiscoveryRheologyPanels();
     }
 
     handleDiscoveryRecoveryUpdate(payload) {
@@ -3084,50 +3057,6 @@ class ViscometryDashboard {
                 ${this._buildDiscoveryStage2SummaryHtml(entry, { includeRpmTable: false })}
                 ${this._buildDiscoveryProbeTableHtml(entry.probes)}
             </div>`;
-    }
-
-    _refreshDiscoveryRheologyPanels() {
-        if (!this.el.predictedViscosityCharts) {
-            return;
-        }
-        Object.entries(this.discoveryResultsByCell || {}).forEach(([cellKey, entry]) => {
-            const cellId = Number(cellKey);
-            if (!Number.isFinite(cellId)) {
-                return;
-            }
-            const wrap = this.el.predictedViscosityCharts.querySelector(`[data-pv-cell-id="${cellId}"]`);
-            if (!wrap) {
-                return;
-            }
-            let panel = wrap.querySelector(`[data-dr-panel="${cellId}"]`);
-            if (!panel) {
-                return;
-            }
-            panel.innerHTML = this._buildDiscoveryRheologyPanelInnerHtml(entry);
-        });
-    }
-
-    _buildDiscoveryRheologyPanelInnerHtml(entry) {
-        if (!entry || entry.n_probe == null && entry.T_top == null) {
-            return `<div class="discovery-rheology-empty">No Stage 2 discovery data for this cell.</div>`;
-        }
-        const landing = this._formatDiscoveryLandingChip(entry);
-        const rows = [
-            ["n_probe", entry.n_probe != null ? Number(entry.n_probe).toFixed(3) : "—"],
-            ["Newtonian", entry.is_newtonian == null ? "—" : (entry.is_newtonian ? "Yes" : "No")],
-            ["T_top", entry.T_top != null ? `${Number(entry.T_top).toFixed(1)}%` : "—"],
-            ["T_bottom", entry.T_bottom != null ? `${Number(entry.T_bottom).toFixed(1)}%` : "—"],
-            ["S", entry.S != null ? Number(entry.S).toFixed(3) : "—"],
-            ["Landing", landing.text],
-        ];
-        const rpmTable = this._buildDiscoveryRpmTableHtml(entry);
-        return `
-            <div class="discovery-rheology-title">Discovery Rheology</div>
-            <table class="discovery-rheology-metrics-table">
-                ${rows.map(([k, v]) => `<tr><th>${k}</th><td class="mono">${this._escapeHtml(String(v))}</td></tr>`).join("")}
-            </table>
-            ${rpmTable}
-            <div class="discovery-landing-chip ${landing.cls}">${this._escapeHtml(landing.text)}</div>`;
     }
 
     getActiveDiscoveryGraphCellId() {
@@ -8214,10 +8143,7 @@ class ViscometryDashboard {
                     <h4>Run</h4>
                     <div class="tile-status">${modeLabel}</div>
                 </article>`;
-            const torqueTable = this._isScreeningExperiment(exp)
-                ? this._buildScreeningTorqueTableHtml(exp)
-                : "";
-            rightEl.innerHTML = `<div class="screening-summary-side">${modeCard}${torqueTable}</div>${this._buildSummaryFeatureTiles(s)}`;
+            rightEl.innerHTML = `<div class="screening-summary-side">${modeCard}</div>${this._buildSummaryFeatureTiles(s)}`;
         }
         if (predEl) {
             this._purgeCharacterizationStressPlots();
@@ -9037,10 +8963,11 @@ class ViscometryDashboard {
                                     <tbody data-pv-params-body="${cellId}"></tbody>
                                 </table>
                             </aside>
-                            <aside class="discovery-rheology-panel" data-dr-panel="${cellId}"></aside>
                         </div>
                     </div>
                     <div class="characterization-flow-plot" data-pv-flow="${cellId}"></div>`;
+            } else {
+                wrap.querySelectorAll(".discovery-rheology-panel").forEach((el) => el.remove());
             }
 
             const headingEl = wrap.querySelector(`[data-pv-heading="${cellId}"]`);
@@ -9174,7 +9101,6 @@ class ViscometryDashboard {
             }
         });
 
-        this._refreshDiscoveryRheologyPanels();
     }
 
     _renderCharacterizationFlowCurves(wrap, cellId, rpmMap, summary) {
