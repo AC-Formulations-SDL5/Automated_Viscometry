@@ -210,7 +210,7 @@ def write_discovery_calibration_json(
         "newtonian_n_threshold": 0.975,
         "squeeze_boundary_base": 0.6,
         "hello_probe_rpm": 5.0,
-        "ladder_max_iterations_per_target": 3,
+        "ladder_max_iterations_per_target": 5,
         "landing_torque_window": [45.0, 55.0],
         "min_ladder_points_for_fit": 3,
         "min_power_law_r_squared": 0.85,

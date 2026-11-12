@@ -107,7 +107,7 @@ class DiscoveryConfig:
     newtonian_n_threshold: float = 0.975
     squeeze_boundary_base: float = 0.6
     hello_probe_rpm: float = 5.0
-    ladder_max_iterations_per_target: int = 3
+    ladder_max_iterations_per_target: int = 5
     landing_torque_window: Tuple[float, float] = (45.0, 55.0)
     min_ladder_points_for_fit: int = 3
     min_power_law_r_squared: float = 0.85
