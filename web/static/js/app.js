@@ -6391,7 +6391,7 @@ class ViscometryDashboard {
         this.el.lidStepButtons.forEach((btn) => {
             btn.addEventListener("click", () => {
                 this.lidStep = Number(btn.dataset.lidStep);
-                this.el.lidStepButtons.forEach((node) => node.classList.toggle("is-selected", node === btn));
+                this.el.lidStepButtons.forEach((node) => node.classList.toggle("active", node === btn));
                 this.updateLidUi();
             });
         });
@@ -6449,6 +6449,14 @@ class ViscometryDashboard {
         if (this.el.lidX) this.el.lidX.textContent = position ? text(position.x, 3) : "—";
         if (this.el.lidY) this.el.lidY.textContent = position ? text(position.y, 3) : "—";
         if (this.el.lidZ) this.el.lidZ.textContent = position ? text(position.z, 3) : "—";
+        [this.el.lidX, this.el.lidY, this.el.lidZ].forEach((node) => {
+            if (!node?.parentElement) {
+                return;
+            }
+            const holder = node.parentElement;
+            holder.classList.add("flash");
+            window.setTimeout(() => holder.classList.remove("flash"), 220);
+        });
     }
 
     formatLidPose(pose) {
@@ -6578,7 +6586,14 @@ class ViscometryDashboard {
             }
         }
 
-        this.renderLidReadout(known ? status.position : null);
+        if (!known) {
+            this.renderLidReadout(null);
+        } else if (status.position) {
+            const text = (value, digits) => Number(value).toFixed(digits);
+            if (this.el.lidX) this.el.lidX.textContent = text(status.position.x, 3);
+            if (this.el.lidY) this.el.lidY.textContent = text(status.position.y, 3);
+            if (this.el.lidZ) this.el.lidZ.textContent = text(status.position.z, 3);
+        }
     }
 
     jogLid(axis, delta) {
@@ -6615,8 +6630,10 @@ class ViscometryDashboard {
                 body: JSON.stringify(body || {}),
             });
             const payload = await response.json();
-            if (payload && payload.lid) {
-                this.applyLidStatus(payload.lid);
+            const lidStatus = payload?.lid
+                || (payload && Object.prototype.hasOwnProperty.call(payload, "position_known") ? payload : null);
+            if (lidStatus) {
+                this.applyLidStatus(lidStatus);
             }
             if (!response.ok || payload.ok === false) {
                 this.setLidMessage(payload.error || "Lid request failed", true);

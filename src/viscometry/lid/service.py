@@ -448,10 +448,13 @@ class LidToolService:
 
     def _ok(self, message: str) -> dict:
         self.last_error = None
-        payload = self.status()
-        payload["ok"] = True
-        payload["message"] = message
-        return payload
+        status = self.status()
+        return {
+            "ok": True,
+            "message": message,
+            "lid": status,
+            **status,
+        }
 
 
 def _segment(current: Pose, axis: str, target: float, feed: int):
