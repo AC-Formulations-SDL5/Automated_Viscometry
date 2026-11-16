@@ -69,6 +69,49 @@ def extract_rough_hitpoint(cell_z_rpm_data: Dict[Any, Any]) -> Optional[float]:
     return extract_hitpoint(cell_z_rpm_data)
 
 
+def extract_vote_last_clean_from_sequence(
+    hit_sequence: List[Tuple[float, bool]],
+) -> Optional[float]:
+    """Last clean Z before the first hit in descent order.
+
+    Reconstructs the rough Z used by vote_hit early-stop when a run never
+    accumulated three consecutive hit Z-levels (classic extractor returns None).
+    """
+    last_clean: Optional[float] = None
+    for z_val, is_hit in hit_sequence:
+        if not is_hit:
+            last_clean = float(z_val)
+            continue
+        return last_clean
+    return None
+
+
+def resolve_calibration_rough_z(
+    cell_z_rpm_data: Dict[Any, Any],
+    hit_point_z_from_run: Optional[float] = None,
+) -> Optional[float]:
+    """Resolve rough calibration Z for post-run review / backfill.
+
+    Preference order:
+    1. Classic False-then-3-True pattern
+    2. Runtime ``hit_point_z`` (set by vote_hit / persistent hit during descent)
+    3. Reconstructed vote last-clean Z from the hit sequence
+    """
+    classic = extract_rough_hitpoint(cell_z_rpm_data)
+    if classic is not None:
+        return float(classic)
+
+    if hit_point_z_from_run is not None:
+        try:
+            return float(hit_point_z_from_run)
+        except (TypeError, ValueError):
+            pass
+
+    if not cell_z_rpm_data:
+        return None
+    return extract_vote_last_clean_from_sequence(build_z_hit_sequence(cell_z_rpm_data))
+
+
 def measured_hit_flags(metrics: Dict[Any, Any]) -> List[bool]:
     """Hit flags for speeds that were actually measured at this height.
 

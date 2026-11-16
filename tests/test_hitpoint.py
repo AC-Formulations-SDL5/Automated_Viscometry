@@ -17,7 +17,9 @@ from viscometry.measurement.hitpoint import (
     extract_hitpoint,
     extract_hitpoint_from_sequence,
     extract_rough_hitpoint,
+    extract_vote_last_clean_from_sequence,
     measured_hit_flags,
+    resolve_calibration_rough_z,
     vote_passes,
     vote_stop_hit,
 )
@@ -129,6 +131,47 @@ class TestVoteStop(unittest.TestCase):
         self.assertEqual(flags, [True, True])
         self.assertTrue(vote_passes(flags))
         self.assertAlmostEqual(vote_stop_hit(1, -65.18, flags), -65.18)
+
+
+class TestCalibrationRoughResolve(unittest.TestCase):
+    def test_vote_last_clean_from_early_stop_sequence(self):
+        seq = [
+            (-65.20, False),
+            (-65.22, False),
+            (-65.24, True),
+        ]
+        self.assertAlmostEqual(extract_vote_last_clean_from_sequence(seq), -65.22)
+
+    def test_vote_last_clean_none_without_hit(self):
+        seq = [(-65.20, False), (-65.22, False)]
+        self.assertIsNone(extract_vote_last_clean_from_sequence(seq))
+
+    def test_resolve_prefers_classic_over_runtime(self):
+        cell = _cell_data_from_sequence([
+            (-65.20, False),
+            (-65.22, False),
+            (-65.24, True),
+            (-65.26, True),
+            (-65.28, True),
+        ])
+        self.assertAlmostEqual(resolve_calibration_rough_z(cell, -65.00), -65.22)
+
+    def test_resolve_uses_runtime_when_classic_missing(self):
+        cell = _cell_data_from_sequence([
+            (-65.20, False),
+            (-65.22, False),
+            (-65.24, True),
+        ])
+        self.assertIsNone(extract_rough_hitpoint(cell))
+        self.assertAlmostEqual(resolve_calibration_rough_z(cell, -65.22), -65.22)
+
+    def test_resolve_reconstructs_vote_last_clean_without_runtime(self):
+        cell = _cell_data_from_sequence([
+            (-66.00, False),
+            (-66.02, True),
+        ])
+        self.assertIsNone(extract_rough_hitpoint(cell))
+        self.assertAlmostEqual(resolve_calibration_rough_z(cell, None), -66.00)
 
 
 if __name__ == "__main__":

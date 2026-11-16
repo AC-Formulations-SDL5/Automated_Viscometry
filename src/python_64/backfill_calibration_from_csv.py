@@ -1,21 +1,31 @@
 """
 Backfill per-cell calibration JSON from a calibration CSV export.
 
-Reliable hitpoint rule used here matches the runtime extractor:
-- A rough hitpoint is the LAST z-level (descent order, higher to lower)
-  where Hit_Detected == False and the next 3 z-levels are all True.
+Hitpoint preference (matches runtime resolve_calibration_rough_z):
+1. Classic: LAST False in descent order followed by 3 True Z-levels
+2. Vote-hit recovery: last clean Z before the first True (early-stop runs)
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from calibration_store import save_calibration, update_calibration_for_cells
+_ROOT = Path(__file__).resolve().parents[2]
+_SRC = _ROOT / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from viscometry.calibration.store import save_calibration, update_calibration_for_cells
+from viscometry.measurement.hitpoint import (
+    extract_hitpoint_from_sequence,
+    extract_vote_last_clean_from_sequence,
+)
 
 
 def _parse_rows(csv_path: Path) -> List[dict]:
@@ -69,18 +79,15 @@ def _build_hit_sequences(rows: Iterable[dict]) -> Dict[int, List[Tuple[float, bo
     return sequences
 
 
-def _extract_rough_hitpoint(hit_sequence: List[Tuple[float, bool]]) -> Optional[float]:
-    """
-    LAST False followed by 3 True.
-    """
-    rough_hitpoint = None
-    n = len(hit_sequence)
-    for i in range(n - 3):
-        z_val, is_hit = hit_sequence[i]
-        if not is_hit:
-            if all(hit_sequence[j][1] for j in range(i + 1, i + 4)):
-                rough_hitpoint = z_val
-    return rough_hitpoint
+def _resolve_rough_from_sequence(hit_sequence: List[Tuple[float, bool]]) -> Optional[float]:
+    """Classic 3-True pattern, else vote-hit last-clean reconstruction."""
+    classic = extract_hitpoint_from_sequence(hit_sequence)
+    if classic is not None:
+        return float(classic)
+    vote_clean = extract_vote_last_clean_from_sequence(hit_sequence)
+    if vote_clean is not None:
+        return float(vote_clean)
+    return None
 
 
 def main() -> int:
@@ -102,12 +109,19 @@ def main() -> int:
 
     calibration_cells: Dict[int, float] = {}
     cells_with_any_hit = 0
+    classic_count = 0
+    vote_recovery_count = 0
     for cell_id, seq in sorted(sequences.items()):
         if any(is_hit for _, is_hit in seq):
             cells_with_any_hit += 1
-        rough = _extract_rough_hitpoint(seq)
+        classic = extract_hitpoint_from_sequence(seq)
+        rough = _resolve_rough_from_sequence(seq)
         if rough is not None:
             calibration_cells[cell_id] = rough
+            if classic is not None:
+                classic_count += 1
+            else:
+                vote_recovery_count += 1
 
     calibrated_at_local = datetime.now().astimezone().isoformat(timespec="seconds")
     if calibration_cells:
@@ -121,8 +135,11 @@ def main() -> int:
     print(f"Mode: {mode}")
     print(f"Cells present in CSV: {len(sequences)}")
     print(f"Cells with any Hit_Detected=True: {cells_with_any_hit}")
-    print(f"Cells passing reliable criterion (False then 3 True): {len(calibration_cells)}")
+    print(f"Cells via classic (False then 3 True): {classic_count}")
+    print(f"Cells via vote-hit last-clean recovery: {vote_recovery_count}")
     print(f"Saved cells: {sorted(calibration_cells.keys())}")
+    for cell_id in sorted(calibration_cells):
+        print(f"  cell {cell_id}: {calibration_cells[cell_id]:.3f}")
     return 0
 
 

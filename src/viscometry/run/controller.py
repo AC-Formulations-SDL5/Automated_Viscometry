@@ -28,8 +28,8 @@ from viscometry.discovery.probe import sample_window_should_stop
 from viscometry.discovery.rpm_calibration import format_rpm
 from viscometry.measurement.hitpoint import (
     extract_hitpoint,
-    extract_rough_hitpoint,
     measured_hit_flags,
+    resolve_calibration_rough_z,
     vote_stop_hit,
 )
 from viscometry.calibration.store import (
@@ -2634,8 +2634,12 @@ def main():
                         )
 
                     if is_calibration_like_run:
-                        # Extract rough hitpoint for post-run review (not auto-saved to disk)
-                        rough_z = extract_rough_hitpoint(cell_data)
+                        # Prefer classic 3-True pattern; fall back to runtime vote_hit /
+                        # persistent hit_point_z so early-stop cells still open review.
+                        rough_z = resolve_calibration_rough_z(
+                            cell_data,
+                            feedback_summary.get("hit_point_z"),
+                        )
                         if rough_z is not None:
                             print(f"  Calibration: Cell {global_cell} rough hitpoint = {rough_z:.3f}")
                             calibration_cells[global_cell] = rough_z
