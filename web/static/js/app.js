@@ -334,6 +334,9 @@ class ViscometryDashboard {
         this.testingBackendBusy = false;
         this.testingSessionConnected = false;
         this.testingSessionLastError = null;
+        this.lidStatus = null;
+        this.lidStep = 1;
+        this.lidRequestInFlight = false;
         this.manualTerminateQueued = false;
         this.cellTerminationReasons = new Map();
         /** @type {Map<number, Map<string, string>>} cellId -> rpmKey -> active|dropped */
@@ -1084,6 +1087,7 @@ class ViscometryDashboard {
         }
         if (tabId === "testing-tab") {
             this.fetchTestingStatus();
+            this.fetchLidStatus();
         }
         if (tabId === "layout-tab") {
             this.applyArmPosition();
@@ -2025,6 +2029,7 @@ class ViscometryDashboard {
                         this.openExperimentReview(status.experiment_review);
                     }
                 }
+                this.fetchLidStatus();
                 if (Array.isArray(measurementData)) {
                     measurementData.forEach((m) => this.ingestMeasurement(m, true));
                     this._refreshActiveTabCharts({ force: true });
@@ -3738,11 +3743,15 @@ class ViscometryDashboard {
         });
 
         this.socket.on("position_update", (data) => {
-            this.position = {
-                x: Number(data.x) || 0,
-                y: Number(data.y) || 0,
-                z: Number(data.z) || 0
-            };
+            const x = Number(data?.x);
+            const y = Number(data?.y);
+            const z = Number(data?.z);
+            if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+                this.position = { x, y, z };
+                if (this.lidRequestInFlight) {
+                    this.renderLidReadout(this.position);
+                }
+            }
             this.queueRender();
         });
 
@@ -6233,7 +6242,9 @@ class ViscometryDashboard {
     }
 
     bindTestingControls() {
+        this.bindLidControls();
         if (!this.el.testingActionButtons) {
+            this.updateLidUi();
             return;
         }
         this.el.testingActionButtons.forEach((btn) => {
@@ -6296,6 +6307,7 @@ class ViscometryDashboard {
         } else {
             this.updateTestingUi();
         }
+        this.updateLidUi();
     }
 
     async handleTestingAction(device, action) {
@@ -6337,6 +6349,287 @@ class ViscometryDashboard {
         } finally {
             this.testingRequestInFlight.delete(requestKey);
             this.updateTestingUi();
+        }
+    }
+
+    bindLidControls() {
+        const card = document.getElementById("lid-tool-card");
+        this.el.lidCard = card;
+        this.el.lidStatePill = document.getElementById("lid-state-pill");
+        this.el.lidX = document.getElementById("lid-x");
+        this.el.lidY = document.getElementById("lid-y");
+        this.el.lidZ = document.getElementById("lid-z");
+        this.el.lidRead = document.getElementById("lid-read-position");
+        this.el.lidStop = document.getElementById("lid-stop");
+        this.el.lidSaveLarge = document.getElementById("lid-save-large");
+        this.el.lidSaveSmall = document.getElementById("lid-save-small");
+        this.el.lidSaveRow1 = document.getElementById("lid-save-row1");
+        this.el.lidSaveRow4 = document.getElementById("lid-save-row4");
+        this.el.lidGotoRow1 = document.getElementById("lid-goto-row1");
+        this.el.lidGotoRow4 = document.getElementById("lid-goto-row4");
+        this.el.lidCell = document.getElementById("lid-cell");
+        this.el.lidPickup = document.getElementById("lid-pickup");
+        this.el.lidReturn = document.getElementById("lid-return");
+        this.el.lidPreview = document.getElementById("lid-cell-preview");
+        this.el.lidHint = document.getElementById("lid-jog-hint");
+        this.el.lidMessage = document.getElementById("lid-message");
+        this.el.lidSavedSummary = document.getElementById("lid-saved-summary");
+        this.el.lidJogButtons = document.querySelectorAll(".lid-jog-btn");
+        this.el.lidStepButtons = document.querySelectorAll(".lid-step-btn");
+        if (!card) {
+            return;
+        }
+        if (this.el.lidCell && this.el.lidCell.options.length === 0) {
+            for (let cell = 1; cell <= 18; cell += 1) {
+                const option = document.createElement("option");
+                option.value = String(cell);
+                option.textContent = String(cell);
+                this.el.lidCell.appendChild(option);
+            }
+            this.el.lidCell.addEventListener("change", () => this.updateLidUi());
+        }
+        this.el.lidStepButtons.forEach((btn) => {
+            btn.addEventListener("click", () => {
+                this.lidStep = Number(btn.dataset.lidStep);
+                this.el.lidStepButtons.forEach((node) => node.classList.toggle("is-selected", node === btn));
+                this.updateLidUi();
+            });
+        });
+        this.el.lidJogButtons.forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const axis = btn.dataset.lidJog;
+                const sign = Number(btn.dataset.lidSign);
+                this.jogLid(axis, sign * this.lidStep);
+            });
+        });
+        this.el.lidRead?.addEventListener("click", () => this.postLid("/api/testing/lid/read", {}));
+        this.el.lidStop?.addEventListener("click", () => this.postLid("/api/testing/lid/stop", {}, { allowDuringMotion: true }));
+        this.el.lidSaveLarge?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "cell1_large" }));
+        this.el.lidSaveSmall?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "cell1_small" }));
+        this.el.lidSaveRow1?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "parking_row1" }));
+        this.el.lidSaveRow4?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "parking_row4" }));
+        this.el.lidGotoRow1?.addEventListener("click", () => this.postLid("/api/testing/lid/parking", { row: 1 }));
+        this.el.lidGotoRow4?.addEventListener("click", () => this.postLid("/api/testing/lid/parking", { row: 4 }));
+        this.el.lidPickup?.addEventListener("click", () => {
+            const cell = Number(this.el.lidCell?.value || 1);
+            this.postLid("/api/testing/lid/pickup", { cell });
+        });
+        this.el.lidReturn?.addEventListener("click", () => this.postLid("/api/testing/lid/return", {}));
+        this.updateLidUi();
+    }
+
+    fetchLidStatus() {
+        fetch("/api/testing/lid")
+            .then((response) => response.json())
+            .then((status) => {
+                if (status && typeof status === "object" && !status.error) {
+                    this.applyLidStatus(status);
+                }
+            })
+            .catch(() => this.setLidMessage("Failed to fetch lid tool status", true));
+    }
+
+    applyLidStatus(status) {
+        this.lidStatus = status;
+        if (status.position) {
+            const x = Number(status.position.x);
+            const y = Number(status.position.y);
+            const z = Number(status.position.z);
+            if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+                this.position = { x, y, z };
+                this.queueRender();
+            }
+        }
+        this.renderLidReadout(status.position_known ? status.position : null);
+        this.updateLidUi();
+    }
+
+    renderLidReadout(position) {
+        const text = (value, digits) => (Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "—");
+        if (this.el.lidX) this.el.lidX.textContent = position ? text(position.x, 3) : "—";
+        if (this.el.lidY) this.el.lidY.textContent = position ? text(position.y, 3) : "—";
+        if (this.el.lidZ) this.el.lidZ.textContent = position ? text(position.z, 3) : "—";
+    }
+
+    formatLidPose(pose) {
+        if (!pose) {
+            return "not saved";
+        }
+        const num = (value) => Number(value).toFixed(3);
+        return `X ${num(pose.x)}   Y ${num(pose.y)}   Z ${num(pose.z)}`;
+    }
+
+    setLidMessage(message, isError = false) {
+        if (!this.el.lidMessage) {
+            return;
+        }
+        this.el.lidMessage.textContent = message || "";
+        this.el.lidMessage.classList.toggle("is-error", Boolean(isError && message));
+    }
+
+    updateLidUi() {
+        const status = this.lidStatus || {};
+        const cal = status.calibration || {};
+        const known = Boolean(status.position_known);
+        const busy = Boolean(status.busy) || this.lidRequestInFlight;
+        const held = status.lid_held_cell != null;
+        const retract = Boolean(status.needs_retract);
+        const running = Boolean(this.isRunning);
+        const z = known && status.position ? Number(status.position.z) : null;
+        const atClearance = z != null && Math.abs(z) <= 0.05;
+        const locked = running || busy || !known;
+
+        const setDisabled = (node, disabled) => {
+            if (node) {
+                node.disabled = disabled;
+            }
+        };
+        setDisabled(this.el.lidRead, running || busy);
+        setDisabled(this.el.lidStop, running);
+        setDisabled(this.el.lidSaveLarge, locked || held || retract);
+        setDisabled(this.el.lidSaveSmall, locked || held || retract || !cal.cell1_large);
+        setDisabled(this.el.lidSaveRow1, locked || held || retract || !atClearance);
+        setDisabled(this.el.lidSaveRow4, locked || held || retract || !atClearance);
+        setDisabled(this.el.lidGotoRow1, locked || held || retract || !atClearance || !cal.parking_row1);
+        setDisabled(this.el.lidGotoRow4, locked || held || retract || !atClearance || !cal.parking_row4);
+        setDisabled(this.el.lidCell, running);
+        setDisabled(this.el.lidPickup, locked || held || retract || !cal.cell1_ready);
+        setDisabled(this.el.lidReturn, running || busy || !held || retract || !known);
+
+        this.el.lidJogButtons?.forEach((btn) => {
+            const axis = btn.dataset.lidJog;
+            const sign = Number(btn.dataset.lidSign);
+            let disabled = locked || held;
+            if (!disabled && retract) {
+                disabled = !(axis === "z" && sign > 0);
+            }
+            if (!disabled && axis === "x" && !atClearance) {
+                disabled = true;
+            }
+            if (!disabled && axis === "z" && this.lidStep > 1.001) {
+                disabled = true;
+            }
+            if (!disabled && axis === "y" && !atClearance && this.lidStep > 1.001) {
+                disabled = true;
+            }
+            if (!disabled && axis === "x" && this.lidStep > 10.001) {
+                disabled = true;
+            }
+            btn.disabled = disabled;
+        });
+
+        if (this.el.lidStatePill) {
+            this.el.lidStatePill.className = "lid-state-pill";
+            if (running) {
+                this.el.lidStatePill.textContent = "Run active";
+                this.el.lidStatePill.classList.add("is-blocked");
+            } else if (busy) {
+                this.el.lidStatePill.textContent = "Moving";
+                this.el.lidStatePill.classList.add("is-moving");
+            } else if (retract) {
+                this.el.lidStatePill.textContent = "Raise Z to 0";
+                this.el.lidStatePill.classList.add("is-blocked");
+            } else if (held) {
+                this.el.lidStatePill.textContent = `Holding cell ${status.lid_held_cell}`;
+                this.el.lidStatePill.classList.add("is-held");
+            } else if (known) {
+                this.el.lidStatePill.textContent = "Ready";
+                this.el.lidStatePill.classList.add("is-ready");
+            } else {
+                this.el.lidStatePill.textContent = "Position unknown";
+            }
+        }
+
+        if (this.el.lidSavedSummary) {
+            const shift = cal.shift_y != null ? `Shift ${Number(cal.shift_y).toFixed(3)} mm in Y` : "Shift not taught";
+            this.el.lidSavedSummary.textContent = [
+                `Large hole: ${this.formatLidPose(cal.cell1_large)}`,
+                `Trapped: ${this.formatLidPose(cal.cell1_small)}`,
+                shift,
+                `Row 1 parking: ${this.formatLidPose(cal.parking_row1)}`,
+                `Row 4 parking: ${this.formatLidPose(cal.parking_row4)}`,
+            ].join("\n");
+        }
+
+        if (this.el.lidPreview) {
+            const cellId = String(this.el.lidCell?.value || "1");
+            const preview = status.cells ? status.cells[cellId] : null;
+            if (!preview) {
+                this.el.lidPreview.textContent = "Teach cell 1 before a cell can be targeted.";
+            } else {
+                this.el.lidPreview.textContent =
+                    `Cell ${cellId} large hole ${this.formatLidPose(preview.large)}. Trapped ${this.formatLidPose(preview.small)}.`;
+            }
+        }
+
+        if (this.el.lidHint) {
+            if (running) {
+                this.el.lidHint.textContent = "Testing is locked while a viscometry run is active.";
+            } else if (!known) {
+                this.el.lidHint.textContent = "Read the machine position before jogging.";
+            } else if (retract) {
+                this.el.lidHint.textContent = "Motion stopped below Z = 0. Only +Z is allowed until the tool is back at Z = 0.";
+            } else if (held) {
+                this.el.lidHint.textContent = `Holding the lid from cell ${status.lid_held_cell}. Jogging is locked. Use Return lid.`;
+            } else if (!atClearance) {
+                this.el.lidHint.textContent = "X is locked below Z = 0. Y moves are limited to 0.1 or 1 mm.";
+            } else {
+                this.el.lidHint.textContent = "X and Y move only at Z = 0. A 10 mm step is for X and Y at clearance. Z uses 0.1 or 1 mm.";
+            }
+        }
+
+        this.renderLidReadout(known ? status.position : null);
+    }
+
+    jogLid(axis, delta) {
+        const z = this.lidStatus?.position ? Number(this.lidStatus.position.z) : 0;
+        const atClearance = Math.abs(z) <= 0.05;
+        if (axis === "z" && Math.abs(delta) > 1.001) {
+            this.setLidMessage("Z jog uses 0.1 or 1 mm.", true);
+            return;
+        }
+        if (axis === "y" && !atClearance && Math.abs(delta) > 1.001) {
+            this.setLidMessage("Below Z = 0, Y jog is limited to 0.1 or 1 mm.", true);
+            return;
+        }
+        this.postLid("/api/testing/lid/jog", { axis, delta });
+    }
+
+    async postLid(url, body, options = {}) {
+        const allowDuringMotion = Boolean(options.allowDuringMotion);
+        if (this.isRunning) {
+            this.setLidMessage("Testing is unavailable during an active run", true);
+            return;
+        }
+        if (this.lidRequestInFlight && !allowDuringMotion) {
+            return;
+        }
+        if (!allowDuringMotion) {
+            this.lidRequestInFlight = true;
+            this.updateLidUi();
+        }
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body || {}),
+            });
+            const payload = await response.json();
+            if (payload && payload.lid) {
+                this.applyLidStatus(payload.lid);
+            }
+            if (!response.ok || payload.ok === false) {
+                this.setLidMessage(payload.error || "Lid request failed", true);
+                return;
+            }
+            this.setLidMessage(payload.message || "");
+        } catch {
+            this.setLidMessage("Lid request failed", true);
+        } finally {
+            if (!allowDuringMotion) {
+                this.lidRequestInFlight = false;
+                this.updateLidUi();
+            }
         }
     }
 

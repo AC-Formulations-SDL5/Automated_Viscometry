@@ -20,6 +20,7 @@ from viscometry.calibration.store import (
     save_calibration,
     update_calibration_for_cells,
 )
+from viscometry.lid.service import LidToolError, LidToolService
 from viscometry.paths import EXPERIMENT_HISTORY_PATH, WEB_STATIC, WEB_TEMPLATES
 from viscometry.timing.bootstrap import ensure_training_file
 from viscometry.timing.features import rows_from_commit
@@ -388,7 +389,8 @@ class ViscometryWebInterface:
         self.WASH_STATION1_Y = 68
         self.WASH_STATION2_X = 383
         self.WASH_STATION2_Y = 147
-        
+        self.lid_tool = LidToolService(self)
+
         self.setup_routes()
         
         # Create templates and static directories
@@ -594,6 +596,66 @@ class ViscometryWebInterface:
                 return jsonify(result), (200 if result.get('ok') else 400)
             except Exception as e:
                 print(f"Error in api_testing_stop_all: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/lid', methods=['GET'])
+        def api_testing_lid_status():
+            try:
+                return jsonify(self.lid_tool.status())
+            except Exception as e:
+                print(f"Error in api_testing_lid_status: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/lid/read', methods=['POST'])
+        def api_testing_lid_read():
+            return self._lid_response(self.lid_tool.read_position)
+
+        @self.app.route('/api/testing/lid/jog', methods=['POST'])
+        def api_testing_lid_jog():
+            payload = request.get_json(silent=True) or {}
+            axis = str(payload.get('axis') or '').strip().lower()
+            try:
+                delta = float(payload.get('delta'))
+            except (TypeError, ValueError):
+                return jsonify({'ok': False, 'error': 'Jog step must be a number.', 'lid': self.lid_tool.status()}), 400
+            return self._lid_response(lambda: self.lid_tool.jog(axis, delta))
+
+        @self.app.route('/api/testing/lid/save', methods=['POST'])
+        def api_testing_lid_save():
+            payload = request.get_json(silent=True) or {}
+            pose = str(payload.get('pose') or '').strip()
+            return self._lid_response(lambda: self.lid_tool.save_pose(pose))
+
+        @self.app.route('/api/testing/lid/pickup', methods=['POST'])
+        def api_testing_lid_pickup():
+            payload = request.get_json(silent=True) or {}
+            try:
+                cell = int(payload.get('cell'))
+            except (TypeError, ValueError):
+                return jsonify({'ok': False, 'error': 'Cell must be between 1 and 18.', 'lid': self.lid_tool.status()}), 400
+            return self._lid_response(lambda: self.lid_tool.pickup(cell))
+
+        @self.app.route('/api/testing/lid/return', methods=['POST'])
+        def api_testing_lid_return():
+            return self._lid_response(self.lid_tool.return_lid)
+
+        @self.app.route('/api/testing/lid/parking', methods=['POST'])
+        def api_testing_lid_parking():
+            payload = request.get_json(silent=True) or {}
+            try:
+                row = int(payload.get('row'))
+            except (TypeError, ValueError):
+                return jsonify({'ok': False, 'error': 'Parking row must be 1 or 4.', 'lid': self.lid_tool.status()}), 400
+            return self._lid_response(lambda: self.lid_tool.move_to_parking(row))
+
+        @self.app.route('/api/testing/lid/stop', methods=['POST'])
+        def api_testing_lid_stop():
+            try:
+                self.lid_tool.request_stop()
+                self.update_status('Testing: lid motion stop requested')
+                return jsonify({'ok': True, 'message': 'Stop requested', 'lid': self.lid_tool.status()})
+            except Exception as e:
+                print(f"Error in api_testing_lid_stop: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/experiment_history', methods=['GET', 'POST'])
@@ -2099,9 +2161,21 @@ class ViscometryWebInterface:
         """Drop calibration/recalibration mode from persisted runtime settings."""
         self.update_runtime_settings(self._regular_run_mode_clear_payload())
 
+    def _lid_response(self, action):
+        try:
+            return jsonify(action())
+        except LidToolError as exc:
+            return jsonify({'ok': False, 'error': str(exc), 'lid': self.lid_tool.status()}), exc.status_code
+        except Exception as exc:
+            print(f"Error in lid tool request: {exc}")
+            return jsonify({'ok': False, 'error': str(exc)}), 500
+
     def request_start(self):
         """Mark that the experiment should start."""
         self._reject_start_if_review_pending()
+        if getattr(self, 'lid_tool', None) is not None and self.lid_tool.busy:
+            self.lid_tool.request_stop()
+            raise ValueError('Lid tool is still moving. Wait until it stops before starting a run.')
         try:
             self.stop_all_testing_devices()
         except Exception:
@@ -2844,6 +2918,11 @@ class ViscometryWebInterface:
         previous_state = self.is_running
         self.is_running = is_running
         if is_running:
+            try:
+                if getattr(self, 'lid_tool', None) is not None:
+                    self.lid_tool.request_stop()
+            except Exception:
+                pass
             try:
                 self.stop_all_testing_devices()
             except Exception:

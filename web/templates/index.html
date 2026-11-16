@@ -1262,6 +1262,71 @@
                         </article>
                     </div>
                 </section>
+
+                <section class="card lid-tool-card" id="lid-tool-card">
+                    <div class="card-title-row">
+                        <h2>Lid tool</h2>
+                        <span id="lid-state-pill" class="lid-state-pill">Position unknown</span>
+                    </div>
+                    <p class="form-hint">
+                        Teach the tool on cell 1, then pick up and return a lid.
+                        Horizontal moves run at Z = 0, one axis at a time, and the tool descends only after it is above the large hole.
+                        Read the machine position before jogging.
+                    </p>
+                    <div class="lid-readout">
+                        <span class="lid-coord">X <strong id="lid-x">—</strong></span>
+                        <span class="lid-coord">Y <strong id="lid-y">—</strong></span>
+                        <span class="lid-coord">Z <strong id="lid-z">—</strong></span>
+                        <button type="button" id="lid-read-position" class="btn lid-action-btn">Read position</button>
+                        <button type="button" id="lid-stop" class="btn subtle lid-stop-btn">Stop</button>
+                    </div>
+                    <div class="lid-jog-layout">
+                        <div>
+                            <div class="lid-step-row" role="group" aria-label="Jog step">
+                                <span class="lid-step-label">Step</span>
+                                <button type="button" class="btn subtle lid-step-btn" data-lid-step="0.1">0.1</button>
+                                <button type="button" class="btn subtle lid-step-btn is-selected" data-lid-step="1">1</button>
+                                <button type="button" class="btn subtle lid-step-btn" data-lid-step="10">10</button>
+                            </div>
+                            <div class="lid-jog-pad" aria-label="Jog axes">
+                                <button type="button" class="btn lid-jog-btn jog-y-plus" data-lid-jog="y" data-lid-sign="1">+Y</button>
+                                <button type="button" class="btn lid-jog-btn jog-x-minus" data-lid-jog="x" data-lid-sign="-1">−X</button>
+                                <button type="button" class="btn lid-jog-btn jog-x-plus" data-lid-jog="x" data-lid-sign="1">+X</button>
+                                <button type="button" class="btn lid-jog-btn jog-y-minus" data-lid-jog="y" data-lid-sign="-1">−Y</button>
+                            </div>
+                            <div class="lid-z-row">
+                                <button type="button" class="btn lid-jog-btn" data-lid-jog="z" data-lid-sign="1">+Z</button>
+                                <button type="button" class="btn lid-jog-btn" data-lid-jog="z" data-lid-sign="-1">−Z</button>
+                            </div>
+                        </div>
+                        <div class="lid-teach">
+                            <h3>Teach cell 1</h3>
+                            <div class="lid-action-row">
+                                <button type="button" id="lid-save-large" class="btn lid-action-btn">Save large-hole pose</button>
+                                <button type="button" id="lid-save-small" class="btn lid-action-btn">Save trapped pose</button>
+                            </div>
+                            <h3>Parking columns</h3>
+                            <p class="form-hint">Save these at Z = 0 with no lid on the tool. Cells 1–12 will later use row 1, and cells 13–18 will use row 4.</p>
+                            <div class="lid-action-row">
+                                <button type="button" id="lid-save-row1" class="btn lid-action-btn">Save row 1 parking</button>
+                                <button type="button" id="lid-save-row4" class="btn lid-action-btn">Save row 4 parking</button>
+                                <button type="button" id="lid-goto-row1" class="btn subtle lid-action-btn">Move to row 1</button>
+                                <button type="button" id="lid-goto-row4" class="btn subtle lid-action-btn">Move to row 4</button>
+                            </div>
+                            <p id="lid-saved-summary" class="lid-saved-summary">No poses saved yet.</p>
+                        </div>
+                    </div>
+                    <div class="lid-test-row">
+                        <label class="lid-cell-label" for="lid-cell">Cell
+                            <select id="lid-cell"></select>
+                        </label>
+                        <button type="button" id="lid-pickup" class="btn lid-action-btn">Pick up lid</button>
+                        <button type="button" id="lid-return" class="btn subtle lid-action-btn">Return lid</button>
+                    </div>
+                    <p id="lid-cell-preview" class="form-hint">Teach cell 1 before a cell can be targeted.</p>
+                    <p id="lid-jog-hint" class="form-hint">Read the machine position before jogging.</p>
+                    <p id="lid-message" class="lid-message" role="status"></p>
+                </section>
                 <footer class="tab-signature" aria-hidden="true">
                     <span class="tab-signature-copy">&copy; Acceleration Consortium | Ian Ngunga | 2026</span>
                 </footer>

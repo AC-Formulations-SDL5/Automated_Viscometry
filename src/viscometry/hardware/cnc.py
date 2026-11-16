@@ -1,12 +1,46 @@
+import re
 import serial
 import time
 import yaml
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from viscometry.paths import LOCATIONS_YAML
 
+_WPOS_RE = re.compile(
+    r"WPos:\s*([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)"
+)
+_MPOS_RE = re.compile(
+    r"MPos:\s*([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)"
+)
+
+
 class CNCMotionError(Exception):
     """Raised when CNC motion fails (bounds, timeout, alarm, hold)."""
+
+
+class CNCMotionAbort(CNCMotionError):
+    """Raised when a lid move is stopped between segments."""
+
+    def __init__(self, message: str, position: Optional[Tuple[float, float, float]] = None):
+        super().__init__(message)
+        self.position = position
+
+
+def parse_grbl_wpos(line: str) -> Optional[Tuple[float, float, float]]:
+    """Pull work position from a GRBL status line. Falls back to machine position."""
+    if not line:
+        return None
+    match = _WPOS_RE.search(line) or _MPOS_RE.search(line)
+    if not match:
+        return None
+    return float(match.group(1)), float(match.group(2)), float(match.group(3))
+
+
+def format_single_axis_gcode(axis: str, target: float, feed: int) -> str:
+    if axis not in ("x", "y", "z"):
+        raise CNCMotionError(f"Lid segment axis must be x, y, or z, got {axis}")
+    letter = axis.upper()
+    return f"G1 {letter}{target:.3f} F{int(feed)}\n"
 
 
 class CNC_Machine:
@@ -24,6 +58,7 @@ class CNC_Machine:
         self.VIRTUAL = virtual
         self.idle_timeout_s = idle_timeout_s if idle_timeout_s is not None else self.IDLE_TIMEOUT_S
         self.should_abort: Optional[Callable[[], bool]] = None
+        self._virtual_pos: Tuple[float, float, float] = (0.0, 0.0, 0.0)
         with open(self.LOCATION_FILE, "r") as f:
             self.LOCATIONS = yaml.safe_load(f) or {}
         print(f"Connected to CNC Machine! (virtual={self.VIRTUAL})")
@@ -146,6 +181,117 @@ class CNC_Machine:
         x, y, z = self.get_location_position(name, idx)
         if safe: self.move_to_point_safe(x, y, z, speed=speed)
         else:    self.move_to_point(x, y, z, speed=speed)
+
+    def _abort_requested(self, allow_abort: bool) -> bool:
+        return bool(allow_abort and self.should_abort and self.should_abort())
+
+    def _query_wpos(self, ser) -> Tuple[float, float, float]:
+        ser.reset_input_buffer()
+        ser.write(b"?\n")
+        for _ in range(5):
+            line = ser.readline().decode(errors="ignore").strip()
+            if not line:
+                continue
+            if "Alarm" in line:
+                raise CNCMotionError(f"GRBL alarm: {line}")
+            parsed = parse_grbl_wpos(line)
+            if parsed is not None:
+                return parsed
+        raise CNCMotionError("GRBL did not report WPos")
+
+    def _segment_command(self, segment) -> Tuple[str, float, int]:
+        axis = getattr(segment, "axis", None)
+        target = getattr(segment, "target", None)
+        feed = getattr(segment, "feed", None)
+        if isinstance(segment, dict):
+            axis = segment.get("axis", axis)
+            target = segment.get("target", target)
+            feed = segment.get("feed", feed)
+        if axis not in ("x", "y", "z"):
+            raise CNCMotionError(f"Lid segment axis must be x, y, or z, got {axis}")
+        if target is None or feed is None:
+            raise CNCMotionError("Lid segment is missing a target or feed")
+        return str(axis), float(target), int(feed)
+
+    def _position_after(self, pos: Tuple[float, float, float], axis: str, target: float) -> Tuple[float, float, float]:
+        x, y, z = pos
+        if axis == "x":
+            x = target
+        elif axis == "y":
+            y = target
+        else:
+            z = target
+        self._check_bounds(x, y, z)
+        return (float(x), float(y), float(z))
+
+    def read_position(self, allow_abort: bool = True) -> Tuple[float, float, float]:
+        """Read the current work position. Virtual mode returns the last commanded point."""
+        if self.VIRTUAL:
+            if self._abort_requested(allow_abort):
+                raise CNCMotionAbort("Stop requested before position read", self._virtual_pos)
+            return self._virtual_pos
+        with serial.Serial(self.SERIAL_PORT, self.BAUD_RATE, timeout=2.0) as ser:
+            self._wake(ser)
+            if self._abort_requested(allow_abort):
+                raise CNCMotionAbort("Stop requested before position read", None)
+            return self._query_wpos(ser)
+
+    def execute_segments(
+        self,
+        segments,
+        on_segment: Optional[Callable[[Tuple[float, float, float], object], None]] = None,
+        allow_abort: bool = True,
+    ) -> Tuple[float, float, float]:
+        """Send one single-axis move at a time and report position after each one.
+
+        Stop is honored before the next segment is sent. Virtual mode applies the
+        commanded point without opening a serial port.
+        """
+        if self.VIRTUAL:
+            pos = self._virtual_pos
+            for segment in segments:
+                if self._abort_requested(allow_abort):
+                    raise CNCMotionAbort("Stop requested before the next lid move", pos)
+                axis, target, _feed = self._segment_command(segment)
+                pos = self._position_after(pos, axis, target)
+                self._virtual_pos = pos
+                if on_segment is not None:
+                    on_segment(pos, segment)
+            return pos
+
+        with serial.Serial(self.SERIAL_PORT, self.BAUD_RATE, timeout=2.0) as ser:
+            self._wake(ser)
+            pos = self._query_wpos(ser)
+            try:
+                for segment in segments:
+                    if self._abort_requested(allow_abort):
+                        raise CNCMotionAbort("Stop requested before the next lid move", pos)
+                    axis, target, feed = self._segment_command(segment)
+                    self._position_after(pos, axis, target)
+                    line = format_single_axis_gcode(axis, target, feed)
+                    ser.write(line.encode())
+                    try:
+                        self._wait_idle(ser, allow_abort=allow_abort)
+                    except KeyboardInterrupt as exc:
+                        try:
+                            pos = self._query_wpos(ser)
+                        except CNCMotionError:
+                            pass
+                        raise CNCMotionAbort("Stop requested during lid motion", pos) from exc
+                    pos = self._query_wpos(ser)
+                    if on_segment is not None:
+                        on_segment(pos, segment)
+            except CNCMotionAbort:
+                raise
+            except CNCMotionError:
+                try:
+                    pos = self._query_wpos(ser)
+                    if on_segment is not None:
+                        on_segment(pos, None)
+                except CNCMotionError:
+                    pass
+                raise
+            return pos
 
     def follow_gcode_path(self, gcode: str, buffer: int = 20, allow_abort: bool = True) -> List[str]:
         if self.VIRTUAL:
