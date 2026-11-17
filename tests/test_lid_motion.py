@@ -98,9 +98,10 @@ def test_dock_mapping_follows_sample_rows():
         dock_for_cell(0)
 
 
-def test_park_lid_uses_highway_then_dock_then_release():
+def test_park_lid_uses_highway_x_lane_then_dock_then_release():
     current = Pose(100.0, 50.0, 0.0)
-    highway = Pose(12.0, 320.0, 0.0)
+    # Highway Y is intentionally far forward; park must ignore it and keep lane travel at dock Y.
+    highway = Pose(12.0, 10.0, 0.0)
     dock_xy = Pose(40.0, 340.0, 0.0)
     dock_z = -8.0
     segments = plan_park_lid(
@@ -114,13 +115,13 @@ def test_park_lid_uses_highway_then_dock_then_release():
     release_y = dock_xy.y + (LARGE.y - SMALL.y)
     assert [(seg.axis, seg.target) for seg in segments] == [
         ("x", highway.x),
-        ("y", highway.y),
-        ("x", dock_xy.x),
         ("y", dock_xy.y),
+        ("x", dock_xy.x),
         ("z", dock_z),
         ("y", release_y),
         ("z", 0.0),
     ]
+    assert all(seg.target != highway.y for seg in segments if seg.axis == "y")
     assert_single_axis_plan(current, segments)
     assert release_y > dock_xy.y
 
@@ -142,6 +143,16 @@ def test_park_lid_uses_highway_then_dock_then_release():
             large=LARGE,
             small=SMALL,
         )
+
+
+def test_custom_jog_steps_are_allowed_within_bounds():
+    validate_jog("x", 120.0, z=0.0, lid_held=False, needs_retract=False)
+    validate_jog("y", -85.5, z=-2.0, lid_held=False, needs_retract=False)
+    validate_jog("z", 25.0, z=0.0, lid_held=False, needs_retract=False)
+    with pytest.raises(LidMotionError):
+        validate_jog("x", 500.0, z=0.0, lid_held=False, needs_retract=False)
+    with pytest.raises(LidMotionError):
+        validate_jog("z", 80.0, z=0.0, lid_held=False, needs_retract=False)
 
 
 def test_home_plan_is_z_then_x_then_y():

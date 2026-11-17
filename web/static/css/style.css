@@ -1495,11 +1495,40 @@ body.running .header-sweep {
     gap: 6px;
 }
 
+.lid-step-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
 .lid-step-label,
-.lid-cell-label {
+.lid-cell-label,
+.lid-custom-step-label {
     font-size: 0.78rem;
     font-weight: 600;
     color: var(--text-secondary);
+}
+
+.lid-custom-step-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.lid-custom-step-label input {
+    width: 5.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--glass-border);
+    background: var(--glass-white-strong);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 0.84rem;
+    font-weight: 500;
+    padding: 7px 8px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.70);
 }
 
 .lid-step-segmented {

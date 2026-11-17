@@ -23,6 +23,9 @@ ENGAGE_FEED_MM_PER_MIN = 300
 
 XY_JOG_STEPS_MM = (0.1, 1.0, 10.0)
 Z_JOG_STEPS_MM = (0.1, 1.0, 10.0)
+CUSTOM_JOG_MIN_MM = 0.01
+CUSTOM_JOG_MAX_XY_MM = 450.0
+CUSTOM_JOG_MAX_Z_MM = 75.0
 
 
 class LidMotionError(ValueError):
@@ -232,10 +235,10 @@ def plan_park_lid(
     large: Pose,
     small: Pose,
 ) -> list[Segment]:
-    """Carry a held lid to a dock via the highway, drop, release +Y, and lift.
+    """Carry a held lid to a dock via the highway X-lane, drop, release +Y, and lift.
 
-    Approach dock XY with the tool still in the small/trapped hole, lower to
-    dock_z, shift into the large hole, then raise to Z = 0.
+    Highway is an X corridor only: shift onto highway.x at the current Y, travel
+    in Y to the dock, then X onto the dock. Highway.y is ignored for parking.
     """
     validate_trapped_pose(large, small)
     if abs(current.z) > Z_CLEARANCE_TOL_MM:
@@ -251,9 +254,8 @@ def plan_park_lid(
     pose = current
     pose = _append(segments, pose, "z", CLEARANCE_Z)
     pose = _append(segments, pose, "x", highway.x)
-    pose = _append(segments, pose, "y", highway.y)
-    pose = _append(segments, pose, "x", dock_xy.x)
     pose = _append(segments, pose, "y", dock_xy.y)
+    pose = _append(segments, pose, "x", dock_xy.x)
     pose = _append(segments, pose, "z", float(dock_z))
     pose = _append(segments, pose, "y", release_y)
     pose = _append(segments, pose, "z", CLEARANCE_Z)
@@ -272,6 +274,26 @@ def plan_home(current: Pose) -> list[Segment]:
     return segments
 
 
+def _validate_jog_magnitude(axis: str, delta: float) -> None:
+    magnitude = abs(delta)
+    if axis == "z":
+        if _matches_step(delta, Z_JOG_STEPS_MM):
+            return
+        if magnitude < CUSTOM_JOG_MIN_MM or magnitude > CUSTOM_JOG_MAX_Z_MM:
+            raise LidMotionError(
+                f"Z jog step must be 0.1, 1, 10 mm, or a custom value "
+                f"between {CUSTOM_JOG_MIN_MM:g} and {CUSTOM_JOG_MAX_Z_MM:g} mm."
+            )
+        return
+    if _matches_step(delta, XY_JOG_STEPS_MM):
+        return
+    if magnitude < CUSTOM_JOG_MIN_MM or magnitude > CUSTOM_JOG_MAX_XY_MM:
+        raise LidMotionError(
+            f"{axis.upper()} jog step must be 0.1, 1, 10 mm, or a custom value "
+            f"between {CUSTOM_JOG_MIN_MM:g} and {CUSTOM_JOG_MAX_XY_MM:g} mm."
+        )
+
+
 def validate_jog(axis: str, delta: float, z: float, *, lid_held: bool, needs_retract: bool) -> None:
     if axis not in ("x", "y", "z"):
         raise LidMotionError("Jog axis must be x, y, or z.")
@@ -280,18 +302,12 @@ def validate_jog(axis: str, delta: float, z: float, *, lid_held: bool, needs_ret
     if needs_retract:
         if axis != "z" or delta <= 0:
             raise LidMotionError("Raise Z to 0 before any other move.")
-        if not _matches_step(delta, Z_JOG_STEPS_MM):
-            raise LidMotionError("Z jog step must be 0.1, 1, or 10 mm.")
+        _validate_jog_magnitude("z", delta)
         return
     if lid_held:
         raise LidMotionError("Jog is disabled while a lid is held. Use Return lid or Park lid.")
     # X/Y may be jogged below Z = 0 while teaching inside a lid.
-    if axis in ("x", "y"):
-        if not _matches_step(delta, XY_JOG_STEPS_MM):
-            raise LidMotionError(f"{axis.upper()} jog step must be 0.1, 1, or 10 mm.")
-        return
-    if not _matches_step(delta, Z_JOG_STEPS_MM):
-        raise LidMotionError("Z jog step must be 0.1, 1, or 10 mm.")
+    _validate_jog_magnitude(axis, delta)
 
 
 def jog_target(current: Pose, axis: str, delta: float) -> Pose:
