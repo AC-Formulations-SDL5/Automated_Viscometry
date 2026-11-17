@@ -1552,6 +1552,26 @@ body.running .header-sweep {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
+.lid-dock-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lid-dock-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.lid-dock-label {
+    min-width: 52px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
 .lid-block-title {
     margin: 0;
     font-size: 0.78rem;

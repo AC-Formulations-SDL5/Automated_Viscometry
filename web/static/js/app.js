@@ -6367,16 +6367,33 @@ class ViscometryDashboard {
         this.el.lidSaveRow4 = document.getElementById("lid-save-row4");
         this.el.lidGotoRow1 = document.getElementById("lid-goto-row1");
         this.el.lidGotoRow4 = document.getElementById("lid-goto-row4");
+        this.el.lidSaveDock1Xy = document.getElementById("lid-save-dock1-xy");
+        this.el.lidSaveDock1Z = document.getElementById("lid-save-dock1-z");
+        this.el.lidGotoDock1 = document.getElementById("lid-goto-dock1");
+        this.el.lidSaveDock2Xy = document.getElementById("lid-save-dock2-xy");
+        this.el.lidSaveDock2Z = document.getElementById("lid-save-dock2-z");
+        this.el.lidGotoDock2 = document.getElementById("lid-goto-dock2");
+        this.el.lidSaveDock3Xy = document.getElementById("lid-save-dock3-xy");
+        this.el.lidSaveDock3Z = document.getElementById("lid-save-dock3-z");
+        this.el.lidGotoDock3 = document.getElementById("lid-goto-dock3");
         this.el.lidCell = document.getElementById("lid-cell");
         this.el.lidPickup = document.getElementById("lid-pickup");
         this.el.lidReturn = document.getElementById("lid-return");
+        this.el.lidPark = document.getElementById("lid-park");
+        this.el.lidHome = document.getElementById("lid-home");
+        this.el.calHomeGantry = document.getElementById("cal-home-gantry");
         this.el.lidPreview = document.getElementById("lid-cell-preview");
         this.el.lidHint = document.getElementById("lid-jog-hint");
         this.el.lidMessage = document.getElementById("lid-message");
         this.el.lidSavedSummary = document.getElementById("lid-saved-summary");
         this.el.lidJogButtons = document.querySelectorAll(".lid-jog-btn");
         this.el.lidStepButtons = document.querySelectorAll(".lid-step-btn");
+        if (this.el.calHomeGantry && !this.el.calHomeGantry.dataset.bound) {
+            this.el.calHomeGantry.dataset.bound = "1";
+            this.el.calHomeGantry.addEventListener("click", () => this.postLid("/api/testing/lid/home", {}));
+        }
         if (!card) {
+            this.updateLidUi();
             return;
         }
         if (this.el.lidCell && this.el.lidCell.options.length === 0) {
@@ -6410,12 +6427,43 @@ class ViscometryDashboard {
         this.el.lidSaveRow4?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "parking_row4" }));
         this.el.lidGotoRow1?.addEventListener("click", () => this.postLid("/api/testing/lid/parking", { row: 1 }));
         this.el.lidGotoRow4?.addEventListener("click", () => this.postLid("/api/testing/lid/parking", { row: 4 }));
+        this.el.lidSaveDock1Xy?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "dock1_xy" }));
+        this.el.lidSaveDock1Z?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "dock1_z" }));
+        this.el.lidGotoDock1?.addEventListener("click", () => this.postLid("/api/testing/lid/dock", { dock: 1 }));
+        this.el.lidSaveDock2Xy?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "dock2_xy" }));
+        this.el.lidSaveDock2Z?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "dock2_z" }));
+        this.el.lidGotoDock2?.addEventListener("click", () => this.postLid("/api/testing/lid/dock", { dock: 2 }));
+        this.el.lidSaveDock3Xy?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "dock3_xy" }));
+        this.el.lidSaveDock3Z?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "dock3_z" }));
+        this.el.lidGotoDock3?.addEventListener("click", () => this.postLid("/api/testing/lid/dock", { dock: 3 }));
         this.el.lidPickup?.addEventListener("click", () => {
             const cell = Number(this.el.lidCell?.value || 1);
             this.postLid("/api/testing/lid/pickup", { cell });
         });
         this.el.lidReturn?.addEventListener("click", () => this.postLid("/api/testing/lid/return", {}));
+        this.el.lidPark?.addEventListener("click", () => this.postLid("/api/testing/lid/park", {}));
+        this.el.lidHome?.addEventListener("click", () => this.postLid("/api/testing/lid/home", {}));
         this.updateLidUi();
+    }
+
+    _dockForCell(cellId) {
+        const cell = Number(cellId);
+        if (!Number.isFinite(cell) || cell < 1 || cell > 18) {
+            return null;
+        }
+        if (cell <= 6) return 1;
+        if (cell <= 12) return 2;
+        return 3;
+    }
+
+    _parkReadyForCell(cal, cellId) {
+        const dockId = this._dockForCell(cellId);
+        if (!dockId || !cal?.cell1_ready) {
+            return false;
+        }
+        const highway = cellId <= 12 ? cal.parking_row1 : cal.parking_row4;
+        const dock = cal.docks ? cal.docks[String(dockId)] : null;
+        return Boolean(highway && dock && dock.ready);
     }
 
     fetchLidStatus() {
@@ -6492,17 +6540,35 @@ class ViscometryDashboard {
                 node.disabled = disabled;
             }
         };
+        const teachLocked = locked || held || retract;
+        const docks = cal.docks || {};
         setDisabled(this.el.lidRead, running || busy);
         setDisabled(this.el.lidStop, running);
-        setDisabled(this.el.lidSaveLarge, locked || held || retract);
-        setDisabled(this.el.lidSaveSmall, locked || held || retract || !cal.cell1_large);
-        setDisabled(this.el.lidSaveRow1, locked || held || retract || !atClearance);
-        setDisabled(this.el.lidSaveRow4, locked || held || retract || !atClearance);
-        setDisabled(this.el.lidGotoRow1, locked || held || retract || !atClearance || !cal.parking_row1);
-        setDisabled(this.el.lidGotoRow4, locked || held || retract || !atClearance || !cal.parking_row4);
+        setDisabled(this.el.lidSaveLarge, teachLocked);
+        setDisabled(this.el.lidSaveSmall, teachLocked || !cal.cell1_large);
+        setDisabled(this.el.lidSaveRow1, teachLocked || !atClearance);
+        setDisabled(this.el.lidSaveRow4, teachLocked || !atClearance);
+        setDisabled(this.el.lidGotoRow1, teachLocked || !atClearance || !cal.parking_row1);
+        setDisabled(this.el.lidGotoRow4, teachLocked || !atClearance || !cal.parking_row4);
+        setDisabled(this.el.lidSaveDock1Xy, teachLocked || !atClearance);
+        setDisabled(this.el.lidSaveDock2Xy, teachLocked || !atClearance);
+        setDisabled(this.el.lidSaveDock3Xy, teachLocked || !atClearance);
+        setDisabled(this.el.lidSaveDock1Z, teachLocked || atClearance || !docks["1"]?.xy);
+        setDisabled(this.el.lidSaveDock2Z, teachLocked || atClearance || !docks["2"]?.xy);
+        setDisabled(this.el.lidSaveDock3Z, teachLocked || atClearance || !docks["3"]?.xy);
+        setDisabled(this.el.lidGotoDock1, teachLocked || !atClearance || !docks["1"]?.xy);
+        setDisabled(this.el.lidGotoDock2, teachLocked || !atClearance || !docks["2"]?.xy);
+        setDisabled(this.el.lidGotoDock3, teachLocked || !atClearance || !docks["3"]?.xy);
         setDisabled(this.el.lidCell, running);
         setDisabled(this.el.lidPickup, locked || held || retract || !cal.cell1_ready);
         setDisabled(this.el.lidReturn, running || busy || !held || retract || !known);
+        const heldCell = held ? Number(status.lid_held_cell) : Number(this.el.lidCell?.value || 1);
+        setDisabled(
+            this.el.lidPark,
+            running || busy || !held || retract || !known || !this._parkReadyForCell(cal, heldCell)
+        );
+        setDisabled(this.el.lidHome, locked || held || retract);
+        setDisabled(this.el.calHomeGantry, locked || held || retract);
 
         this.el.lidJogButtons?.forEach((btn) => {
             const axis = btn.dataset.lidJog;
@@ -6550,23 +6616,37 @@ class ViscometryDashboard {
 
         if (this.el.lidSavedSummary) {
             const shift = cal.shift_y != null ? `Shift ${Number(cal.shift_y).toFixed(3)} mm in Y` : "Shift not taught";
+            const dockLine = (id) => {
+                const dock = docks[String(id)];
+                if (!dock?.xy) {
+                    return `Dock ${id}: not saved`;
+                }
+                const zText = dock.z != null && Number.isFinite(Number(dock.z))
+                    ? `Z ${Number(dock.z).toFixed(3)}`
+                    : "Z not saved";
+                return `Dock ${id}: ${this.formatLidPose({ ...dock.xy, z: 0 })} · ${zText}`;
+            };
             this.el.lidSavedSummary.textContent = [
                 `Large hole: ${this.formatLidPose(cal.cell1_large)}`,
                 `Trapped: ${this.formatLidPose(cal.cell1_small)}`,
                 shift,
-                `Row 1 parking: ${this.formatLidPose(cal.parking_row1)}`,
-                `Row 4 parking: ${this.formatLidPose(cal.parking_row4)}`,
+                `Highway 1: ${this.formatLidPose(cal.parking_row1)}`,
+                `Highway 4: ${this.formatLidPose(cal.parking_row4)}`,
+                dockLine(1),
+                dockLine(2),
+                dockLine(3),
             ].join("\n");
         }
 
         if (this.el.lidPreview) {
             const cellId = String(this.el.lidCell?.value || "1");
             const preview = status.cells ? status.cells[cellId] : null;
+            const dockId = preview?.dock || this._dockForCell(cellId);
             if (!preview) {
                 this.el.lidPreview.textContent = "Teach cell 1 before a cell can be targeted.";
             } else {
                 this.el.lidPreview.textContent =
-                    `Cell ${cellId} large hole ${this.formatLidPose(preview.large)}. Trapped ${this.formatLidPose(preview.small)}.`;
+                    `Cell ${cellId} → dock ${dockId}. Large ${this.formatLidPose(preview.large)}. Trapped ${this.formatLidPose(preview.small)}.`;
             }
         }
 
@@ -6578,7 +6658,9 @@ class ViscometryDashboard {
             } else if (retract) {
                 this.el.lidHint.textContent = "Motion stopped below Z = 0. Only +Z is allowed until the tool is back at Z = 0.";
             } else if (held) {
-                this.el.lidHint.textContent = `Holding the lid from cell ${status.lid_held_cell}. Jogging is locked. Use Return lid.`;
+                const dockId = status.lid_held_dock || this._dockForCell(status.lid_held_cell);
+                this.el.lidHint.textContent =
+                    `Holding the lid from cell ${status.lid_held_cell} (dock ${dockId}). Jogging is locked. Use Return lid or Park lid.`;
             } else if (!atClearance) {
                 this.el.lidHint.textContent = "X is locked below Z = 0. Y moves are limited to 0.1 or 1 mm.";
             } else {
