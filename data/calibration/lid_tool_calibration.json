@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "clearance_z": 0.0,
+  "updated_at": "2026-11-17T14:06:53-05:00",
+  "cell1_large": {
+    "x": 142.0,
+    "y": 56.7,
+    "z": -26.0
+  },
+  "cell1_small": {
+    "x": 142.0,
+    "y": 34.7,
+    "z": -26.0
+  },
+  "parking_row1": null,
+  "parking_row4": null,
+  "dock1_xy": null,
+  "dock1_z": null,
+  "dock2_xy": null,
+  "dock2_z": null,
+  "dock3_xy": null,
+  "dock3_z": null
+}
