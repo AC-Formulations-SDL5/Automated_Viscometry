@@ -336,6 +336,7 @@ class ViscometryDashboard {
         this.testingSessionLastError = null;
         this.lidStatus = null;
         this.lidStep = 1;
+        this.lidStepMode = "preset";
         this.lidRequestInFlight = false;
         this.manualTerminateQueued = false;
         this.cellTerminationReasons = new Map();
@@ -6388,6 +6389,8 @@ class ViscometryDashboard {
         this.el.lidSavedSummary = document.getElementById("lid-saved-summary");
         this.el.lidJogButtons = document.querySelectorAll(".lid-jog-btn");
         this.el.lidStepButtons = document.querySelectorAll(".lid-step-btn");
+        this.el.lidCustomStep = document.getElementById("lid-custom-step");
+        this.el.lidStepCustomBtn = document.getElementById("lid-step-custom-btn");
         if (this.el.calHomeGantry && !this.el.calHomeGantry.dataset.bound) {
             this.el.calHomeGantry.dataset.bound = "1";
             this.el.calHomeGantry.addEventListener("click", () => this.postLid("/api/testing/lid/home", {}));
@@ -6407,16 +6410,46 @@ class ViscometryDashboard {
         }
         this.el.lidStepButtons.forEach((btn) => {
             btn.addEventListener("click", () => {
-                this.lidStep = Number(btn.dataset.lidStep);
+                const raw = btn.dataset.lidStep;
+                if (raw === "custom") {
+                    this.lidStepMode = "custom";
+                    this.lidStep = this._readCustomLidStep() ?? this.lidStep;
+                } else {
+                    this.lidStepMode = "preset";
+                    this.lidStep = Number(raw);
+                }
                 this.el.lidStepButtons.forEach((node) => node.classList.toggle("active", node === btn));
                 this.updateLidUi();
             });
+        });
+        this.el.lidCustomStep?.addEventListener("input", () => {
+            if (this.lidStepMode === "custom") {
+                const value = this._readCustomLidStep();
+                if (value != null) {
+                    this.lidStep = value;
+                }
+            }
+        });
+        this.el.lidCustomStep?.addEventListener("focus", () => {
+            this.lidStepMode = "custom";
+            this.el.lidStepButtons.forEach((node) => {
+                node.classList.toggle("active", node.dataset.lidStep === "custom");
+            });
+            const value = this._readCustomLidStep();
+            if (value != null) {
+                this.lidStep = value;
+            }
+            this.updateLidUi();
         });
         this.el.lidJogButtons.forEach((btn) => {
             btn.addEventListener("click", () => {
                 const axis = btn.dataset.lidJog;
                 const sign = Number(btn.dataset.lidSign);
-                this.jogLid(axis, sign * this.lidStep);
+                const step = this._resolveLidStep(axis);
+                if (step == null) {
+                    return;
+                }
+                this.jogLid(axis, sign * step);
             });
         });
         this.el.lidRead?.addEventListener("click", () => this.postLid("/api/testing/lid/read", {}));
@@ -6651,7 +6684,8 @@ class ViscometryDashboard {
                 this.el.lidHint.textContent =
                     `Holding the lid from cell ${status.lid_held_cell} (dock ${dockId}). Jogging is locked. Use Return lid or Park lid.`;
             } else {
-                this.el.lidHint.textContent = "X, Y, and Z jogs use 0.1 / 1 / 10 mm.";
+                this.el.lidHint.textContent =
+                    "Jog with 0.1 / 1 / 10 mm or Custom (X/Y up to 450 mm, Z up to 75 mm). Park uses highway X as a lane.";
             }
         }
 
@@ -6663,6 +6697,37 @@ class ViscometryDashboard {
             if (this.el.lidY) this.el.lidY.textContent = text(status.position.y, 3);
             if (this.el.lidZ) this.el.lidZ.textContent = text(status.position.z, 3);
         }
+    }
+
+    _readCustomLidStep() {
+        const raw = Number(this.el.lidCustomStep?.value);
+        if (!Number.isFinite(raw) || raw <= 0) {
+            return null;
+        }
+        return raw;
+    }
+
+    _resolveLidStep(axis) {
+        if (this.lidStepMode !== "custom") {
+            return Number(this.lidStep);
+        }
+        const value = this._readCustomLidStep();
+        if (value == null) {
+            this.setLidMessage("Enter a custom jog step greater than 0.", true);
+            return null;
+        }
+        const max = axis === "z" ? 75 : 450;
+        if (value < 0.01 || value > max) {
+            this.setLidMessage(
+                axis === "z"
+                    ? "Custom Z step must be between 0.01 and 75 mm."
+                    : "Custom X/Y step must be between 0.01 and 450 mm.",
+                true
+            );
+            return null;
+        }
+        this.lidStep = value;
+        return value;
     }
 
     jogLid(axis, delta) {

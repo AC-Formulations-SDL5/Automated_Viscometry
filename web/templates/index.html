@@ -1291,10 +1291,17 @@
                             </div>
                             <div class="lid-step-block">
                                 <span class="lid-step-label">Jog step (mm)</span>
-                                <div class="segmented lid-step-segmented" role="group" aria-label="Jog step">
-                                    <button type="button" class="seg lid-step-btn" data-lid-step="0.1">0.1</button>
-                                    <button type="button" class="seg lid-step-btn active" data-lid-step="1">1</button>
-                                    <button type="button" class="seg lid-step-btn" data-lid-step="10">10</button>
+                                <div class="lid-step-controls">
+                                    <div class="segmented lid-step-segmented" role="group" aria-label="Jog step">
+                                        <button type="button" class="seg lid-step-btn" data-lid-step="0.1">0.1</button>
+                                        <button type="button" class="seg lid-step-btn active" data-lid-step="1">1</button>
+                                        <button type="button" class="seg lid-step-btn" data-lid-step="10">10</button>
+                                        <button type="button" class="seg lid-step-btn" data-lid-step="custom" id="lid-step-custom-btn">Custom</button>
+                                    </div>
+                                    <label class="lid-custom-step-label" for="lid-custom-step">
+                                        <span>Custom</span>
+                                        <input id="lid-custom-step" type="number" min="0.01" max="450" step="0.01" value="50" inputmode="decimal">
+                                    </label>
                                 </div>
                             </div>
                             <div class="lid-jog-pad" aria-label="Jog axes">
@@ -1324,7 +1331,7 @@
                             </div>
                             <div class="lid-teach-block">
                                 <p class="lid-block-title">Highways</p>
-                                <p class="form-hint lid-inline-hint">Save at Z = 0 with no lid held. Cells 1–12 travel on row 1; cells 13–18 on row 4.</p>
+                                <p class="form-hint lid-inline-hint">Save at Z = 0 with no lid held. Park uses the taught X as a travel lane at the cell’s current Y, then moves back to the dock. Cells 1–12 use highway 1; cells 13–18 use highway 4.</p>
                                 <div class="lid-panel-actions">
                                     <button type="button" id="lid-save-row1" class="btn lid-action-btn">Save highway 1</button>
                                     <button type="button" id="lid-save-row4" class="btn lid-action-btn">Save highway 4</button>
