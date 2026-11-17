@@ -16,6 +16,8 @@ from viscometry.lid.motion import (
     assert_single_axis_plan,
     cell_poses,
     dock_for_cell,
+    highway_id_for_cell,
+    highway_key_for_cell,
     jog_feed,
     jog_target,
     plan_home,
@@ -35,6 +37,7 @@ SAVE_POSES = (
     "cell1_small",
     "parking_row1",
     "parking_row4",
+    "parking_row8",
     "dock1_xy",
     "dock1_z",
     "dock2_xy",
@@ -45,8 +48,9 @@ SAVE_POSES = (
 _POSE_LABELS = {
     "cell1_large": "large-hole pose on cell 1",
     "cell1_small": "trapped pose on cell 1",
-    "parking_row1": "highway row 1",
-    "parking_row4": "highway row 4",
+    "parking_row1": "highway 1",
+    "parking_row4": "highway 4",
+    "parking_row8": "highway 8",
     "dock1_xy": "dock 1 XY",
     "dock1_z": "dock 1 drop Z",
     "dock2_xy": "dock 2 XY",
@@ -54,7 +58,12 @@ _POSE_LABELS = {
     "dock3_xy": "dock 3 XY",
     "dock3_z": "dock 3 drop Z",
 }
-_HIGHWAY_POSES = ("parking_row1", "parking_row4")
+_HIGHWAY_POSES = ("parking_row1", "parking_row4", "parking_row8")
+_HIGHWAY_ROW_TO_KEY = {
+    1: "parking_row1",
+    4: "parking_row4",
+    8: "parking_row8",
+}
 _DOCK_XY_POSES = ("dock1_xy", "dock2_xy", "dock3_xy")
 _DOCK_Z_POSES = ("dock1_z", "dock2_z", "dock3_z")
 
@@ -106,6 +115,7 @@ class LidToolService:
                     "large": pose_dict(cell_large),
                     "small": pose_dict(cell_small),
                     "dock": dock_for_cell(cell_id),
+                    "highway": highway_id_for_cell(cell_id),
                 }
         shift_y = None
         if pair_ok and large is not None and small is not None:
@@ -124,6 +134,7 @@ class LidToolService:
                 "ready": xy is not None and z_val is not None and z_val < -Z_CLEARANCE_TOL_MM,
             }
         held_dock = dock_for_cell(self.lid_held_cell) if self.lid_held_cell else None
+        held_highway = highway_id_for_cell(self.lid_held_cell) if self.lid_held_cell else None
         return {
             "enabled": not bool(self.web.is_running),
             "busy": self.busy,
@@ -131,6 +142,7 @@ class LidToolService:
             "position": pose_dict(self.position) if self.position_known and self.position else None,
             "lid_held_cell": self.lid_held_cell,
             "lid_held_dock": held_dock,
+            "lid_held_highway": held_highway,
             "needs_retract": self.needs_retract,
             "last_error": self.last_error,
             "calibration": {
@@ -138,6 +150,7 @@ class LidToolService:
                 "cell1_small": pose_dict(small) if small else None,
                 "parking_row1": cal.get("parking_row1"),
                 "parking_row4": cal.get("parking_row4"),
+                "parking_row8": cal.get("parking_row8"),
                 "dock1_xy": cal.get("dock1_xy"),
                 "dock1_z": cal.get("dock1_z"),
                 "dock2_xy": cal.get("dock2_xy"),
@@ -380,8 +393,8 @@ class LidToolService:
         self._acquire()
         try:
             self._require_known()
-            if row not in (1, 4):
-                raise LidToolError("Highway row must be 1 or 4.")
+            if row not in _HIGHWAY_ROW_TO_KEY:
+                raise LidToolError("Highway must be 1, 4, or 8.")
             if self.lid_held_cell is not None:
                 raise LidToolError("Return or park the lid before moving to a highway.")
             if self.needs_retract:
@@ -389,10 +402,10 @@ class LidToolService:
             assert self.position is not None
             if abs(self.position.z) > Z_CLEARANCE_TOL_MM:
                 raise LidToolError("Move to Z = 0 before going to a highway.")
-            key = "parking_row1" if row == 1 else "parking_row4"
+            key = _HIGHWAY_ROW_TO_KEY[row]
             parking = pose_from(load_lid_calibration().get(key))
             if parking is None:
-                raise LidToolError(f"Highway row {row} is not saved yet.")
+                raise LidToolError(f"Highway {row} is not saved yet.")
             self.shift_completed = False
             self.engaged_cell = None
             self.dock_release_completed = False
@@ -402,8 +415,8 @@ class LidToolService:
             except LidMotionError as exc:
                 raise LidToolError(str(exc)) from exc
             self._run_segments(segments)
-            self.web.update_status(f"Testing: moved to highway row {row}")
-            return self._ok(f"Moved to highway row {row}.")
+            self.web.update_status(f"Testing: moved to highway {row}")
+            return self._ok(f"Moved to highway {row}.")
         finally:
             self._release()
 
@@ -554,11 +567,11 @@ class LidToolService:
     def _highway_and_dock_for_cell(self, cell: int) -> tuple[Pose, Pose, float]:
         cal = load_lid_calibration()
         dock_id = dock_for_cell(cell)
-        highway_key = "parking_row1" if cell <= 12 else "parking_row4"
+        highway_id = highway_id_for_cell(cell)
+        highway_key = highway_key_for_cell(cell)
         highway = pose_from(cal.get(highway_key))
         if highway is None:
-            label = "1" if cell <= 12 else "4"
-            raise LidToolError(f"Highway row {label} is not saved yet.")
+            raise LidToolError(f"Highway {highway_id} is not saved yet.")
         dock_xy = pose_from(cal.get(f"dock{dock_id}_xy"))
         if dock_xy is None:
             raise LidToolError(f"Dock {dock_id} XY is not saved yet.")

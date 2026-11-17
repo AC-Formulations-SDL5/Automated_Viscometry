@@ -1250,6 +1250,11 @@ body.running .header-sweep {
     display: block;
 }
 
+#testing-tab-button.active {
+    color: var(--color-yellow-text);
+    border-bottom-color: var(--color-yellow);
+}
+
 .testing-controls-card {
     display: flex;
     flex-direction: column;
@@ -1302,9 +1307,9 @@ body.running .header-sweep {
 }
 
 .testing-device {
-    border: 1px solid var(--glass-border);
+    border: 1px solid var(--color-yellow-border);
     border-radius: var(--radius-card);
-    background: var(--glass-white);
+    background: rgba(255, 159, 10, 0.08);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     padding: 14px;
@@ -1313,8 +1318,8 @@ body.running .header-sweep {
 }
 
 .testing-device:hover {
-    border-color: var(--accent-blue-border);
-    box-shadow: var(--shadow-glass-hover);
+    border-color: rgba(255, 159, 10, 0.55);
+    box-shadow: var(--shadow-glass-hover), 0 0 18px rgba(255, 159, 10, 0.12);
 }
 
 .testing-device-meta {
@@ -1439,9 +1444,9 @@ body.running .header-sweep {
 }
 
 .lid-panel {
-    border: 1px solid var(--glass-border);
+    border: 1px solid var(--color-yellow-border);
     border-radius: var(--radius-card);
-    background: var(--glass-white);
+    background: rgba(255, 159, 10, 0.07);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     padding: 14px;
@@ -1453,8 +1458,8 @@ body.running .header-sweep {
 }
 
 .lid-panel:hover {
-    border-color: var(--accent-blue-border);
-    box-shadow: var(--shadow-glass-hover);
+    border-color: rgba(255, 159, 10, 0.55);
+    box-shadow: var(--shadow-glass-hover), 0 0 18px rgba(255, 159, 10, 0.12);
 }
 
 .lid-panel-meta {
@@ -2004,6 +2009,23 @@ body.running .header-sweep {
 .card > * {
     position: relative;
     z-index: 1;
+}
+
+/* Amber glass chrome for Testing / Lid Tool */
+#testing-tab .card,
+#testing-tab .testing-controls-card,
+#testing-tab .lid-tool-card {
+    border-color: var(--color-yellow-border);
+    background:
+        linear-gradient(165deg, rgba(255, 159, 10, 0.14) 0%, rgba(255, 255, 255, 0.55) 42%, rgba(255, 255, 255, 0.72) 100%),
+        var(--glass-white);
+    box-shadow: var(--shadow-glass), 0 0 0 1px rgba(255, 159, 10, 0.08);
+}
+
+#testing-tab .card::before,
+#testing-tab .testing-controls-card::before,
+#testing-tab .lid-tool-card::before {
+    background: linear-gradient(135deg, rgba(255, 220, 160, 0.55) 0%, rgba(255, 255, 255, 0.08) 58%);
 }
 
 .card:hover {

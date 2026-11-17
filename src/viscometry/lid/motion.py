@@ -24,7 +24,7 @@ ENGAGE_FEED_MM_PER_MIN = 300
 XY_JOG_STEPS_MM = (0.1, 1.0, 10.0)
 Z_JOG_STEPS_MM = (0.1, 1.0, 10.0)
 CUSTOM_JOG_MIN_MM = 0.01
-CUSTOM_JOG_MAX_XY_MM = 450.0
+CUSTOM_JOG_MAX_XY_MM = 600.0
 CUSTOM_JOG_MAX_Z_MM = 75.0
 
 
@@ -198,12 +198,29 @@ def plan_move_to_parking_pose(current: Pose, parking: Pose) -> list[Segment]:
     return segments
 
 
-def parking_pose_for_cell(cell: int, row1: Pose, row4: Pose) -> Pose:
+def highway_id_for_cell(cell: int) -> int:
+    """Map a sample cell to highway 1, 4, or 8."""
     if cell < 1 or cell > 18:
         raise LidMotionError("Cell must be between 1 and 18.")
+    if cell <= 6:
+        return 1
     if cell <= 12:
+        return 4
+    return 8
+
+
+def highway_key_for_cell(cell: int) -> str:
+    highway_id = highway_id_for_cell(cell)
+    return {1: "parking_row1", 4: "parking_row4", 8: "parking_row8"}[highway_id]
+
+
+def parking_pose_for_cell(cell: int, row1: Pose, row4: Pose, row8: Pose) -> Pose:
+    highway_id = highway_id_for_cell(cell)
+    if highway_id == 1:
         return row1
-    return row4
+    if highway_id == 4:
+        return row4
+    return row8
 
 
 def dock_for_cell(cell: int) -> int:
@@ -217,12 +234,18 @@ def dock_for_cell(cell: int) -> int:
     return 3
 
 
-def plan_parking_route(current: Pose, cell: int, row1: Pose, row4: Pose) -> list[Segment]:
-    """Highway route: X onto row 1 or row 4, then Y to the back of that column.
+def plan_parking_route(
+    current: Pose,
+    cell: int,
+    row1: Pose,
+    row4: Pose,
+    row8: Pose,
+) -> list[Segment]:
+    """Empty-tool route onto the cell's highway pose (X then Y at Z = 0).
 
-    Cells 1–12 use the row 1 pose. Cells 13–18 use the row 4 pose.
+    Cells 1–6 use highway 1, 7–12 use highway 4, 13–18 use highway 8.
     """
-    target = parking_pose_for_cell(cell, row1, row4)
+    target = parking_pose_for_cell(cell, row1, row4, row8)
     return plan_move_to_parking_pose(current, target)
 
 
@@ -235,10 +258,11 @@ def plan_park_lid(
     large: Pose,
     small: Pose,
 ) -> list[Segment]:
-    """Carry a held lid to a dock via the highway X-lane, drop, release +Y, and lift.
+    """Carry a held lid to a right-side dock via the highway X-lane.
 
     Highway is an X corridor only: shift onto highway.x at the current Y, travel
-    in Y to the dock, then X onto the dock. Highway.y is ignored for parking.
+    in Y to the dock row, then X onto the dock (extreme right). Highway.y is
+    ignored for parking.
     """
     validate_trapped_pose(large, small)
     if abs(current.z) > Z_CLEARANCE_TOL_MM:

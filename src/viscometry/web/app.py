@@ -371,7 +371,7 @@ class ViscometryWebInterface:
 
         # Platform configuration from your code
         self.X_LOW_BOUND = 0
-        self.X_HIGH_BOUND = 450
+        self.X_HIGH_BOUND = 600
         self.Y_LOW_BOUND = 0
         self.Y_HIGH_BOUND = 400
         
@@ -645,7 +645,7 @@ class ViscometryWebInterface:
             try:
                 row = int(payload.get('row'))
             except (TypeError, ValueError):
-                return jsonify({'ok': False, 'error': 'Highway row must be 1 or 4.', 'lid': self.lid_tool.status()}), 400
+                return jsonify({'ok': False, 'error': 'Highway must be 1, 4, or 8.', 'lid': self.lid_tool.status()}), 400
             return self._lid_response(lambda: self.lid_tool.move_to_parking(row))
 
         @self.app.route('/api/testing/lid/park', methods=['POST'])
