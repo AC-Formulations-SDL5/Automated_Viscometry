@@ -39,21 +39,80 @@ def _canonical_path() -> Path:
     return calibration_file("per_cell_z_calibration.json")
 
 
+def _read_calibrated_at(path: Path) -> datetime | None:
+    """Best-effort parse of calibrated_at from a calibration JSON file."""
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        raw = data.get("calibrated_at") if isinstance(data, dict) else None
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        text = raw.strip()
+        # Support both "+HH:MM" and the compact "+HHMM" forms.
+        if len(text) >= 5 and text[-5] in "+-" and text[-3] != ":":
+            text = f"{text[:-2]}:{text[-2:]}"
+        return datetime.fromisoformat(text)
+    except Exception:
+        return None
+
+
+def _candidate_calibration_paths() -> list[Path]:
+    """Existing calibration JSON candidates (canonical first, then legacy)."""
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for path in (_canonical_path(), *_legacy_read_paths()):
+        try:
+            resolved = path.resolve()
+        except Exception:
+            resolved = path
+        if resolved in seen or not path.is_file():
+            continue
+        seen.add(resolved)
+        paths.append(path)
+    return paths
+
+
 def _get_path() -> Path:
-    """Resolve read path: canonical location, then pre-restructure legacy paths."""
-    canonical = _canonical_path()
-    if canonical.is_file():
-        return canonical
-    for legacy in _legacy_read_paths():
-        if legacy.is_file():
-            return legacy
-    return canonical
+    """Resolve read path: newest calibrated_at among canonical + legacy copies."""
+    candidates = _candidate_calibration_paths()
+    if not candidates:
+        return _canonical_path()
+    if len(candidates) == 1:
+        return candidates[0]
+
+    def sort_key(path: Path) -> tuple:
+        stamp = _read_calibrated_at(path)
+        # Newer timestamps first; unknown stamps sort last; canonical wins ties.
+        is_canonical = path == _canonical_path() or path.resolve() == _canonical_path().resolve()
+        return (
+            0 if stamp is not None else 1,
+            -(stamp.timestamp()) if stamp is not None else 0.0,
+            0 if is_canonical else 1,
+            str(path),
+        )
+
+    return sorted(candidates, key=sort_key)[0]
 
 
 def _maybe_migrate_legacy_calibration(source: Path) -> None:
-    """Copy legacy calibration JSON into data/calibration/ on first read."""
+    """Copy selected calibration JSON into data/calibration/ when newer or missing."""
     canonical = _canonical_path()
-    if canonical.is_file() or not source.is_file():
+    if not source.is_file():
+        return
+    try:
+        if source.resolve() == canonical.resolve():
+            return
+    except Exception:
+        if source == canonical:
+            return
+
+    should_copy = not canonical.is_file()
+    if canonical.is_file():
+        source_ts = _read_calibrated_at(source)
+        canonical_ts = _read_calibrated_at(canonical)
+        if source_ts is not None and (canonical_ts is None or source_ts > canonical_ts):
+            should_copy = True
+    if not should_copy:
         return
     try:
         ensure_calibration_dir()
