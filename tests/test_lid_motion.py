@@ -15,6 +15,7 @@ from viscometry.lid.motion import (
     assert_single_axis_plan,
     cell_poses,
     dock_for_cell,
+    highway_id_for_cell,
     plan_home,
     plan_park_lid,
     plan_parking_route,
@@ -98,6 +99,24 @@ def test_dock_mapping_follows_sample_rows():
         dock_for_cell(0)
 
 
+def test_highway_mapping_follows_sample_rows():
+    assert highway_id_for_cell(1) == 1
+    assert highway_id_for_cell(6) == 1
+    assert highway_id_for_cell(7) == 4
+    assert highway_id_for_cell(12) == 4
+    assert highway_id_for_cell(13) == 8
+    assert highway_id_for_cell(18) == 8
+    with pytest.raises(LidMotionError):
+        highway_id_for_cell(0)
+
+
+def test_machine_bounds_are_x600_y400():
+    assert CNC_Machine.X_HIGH_BOUND == 600
+    assert CNC_Machine.Y_HIGH_BOUND == 400
+    assert CNC_Machine.X_LOW_BOUND == 0
+    assert CNC_Machine.Y_LOW_BOUND == 0
+
+
 def test_park_lid_uses_highway_x_lane_then_dock_then_release():
     current = Pose(100.0, 50.0, 0.0)
     # Highway Y is intentionally far forward; park must ignore it and keep lane travel at dock Y.
@@ -147,10 +166,11 @@ def test_park_lid_uses_highway_x_lane_then_dock_then_release():
 
 def test_custom_jog_steps_are_allowed_within_bounds():
     validate_jog("x", 120.0, z=0.0, lid_held=False, needs_retract=False)
+    validate_jog("x", 600.0, z=0.0, lid_held=False, needs_retract=False)
     validate_jog("y", -85.5, z=-2.0, lid_held=False, needs_retract=False)
     validate_jog("z", 25.0, z=0.0, lid_held=False, needs_retract=False)
     with pytest.raises(LidMotionError):
-        validate_jog("x", 500.0, z=0.0, lid_held=False, needs_retract=False)
+        validate_jog("x", 600.1, z=0.0, lid_held=False, needs_retract=False)
     with pytest.raises(LidMotionError):
         validate_jog("z", 80.0, z=0.0, lid_held=False, needs_retract=False)
 
@@ -194,8 +214,9 @@ def test_parking_route_selects_row_then_moves_x_before_y():
     current = Pose(100.0, 50.0, -3.0)
     row1 = Pose(12.0, 320.0, 0.0)
     row4 = Pose(240.0, 330.0, 0.0)
+    row8 = Pose(480.0, 340.0, 0.0)
 
-    to_row1 = plan_parking_route(current, 12, row1, row4)
+    to_row1 = plan_parking_route(current, 6, row1, row4, row8)
     assert [(seg.axis, seg.target) for seg in to_row1] == [
         ("z", 0.0),
         ("x", row1.x),
@@ -203,13 +224,19 @@ def test_parking_route_selects_row_then_moves_x_before_y():
     ]
     assert_single_axis_plan(current, to_row1)
 
-    to_row4 = plan_parking_route(Pose(100.0, 50.0, 0.0), 13, row1, row4)
+    to_row4 = plan_parking_route(Pose(100.0, 50.0, 0.0), 7, row1, row4, row8)
     assert [(seg.axis, seg.target) for seg in to_row4] == [
         ("x", row4.x),
         ("y", row4.y),
     ]
-    assert plan_parking_route(current, 1, row1, row4)[1].target == row1.x
-    assert plan_parking_route(current, 18, row1, row4)[1].target == row4.x
+    to_row8 = plan_parking_route(Pose(100.0, 50.0, 0.0), 13, row1, row4, row8)
+    assert [(seg.axis, seg.target) for seg in to_row8] == [
+        ("x", row8.x),
+        ("y", row8.y),
+    ]
+    assert plan_parking_route(current, 1, row1, row4, row8)[1].target == row1.x
+    assert plan_parking_route(current, 12, row1, row4, row8)[1].target == row4.x
+    assert plan_parking_route(current, 18, row1, row4, row8)[1].target == row8.x
 
 
 def test_calibration_roundtrip(tmp_path, monkeypatch):
@@ -227,18 +254,21 @@ def test_calibration_roundtrip(tmp_path, monkeypatch):
         "cell1_small": {"x": 40, "y": 70, "z": -12},
         "parking_row1": {"x": 12, "y": 320, "z": 0},
         "parking_row4": {"x": 240, "y": 330, "z": 0},
+        "parking_row8": {"x": 480, "y": 340, "z": 0},
         "dock1_xy": {"x": 10, "y": 350, "z": 0},
         "dock1_z": -9.5,
         "dock2_xy": {"x": 85, "y": 350, "z": 0},
         "dock2_z": -9.5,
-        "dock3_xy": {"x": 309, "y": 350, "z": 0},
+        "dock3_xy": {"x": 520, "y": 350, "z": 0},
         "dock3_z": -9.25,
     })
     assert saved["clearance_z"] == 0.0
     loaded = load_lid_calibration()
     assert loaded["cell1_large"]["z"] == -12
     assert loaded["parking_row4"]["x"] == 240
+    assert loaded["parking_row8"]["x"] == 480
     assert loaded["dock2_xy"]["x"] == 85
+    assert loaded["dock3_xy"]["x"] == 520
     assert loaded["dock3_z"] == pytest.approx(-9.25)
     assert (tmp_path / "lid_tool_calibration.json").is_file()
 

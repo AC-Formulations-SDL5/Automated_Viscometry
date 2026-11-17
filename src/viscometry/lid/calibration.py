@@ -29,6 +29,7 @@ def empty_lid_calibration() -> dict[str, Any]:
         "cell1_small": None,
         "parking_row1": None,
         "parking_row4": None,
+        "parking_row8": None,
         "dock1_xy": None,
         "dock1_z": None,
         "dock2_xy": None,

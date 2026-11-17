@@ -46,7 +46,7 @@ def format_single_axis_gcode(axis: str, target: float, feed: int) -> str:
 class CNC_Machine:
     BAUD_RATE = 115200
     SERIAL_PORT = "COM5"  # CNC / GRBL
-    X_LOW_BOUND = 0;   X_HIGH_BOUND = 450
+    X_LOW_BOUND = 0;   X_HIGH_BOUND = 600
     Y_LOW_BOUND = 0;   Y_HIGH_BOUND = 400
     Z_LOW_BOUND = -75; Z_HIGH_BOUND = 0
 
