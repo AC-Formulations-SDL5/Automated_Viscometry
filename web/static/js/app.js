@@ -6578,18 +6578,6 @@ class ViscometryDashboard {
             if (!disabled && retract) {
                 disabled = !(axis === "z" && sign > 0);
             }
-            if (!disabled && axis === "x" && !atClearance) {
-                disabled = true;
-            }
-            if (!disabled && axis === "z" && this.lidStep > 1.001) {
-                disabled = true;
-            }
-            if (!disabled && axis === "y" && !atClearance && this.lidStep > 1.001) {
-                disabled = true;
-            }
-            if (!disabled && axis === "x" && this.lidStep > 10.001) {
-                disabled = true;
-            }
             btn.disabled = disabled;
         });
 
@@ -6662,10 +6650,8 @@ class ViscometryDashboard {
                 const dockId = status.lid_held_dock || this._dockForCell(status.lid_held_cell);
                 this.el.lidHint.textContent =
                     `Holding the lid from cell ${status.lid_held_cell} (dock ${dockId}). Jogging is locked. Use Return lid or Park lid.`;
-            } else if (!atClearance) {
-                this.el.lidHint.textContent = "X is locked below Z = 0. Y moves are limited to 0.1 or 1 mm.";
             } else {
-                this.el.lidHint.textContent = "X and Y move only at Z = 0. A 10 mm step is for X and Y at clearance. Z uses 0.1 or 1 mm.";
+                this.el.lidHint.textContent = "X, Y, and Z jogs use 0.1 / 1 / 10 mm.";
             }
         }
 
@@ -6680,16 +6666,6 @@ class ViscometryDashboard {
     }
 
     jogLid(axis, delta) {
-        const z = this.lidStatus?.position ? Number(this.lidStatus.position.z) : 0;
-        const atClearance = Math.abs(z) <= 0.05;
-        if (axis === "z" && Math.abs(delta) > 1.001) {
-            this.setLidMessage("Z jog uses 0.1 or 1 mm.", true);
-            return;
-        }
-        if (axis === "y" && !atClearance && Math.abs(delta) > 1.001) {
-            this.setLidMessage("Below Z = 0, Y jog is limited to 0.1 or 1 mm.", true);
-            return;
-        }
         this.postLid("/api/testing/lid/jog", { axis, delta });
     }
 

@@ -77,15 +77,14 @@ def test_multi_axis_segment_is_rejected():
         single_axis_segment(Pose(0, 0, 0), feed=100, x=1, y=2)
 
 
-def test_x_jog_blocked_below_clearance_and_y_is_limited():
-    with pytest.raises(LidMotionError):
-        validate_jog("x", 1.0, z=-2.0, lid_held=False, needs_retract=False)
+def test_xy_jog_allowed_below_clearance_for_teaching():
+    validate_jog("x", 1.0, z=-2.0, lid_held=False, needs_retract=False)
     validate_jog("y", -1.0, z=-2.0, lid_held=False, needs_retract=False)
-    with pytest.raises(LidMotionError):
-        validate_jog("y", -10.0, z=-2.0, lid_held=False, needs_retract=False)
+    validate_jog("y", -10.0, z=-2.0, lid_held=False, needs_retract=False)
+    validate_jog("x", 10.0, z=-2.0, lid_held=False, needs_retract=False)
     validate_jog("x", 10.0, z=0.0, lid_held=False, needs_retract=False)
-    with pytest.raises(LidMotionError):
-        validate_jog("z", 10.0, z=0.0, lid_held=False, needs_retract=False)
+    validate_jog("z", 10.0, z=0.0, lid_held=False, needs_retract=False)
+    validate_jog("z", 1.0, z=-4.0, lid_held=False, needs_retract=True)
 
 
 def test_dock_mapping_follows_sample_rows():
