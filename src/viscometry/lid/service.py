@@ -440,11 +440,23 @@ class LidToolService:
     def home(self) -> dict:
         self._acquire()
         try:
-            self._require_known()
             if self.lid_held_cell is not None:
                 raise LidToolError("Return or park the lid before homing.")
             if self.needs_retract:
                 raise LidToolError("Raise Z to 0 before homing.")
+            if not self.position_known or self.position is None:
+                cnc = self._machine()
+                cnc.should_abort = self._should_abort
+                try:
+                    raw = cnc.read_position(allow_abort=True)
+                except CNCMotionAbort as exc:
+                    self._apply_abort_position(exc)
+                    self.last_error = "Lid motion stopped"
+                    raise LidToolError("Lid motion stopped", 409) from exc
+                except CNCMotionError as exc:
+                    self.last_error = str(exc)
+                    raise LidToolError(str(exc), 503) from exc
+                self._set_position(Pose(*raw))
             assert self.position is not None
             self.shift_completed = False
             self.engaged_cell = None
@@ -673,8 +685,10 @@ class LidToolService:
             self.lid_held_cell = self.engaged_cell
 
     def _ok(self, message: str) -> dict:
+        """Build a success payload. Force busy=False so the UI unlocks after this request."""
         self.last_error = None
         status = self.status()
+        status["busy"] = False
         return {
             "ok": True,
             "message": message,

@@ -6567,8 +6567,9 @@ class ViscometryDashboard {
             this.el.lidPark,
             running || busy || !held || retract || !known || !this._parkReadyForCell(cal, heldCell)
         );
-        setDisabled(this.el.lidHome, locked || held || retract);
-        setDisabled(this.el.calHomeGantry, locked || held || retract);
+        // Home can auto-read position; only block during a run, active motion, held lid, or retract.
+        setDisabled(this.el.lidHome, running || busy || held || retract);
+        setDisabled(this.el.calHomeGantry, running || busy || held || retract);
 
         this.el.lidJogButtons?.forEach((btn) => {
             const axis = btn.dataset.lidJog;
@@ -6715,6 +6716,8 @@ class ViscometryDashboard {
             const lidStatus = payload?.lid
                 || (payload && Object.prototype.hasOwnProperty.call(payload, "position_known") ? payload : null);
             if (lidStatus) {
+                // Request is complete on the wire; never keep a stale busy lock from the response.
+                lidStatus.busy = false;
                 this.applyLidStatus(lidStatus);
             }
             if (!response.ok || payload.ok === false) {
@@ -6727,6 +6730,9 @@ class ViscometryDashboard {
         } finally {
             if (!allowDuringMotion) {
                 this.lidRequestInFlight = false;
+                if (this.lidStatus && typeof this.lidStatus === "object") {
+                    this.lidStatus.busy = false;
+                }
                 this.updateLidUi();
             }
         }

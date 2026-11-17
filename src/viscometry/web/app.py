@@ -2182,7 +2182,9 @@ class ViscometryWebInterface:
         try:
             return jsonify(action())
         except LidToolError as exc:
-            return jsonify({'ok': False, 'error': str(exc), 'lid': self.lid_tool.status()}), exc.status_code
+            status = self.lid_tool.status()
+            status['busy'] = False
+            return jsonify({'ok': False, 'error': str(exc), 'lid': status}), exc.status_code
         except Exception as exc:
             print(f"Error in lid tool request: {exc}")
             return jsonify({'ok': False, 'error': str(exc)}), 500

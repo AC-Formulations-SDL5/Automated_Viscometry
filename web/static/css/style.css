@@ -4515,8 +4515,10 @@ body.loading .skeleton-lines {
         grid-template-columns: 1fr;
     }
 
-    .cal-actions.cal-actions-four {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .cal-actions.cal-actions-four .cal-start-btn,
+    .cal-actions.cal-actions-four .control-btn,
+    .cal-actions.cal-actions-four .lid-action-btn {
+        flex: 1 1 calc(50% - 8px);
     }
 
     .run-settings-primary-row {
@@ -4827,16 +4829,17 @@ body.experiment-name-prompt-active {
 }
 
 .cal-actions.cal-actions-four {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     align-items: stretch;
 }
 
 .cal-actions.cal-actions-four .cal-start-btn,
-.cal-actions.cal-actions-four .control-btn {
-    width: 100%;
+.cal-actions.cal-actions-four .control-btn,
+.cal-actions.cal-actions-four .lid-action-btn {
     min-height: 40px;
+    flex: 1 1 160px;
 }
 
 .cal-start-btn {
