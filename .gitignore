@@ -11,8 +11,7 @@ env/
 # Auto-produced experiment outputs
 results/web_experiment_history.json
 
-# Machine-specific calibration (discovery baseline may be committed separately)
-data/calibration/per_cell_z_calibration.json
+# Discovery baseline may still be machine-local; per-cell Z calibration is tracked.
 
 # OS / editor
 .DS_Store
