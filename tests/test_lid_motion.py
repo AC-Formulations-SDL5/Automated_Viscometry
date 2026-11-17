@@ -14,6 +14,9 @@ from viscometry.lid.motion import (
     Segment,
     assert_single_axis_plan,
     cell_poses,
+    dock_for_cell,
+    plan_home,
+    plan_park_lid,
     plan_parking_route,
     plan_pickup,
     plan_return,
@@ -85,6 +88,76 @@ def test_x_jog_blocked_below_clearance_and_y_is_limited():
         validate_jog("z", 10.0, z=0.0, lid_held=False, needs_retract=False)
 
 
+def test_dock_mapping_follows_sample_rows():
+    assert dock_for_cell(1) == 1
+    assert dock_for_cell(6) == 1
+    assert dock_for_cell(7) == 2
+    assert dock_for_cell(12) == 2
+    assert dock_for_cell(13) == 3
+    assert dock_for_cell(18) == 3
+    with pytest.raises(LidMotionError):
+        dock_for_cell(0)
+
+
+def test_park_lid_uses_highway_then_dock_then_release():
+    current = Pose(100.0, 50.0, 0.0)
+    highway = Pose(12.0, 320.0, 0.0)
+    dock_xy = Pose(40.0, 340.0, 0.0)
+    dock_z = -8.0
+    segments = plan_park_lid(
+        current,
+        highway=highway,
+        dock_xy=dock_xy,
+        dock_z=dock_z,
+        large=LARGE,
+        small=SMALL,
+    )
+    release_y = dock_xy.y + (LARGE.y - SMALL.y)
+    assert [(seg.axis, seg.target) for seg in segments] == [
+        ("x", highway.x),
+        ("y", highway.y),
+        ("x", dock_xy.x),
+        ("y", dock_xy.y),
+        ("z", dock_z),
+        ("y", release_y),
+        ("z", 0.0),
+    ]
+    assert_single_axis_plan(current, segments)
+    assert release_y > dock_xy.y
+
+    with pytest.raises(LidMotionError):
+        plan_park_lid(
+            current,
+            highway=highway,
+            dock_xy=dock_xy,
+            dock_z=0.0,
+            large=LARGE,
+            small=SMALL,
+        )
+    with pytest.raises(LidMotionError):
+        plan_park_lid(
+            Pose(100.0, 50.0, -1.0),
+            highway=highway,
+            dock_xy=dock_xy,
+            dock_z=dock_z,
+            large=LARGE,
+            small=SMALL,
+        )
+
+
+def test_home_plan_is_z_then_x_then_y():
+    current = Pose(40.0, 80.0, -5.0)
+    segments = plan_home(current)
+    assert [(seg.axis, seg.target) for seg in segments] == [
+        ("z", 0.0),
+        ("x", 0.0),
+        ("y", 0.0),
+    ]
+    assert_single_axis_plan(current, segments)
+    already = plan_home(Pose(0.0, 0.0, 0.0))
+    assert already == []
+
+
 def test_held_lid_blocks_jog_and_retract_allows_only_positive_z():
     with pytest.raises(LidMotionError):
         validate_jog("y", -1.0, z=0.0, lid_held=True, needs_retract=False)
@@ -144,15 +217,24 @@ def test_calibration_roundtrip(tmp_path, monkeypatch):
         "cell1_small": {"x": 40, "y": 70, "z": -12},
         "parking_row1": {"x": 12, "y": 320, "z": 0},
         "parking_row4": {"x": 240, "y": 330, "z": 0},
+        "dock1_xy": {"x": 10, "y": 350, "z": 0},
+        "dock1_z": -9.5,
+        "dock2_xy": {"x": 85, "y": 350, "z": 0},
+        "dock2_z": -9.5,
+        "dock3_xy": {"x": 309, "y": 350, "z": 0},
+        "dock3_z": -9.25,
     })
     assert saved["clearance_z"] == 0.0
     loaded = load_lid_calibration()
     assert loaded["cell1_large"]["z"] == -12
     assert loaded["parking_row4"]["x"] == 240
+    assert loaded["dock2_xy"]["x"] == 85
+    assert loaded["dock3_z"] == pytest.approx(-9.25)
     assert (tmp_path / "lid_tool_calibration.json").is_file()
 
     (tmp_path / "lid_tool_calibration.json").write_text("{", encoding="utf-8")
     assert load_lid_calibration()["cell1_large"] is None
+    assert load_lid_calibration()["dock1_xy"] is None
 
 
 def test_virtual_session_reports_each_single_axis_move_and_stops_between_them():

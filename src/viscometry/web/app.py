@@ -645,8 +645,25 @@ class ViscometryWebInterface:
             try:
                 row = int(payload.get('row'))
             except (TypeError, ValueError):
-                return jsonify({'ok': False, 'error': 'Parking row must be 1 or 4.', 'lid': self.lid_tool.status()}), 400
+                return jsonify({'ok': False, 'error': 'Highway row must be 1 or 4.', 'lid': self.lid_tool.status()}), 400
             return self._lid_response(lambda: self.lid_tool.move_to_parking(row))
+
+        @self.app.route('/api/testing/lid/park', methods=['POST'])
+        def api_testing_lid_park():
+            return self._lid_response(self.lid_tool.park_lid)
+
+        @self.app.route('/api/testing/lid/dock', methods=['POST'])
+        def api_testing_lid_dock():
+            payload = request.get_json(silent=True) or {}
+            try:
+                dock = int(payload.get('dock'))
+            except (TypeError, ValueError):
+                return jsonify({'ok': False, 'error': 'Dock must be 1, 2, or 3.', 'lid': self.lid_tool.status()}), 400
+            return self._lid_response(lambda: self.lid_tool.move_to_dock(dock))
+
+        @self.app.route('/api/testing/lid/home', methods=['POST'])
+        def api_testing_lid_home():
+            return self._lid_response(self.lid_tool.home)
 
         @self.app.route('/api/testing/lid/stop', methods=['POST'])
         def api_testing_lid_stop():

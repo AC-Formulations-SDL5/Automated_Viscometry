@@ -274,6 +274,7 @@
                                 </button>
                                 <button type="button" id="cal-stop-btn" class="btn btn-stop control-btn control-btn-stop hidden">Stop Calibration</button>
                                 <button type="button" id="cal-terminate-current-cell" class="btn control-btn control-btn-stop terminate-current-cell-btn hidden">Stop calibration in this cell</button>
+                                <button type="button" id="cal-home-gantry" class="btn subtle lid-action-btn">Home gantry</button>
                             </div>
                             <span id="cal-action-hint" class="cal-action-hint">Complete the checklist above to enable calibration</span>
                         </div>
@@ -1311,7 +1312,7 @@
                         <article class="lid-panel lid-panel-teach">
                             <div class="lid-panel-meta">
                                 <h3>Teach</h3>
-                                <span class="lid-panel-caption">Cell 1 and parking columns</span>
+                                <span class="lid-panel-caption">Cell 1, highways, and docks</span>
                             </div>
                             <div class="lid-teach-block">
                                 <p class="lid-block-title">Cell 1 poses</p>
@@ -1321,15 +1322,39 @@
                                 </div>
                             </div>
                             <div class="lid-teach-block">
-                                <p class="lid-block-title">Parking columns</p>
-                                <p class="form-hint lid-inline-hint">Save at Z = 0 with no lid held. Cells 1–12 use row 1; cells 13–18 use row 4.</p>
+                                <p class="lid-block-title">Highways</p>
+                                <p class="form-hint lid-inline-hint">Save at Z = 0 with no lid held. Cells 1–12 travel on row 1; cells 13–18 on row 4.</p>
                                 <div class="lid-panel-actions">
-                                    <button type="button" id="lid-save-row1" class="btn lid-action-btn">Save row 1</button>
-                                    <button type="button" id="lid-save-row4" class="btn lid-action-btn">Save row 4</button>
+                                    <button type="button" id="lid-save-row1" class="btn lid-action-btn">Save highway 1</button>
+                                    <button type="button" id="lid-save-row4" class="btn lid-action-btn">Save highway 4</button>
                                 </div>
                                 <div class="lid-panel-actions">
-                                    <button type="button" id="lid-goto-row1" class="btn subtle lid-action-btn">Move to row 1</button>
-                                    <button type="button" id="lid-goto-row4" class="btn subtle lid-action-btn">Move to row 4</button>
+                                    <button type="button" id="lid-goto-row1" class="btn subtle lid-action-btn">Move to highway 1</button>
+                                    <button type="button" id="lid-goto-row4" class="btn subtle lid-action-btn">Move to highway 4</button>
+                                </div>
+                            </div>
+                            <div class="lid-teach-block">
+                                <p class="lid-block-title">Docks</p>
+                                <p class="form-hint lid-inline-hint">Save XY at Z = 0 above each dock, then jog down and save drop Z. Cells 1–6 → dock 1, 7–12 → dock 2, 13–18 → dock 3.</p>
+                                <div class="lid-dock-grid">
+                                    <div class="lid-dock-row">
+                                        <span class="lid-dock-label">Dock 1</span>
+                                        <button type="button" id="lid-save-dock1-xy" class="btn lid-action-btn">Save XY</button>
+                                        <button type="button" id="lid-save-dock1-z" class="btn lid-action-btn">Save Z</button>
+                                        <button type="button" id="lid-goto-dock1" class="btn subtle lid-action-btn">Move</button>
+                                    </div>
+                                    <div class="lid-dock-row">
+                                        <span class="lid-dock-label">Dock 2</span>
+                                        <button type="button" id="lid-save-dock2-xy" class="btn lid-action-btn">Save XY</button>
+                                        <button type="button" id="lid-save-dock2-z" class="btn lid-action-btn">Save Z</button>
+                                        <button type="button" id="lid-goto-dock2" class="btn subtle lid-action-btn">Move</button>
+                                    </div>
+                                    <div class="lid-dock-row">
+                                        <span class="lid-dock-label">Dock 3</span>
+                                        <button type="button" id="lid-save-dock3-xy" class="btn lid-action-btn">Save XY</button>
+                                        <button type="button" id="lid-save-dock3-z" class="btn lid-action-btn">Save Z</button>
+                                        <button type="button" id="lid-goto-dock3" class="btn subtle lid-action-btn">Move</button>
+                                    </div>
                                 </div>
                             </div>
                             <div id="lid-saved-summary" class="lid-saved-summary">No poses saved yet.</div>
@@ -1338,7 +1363,7 @@
                         <article class="lid-panel lid-panel-test">
                             <div class="lid-panel-meta">
                                 <h3>Pickup test</h3>
-                                <span class="lid-panel-caption">Pick and return on a cell</span>
+                                <span class="lid-panel-caption">Pick, return, or park</span>
                             </div>
                             <label class="lid-cell-label" for="lid-cell">
                                 <span>Target cell</span>
@@ -1347,6 +1372,10 @@
                             <div class="lid-panel-actions">
                                 <button type="button" id="lid-pickup" class="btn control-btn-start lid-action-btn">Pick up lid</button>
                                 <button type="button" id="lid-return" class="btn subtle control-btn-stop lid-action-btn">Return lid</button>
+                                <button type="button" id="lid-park" class="btn lid-action-btn">Park lid</button>
+                            </div>
+                            <div class="lid-panel-actions">
+                                <button type="button" id="lid-home" class="btn subtle lid-action-btn">Home</button>
                             </div>
                             <p id="lid-cell-preview" class="form-hint lid-inline-hint">Teach cell 1 before a cell can be targeted.</p>
                         </article>

@@ -204,14 +204,73 @@ def parking_pose_for_cell(cell: int, row1: Pose, row4: Pose) -> Pose:
     return row4
 
 
+def dock_for_cell(cell: int) -> int:
+    """Map a sample cell to dock 1, 2, or 3 by sample row."""
+    if cell < 1 or cell > 18:
+        raise LidMotionError("Cell must be between 1 and 18.")
+    if cell <= 6:
+        return 1
+    if cell <= 12:
+        return 2
+    return 3
+
+
 def plan_parking_route(current: Pose, cell: int, row1: Pose, row4: Pose) -> list[Segment]:
-    """Future carry route: X onto row 1 or row 4, then Y to the back of that column.
+    """Highway route: X onto row 1 or row 4, then Y to the back of that column.
 
     Cells 1–12 use the row 1 pose. Cells 13–18 use the row 4 pose.
-    This planner is not wired to a button that carries a lid.
     """
     target = parking_pose_for_cell(cell, row1, row4)
     return plan_move_to_parking_pose(current, target)
+
+
+def plan_park_lid(
+    current: Pose,
+    *,
+    highway: Pose,
+    dock_xy: Pose,
+    dock_z: float,
+    large: Pose,
+    small: Pose,
+) -> list[Segment]:
+    """Carry a held lid to a dock via the highway, drop, release +Y, and lift.
+
+    Approach dock XY with the tool still in the small/trapped hole, lower to
+    dock_z, shift into the large hole, then raise to Z = 0.
+    """
+    validate_trapped_pose(large, small)
+    if abs(current.z) > Z_CLEARANCE_TOL_MM:
+        raise LidMotionError("Park lid starts at Z = 0.")
+    if float(dock_z) >= -Z_CLEARANCE_TOL_MM:
+        raise LidMotionError("Dock drop Z must be below Z = 0.")
+    release_dy = large.y - small.y
+    if release_dy <= POSE_MATCH_MM:
+        raise LidMotionError("Release shift must be a positive +Y distance.")
+    release_y = float(dock_xy.y) + release_dy
+
+    segments: list[Segment] = []
+    pose = current
+    pose = _append(segments, pose, "z", CLEARANCE_Z)
+    pose = _append(segments, pose, "x", highway.x)
+    pose = _append(segments, pose, "y", highway.y)
+    pose = _append(segments, pose, "x", dock_xy.x)
+    pose = _append(segments, pose, "y", dock_xy.y)
+    pose = _append(segments, pose, "z", float(dock_z))
+    pose = _append(segments, pose, "y", release_y)
+    pose = _append(segments, pose, "z", CLEARANCE_Z)
+    assert_single_axis_plan(current, segments)
+    return segments
+
+
+def plan_home(current: Pose) -> list[Segment]:
+    """Raise to Z = 0 if needed, then move X to 0, then Y to 0."""
+    segments: list[Segment] = []
+    pose = current
+    pose = _append(segments, pose, "z", CLEARANCE_Z)
+    pose = _append(segments, pose, "x", 0.0)
+    pose = _append(segments, pose, "y", 0.0)
+    assert_single_axis_plan(current, segments)
+    return segments
 
 
 def validate_jog(axis: str, delta: float, z: float, *, lid_held: bool, needs_retract: bool) -> None:
@@ -226,7 +285,7 @@ def validate_jog(axis: str, delta: float, z: float, *, lid_held: bool, needs_ret
             raise LidMotionError("Z jog step must be 0.1 or 1 mm.")
         return
     if lid_held:
-        raise LidMotionError("Jog is disabled while a lid is held. Use Return lid.")
+        raise LidMotionError("Jog is disabled while a lid is held. Use Return lid or Park lid.")
     at_clearance = abs(z) <= Z_CLEARANCE_TOL_MM
     if axis == "x":
         if not at_clearance:

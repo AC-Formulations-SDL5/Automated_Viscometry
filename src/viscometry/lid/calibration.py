@@ -10,6 +10,15 @@ from viscometry.paths import calibration_file, ensure_calibration_dir
 
 LID_CALIBRATION_NAME = "lid_tool_calibration.json"
 
+_DOCK_KEYS = (
+    "dock1_xy",
+    "dock1_z",
+    "dock2_xy",
+    "dock2_z",
+    "dock3_xy",
+    "dock3_z",
+)
+
 
 def empty_lid_calibration() -> dict[str, Any]:
     return {
@@ -20,6 +29,12 @@ def empty_lid_calibration() -> dict[str, Any]:
         "cell1_small": None,
         "parking_row1": None,
         "parking_row4": None,
+        "dock1_xy": None,
+        "dock1_z": None,
+        "dock2_xy": None,
+        "dock2_z": None,
+        "dock3_xy": None,
+        "dock3_z": None,
     }
 
 
@@ -41,9 +56,17 @@ def load_lid_calibration() -> dict[str, Any]:
     if not isinstance(raw, dict):
         return base
     merged = dict(base)
-    merged.update({key: raw.get(key, base[key]) for key in base})
+    for key in base:
+        if key in raw:
+            merged[key] = raw[key]
     merged["version"] = 1
     merged["clearance_z"] = 0.0
+    for key in _DOCK_KEYS:
+        if key.endswith("_z") and merged[key] is not None:
+            try:
+                merged[key] = float(merged[key])
+            except (TypeError, ValueError):
+                merged[key] = None
     return merged
 
 
@@ -53,6 +76,13 @@ def save_lid_calibration(data: dict[str, Any]) -> dict[str, Any]:
     payload.update({key: data.get(key) for key in payload})
     payload["version"] = 1
     payload["clearance_z"] = 0.0
+    for key in ("dock1_z", "dock2_z", "dock3_z"):
+        value = payload.get(key)
+        if value is not None:
+            try:
+                payload[key] = float(value)
+            except (TypeError, ValueError):
+                payload[key] = None
     payload["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
     path = _calibration_path()
     text = json.dumps(payload, indent=2) + "\n"
