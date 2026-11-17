@@ -22,8 +22,7 @@ TRAVEL_FEED_MM_PER_MIN = 1500
 ENGAGE_FEED_MM_PER_MIN = 300
 
 XY_JOG_STEPS_MM = (0.1, 1.0, 10.0)
-Y_ENGAGED_JOG_STEPS_MM = (0.1, 1.0)
-Z_JOG_STEPS_MM = (0.1, 1.0)
+Z_JOG_STEPS_MM = (0.1, 1.0, 10.0)
 
 
 class LidMotionError(ValueError):
@@ -282,26 +281,17 @@ def validate_jog(axis: str, delta: float, z: float, *, lid_held: bool, needs_ret
         if axis != "z" or delta <= 0:
             raise LidMotionError("Raise Z to 0 before any other move.")
         if not _matches_step(delta, Z_JOG_STEPS_MM):
-            raise LidMotionError("Z jog step must be 0.1 or 1 mm.")
+            raise LidMotionError("Z jog step must be 0.1, 1, or 10 mm.")
         return
     if lid_held:
         raise LidMotionError("Jog is disabled while a lid is held. Use Return lid or Park lid.")
-    at_clearance = abs(z) <= Z_CLEARANCE_TOL_MM
-    if axis == "x":
-        if not at_clearance:
-            raise LidMotionError("X jog is allowed only at Z = 0.")
+    # X/Y may be jogged below Z = 0 while teaching inside a lid.
+    if axis in ("x", "y"):
         if not _matches_step(delta, XY_JOG_STEPS_MM):
-            raise LidMotionError("X jog step must be 0.1, 1, or 10 mm.")
-        return
-    if axis == "y":
-        if at_clearance:
-            if not _matches_step(delta, XY_JOG_STEPS_MM):
-                raise LidMotionError("Y jog step must be 0.1, 1, or 10 mm.")
-        elif not _matches_step(delta, Y_ENGAGED_JOG_STEPS_MM):
-            raise LidMotionError("Below Z = 0, Y jog is limited to 0.1 or 1 mm.")
+            raise LidMotionError(f"{axis.upper()} jog step must be 0.1, 1, or 10 mm.")
         return
     if not _matches_step(delta, Z_JOG_STEPS_MM):
-        raise LidMotionError("Z jog step must be 0.1 or 1 mm.")
+        raise LidMotionError("Z jog step must be 0.1, 1, or 10 mm.")
 
 
 def jog_target(current: Pose, axis: str, delta: float) -> Pose:
