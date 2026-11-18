@@ -2167,7 +2167,7 @@ class ViscometryWebInterface:
             raise ValueError(
                 "Lid pickup is marked for cell(s) "
                 f"{', '.join(str(c) for c in not_ready)}, but lid teach is incomplete "
-                "(need cell-1 poses, highway, and dock for each)."
+                "(need cell-1 poses and dock for each)."
             )
 
     def broadcast_lid_update(self) -> None:

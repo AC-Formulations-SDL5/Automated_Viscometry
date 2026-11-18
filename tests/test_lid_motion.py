@@ -1,10 +1,16 @@
-"""Lid tool motion plans stay on one axis, and taught poses copy across the cell grid."""
+"""Lid plans allow XY at Z=0; forbid XZ/YZ; engage/release stay single-axis."""
 
 from __future__ import annotations
 
 import pytest
 
-from viscometry.hardware.cnc import CNCMotionAbort, CNC_Machine, format_single_axis_gcode, parse_grbl_wpos
+from viscometry.hardware.cnc import (
+    CNCMotionAbort,
+    CNC_Machine,
+    format_single_axis_gcode,
+    format_xy_gcode,
+    parse_grbl_wpos,
+)
 from viscometry.lid.calibration import load_lid_calibration, save_lid_calibration
 from viscometry.lid.motion import (
     ENGAGE_FEED_MM_PER_MIN,
@@ -12,18 +18,17 @@ from viscometry.lid.motion import (
     LidMotionError,
     Pose,
     Segment,
-    assert_single_axis_plan,
+    assert_lid_plan_safe,
     cell_poses,
     dock_for_cell,
-    highway_id_for_cell,
     plan_home,
     plan_park_lid,
-    plan_parking_route,
     plan_pickup,
     plan_return,
     single_axis_segment,
     validate_jog,
     validate_trapped_pose,
+    xy_segment,
 )
 
 
@@ -47,21 +52,18 @@ def test_cell_offsets_follow_the_sample_grid():
     assert cell13_large.z == LARGE.z
 
 
-def test_pickup_and_return_are_single_axis_in_order():
+def test_pickup_uses_xy_approach_then_single_axis_engage():
     current = Pose(0.0, 0.0, -2.0)
     pickup = plan_pickup(current, LARGE, SMALL)
-    assert [(seg.axis, seg.target) for seg in pickup] == [
-        ("z", 0.0),
-        ("x", LARGE.x),
-        ("y", LARGE.y),
-        ("z", LARGE.z),
-        ("y", SMALL.y),
-        ("z", 0.0),
-    ]
+    assert [seg.axis for seg in pickup] == ["z", "xy", "z", "y", "z"]
+    assert pickup[0].target == 0.0
+    assert pickup[1].x == LARGE.x and pickup[1].y == LARGE.y
+    assert pickup[2].target == LARGE.z
+    assert pickup[3].target == SMALL.y
+    assert pickup[4].target == 0.0
     assert pickup[0].feed == ENGAGE_FEED_MM_PER_MIN
     assert pickup[1].feed == TRAVEL_FEED_MM_PER_MIN
-    assert pickup[4].feed == ENGAGE_FEED_MM_PER_MIN
-    assert_single_axis_plan(current, pickup)
+    assert_lid_plan_safe(current, pickup)
 
     held = Pose(SMALL.x, SMALL.y, 0.0)
     returning = plan_return(held, LARGE, SMALL)
@@ -70,12 +72,32 @@ def test_pickup_and_return_are_single_axis_in_order():
         ("y", LARGE.y),
         ("z", 0.0),
     ]
-    assert_single_axis_plan(held, returning)
+    assert_lid_plan_safe(held, returning)
 
 
-def test_multi_axis_segment_is_rejected():
+def test_multi_axis_single_axis_helper_is_rejected():
     with pytest.raises(LidMotionError):
         single_axis_segment(Pose(0, 0, 0), feed=100, x=1, y=2)
+
+
+def test_xy_segment_forbidden_below_clearance():
+    with pytest.raises(LidMotionError):
+        xy_segment(Pose(0.0, 0.0, -1.0), feed=100, x=10.0, y=20.0)
+    seg = xy_segment(Pose(0.0, 0.0, 0.0), feed=100, x=10.0, y=20.0)
+    assert seg.axis == "xy"
+    with pytest.raises(LidMotionError):
+        assert_lid_plan_safe(
+            Pose(0.0, 0.0, -1.0),
+            [Segment("xy", 0.0, 100, x=10.0, y=20.0)],
+        )
+
+
+def test_xy_after_descend_is_rejected():
+    with pytest.raises(LidMotionError):
+        assert_lid_plan_safe(
+            Pose(0.0, 0.0, 0.0),
+            [Segment("z", -5.0, 100), Segment("xy", 0.0, 100, x=10.0, y=10.0)],
+        )
 
 
 def test_xy_jog_allowed_below_clearance_for_teaching():
@@ -99,17 +121,6 @@ def test_dock_mapping_follows_sample_rows():
         dock_for_cell(0)
 
 
-def test_highway_mapping_follows_sample_rows():
-    assert highway_id_for_cell(1) == 1
-    assert highway_id_for_cell(6) == 1
-    assert highway_id_for_cell(7) == 4
-    assert highway_id_for_cell(12) == 4
-    assert highway_id_for_cell(13) == 8
-    assert highway_id_for_cell(18) == 8
-    with pytest.raises(LidMotionError):
-        highway_id_for_cell(0)
-
-
 def test_machine_bounds_are_x600_y400():
     assert CNC_Machine.X_HIGH_BOUND == 600
     assert CNC_Machine.Y_HIGH_BOUND == 400
@@ -117,37 +128,29 @@ def test_machine_bounds_are_x600_y400():
     assert CNC_Machine.Y_LOW_BOUND == 0
 
 
-def test_park_lid_uses_highway_x_lane_then_dock_then_release():
+def test_park_lid_goes_xy_to_dock_then_drop_and_release():
     current = Pose(100.0, 50.0, 0.0)
-    # Highway Y is intentionally far forward; park must ignore it and keep lane travel at dock Y.
-    highway = Pose(12.0, 10.0, 0.0)
-    dock_xy = Pose(40.0, 340.0, 0.0)
+    dock_xy = Pose(520.0, 340.0, 0.0)
     dock_z = -8.0
     segments = plan_park_lid(
         current,
-        highway=highway,
         dock_xy=dock_xy,
         dock_z=dock_z,
         large=LARGE,
         small=SMALL,
     )
     release_y = dock_xy.y + (LARGE.y - SMALL.y)
-    assert [(seg.axis, seg.target) for seg in segments] == [
-        ("x", highway.x),
-        ("y", dock_xy.y),
-        ("x", dock_xy.x),
-        ("z", dock_z),
-        ("y", release_y),
-        ("z", 0.0),
-    ]
-    assert all(seg.target != highway.y for seg in segments if seg.axis == "y")
-    assert_single_axis_plan(current, segments)
+    assert [seg.axis for seg in segments] == ["xy", "z", "y", "z"]
+    assert segments[0].x == dock_xy.x and segments[0].y == dock_xy.y
+    assert segments[1].target == dock_z
+    assert segments[2].target == release_y
+    assert segments[3].target == 0.0
+    assert_lid_plan_safe(current, segments)
     assert release_y > dock_xy.y
 
     with pytest.raises(LidMotionError):
         plan_park_lid(
             current,
-            highway=highway,
             dock_xy=dock_xy,
             dock_z=0.0,
             large=LARGE,
@@ -156,7 +159,6 @@ def test_park_lid_uses_highway_x_lane_then_dock_then_release():
     with pytest.raises(LidMotionError):
         plan_park_lid(
             Pose(100.0, 50.0, -1.0),
-            highway=highway,
             dock_xy=dock_xy,
             dock_z=dock_z,
             large=LARGE,
@@ -175,15 +177,13 @@ def test_custom_jog_steps_are_allowed_within_bounds():
         validate_jog("z", 80.0, z=0.0, lid_held=False, needs_retract=False)
 
 
-def test_home_plan_is_z_then_x_then_y():
+def test_home_plan_is_z_then_xy():
     current = Pose(40.0, 80.0, -5.0)
     segments = plan_home(current)
-    assert [(seg.axis, seg.target) for seg in segments] == [
-        ("z", 0.0),
-        ("x", 0.0),
-        ("y", 0.0),
-    ]
-    assert_single_axis_plan(current, segments)
+    assert [seg.axis for seg in segments] == ["z", "xy"]
+    assert segments[0].target == 0.0
+    assert segments[1].x == 0.0 and segments[1].y == 0.0
+    assert_lid_plan_safe(current, segments)
     already = plan_home(Pose(0.0, 0.0, 0.0))
     assert already == []
 
@@ -210,35 +210,6 @@ def test_trapped_pose_must_be_a_pure_negative_y_shift():
         validate_trapped_pose(LARGE, LARGE)
 
 
-def test_parking_route_selects_row_then_moves_x_before_y():
-    current = Pose(100.0, 50.0, -3.0)
-    row1 = Pose(12.0, 320.0, 0.0)
-    row4 = Pose(240.0, 330.0, 0.0)
-    row8 = Pose(480.0, 340.0, 0.0)
-
-    to_row1 = plan_parking_route(current, 6, row1, row4, row8)
-    assert [(seg.axis, seg.target) for seg in to_row1] == [
-        ("z", 0.0),
-        ("x", row1.x),
-        ("y", row1.y),
-    ]
-    assert_single_axis_plan(current, to_row1)
-
-    to_row4 = plan_parking_route(Pose(100.0, 50.0, 0.0), 7, row1, row4, row8)
-    assert [(seg.axis, seg.target) for seg in to_row4] == [
-        ("x", row4.x),
-        ("y", row4.y),
-    ]
-    to_row8 = plan_parking_route(Pose(100.0, 50.0, 0.0), 13, row1, row4, row8)
-    assert [(seg.axis, seg.target) for seg in to_row8] == [
-        ("x", row8.x),
-        ("y", row8.y),
-    ]
-    assert plan_parking_route(current, 1, row1, row4, row8)[1].target == row1.x
-    assert plan_parking_route(current, 12, row1, row4, row8)[1].target == row4.x
-    assert plan_parking_route(current, 18, row1, row4, row8)[1].target == row8.x
-
-
 def test_calibration_roundtrip(tmp_path, monkeypatch):
     from viscometry.lid import calibration as calibration_module
 
@@ -252,9 +223,6 @@ def test_calibration_roundtrip(tmp_path, monkeypatch):
     saved = save_lid_calibration({
         "cell1_large": {"x": 40, "y": 80, "z": -12},
         "cell1_small": {"x": 40, "y": 70, "z": -12},
-        "parking_row1": {"x": 12, "y": 320, "z": 0},
-        "parking_row4": {"x": 240, "y": 330, "z": 0},
-        "parking_row8": {"x": 480, "y": 340, "z": 0},
         "dock1_xy": {"x": 10, "y": 350, "z": 0},
         "dock1_z": -9.5,
         "dock2_xy": {"x": 85, "y": 350, "z": 0},
@@ -265,8 +233,6 @@ def test_calibration_roundtrip(tmp_path, monkeypatch):
     assert saved["clearance_z"] == 0.0
     loaded = load_lid_calibration()
     assert loaded["cell1_large"]["z"] == -12
-    assert loaded["parking_row4"]["x"] == 240
-    assert loaded["parking_row8"]["x"] == 480
     assert loaded["dock2_xy"]["x"] == 85
     assert loaded["dock3_xy"]["x"] == 520
     assert loaded["dock3_z"] == pytest.approx(-9.25)
@@ -277,7 +243,7 @@ def test_calibration_roundtrip(tmp_path, monkeypatch):
     assert load_lid_calibration()["dock1_xy"] is None
 
 
-def test_virtual_session_reports_each_single_axis_move_and_stops_between_them():
+def test_virtual_session_executes_xy_and_stops_between_segments():
     cnc = CNC_Machine(virtual=True)
     reported = []
     segments = plan_pickup(Pose(0.0, 0.0, 0.0), LARGE, SMALL)
@@ -294,9 +260,11 @@ def test_virtual_session_reports_each_single_axis_move_and_stops_between_them():
     assert cnc._virtual_pos == (0.0, 0.0, 0.0)
 
 
-def test_gcode_and_status_parse_one_axis():
+def test_gcode_formats_single_axis_and_xy():
     line = format_single_axis_gcode("y", 12.5, 300)
     assert line == "G1 Y12.500 F300\n"
     assert "X" not in line and "Z" not in line
+    xy = format_xy_gcode(10.5, 20.25, 1500)
+    assert xy == "G1 X10.500 Y20.250 F1500\n"
     status = "<Idle|MPos:1,2,3|WPos:4.5,-6.25,0.000|FS:0,0>"
     assert parse_grbl_wpos(status) == (4.5, -6.25, 0.0)

@@ -3600,10 +3600,9 @@ class ViscometryDashboard {
                     relevant.forEach((cell) => {
                         const item = document.createElement("li");
                         const ready = report?.cells?.[String(cell)]?.ready !== false;
-                        const highway = report?.cells?.[String(cell)]?.highway;
                         const dock = report?.cells?.[String(cell)]?.dock;
                         item.textContent = ready
-                            ? `Cell ${cell} → highway ${highway}, dock ${dock}`
+                            ? `Cell ${cell} → dock ${dock}`
                             : `Cell ${cell} — lid teach incomplete (blocked)`;
                         this.el.lidConfirmList.appendChild(item);
                     });
@@ -6677,12 +6676,6 @@ class ViscometryDashboard {
         this.el.lidStop = document.getElementById("lid-stop");
         this.el.lidSaveLarge = document.getElementById("lid-save-large");
         this.el.lidSaveSmall = document.getElementById("lid-save-small");
-        this.el.lidSaveRow1 = document.getElementById("lid-save-row1");
-        this.el.lidSaveRow4 = document.getElementById("lid-save-row4");
-        this.el.lidSaveRow8 = document.getElementById("lid-save-row8");
-        this.el.lidGotoRow1 = document.getElementById("lid-goto-row1");
-        this.el.lidGotoRow4 = document.getElementById("lid-goto-row4");
-        this.el.lidGotoRow8 = document.getElementById("lid-goto-row8");
         this.el.lidSaveDock1Xy = document.getElementById("lid-save-dock1-xy");
         this.el.lidSaveDock1Z = document.getElementById("lid-save-dock1-z");
         this.el.lidGotoDock1 = document.getElementById("lid-goto-dock1");
@@ -6771,12 +6764,6 @@ class ViscometryDashboard {
         this.el.lidStop?.addEventListener("click", () => this.postLid("/api/testing/lid/stop", {}, { allowDuringMotion: true }));
         this.el.lidSaveLarge?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "cell1_large" }));
         this.el.lidSaveSmall?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "cell1_small" }));
-        this.el.lidSaveRow1?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "parking_row1" }));
-        this.el.lidSaveRow4?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "parking_row4" }));
-        this.el.lidSaveRow8?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "parking_row8" }));
-        this.el.lidGotoRow1?.addEventListener("click", () => this.postLid("/api/testing/lid/parking", { row: 1 }));
-        this.el.lidGotoRow4?.addEventListener("click", () => this.postLid("/api/testing/lid/parking", { row: 4 }));
-        this.el.lidGotoRow8?.addEventListener("click", () => this.postLid("/api/testing/lid/parking", { row: 8 }));
         this.el.lidSaveDock1Xy?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "dock1_xy" }));
         this.el.lidSaveDock1Z?.addEventListener("click", () => this.postLid("/api/testing/lid/save", { pose: "dock1_z" }));
         this.el.lidGotoDock1?.addEventListener("click", () => this.postLid("/api/testing/lid/dock", { dock: 1 }));
@@ -6806,34 +6793,13 @@ class ViscometryDashboard {
         return 3;
     }
 
-    _highwayForCell(cellId) {
-        const cell = Number(cellId);
-        if (!Number.isFinite(cell) || cell < 1 || cell > 18) {
-            return null;
-        }
-        if (cell <= 6) return 1;
-        if (cell <= 12) return 4;
-        return 8;
-    }
-
-    _highwayPoseForCell(cal, cellId) {
-        const highwayId = this._highwayForCell(cellId);
-        if (!highwayId || !cal) {
-            return null;
-        }
-        if (highwayId === 1) return cal.parking_row1;
-        if (highwayId === 4) return cal.parking_row4;
-        return cal.parking_row8;
-    }
-
     _parkReadyForCell(cal, cellId) {
         const dockId = this._dockForCell(cellId);
         if (!dockId || !cal?.cell1_ready) {
             return false;
         }
-        const highway = this._highwayPoseForCell(cal, cellId);
         const dock = cal.docks ? cal.docks[String(dockId)] : null;
-        return Boolean(highway && dock && dock.ready);
+        return Boolean(dock && dock.ready);
     }
 
     fetchLidStatus() {
@@ -6916,12 +6882,6 @@ class ViscometryDashboard {
         setDisabled(this.el.lidStop, running);
         setDisabled(this.el.lidSaveLarge, teachLocked);
         setDisabled(this.el.lidSaveSmall, teachLocked || !cal.cell1_large);
-        setDisabled(this.el.lidSaveRow1, teachLocked || !atClearance);
-        setDisabled(this.el.lidSaveRow4, teachLocked || !atClearance);
-        setDisabled(this.el.lidSaveRow8, teachLocked || !atClearance);
-        setDisabled(this.el.lidGotoRow1, teachLocked || !atClearance || !cal.parking_row1);
-        setDisabled(this.el.lidGotoRow4, teachLocked || !atClearance || !cal.parking_row4);
-        setDisabled(this.el.lidGotoRow8, teachLocked || !atClearance || !cal.parking_row8);
         setDisabled(this.el.lidSaveDock1Xy, teachLocked || !atClearance);
         setDisabled(this.el.lidSaveDock2Xy, teachLocked || !atClearance);
         setDisabled(this.el.lidSaveDock3Xy, teachLocked || !atClearance);
@@ -6991,9 +6951,6 @@ class ViscometryDashboard {
                 `Large hole: ${this.formatLidPose(cal.cell1_large)}`,
                 `Trapped: ${this.formatLidPose(cal.cell1_small)}`,
                 shift,
-                `Highway 1: ${this.formatLidPose(cal.parking_row1)}`,
-                `Highway 4: ${this.formatLidPose(cal.parking_row4)}`,
-                `Highway 8: ${this.formatLidPose(cal.parking_row8)}`,
                 dockLine(1),
                 dockLine(2),
                 dockLine(3),
@@ -7004,12 +6961,11 @@ class ViscometryDashboard {
             const cellId = String(this.el.lidCell?.value || "1");
             const preview = status.cells ? status.cells[cellId] : null;
             const dockId = preview?.dock || this._dockForCell(cellId);
-            const highwayId = preview?.highway || this._highwayForCell(cellId);
             if (!preview) {
                 this.el.lidPreview.textContent = "Teach cell 1 before a cell can be targeted.";
             } else {
                 this.el.lidPreview.textContent =
-                    `Cell ${cellId} → highway ${highwayId}, dock ${dockId}. Large ${this.formatLidPose(preview.large)}. Trapped ${this.formatLidPose(preview.small)}.`;
+                    `Cell ${cellId} → dock ${dockId}. Large ${this.formatLidPose(preview.large)}. Trapped ${this.formatLidPose(preview.small)}.`;
             }
         }
 
@@ -7022,12 +6978,11 @@ class ViscometryDashboard {
                 this.el.lidHint.textContent = "Motion stopped below Z = 0. Only +Z is allowed until the tool is back at Z = 0.";
             } else if (held) {
                 const dockId = status.lid_held_dock || this._dockForCell(status.lid_held_cell);
-                const highwayId = status.lid_held_highway || this._highwayForCell(status.lid_held_cell);
                 this.el.lidHint.textContent =
-                    `Holding the lid from cell ${status.lid_held_cell} (highway ${highwayId}, dock ${dockId}). Jogging is locked. Use Return lid or Park lid.`;
+                    `Holding the lid from cell ${status.lid_held_cell} (dock ${dockId}). Jogging is locked. Use Return lid or Park lid.`;
             } else {
                 this.el.lidHint.textContent =
-                    "Jog with 0.1 / 1 / 10 mm or Custom (X/Y up to 600 mm, Z up to 75 mm). Park uses highway X as a lane.";
+                    "Jog with 0.1 / 1 / 10 mm or Custom (X/Y up to 600 mm, Z up to 75 mm). Pickup and park travel diagonally in XY at Z = 0.";
             }
         }
 
