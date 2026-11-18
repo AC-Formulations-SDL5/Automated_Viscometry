@@ -5963,8 +5963,10 @@ class ViscometryDashboard {
         const isRegularRunning = this.isRunning && !this.calibrationModeActive && !this.recalibrationModeActive;
         const screening = !this.experimentCustomMode;
         const label = this.manualTerminateQueued
-            ? (screening ? "Stop screening in this cell (queued)" : "Stop Measurement in current cell (queued)")
-            : (screening ? "Stop screening in this cell" : "Stop Measurement in current cell");
+            ? (screening
+                ? "Stop screening after current RPM (queued)"
+                : "Stop after current RPM at this Z (queued)")
+            : (screening ? "Stop screening in this cell" : "Stop after current RPM at this Z");
         [this.el.terminateCurrentCell, this.el.discoveryTerminateCurrentCell].forEach((btn) => {
             if (!btn) return;
             btn.classList.toggle("hidden", !isRegularRunning);

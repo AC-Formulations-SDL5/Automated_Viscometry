@@ -578,7 +578,9 @@ class ViscometryWebInterface:
         def api_run_terminate_current_cell():
             try:
                 self.request_terminate_current_cell()
-                self.update_status('Manual termination requested for current cell')
+                self.update_status(
+                    'Manual termination queued — will end after the current RPM at this Z finishes'
+                )
                 return jsonify({'ok': True, 'status_message': self.status_message})
             except Exception as e:
                 print(f"Error in api_run_terminate_current_cell: {e}")
@@ -951,7 +953,15 @@ class ViscometryWebInterface:
         def handle_terminate_current_cell():
             try:
                 self.request_terminate_current_cell()
-                emit('status_update', {'status_message': 'Manual termination requested for current cell'}, broadcast=True)
+                emit(
+                    'status_update',
+                    {
+                        'status_message': (
+                            'Manual termination queued — will end after the current RPM at this Z finishes'
+                        )
+                    },
+                    broadcast=True,
+                )
             except Exception as e:
                 print(f"Error in handle_terminate_current_cell: {e}")
                 try:
