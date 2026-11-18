@@ -27,6 +27,7 @@
         <div class="header-center">AUTOMATED VISCOMETRY PLATFORM</div>
         <div class="header-right">
             <div id="run-pill" class="run-pill idle">IDLE</div>
+            <div id="lid-pickup-badge" class="lid-pickup-badge hidden" aria-live="polite">Picking up lid</div>
             <div id="completion-chip" class="completion-chip">0 / 18 cells completed</div>
             <div id="experiment-complete-banner" class="experiment-complete-banner hidden">
                 ✓ Experiment complete
@@ -86,6 +87,7 @@
                         <h2>Platform Map</h2>
                         <div class="legend-inline">
                             <span><i class="swatch pending"></i>Pending</span>
+                            <span><i class="swatch lid-on"></i>Lid on</span>
                             <span><i class="swatch active"></i>Active</span>
                             <span><i class="swatch measuring"></i>Measuring</span>
                             <span><i class="swatch washing"></i>Washing</span>
@@ -355,6 +357,14 @@
                                     <button type="button" id="load-old-experiment-btn" class="btn subtle" disabled>Load into Design Experiment</button>
                                 </div>
                                 <p id="load-old-experiment-status" class="load-old-experiment-status" role="status"></p>
+                            </details>
+                        </section>
+                        <section id="lids-on-menu" class="lids-on-menu-card">
+                            <details id="lids-on-details" class="lids-on-details">
+                                <summary class="lids-on-summary">Lids on cells</summary>
+                                <p class="lids-on-hint">Mark cells that still have a lid before this run. Only marked cells get pickup + park, and only if lid teach is complete.</p>
+                                <div id="lids-on-grid" class="lids-on-grid" role="group" aria-label="Cells with lids"></div>
+                                <p id="lids-on-status" class="lids-on-status" role="status"></p>
                             </details>
                         </section>
                         <div id="calibration-cells-status-pill" class="calibration-cells-status-pill cal-cells-status-none">
@@ -1570,6 +1580,30 @@
             <footer class="data-saved-footer experiment-name-prompt-footer">
                 <button type="button" id="experiment-name-prompt-continue" class="btn subtle">Continue anyway</button>
                 <button type="button" id="experiment-name-prompt-proceed" class="btn" disabled>Proceed</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Lid placement confirmation (blocking before run start) -->
+    <div id="lid-confirm-backdrop" class="data-review-backdrop lid-confirm-backdrop hidden" aria-hidden="true">
+        <div
+            id="lid-confirm-modal"
+            class="data-saved-modal lid-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lid-confirm-title"
+        >
+            <header class="data-saved-header lid-confirm-header">
+                <h2 id="lid-confirm-title">Confirm lid placement</h2>
+            </header>
+            <div class="lid-confirm-body">
+                <p id="lid-confirm-summary">Confirm which cells still have lids before starting.</p>
+                <ul id="lid-confirm-list" class="lid-confirm-list"></ul>
+                <p class="lid-confirm-note">The run will not start until you confirm. After a lid is parked, that cell’s lid marker clears for the next run.</p>
+            </div>
+            <footer class="data-saved-footer lid-confirm-footer">
+                <button type="button" id="lid-confirm-cancel" class="btn subtle">Cancel</button>
+                <button type="button" id="lid-confirm-yes" class="btn">Yes, lids are correct</button>
             </footer>
         </div>
     </div>
