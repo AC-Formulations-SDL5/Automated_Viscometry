@@ -784,6 +784,161 @@ body.running .header-sweep {
     flex-shrink: 0;
 }
 
+.load-old-experiment-header-row .lids-on-menu-card {
+    flex: 0 1 260px;
+    min-width: 200px;
+    margin-bottom: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--color-yellow-border);
+    border-radius: var(--radius-card);
+    background: rgba(255, 159, 10, 0.08);
+    box-shadow: var(--shadow-glass);
+}
+
+.lids-on-details {
+    width: 100%;
+}
+
+.lids-on-summary {
+    cursor: pointer;
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--color-yellow-text);
+    list-style: none;
+}
+
+.lids-on-summary::-webkit-details-marker {
+    display: none;
+}
+
+.lids-on-hint {
+    margin: 8px 0 10px;
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    line-height: 1.35;
+}
+
+.lids-on-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.lids-on-cell-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 30px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border-subtle);
+    background: rgba(255, 255, 255, 0.55);
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.lids-on-cell-toggle input {
+    margin: 0;
+}
+
+.lids-on-cell-toggle.is-on {
+    border-color: rgba(255, 159, 10, 0.55);
+    background: rgba(255, 159, 10, 0.18);
+    color: var(--color-yellow-text);
+}
+
+.lids-on-cell-toggle.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.lids-on-cell-toggle.is-not-ready.is-on {
+    border-color: rgba(248, 81, 73, 0.45);
+    background: rgba(248, 81, 73, 0.12);
+    color: var(--color-red-text);
+}
+
+.lids-on-status {
+    margin: 8px 0 0;
+    min-height: 1.1em;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+
+.lids-on-status.is-error {
+    color: var(--color-red-text);
+}
+
+.lid-pickup-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-yellow-text);
+    background: rgba(255, 159, 10, 0.18);
+    border: 1px solid rgba(255, 159, 10, 0.55);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.55),
+        0 0 14px rgba(255, 159, 10, 0.35),
+        0 0 28px rgba(255, 159, 10, 0.18);
+    animation: lidPickupGlow 1.6s ease-in-out infinite alternate;
+}
+
+.lid-pickup-badge.hidden {
+    display: none;
+}
+
+@keyframes lidPickupGlow {
+    from {
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.55),
+            0 0 10px rgba(255, 159, 10, 0.25),
+            0 0 18px rgba(255, 159, 10, 0.12);
+    }
+    to {
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.7),
+            0 0 18px rgba(255, 159, 10, 0.55),
+            0 0 34px rgba(255, 159, 10, 0.28);
+    }
+}
+
+.lid-confirm-backdrop {
+    z-index: 1200;
+}
+
+.lid-confirm-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 4px 2px 8px;
+}
+
+.lid-confirm-list {
+    margin: 0;
+    padding-left: 1.2rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.lid-confirm-note {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+body.lid-confirm-active {
+    overflow: hidden;
+}
+
 .cal-mini-tracking-row {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
@@ -2068,6 +2223,7 @@ h2 {
 }
 
 .swatch.pending { background: rgba(138, 150, 175, 0.66); }
+.swatch.lid-on { background: rgba(255, 159, 10, 0.85); }
 .swatch.active { background: var(--accent-primary); }
 .swatch.measuring { background: var(--color-yellow); }
 .swatch.washing { background: var(--color-cyan); }
@@ -2153,6 +2309,21 @@ h2 {
 }
 
 .pg-cell.state-pending   { background: rgba(255, 255, 255, 0.40); color: var(--text-muted); border-color: var(--glass-border-subtle); }
+.pg-cell.state-lid_on {
+    background: rgba(255, 159, 10, 0.14);
+    border-color: rgba(255, 159, 10, 0.48);
+    color: var(--color-yellow-text);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 0 0 2px rgba(255, 159, 10, 0.08);
+}
+.pg-cell.state-picking_lid {
+    background: rgba(255, 159, 10, 0.22);
+    border-color: rgba(255, 159, 10, 0.65);
+    color: var(--color-yellow-text);
+    box-shadow:
+        0 0 0 2px rgba(255, 159, 10, 0.14),
+        0 0 18px rgba(255, 159, 10, 0.28);
+    animation: lidPickupGlow 1.4s ease-in-out infinite alternate;
+}
 .pg-cell.state-active    { background: rgba(10, 132, 255, 0.12); border-color: rgba(10, 132, 255, 0.40); color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(10,132,255,0.10), 0 4px 12px rgba(10,132,255,0.16); }
 .pg-cell.state-measuring {
     background: rgba(255, 159, 10, 0.16);

@@ -38,6 +38,7 @@ const PROTOCOL_DEFINITIONS = {
         badgeClass: "",
         steps: [
             { id: "init", label: "Initialize hardware" },
+            { id: "lid_pickup", label: "Pick up & park lid" },
             { id: "move", label: "Move to cell" },
             { id: "zero", label: "Auto-zero viscometer" },
             { id: "measure", label: "Z-descent & measure" },
@@ -54,6 +55,7 @@ const PROTOCOL_DEFINITIONS = {
         ],
         flow: [
             { id: "init", short: "Init" },
+            { id: "lid_pickup", short: "Lid" },
             { id: "move", short: "Move" },
             { id: "zero", short: "Zero" },
             { id: "measure", short: "Measure" },
@@ -64,6 +66,7 @@ const PROTOCOL_DEFINITIONS = {
         ],
         stepToFlow: {
             init: "init",
+            lid_pickup: "lid_pickup",
             move: "move",
             zero: "zero",
             measure: "measure",
@@ -148,6 +151,7 @@ const PROTOCOL_DEFINITIONS = {
         badgeClass: "mode-discovery",
         steps: [
             { id: "init", label: "Initialize hardware" },
+            { id: "lid_pickup", label: "Pick up & park lid" },
             { id: "move", label: "Move to cell" },
             { id: "zero", label: "Auto-zero viscometer" },
             { id: "discovery_rpm", label: "RPM discovery probes" },
@@ -160,6 +164,7 @@ const PROTOCOL_DEFINITIONS = {
         ],
         flow: [
             { id: "init", short: "Init" },
+            { id: "lid_pickup", short: "Lid" },
             { id: "discovery_rpm", short: "RPM" },
             { id: "measure", short: "Measure" },
             { id: "wash1", short: "WS1" },
@@ -168,6 +173,7 @@ const PROTOCOL_DEFINITIONS = {
         ],
         stepToFlow: {
             init: "init",
+            lid_pickup: "lid_pickup",
             move: "move",
             zero: "zero",
             discovery_rpm: "discovery_rpm",
@@ -201,6 +207,7 @@ const PROTOCOL_STATUS_RULES = [
     { id: "wash_after", test: (m) => /washing after cell/.test(m) },
     { id: "retract", test: (m) => /retracting to safe|cnc retract|wash skipped/.test(m) },
     { id: "discovery_rpm", test: (m) => /discovery:/.test(m) },
+    { id: "lid_pickup", test: (m) => /picking up lid|parking lid|parked lid/.test(m) },
     { id: "measure", test: (m) => /measuring at|testing cell|calibrating cell|recalibrating|terminated early|hit-point|hit point|surface detected|z-step|descending z/.test(m) },
     { id: "zero", test: (m) => /auto-zero|zeroing viscometer/.test(m) },
     { id: "move", test: (m) => /moving to cell/.test(m) },
@@ -234,6 +241,11 @@ class ViscometryDashboard {
         this._pendingCompletedCell = null;
         this.plannedCells = [];
         this.cellStates = new Map();
+        this.lidsOnCells = new Set();
+        this.lidPhase = null;
+        this.lidPhaseCell = null;
+        this.lidReadinessByCell = {};
+        this._pendingStartAfterLidConfirm = null;
         this.hitPoints = new Map();
         this.selectedGraphCell = null;
         this.zLatestOnly = false;
@@ -402,11 +414,20 @@ class ViscometryDashboard {
             body: document.body,
             disconnectBanner: document.getElementById("disconnect-banner"),
             runPill: document.getElementById("run-pill"),
+            lidPickupBadge: document.getElementById("lid-pickup-badge"),
             headerEta: document.getElementById("header-eta"),
             headerEtaFill: document.getElementById("header-eta-fill"),
             headerEtaLabel: document.getElementById("header-eta-label"),
             connectionDot: document.getElementById("connection-dot"),
             completionChip: document.getElementById("completion-chip"),
+            lidsOnDetails: document.getElementById("lids-on-details"),
+            lidsOnGrid: document.getElementById("lids-on-grid"),
+            lidsOnStatus: document.getElementById("lids-on-status"),
+            lidConfirmBackdrop: document.getElementById("lid-confirm-backdrop"),
+            lidConfirmSummary: document.getElementById("lid-confirm-summary"),
+            lidConfirmList: document.getElementById("lid-confirm-list"),
+            lidConfirmYes: document.getElementById("lid-confirm-yes"),
+            lidConfirmCancel: document.getElementById("lid-confirm-cancel"),
             completionBar: document.getElementById("completion-bar"),
             completionText: document.getElementById("completion-text"),
             experimentCompleteBanner: document.getElementById("experiment-complete-banner"),
@@ -731,6 +752,20 @@ class ViscometryDashboard {
                 }
             });
         }
+        if (this.el.lidsOnDetails) {
+            this.el.lidsOnDetails.addEventListener("toggle", () => {
+                if (this.el.lidsOnDetails.open) {
+                    this.refreshLidReadiness();
+                }
+            });
+        }
+        if (this.el.lidConfirmYes) {
+            this.el.lidConfirmYes.addEventListener("click", () => this._confirmLidPlacementAndStart());
+        }
+        if (this.el.lidConfirmCancel) {
+            this.el.lidConfirmCancel.addEventListener("click", () => this._closeLidConfirmModal(true));
+        }
+        this.renderLidsOnMenu();
         this.el.startRun.addEventListener("click", () => {
             if (this.experimentCustomMode) {
                 this.startRunFromUI();
@@ -857,6 +892,7 @@ class ViscometryDashboard {
             this.el.selectedCells.addEventListener("input", () => {
                 this.rebuildCellRpmTable();
                 this.rebuildCellContentTable();
+                this.renderLidsOnMenu();
             });
         }
 
@@ -1620,12 +1656,19 @@ class ViscometryDashboard {
                 state = "error";
             } else if (this.currentCell === cell.id && this.currentRPM > 0) {
                 state = "measuring";
+            } else if (
+                this.lidPhase === "picking_up"
+                && Number(this.lidPhaseCell) === Number(cell.id)
+            ) {
+                state = "picking_lid";
             } else if (this.currentCell === cell.id && this.currentRPM === 0) {
                 state = "active";
             } else if (this.washingCell === cell.id) {
                 state = "washing";
             } else if (this.completedCells.has(cell.id)) {
                 state = "completed";
+            } else if (this.lidsOnCells.has(cell.id)) {
+                state = "lid_on";
             }
 
             this.cellStates.set(cell.id, state);
@@ -2119,6 +2162,9 @@ class ViscometryDashboard {
         this.el.testRpms.value = Array.isArray(settings.test_rpms) ? (formatRpmList(settings.test_rpms) || "0.80") : "0.80";
         this.el.selectedRows.value = Array.isArray(settings.selected_rows) ? settings.selected_rows.join(", ") : "";
         this.el.selectedCells.value = Array.isArray(settings.selected_cells) ? settings.selected_cells.join(", ") : "";
+        if (Array.isArray(settings.lids_on_cells)) {
+            this.applyLidsOnCells(settings.lids_on_cells, { skipPersist: true });
+        }
         this.el.zStepSize.value = settings.z_step_size ?? -0.02;
         this.el.measurementDuration.value = settings.measurement_duration ?? 40;
         this.el.sampleInterval.value = settings.sample_interval ?? 5;
@@ -3359,6 +3405,252 @@ class ViscometryDashboard {
         return Math.max(1, Math.min(15, Math.round(raw)));
     }
 
+    _selectedLidsOnCells() {
+        return Array.from(this.lidsOnCells).filter((cell) => Number.isFinite(cell)).sort((a, b) => a - b);
+    }
+
+    _plannedCellsForLidMenu() {
+        const uniqSort = (values) => Array.from(new Set(values)).sort((a, b) => a - b);
+        const fromSettings = (this.el.selectedCells?.value || "")
+            .split(",")
+            .map((item) => Number.parseInt(item.trim(), 10))
+            .filter((value) => Number.isFinite(value) && value >= 1 && value <= 18);
+        if (fromSettings.length) {
+            return uniqSort(fromSettings);
+        }
+        if (Array.isArray(this.plannedCells) && this.plannedCells.length) {
+            return uniqSort(
+                this.plannedCells
+                    .map((value) => Number(value))
+                    .filter((value) => Number.isFinite(value) && value >= 1 && value <= 18)
+            );
+        }
+        return Array.from({ length: 18 }, (_, i) => i + 1);
+    }
+
+    renderLidsOnMenu() {
+        const host = this.el.lidsOnGrid;
+        if (!host) {
+            return;
+        }
+        const planned = new Set(this._plannedCellsForLidMenu());
+        host.innerHTML = "";
+        for (let cell = 1; cell <= 18; cell += 1) {
+            const label = document.createElement("label");
+            const inPlan = planned.has(cell);
+            const ready = this.lidReadinessByCell[String(cell)]?.ready !== false
+                || this.lidReadinessByCell[String(cell)] === undefined;
+            const isOn = this.lidsOnCells.has(cell);
+            label.className = "lids-on-cell-toggle";
+            if (isOn) label.classList.add("is-on");
+            if (!inPlan) label.classList.add("is-disabled");
+            if (isOn && this.lidReadinessByCell[String(cell)]?.ready === false) {
+                label.classList.add("is-not-ready");
+            }
+            const input = document.createElement("input");
+            input.type = "checkbox";
+            input.value = String(cell);
+            input.checked = isOn;
+            input.disabled = !inPlan || this.isRunning;
+            input.addEventListener("change", () => {
+                if (input.checked) {
+                    this.lidsOnCells.add(cell);
+                } else {
+                    this.lidsOnCells.delete(cell);
+                }
+                this.persistLidsOnCells();
+                this.renderLidsOnMenu();
+                this.syncMapVisuals({ force: true });
+            });
+            const text = document.createElement("span");
+            text.textContent = String(cell);
+            label.appendChild(input);
+            label.appendChild(text);
+            host.appendChild(label);
+        }
+        this._updateLidsOnStatus();
+    }
+
+    _updateLidsOnStatus() {
+        if (!this.el.lidsOnStatus) {
+            return;
+        }
+        const selected = this._selectedLidsOnCells();
+        if (!selected.length) {
+            this.el.lidsOnStatus.textContent = "No lids marked.";
+            this.el.lidsOnStatus.classList.remove("is-error");
+            return;
+        }
+        const notReady = selected.filter((cell) => this.lidReadinessByCell[String(cell)]?.ready === false);
+        if (notReady.length) {
+            this.el.lidsOnStatus.textContent =
+                `Marked: ${selected.join(", ")}. Not lid-ready: ${notReady.join(", ")}.`;
+            this.el.lidsOnStatus.classList.add("is-error");
+            return;
+        }
+        this.el.lidsOnStatus.textContent = `Marked lids on: ${selected.join(", ")}.`;
+        this.el.lidsOnStatus.classList.remove("is-error");
+    }
+
+    persistLidsOnCells() {
+        const lids = this._selectedLidsOnCells();
+        fetch("/api/control_settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lids_on_cells: lids }),
+        }).catch(() => {
+            /* keep local markers even if persist fails */
+        });
+    }
+
+    applyLidsOnCells(cells, { skipPersist = false } = {}) {
+        const next = new Set();
+        (Array.isArray(cells) ? cells : []).forEach((raw) => {
+            const cell = Number(raw);
+            if (Number.isFinite(cell) && cell >= 1 && cell <= 18) {
+                next.add(cell);
+            }
+        });
+        this.lidsOnCells = next;
+        this.renderLidsOnMenu();
+        this.syncMapVisuals({ force: true });
+        if (!skipPersist) {
+            this.persistLidsOnCells();
+        }
+    }
+
+    applyLidUpdate(payload = {}) {
+        if (Array.isArray(payload.lids_on_cells)) {
+            this.applyLidsOnCells(payload.lids_on_cells, { skipPersist: true });
+        }
+        if (payload.lid_phase !== undefined) {
+            this.lidPhase = payload.lid_phase || null;
+        }
+        if (payload.lid_phase_cell !== undefined) {
+            const cell = Number(payload.lid_phase_cell);
+            this.lidPhaseCell = Number.isFinite(cell) ? cell : null;
+        }
+        this.updateLidPickupBadge();
+        this.syncMapVisuals({ force: true });
+    }
+
+    updateLidPickupBadge() {
+        if (!this.el.lidPickupBadge) {
+            return;
+        }
+        const active = this.lidPhase === "picking_up";
+        this.el.lidPickupBadge.classList.toggle("hidden", !active);
+        if (active && this.lidPhaseCell != null) {
+            this.el.lidPickupBadge.textContent = `Picking up lid · cell ${this.lidPhaseCell}`;
+        } else {
+            this.el.lidPickupBadge.textContent = "Picking up lid";
+        }
+    }
+
+    refreshLidReadiness() {
+        const cells = this._plannedCellsForLidMenu();
+        return fetch("/api/lid/readiness", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cells }),
+        })
+            .then((response) => response.json())
+            .then((report) => {
+                if (report?.error) {
+                    throw new Error(report.error);
+                }
+                this.lidReadinessByCell = report?.cells || {};
+                this.renderLidsOnMenu();
+                return report;
+            })
+            .catch(() => {
+                this.lidReadinessByCell = {};
+                this.renderLidsOnMenu();
+                return null;
+            });
+    }
+
+    _openLidConfirmModal(context) {
+        this._pendingStartAfterLidConfirm = context || { mode: "custom" };
+        const selected = this._selectedLidsOnCells();
+        const planned = new Set(
+            Array.isArray(context?.cells) && context.cells.length
+                ? context.cells
+                : this._plannedCellsForLidMenu()
+        );
+        const relevant = selected.filter((cell) => planned.has(cell));
+        this.refreshLidReadiness().then((report) => {
+            const notReady = relevant.filter((cell) => report?.cells?.[String(cell)]?.ready === false);
+            if (this.el.lidConfirmSummary) {
+                if (!relevant.length) {
+                    this.el.lidConfirmSummary.textContent =
+                        "No cells are marked as having lids. Confirm placement and continue.";
+                } else {
+                    this.el.lidConfirmSummary.textContent =
+                        `These selected cells are marked as still having lids: ${relevant.join(", ")}.`;
+                }
+            }
+            if (this.el.lidConfirmList) {
+                this.el.lidConfirmList.innerHTML = "";
+                if (!relevant.length) {
+                    const item = document.createElement("li");
+                    item.textContent = "No lid pickups scheduled for this run.";
+                    this.el.lidConfirmList.appendChild(item);
+                } else {
+                    relevant.forEach((cell) => {
+                        const item = document.createElement("li");
+                        const ready = report?.cells?.[String(cell)]?.ready !== false;
+                        const highway = report?.cells?.[String(cell)]?.highway;
+                        const dock = report?.cells?.[String(cell)]?.dock;
+                        item.textContent = ready
+                            ? `Cell ${cell} → highway ${highway}, dock ${dock}`
+                            : `Cell ${cell} — lid teach incomplete (blocked)`;
+                        this.el.lidConfirmList.appendChild(item);
+                    });
+                }
+            }
+            if (this.el.lidConfirmYes) {
+                this.el.lidConfirmYes.disabled = notReady.length > 0;
+                this.el.lidConfirmYes.title = notReady.length
+                    ? `Complete lid teach for cell(s) ${notReady.join(", ")} first.`
+                    : "";
+            }
+            if (this.el.lidConfirmBackdrop) {
+                this.el.lidConfirmBackdrop.classList.remove("hidden");
+                this.el.lidConfirmBackdrop.setAttribute("aria-hidden", "false");
+            }
+            this.el.body.classList.add("lid-confirm-active");
+        });
+    }
+
+    _closeLidConfirmModal(cancelled = false) {
+        if (this.el.lidConfirmBackdrop) {
+            this.el.lidConfirmBackdrop.classList.add("hidden");
+            this.el.lidConfirmBackdrop.setAttribute("aria-hidden", "true");
+        }
+        this.el.body.classList.remove("lid-confirm-active");
+        if (cancelled) {
+            this._pendingStartAfterLidConfirm = null;
+        }
+    }
+
+    _confirmLidPlacementAndStart() {
+        const context = this._pendingStartAfterLidConfirm;
+        this._closeLidConfirmModal(false);
+        this._pendingStartAfterLidConfirm = null;
+        if (!context) {
+            return;
+        }
+        if (context.mode === "screening") {
+            this._executeScreeningRunStart({
+                name: context.name,
+                cells: context.cells,
+            });
+            return;
+        }
+        this._startRegularRunAfterNameCheck();
+    }
+
     startScreeningRunFromUI() {
         if (this.calibrationReviewPending || this.experimentReviewPending) {
             this.pushStatusMessage("Finish the data save review before starting a new run");
@@ -3385,6 +3677,10 @@ class ViscometryDashboard {
             this.setControlStatus("Select at least one calibrated cell");
             return;
         }
+        this._openLidConfirmModal({ mode: "screening", name, cells });
+    }
+
+    _executeScreeningRunStart({ name, cells }) {
         const maxRpms = this._maxScreeningRpms();
         if (this.el.screeningMaxRpms) this.el.screeningMaxRpms.value = String(maxRpms);
         if (this.el.testingMode) this.el.testingMode.value = "custom";
@@ -3404,6 +3700,7 @@ class ViscometryDashboard {
                     discovery_mode_enabled: true,
                     discovery_proceed_with_run: true,
                     max_screening_rpms: maxRpms,
+                    lids_on_cells: this._selectedLidsOnCells(),
                 };
                 try {
                     this.runSettingsSnapshot = JSON.parse(JSON.stringify(payload));
@@ -3475,6 +3772,7 @@ class ViscometryDashboard {
             cell_rpm_map: this.buildCellRpmMapPayload(),
             cell_content_map: this.buildCellContentMapPayload(),
             max_screening_rpms: this._maxScreeningRpms(),
+            lids_on_cells: this._selectedLidsOnCells(),
         };
     }
 
@@ -3520,7 +3818,7 @@ class ViscometryDashboard {
             this._openExperimentNamePromptModal();
             return;
         }
-        this._startRegularRunAfterNameCheck();
+        this._openLidConfirmModal({ mode: "custom" });
     }
 
     _openExperimentNamePromptModal() {
@@ -3562,7 +3860,7 @@ class ViscometryDashboard {
             this.el.experimentName.value = name;
         }
         this._closeExperimentNamePromptModal();
-        this._startRegularRunAfterNameCheck();
+        this._openLidConfirmModal({ mode: "custom" });
     }
 
     _startRegularRunAfterNameCheck() {
@@ -3570,12 +3868,17 @@ class ViscometryDashboard {
         this.setUiState("running");
         this.applyControlSettings(true)
             .then((settings) => {
+                const payload = {
+                    ...settings,
+                    ...this.regularRunModeClearFlags(),
+                    lids_on_cells: this._selectedLidsOnCells(),
+                };
                 this._captureRunSettingsSnapshot();
                 this._syncPlannedCells(this.readControlSettings());
                 return fetch("/api/run/start", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ...settings, ...this.regularRunModeClearFlags() }),
+                    body: JSON.stringify(payload),
                 });
             })
             .then((response) => response.json())
@@ -3741,6 +4044,10 @@ class ViscometryDashboard {
 
         this.socket.on("control_settings_update", (settings) => {
             this.populateControlSettings(settings);
+        });
+
+        this.socket.on("lid_update", (payload) => {
+            this.applyLidUpdate(payload || {});
         });
 
         this.socket.on("position_update", (data) => {
@@ -4418,6 +4725,12 @@ class ViscometryDashboard {
         if (status.testing_status) {
             this.applyTestingStatus(status.testing_status);
         }
+
+        this.applyLidUpdate({
+            lids_on_cells: status.lids_on_cells,
+            lid_phase: status.lid_phase,
+            lid_phase_cell: status.lid_phase_cell,
+        });
 
         if (status.status_message) {
             this.consumeStatusForPhase(status.status_message);

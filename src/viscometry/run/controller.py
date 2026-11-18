@@ -104,6 +104,7 @@ _RUNTIME_SETTING_NAMES = (
     "TESTING_MODE",
     "SELECTED_ROWS",
     "SELECTED_CELLS",
+    "LIDS_ON_CELLS",
     "TEST_RPMS",
     "CELL_RPM_MAP",
     "CELL_CONTENT_MAP",
@@ -172,6 +173,17 @@ def apply_runtime_settings_from_web():
     rs.TESTING_MODE = web_settings.get('testing_mode', rs.TESTING_MODE)
     rs.SELECTED_ROWS = web_settings.get('selected_rows', rs.SELECTED_ROWS)
     rs.SELECTED_CELLS = web_settings.get('selected_cells', rs.SELECTED_CELLS)
+    raw_lids = web_settings.get('lids_on_cells', rs.LIDS_ON_CELLS)
+    lids_on: list[int] = []
+    if isinstance(raw_lids, list):
+        for cell in raw_lids:
+            try:
+                cell_id = int(cell)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= cell_id <= 18:
+                lids_on.append(cell_id)
+    rs.LIDS_ON_CELLS = sorted(set(lids_on))
     rs.TEST_RPMS = web_settings.get('test_rpms', rs.TEST_RPMS)
     raw_map = web_settings.get('cell_rpm_map', {})
     rs.CELL_RPM_MAP = {int(k): v for k, v in raw_map.items() if v}
@@ -2426,10 +2438,61 @@ def main():
                 print(f"TESTING CELL {global_cell} ({i+1}/{len(selected_cells)})")
                 print(f"Row {row_number}, Local Cell {local_cell}, BASE_X = {row_config['base_x']}")
                 print(f"{'='*60}")
-                    
+
+                # Use resolved run mode (set once at run start) to avoid accidental drift in per-cell flags.
+                is_calibration_like_run = mode in ("calibration", "recalibration")
+
+                # Optional lid pickup + park before auto-zero / discovery / measure.
+                lids_marked = {
+                    int(cell)
+                    for cell in (LIDS_ON_CELLS or [])
+                    if str(cell).strip()
+                }
+                if (
+                    not is_calibration_like_run
+                    and global_cell in lids_marked
+                ):
+                    from viscometry.lid.run_ops import LidRunError, pickup_and_park_lid
+
+                    raise_if_stop_requested()
+                    web_interface.set_current_cell(global_cell)
+                    web_interface.set_lid_phase("picking_up", global_cell)
+                    try:
+                        pickup_and_park_lid(
+                            cnc,
+                            global_cell,
+                            on_status=web_interface.update_status,
+                            on_position=lambda x, y, z: web_interface.update_position(x, y, z),
+                        )
+                        web_interface.clear_lid_on_cell(global_cell)
+                        try:
+                            LIDS_ON_CELLS[:] = [
+                                cell for cell in LIDS_ON_CELLS if int(cell) != int(global_cell)
+                            ]
+                            run_settings.LIDS_ON_CELLS = list(LIDS_ON_CELLS)
+                        except Exception:
+                            pass
+                    except LidRunError as lid_exc:
+                        print(f"  Lid error for Cell {global_cell}: {lid_exc}")
+                        web_interface.update_status(
+                            f"Cell {global_cell}: lid pickup/park failed — {lid_exc}"
+                        )
+                        termination_by_cell[global_cell] = "lid_error"
+                        web_interface.set_lid_phase(None)
+                        run_ended_early = True
+                        break
+                    except KeyboardInterrupt:
+                        web_interface.set_lid_phase(None)
+                        raise
+                    finally:
+                        if web_interface.lid_phase == "picking_up":
+                            web_interface.set_lid_phase(None)
+                    raise_if_stop_requested()
+
                 # Auto-zero the viscometer sensor before testing each cell
                 try:
                     print(f"Auto-zeroing viscometer for Cell {global_cell}...")
+                    web_interface.update_status(f"Auto-zeroing viscometer for Cell {global_cell}")
                     client.zero()
                     print("Viscometer auto-zero completed")
                 except Exception as e:
@@ -2442,8 +2505,6 @@ def main():
                 try:
                     # Resolve per-cell RPMs before the cell test
                     cell_rpms = get_rpms_for_cell(global_cell)
-                    # Use resolved run mode (set once at run start) to avoid accidental drift in per-cell flags.
-                    is_calibration_like_run = mode in ("calibration", "recalibration")
                     discovery_handoff_z: Optional[float] = None
                     skip_initial_safe_move = False
                     discovery_rpm_for_landing: Optional[float] = None

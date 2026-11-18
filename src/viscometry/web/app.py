@@ -296,6 +296,7 @@ class ViscometryWebInterface:
             'testing_mode': 'custom',
             'selected_rows': [2],
             'selected_cells': [1],
+            'lids_on_cells': [],
             'test_rpms': [0.8],
             'cell_rpm_map': {},
             'cell_content_map': {},
@@ -390,6 +391,9 @@ class ViscometryWebInterface:
         self.WASH_STATION2_X = 383
         self.WASH_STATION2_Y = 147
         self.lid_tool = LidToolService(self)
+        # Session lid markers for the next/current experiment run.
+        self.lid_phase: Optional[str] = None  # None | "picking_up"
+        self.lid_phase_cell: Optional[int] = None
 
         self.setup_routes()
         
@@ -478,6 +482,25 @@ class ViscometryWebInterface:
                 return jsonify(settings)
             except Exception as e:
                 print(f"Error in control_settings: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/lid/readiness', methods=['GET', 'POST'])
+        def api_lid_readiness():
+            try:
+                from viscometry.lid.run_ops import readiness_for_cells
+
+                payload = request.get_json(silent=True) or {}
+                raw = payload.get('cells', payload.get('selected_cells', payload.get('lids_on_cells')))
+                if raw is None and request.method == 'GET':
+                    raw = request.args.get('cells', '')
+                if raw is None:
+                    raw = self.runtime_settings.get('lids_on_cells') or []
+                cells = self._parse_selected_cells_from_payload({'selected_cells': raw})
+                report = readiness_for_cells(cells)
+                report['lids_on_cells'] = list(self.runtime_settings.get('lids_on_cells') or [])
+                return jsonify(report)
+            except Exception as e:
+                print(f"Error in api_lid_readiness: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/run/start', methods=['POST'])
@@ -993,6 +1016,9 @@ class ViscometryWebInterface:
                 'calibration_review_pending': self.has_pending_calibration_review(),
                 'experiment_review': self.get_experiment_review_session(),
                 'experiment_review_pending': self.has_pending_experiment_review(),
+                'lids_on_cells': list((runtime or {}).get('lids_on_cells') or []),
+                'lid_phase': self.lid_phase,
+                'lid_phase_cell': self.lid_phase_cell,
             }
         except Exception as e:
             print(f"Error in get_status_dict: {e}")
@@ -1014,6 +1040,9 @@ class ViscometryWebInterface:
                 'measurement_data': [],
                 'control_settings': {}
                 ,
+                'lids_on_cells': [],
+                'lid_phase': None,
+                'lid_phase_cell': None,
                 'calibration_summary': {'is_calibrated': False, 'calibrated_at': None, 'cell_count': 0, 'cell_calibrated_at': {}, 'cells': {}},
                 'calibration_mode': False,
                 'recalibration_mode_active': False,
@@ -1864,6 +1893,12 @@ class ViscometryWebInterface:
             if 'selected_cells' in settings:
                 cells = parse_int_list(settings['selected_cells'])
                 normalized['selected_cells'] = cells or normalized['selected_cells']
+            if 'lids_on_cells' in settings:
+                lids = [
+                    cell for cell in parse_int_list(settings['lids_on_cells'])
+                    if 1 <= cell <= 18
+                ]
+                normalized['lids_on_cells'] = sorted(set(lids))
             if 'test_rpms' in settings:
                 rpms = parse_float_list(settings['test_rpms'])
                 if rpms:
@@ -2114,6 +2149,60 @@ class ViscometryWebInterface:
             'screening_enabled': False,
         }
 
+    def _validate_lids_on_for_start(self, selected_cells: List[int]) -> None:
+        """Block start when a selected cell is marked lid-on but not park-ready."""
+        lids = [
+            int(cell)
+            for cell in (self.runtime_settings.get('lids_on_cells') or [])
+            if str(cell).strip()
+        ]
+        relevant = sorted({cell for cell in lids if cell in selected_cells})
+        if not relevant:
+            return
+        from viscometry.lid.run_ops import readiness_for_cells
+
+        report = readiness_for_cells(relevant)
+        not_ready = report.get('not_ready') or []
+        if not_ready:
+            raise ValueError(
+                "Lid pickup is marked for cell(s) "
+                f"{', '.join(str(c) for c in not_ready)}, but lid teach is incomplete "
+                "(need cell-1 poses, highway, and dock for each)."
+            )
+
+    def broadcast_lid_update(self) -> None:
+        """Push lid-on markers and pickup phase to connected clients."""
+        runtime = self.get_runtime_settings()
+        payload = {
+            'lids_on_cells': list((runtime or {}).get('lids_on_cells') or []),
+            'lid_phase': self.lid_phase,
+            'lid_phase_cell': self.lid_phase_cell,
+        }
+        try:
+            self.socketio.emit('lid_update', payload)
+        except Exception as exc:
+            print(f"Warning: lid_update emit failed ({exc})")
+
+    def set_lid_phase(self, phase: Optional[str], cell: Optional[int] = None) -> None:
+        self.lid_phase = phase
+        self.lid_phase_cell = int(cell) if cell is not None else None
+        self.broadcast_lid_update()
+
+    def clear_lid_on_cell(self, cell: int) -> None:
+        """Clear the session lid-on marker after a successful park."""
+        try:
+            cell_id = int(cell)
+        except (TypeError, ValueError):
+            return
+        with self.control_lock:
+            lids = [
+                int(item)
+                for item in (self.runtime_settings.get('lids_on_cells') or [])
+                if str(item).strip()
+            ]
+            self.runtime_settings['lids_on_cells'] = sorted({c for c in lids if c != cell_id})
+        self.broadcast_lid_update()
+
     def _validate_discovery_cells(self, selected_cells: List[int]) -> None:
         """Raise ValueError if any cell lacks Z calibration."""
         summary = get_calibration_summary()
@@ -2166,12 +2255,15 @@ class ViscometryWebInterface:
             'z_start_offset_mm': z_offset,
         }
         self.update_runtime_settings(merged)
+        self._validate_lids_on_for_start(selected)
         self.request_start()
 
     def _start_regular_run(self, payload: Optional[dict] = None) -> None:
         """Apply settings for a normal (non-calibration) run and queue start."""
         merged = {**(payload or {}), **self._regular_run_mode_clear_payload()}
         self.update_runtime_settings(merged)
+        selected = self._parse_selected_cells_from_payload(self.get_runtime_settings())
+        self._validate_lids_on_for_start(selected)
         self.request_start()
 
     def _clear_persisted_calibration_run_flags(self) -> None:
@@ -2951,8 +3043,11 @@ class ViscometryWebInterface:
             self.experiment_start_ts = None
             self.current_cell_start_ts = None
             self._clear_eta_prediction()
+            self.lid_phase = None
+            self.lid_phase_cell = None
             if previous_state:
                 self.socketio.emit('experiment_stop', {})
+                self.broadcast_lid_update()
         if previous_state != is_running:
             runtime = self.get_runtime_settings()
             discovery_enabled = bool((runtime or {}).get('discovery_mode_enabled', False))
