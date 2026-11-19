@@ -1,0 +1,56 @@
+# Dynamic Analysis - Mode: CUSTOM (PARTIAL RESULTS)
+# Experiment Name: 30%/5%_10K/600K_PEG_LID_TEST
+# Test RPMs (global fallback): ['0.70']
+"# Per-cell sample labels: {1: 'trial1', 7: 'trial2', 13: 'trial3'}"
+# Timestamp: 20261119_094354
+"# Cell numbering: Row 1 = cells 1-6, Row 2 = cells 7-12, Row 3 = cells 13-18"
+"# Completed cells: [1, 7, 13]"
+# Feedback Control: ENABLED
+"# Feedback R2 Thresholds: Drag = 0.975, CV = 0.975, Slope = 0.975, Confidence = 0.8"
+"# Confidence Weights: 2nd-Deriv(Drag/CV/Slope) = 0.2/0.2/0.2, R2(Drag/CV/Slope) = 0.2/0.2/0.2"
+# WARNING: Experiment was terminated early - these are partial results
+# Characterization mode: on
+
+"# Cell termination methods: {1: 'vote_hit', 7: 'vote_hit'}"
+row,cell,Cell_Label,Z_Height_mm,RPM,Elapsed_Time_s,Torque_%,Rotational_Drag,Hit_Detected
+1,1,trial1,-65.600,0.70,30.01,31.020,44.314286,False
+1,1,trial1,-65.620,0.70,25.06,31.520,45.028571,False
+1,1,trial1,-65.640,0.70,25.06,31.860,45.514286,False
+1,1,trial1,-65.660,0.70,25.05,32.380,46.257143,False
+1,1,trial1,-65.680,0.70,25.07,33.130,47.328571,False
+1,1,trial1,-65.700,0.70,25.06,33.510,47.871429,False
+1,1,trial1,-65.720,0.70,25.05,34.160,48.800000,False
+1,1,trial1,-65.740,0.70,25.07,34.960,49.942857,False
+1,1,trial1,-65.760,0.70,25.06,35.700,51.000000,False
+1,1,trial1,-65.780,0.70,25.06,36.210,51.728571,False
+1,1,trial1,-65.800,0.70,25.06,37.180,53.114286,False
+1,1,trial1,-65.820,0.70,25.09,37.870,54.100000,False
+1,1,trial1,-65.840,0.70,25.04,38.740,55.342857,False
+1,1,trial1,-65.860,0.70,25.05,39.650,56.642857,False
+1,1,trial1,-65.880,0.70,25.06,40.610,58.014286,False
+1,1,trial1,-65.900,0.70,25.05,41.540,59.342857,False
+1,1,trial1,-65.920,0.70,30.01,42.880,61.257143,False
+1,1,trial1,-65.940,0.70,25.06,43.850,62.642857,False
+1,1,trial1,-65.960,0.70,25.06,45.190,64.557143,False
+1,1,trial1,-65.980,0.70,35.07,48.830,69.757143,True
+2,7,trial2,-65.540,0.70,25.10,27.650,39.500000,False
+2,7,trial2,-65.560,0.70,25.08,28.070,40.100000,False
+2,7,trial2,-65.580,0.70,25.10,28.760,41.085714,False
+2,7,trial2,-65.600,0.70,25.06,29.090,41.557143,False
+2,7,trial2,-65.620,0.70,25.08,29.580,42.257143,False
+2,7,trial2,-65.640,0.70,25.09,30.420,43.457143,False
+2,7,trial2,-65.660,0.70,25.04,30.810,44.014286,False
+2,7,trial2,-65.680,0.70,25.08,31.460,44.942857,False
+2,7,trial2,-65.700,0.70,25.10,32.350,46.214286,False
+2,7,trial2,-65.720,0.70,25.02,33.080,47.257143,False
+2,7,trial2,-65.740,0.70,25.02,33.730,48.185714,False
+2,7,trial2,-65.760,0.70,25.05,34.760,49.657143,False
+2,7,trial2,-65.780,0.70,25.04,35.620,50.885714,False
+2,7,trial2,-65.800,0.70,25.06,36.510,52.157143,False
+2,7,trial2,-65.820,0.70,25.09,37.550,53.642857,False
+2,7,trial2,-65.840,0.70,25.06,38.700,55.285714,False
+2,7,trial2,-65.860,0.70,25.05,39.690,56.700000,False
+2,7,trial2,-65.880,0.70,25.06,40.950,58.500000,False
+2,7,trial2,-65.900,0.70,30.03,42.300,60.428571,False
+2,7,trial2,-65.920,0.70,25.06,43.340,61.914286,False
+2,7,trial2,-65.940,0.70,35.08,50.720,72.457143,True
