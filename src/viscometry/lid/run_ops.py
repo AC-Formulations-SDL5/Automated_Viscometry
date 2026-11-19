@@ -14,11 +14,9 @@ from viscometry.lid.motion import (
     Z_CLEARANCE_TOL_MM,
     LidMotionError,
     Pose,
-    assert_single_axis_plan,
+    assert_lid_plan_safe,
     cell_poses,
     dock_for_cell,
-    highway_id_for_cell,
-    highway_key_for_cell,
     plan_park_lid,
     plan_pickup,
     pose_from,
@@ -48,7 +46,7 @@ def cell1_pair_ready(cal: Optional[dict] = None) -> bool:
 
 
 def park_ready_for_cell(cell: int, cal: Optional[dict] = None) -> bool:
-    """True when pickup poses + that cell's highway + dock are taught."""
+    """True when pickup poses + that cell's dock are taught."""
     try:
         cell_id = int(cell)
     except (TypeError, ValueError):
@@ -57,9 +55,6 @@ def park_ready_for_cell(cell: int, cal: Optional[dict] = None) -> bool:
         return False
     data = cal if cal is not None else _calibration()
     if not cell1_pair_ready(data):
-        return False
-    highway = pose_from(data.get(highway_key_for_cell(cell_id)))
-    if highway is None:
         return False
     dock_id = dock_for_cell(cell_id)
     dock_xy = pose_from(data.get(f"dock{dock_id}_xy"))
@@ -86,7 +81,6 @@ def readiness_for_cells(cells: Sequence[int]) -> dict:
         ready = park_ready_for_cell(cell_id, cal)
         details[str(cell_id)] = {
             "ready": ready,
-            "highway": highway_id_for_cell(cell_id) if 1 <= cell_id <= 18 else None,
             "dock": dock_for_cell(cell_id) if 1 <= cell_id <= 18 else None,
         }
         if not ready:
@@ -111,11 +105,7 @@ def _poses_for_cell(cell: int, cal: dict) -> tuple[Pose, Pose]:
     return cell_poses(large, small, cell)
 
 
-def _highway_and_dock(cell: int, cal: dict) -> tuple[Pose, Pose, float]:
-    highway_id = highway_id_for_cell(cell)
-    highway = pose_from(cal.get(highway_key_for_cell(cell)))
-    if highway is None:
-        raise LidRunError(f"Highway {highway_id} is not saved yet.")
+def _dock_for_cell_poses(cell: int, cal: dict) -> tuple[Pose, float]:
     dock_id = dock_for_cell(cell)
     dock_xy = pose_from(cal.get(f"dock{dock_id}_xy"))
     if dock_xy is None:
@@ -126,7 +116,7 @@ def _highway_and_dock(cell: int, cal: dict) -> tuple[Pose, Pose, float]:
         raise LidRunError(f"Dock {dock_id} drop Z is not saved yet.") from exc
     if dock_z >= -Z_CLEARANCE_TOL_MM:
         raise LidRunError(f"Dock {dock_id} drop Z must be below Z = 0.")
-    return highway, dock_xy, dock_z
+    return dock_xy, dock_z
 
 
 def _ensure_in_bounds(pose: Pose) -> None:
@@ -143,7 +133,7 @@ def _ensure_in_bounds(pose: Pose) -> None:
 
 def _ensure_plan(current: Pose, segments) -> None:
     try:
-        assert_single_axis_plan(current, segments)
+        assert_lid_plan_safe(current, segments)
     except LidMotionError as exc:
         raise LidRunError(str(exc)) from exc
     pose = current
@@ -182,12 +172,12 @@ def pickup_and_park_lid(
     if not park_ready_for_cell(cell_id):
         raise LidRunError(
             f"Cell {cell_id} is not ready for lid pickup and park "
-            "(need cell-1 poses, highway, and dock)."
+            "(need cell-1 poses and dock)."
         )
 
     cal = _calibration()
     large, small = _poses_for_cell(cell_id, cal)
-    highway, dock_xy, dock_z = _highway_and_dock(cell_id, cal)
+    dock_xy, dock_z = _dock_for_cell_poses(cell_id, cal)
     dock_id = dock_for_cell(cell_id)
 
     def status(message: str) -> None:
@@ -228,7 +218,6 @@ def pickup_and_park_lid(
     try:
         park_segments = plan_park_lid(
             held,
-            highway=highway,
             dock_xy=dock_xy,
             dock_z=dock_z,
             large=large,

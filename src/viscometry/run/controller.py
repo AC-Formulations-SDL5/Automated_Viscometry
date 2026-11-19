@@ -1399,6 +1399,9 @@ def test_dynamic_analysis_at_z(
 
     When liquid_skip_enabled, each RPM is probed at this Z: if the first sample at
     SAMPLE_INTERVAL is below the floor, that RPM is skipped and the next RPM is tried.
+
+    If manual terminate is queued, finishes the RPM currently in progress, skips remaining
+    RPMs at this Z, and returns so the caller can end the cell.
     """
     read_retries_per_slot = (
         CALIBRATION_READ_RETRIES_PER_SLOT if run_settings._is_calibration_like_run() else 1
@@ -1421,7 +1424,7 @@ def test_dynamic_analysis_at_z(
     if liquid_skip_enabled:
         rpm_torque_data["_liquid_skip_probe_at_z"] = True
 
-    for rpm in active_rpms:
+    for rpm_index, rpm in enumerate(active_rpms):
         if liquid_skip_enabled:
             measurements = measure_torque_at_rpm(
                 client,
@@ -1436,6 +1439,15 @@ def test_dynamic_analysis_at_z(
                     f"(≥ {SAMPLE_INTERVAL:.1f}s) at Z={z_height:.3f} — skip RPM, try next"
                 )
                 rpm_torque_data[rpm] = None
+                # Still honor manual terminate after a completed probe/skip decision.
+                if web_interface.should_terminate_current_cell():
+                    for remaining in active_rpms[rpm_index + 1:]:
+                        rpm_torque_data.setdefault(remaining, None)
+                    print(
+                        f"    Manual termination queued — ending after RPM {format_rpm(rpm)} "
+                        f"at Z={z_height:.3f} (remaining RPMs at this Z skipped)"
+                    )
+                    break
                 continue
         else:
             measurements = measure_torque_at_rpm(
@@ -1453,6 +1465,16 @@ def test_dynamic_analysis_at_z(
             print(
                 f"      [CAL] RPM {format_rpm(rpm)}: would drop ({reason}) — continuing for calibration"
             )
+
+        # Finish the current RPM, then stop the rest of this Z-height's RPM list.
+        if web_interface.should_terminate_current_cell():
+            for remaining in active_rpms[rpm_index + 1:]:
+                rpm_torque_data.setdefault(remaining, None)
+            print(
+                f"    Manual termination queued — ending after RPM {format_rpm(rpm)} "
+                f"at Z={z_height:.3f} (remaining RPMs at this Z skipped)"
+            )
+            break
 
     z_liquid_skipped = False
     if liquid_skip_enabled and active_rpms:
@@ -1926,10 +1948,10 @@ def test_cell_dynamic_z_series(
                     web_interface.clear_terminate_current_cell_request()
                     cell_exit_reason = "manual_terminate"
                     web_interface.update_status(
-                        f"Cell {global_cell}: manual termination queued; ending after current measurement cycle"
+                        f"Cell {global_cell}: manual termination — ended after current RPM at Z={z_rounded:.3f}"
                     )
                     print(
-                        f"  *** MANUAL TERMINATION: ending Cell {global_cell} after current measurement cycle at Z={z_rounded:.3f} ***"
+                        f"  *** MANUAL TERMINATION: ending Cell {global_cell} after current RPM at Z={z_rounded:.3f} ***"
                     )
                     break
                     

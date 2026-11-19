@@ -1,8 +1,8 @@
-"""Single-axis plans for the lid pickup tool.
+"""Lid pickup motion plans.
 
-Every segment changes exactly one of X, Y, or Z. Horizontal travel happens at
-Z = 0. The engage sequence descends into the large hole, shifts in -Y, then
-lifts.
+Horizontal travel at Z = 0 may move X and Y together (diagonal). Any move that
+changes Z must be pure Z. Below clearance, horizontal moves stay single-axis
+(engage trap and dock release).
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ CUSTOM_JOG_MAX_Z_MM = 75.0
 
 
 class LidMotionError(ValueError):
-    """A lid plan or jog request violates the single-axis safety rules."""
+    """A lid plan or jog request violates the motion safety rules."""
 
 
 @dataclass(frozen=True)
@@ -41,11 +41,24 @@ class Pose:
 
 @dataclass(frozen=True)
 class Segment:
+    """A lid move: one axis, or XY together at clearance Z.
+
+    ``axis`` is ``\"x\"``, ``\"y\"``, ``\"z\"``, or ``\"xy\"``.
+    For single-axis moves, ``target`` is used.
+    For ``xy`` moves, ``x`` and ``y`` are used and ``target`` is unused (0.0).
+    """
+
     axis: str
     target: float
     feed: int
+    x: Optional[float] = None
+    y: Optional[float] = None
 
     def apply(self, pose: Pose) -> Pose:
+        if self.axis == "xy":
+            if self.x is None or self.y is None:
+                raise LidMotionError("XY segment needs x and y targets.")
+            return Pose(float(self.x), float(self.y), pose.z)
         if self.axis == "x":
             return Pose(self.target, pose.y, pose.z)
         if self.axis == "y":
@@ -116,7 +129,7 @@ def single_axis_segment(
 ) -> Segment:
     specified = [(name, value) for name, value in (("x", x), ("y", y), ("z", z)) if value is not None]
     if len(specified) != 1:
-        raise LidMotionError("A lid move must change exactly one axis.")
+        raise LidMotionError("A single-axis lid move must change exactly one axis.")
     axis, target = specified[0]
     target_f = float(target)
     if _near(getattr(current, axis), target_f, 1e-6):
@@ -124,22 +137,50 @@ def single_axis_segment(
     return Segment(axis, target_f, int(feed))
 
 
-def assert_single_axis_plan(start: Pose, segments: list[Segment]) -> None:
+def xy_segment(current: Pose, feed: int, x: float, y: float) -> Segment:
+    """Build an XY diagonal segment; only legal when already at clearance Z."""
+    if abs(current.z) > Z_CLEARANCE_TOL_MM:
+        raise LidMotionError("XY diagonal travel is only allowed at Z = 0.")
+    tx = float(x)
+    ty = float(y)
+    if _near(current.x, tx, 1e-6) and _near(current.y, ty, 1e-6):
+        raise LidMotionError("Segment does not move.")
+    return Segment("xy", 0.0, int(feed), x=tx, y=ty)
+
+
+def assert_lid_plan_safe(start: Pose, segments: list[Segment]) -> None:
+    """Allow single-axis moves always; XY only when the segment starts at Z = 0."""
     pose = start
     for seg in segments:
         end = seg.apply(pose)
-        moved = [
-            axis
-            for axis, amount in (
-                ("x", abs(end.x - pose.x)),
-                ("y", abs(end.y - pose.y)),
-                ("z", abs(end.z - pose.z)),
-            )
-            if amount > 1e-9
-        ]
-        if moved != [seg.axis]:
-            raise LidMotionError("A lid move must change exactly one axis.")
+        dx = abs(end.x - pose.x)
+        dy = abs(end.y - pose.y)
+        dz = abs(end.z - pose.z)
+        moved = [axis for axis, amount in (("x", dx), ("y", dy), ("z", dz)) if amount > 1e-9]
+        if not moved:
+            raise LidMotionError("Segment does not move.")
+        if seg.axis == "xy":
+            if moved != ["x", "y"] and set(moved) != {"x", "y"}:
+                # allow one of x/y zero if planner still labeled xy; still forbid Z
+                if "z" in moved:
+                    raise LidMotionError("XZ and YZ moves are not allowed.")
+                if set(moved) - {"x", "y"}:
+                    raise LidMotionError("XY segment may only change X and Y.")
+            if abs(pose.z) > Z_CLEARANCE_TOL_MM:
+                raise LidMotionError("XY diagonal travel is only allowed at Z = 0.")
+            if dz > 1e-9:
+                raise LidMotionError("XZ and YZ moves are not allowed.")
+        else:
+            if moved != [seg.axis]:
+                raise LidMotionError("A lid move must change exactly one axis, or XY at Z = 0.")
+            if "z" in moved and (dx > 1e-9 or dy > 1e-9):
+                raise LidMotionError("XZ and YZ moves are not allowed.")
         pose = end
+
+
+def assert_single_axis_plan(start: Pose, segments: list[Segment]) -> None:
+    """Backward-compatible alias for lid plan validation."""
+    assert_lid_plan_safe(start, segments)
 
 
 def _feed_for(pose: Pose, axis: str) -> int:
@@ -156,18 +197,34 @@ def _append(segments: list[Segment], pose: Pose, axis: str, target: float) -> Po
     return segment.apply(pose)
 
 
+def _append_xy(segments: list[Segment], pose: Pose, x: float, y: float) -> Pose:
+    """Move to (x, y) at clearance: one XY segment, or a single axis if only one changes."""
+    if abs(pose.z) > Z_CLEARANCE_TOL_MM:
+        raise LidMotionError("Horizontal travel requires Z = 0.")
+    same_x = _near(pose.x, x, 1e-6)
+    same_y = _near(pose.y, y, 1e-6)
+    if same_x and same_y:
+        return pose
+    if same_x:
+        return _append(segments, pose, "y", y)
+    if same_y:
+        return _append(segments, pose, "x", x)
+    segment = xy_segment(pose, feed=TRAVEL_FEED_MM_PER_MIN, x=x, y=y)
+    segments.append(segment)
+    return segment.apply(pose)
+
+
 def plan_pickup(current: Pose, large: Pose, small: Pose) -> list[Segment]:
-    """Raise to Z = 0, move X then Y above the large hole, descend, shift -Y, lift."""
+    """Raise to Z = 0, XY to the large hole, descend, shift -Y, lift."""
     validate_trapped_pose(large, small)
     segments: list[Segment] = []
     pose = current
     pose = _append(segments, pose, "z", CLEARANCE_Z)
-    pose = _append(segments, pose, "x", large.x)
-    pose = _append(segments, pose, "y", large.y)
+    pose = _append_xy(segments, pose, large.x, large.y)
     pose = _append(segments, pose, "z", large.z)
     pose = _append(segments, pose, "y", small.y)
     pose = _append(segments, pose, "z", CLEARANCE_Z)
-    assert_single_axis_plan(current, segments)
+    assert_lid_plan_safe(current, segments)
     return segments
 
 
@@ -183,44 +240,18 @@ def plan_return(current: Pose, large: Pose, small: Pose) -> list[Segment]:
     pose = _append(segments, pose, "z", small.z)
     pose = _append(segments, pose, "y", large.y)
     pose = _append(segments, pose, "z", CLEARANCE_Z)
-    assert_single_axis_plan(current, segments)
+    assert_lid_plan_safe(current, segments)
     return segments
 
 
 def plan_move_to_parking_pose(current: Pose, parking: Pose) -> list[Segment]:
-    """Move an empty tool to a taught parking pose: Z to 0, then X, then Y."""
+    """Move an empty tool to a taught XY pose at Z = 0 (dock or other)."""
     segments: list[Segment] = []
     pose = current
     pose = _append(segments, pose, "z", CLEARANCE_Z)
-    pose = _append(segments, pose, "x", parking.x)
-    pose = _append(segments, pose, "y", parking.y)
-    assert_single_axis_plan(current, segments)
+    pose = _append_xy(segments, pose, parking.x, parking.y)
+    assert_lid_plan_safe(current, segments)
     return segments
-
-
-def highway_id_for_cell(cell: int) -> int:
-    """Map a sample cell to highway 1, 4, or 8."""
-    if cell < 1 or cell > 18:
-        raise LidMotionError("Cell must be between 1 and 18.")
-    if cell <= 6:
-        return 1
-    if cell <= 12:
-        return 4
-    return 8
-
-
-def highway_key_for_cell(cell: int) -> str:
-    highway_id = highway_id_for_cell(cell)
-    return {1: "parking_row1", 4: "parking_row4", 8: "parking_row8"}[highway_id]
-
-
-def parking_pose_for_cell(cell: int, row1: Pose, row4: Pose, row8: Pose) -> Pose:
-    highway_id = highway_id_for_cell(cell)
-    if highway_id == 1:
-        return row1
-    if highway_id == 4:
-        return row4
-    return row8
 
 
 def dock_for_cell(cell: int) -> int:
@@ -234,36 +265,20 @@ def dock_for_cell(cell: int) -> int:
     return 3
 
 
-def plan_parking_route(
-    current: Pose,
-    cell: int,
-    row1: Pose,
-    row4: Pose,
-    row8: Pose,
-) -> list[Segment]:
-    """Empty-tool route onto the cell's highway pose (X then Y at Z = 0).
-
-    Cells 1–6 use highway 1, 7–12 use highway 4, 13–18 use highway 8.
-    """
-    target = parking_pose_for_cell(cell, row1, row4, row8)
-    return plan_move_to_parking_pose(current, target)
-
-
 def plan_park_lid(
     current: Pose,
     *,
-    highway: Pose,
     dock_xy: Pose,
     dock_z: float,
     large: Pose,
     small: Pose,
+    highway: Optional[Pose] = None,
 ) -> list[Segment]:
-    """Carry a held lid to a right-side dock via the highway X-lane.
+    """Carry a held lid to a dock with XY travel at Z = 0, then drop and release.
 
-    Highway is an X corridor only: shift onto highway.x at the current Y, travel
-    in Y to the dock row, then X onto the dock (extreme right). Highway.y is
-    ignored for parking.
+    ``highway`` is ignored (kept optional for call-site compatibility).
     """
+    del highway  # highways removed; clearance at Z = 0 across the platform
     validate_trapped_pose(large, small)
     if abs(current.z) > Z_CLEARANCE_TOL_MM:
         raise LidMotionError("Park lid starts at Z = 0.")
@@ -277,24 +292,21 @@ def plan_park_lid(
     segments: list[Segment] = []
     pose = current
     pose = _append(segments, pose, "z", CLEARANCE_Z)
-    pose = _append(segments, pose, "x", highway.x)
-    pose = _append(segments, pose, "y", dock_xy.y)
-    pose = _append(segments, pose, "x", dock_xy.x)
+    pose = _append_xy(segments, pose, dock_xy.x, dock_xy.y)
     pose = _append(segments, pose, "z", float(dock_z))
     pose = _append(segments, pose, "y", release_y)
     pose = _append(segments, pose, "z", CLEARANCE_Z)
-    assert_single_axis_plan(current, segments)
+    assert_lid_plan_safe(current, segments)
     return segments
 
 
 def plan_home(current: Pose) -> list[Segment]:
-    """Raise to Z = 0 if needed, then move X to 0, then Y to 0."""
+    """Raise to Z = 0 if needed, then XY home to (0, 0)."""
     segments: list[Segment] = []
     pose = current
     pose = _append(segments, pose, "z", CLEARANCE_Z)
-    pose = _append(segments, pose, "x", 0.0)
-    pose = _append(segments, pose, "y", 0.0)
-    assert_single_axis_plan(current, segments)
+    pose = _append_xy(segments, pose, 0.0, 0.0)
+    assert_lid_plan_safe(current, segments)
     return segments
 
 

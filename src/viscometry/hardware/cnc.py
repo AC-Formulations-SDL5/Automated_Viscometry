@@ -43,6 +43,10 @@ def format_single_axis_gcode(axis: str, target: float, feed: int) -> str:
     return f"G1 {letter}{target:.3f} F{int(feed)}\n"
 
 
+def format_xy_gcode(x: float, y: float, feed: int) -> str:
+    return f"G1 X{float(x):.3f} Y{float(y):.3f} F{int(feed)}\n"
+
+
 class CNC_Machine:
     BAUD_RATE = 115200
     SERIAL_PORT = "COM5"  # CNC / GRBL
@@ -199,23 +203,45 @@ class CNC_Machine:
                 return parsed
         raise CNCMotionError("GRBL did not report WPos")
 
-    def _segment_command(self, segment) -> Tuple[str, float, int]:
+    def _segment_command(self, segment):
+        """Return (\"xy\", x, y, feed) or (axis, target, None, feed)."""
         axis = getattr(segment, "axis", None)
         target = getattr(segment, "target", None)
         feed = getattr(segment, "feed", None)
+        x = getattr(segment, "x", None)
+        y = getattr(segment, "y", None)
         if isinstance(segment, dict):
             axis = segment.get("axis", axis)
             target = segment.get("target", target)
             feed = segment.get("feed", feed)
+            x = segment.get("x", x)
+            y = segment.get("y", y)
+        if feed is None:
+            raise CNCMotionError("Lid segment is missing a feed")
+        if axis == "xy":
+            if x is None or y is None:
+                raise CNCMotionError("XY lid segment is missing x or y")
+            return "xy", float(x), float(y), int(feed)
         if axis not in ("x", "y", "z"):
-            raise CNCMotionError(f"Lid segment axis must be x, y, or z, got {axis}")
-        if target is None or feed is None:
+            raise CNCMotionError(f"Lid segment axis must be x, y, z, or xy, got {axis}")
+        if target is None:
             raise CNCMotionError("Lid segment is missing a target or feed")
-        return str(axis), float(target), int(feed)
+        return str(axis), float(target), None, int(feed)
 
-    def _position_after(self, pos: Tuple[float, float, float], axis: str, target: float) -> Tuple[float, float, float]:
+    def _position_after(
+        self,
+        pos: Tuple[float, float, float],
+        axis: str,
+        target: float,
+        y_target: Optional[float] = None,
+    ) -> Tuple[float, float, float]:
         x, y, z = pos
-        if axis == "x":
+        if axis == "xy":
+            if y_target is None:
+                raise CNCMotionError("XY move needs both X and Y targets")
+            x = target
+            y = y_target
+        elif axis == "x":
             x = target
         elif axis == "y":
             y = target
@@ -242,7 +268,7 @@ class CNC_Machine:
         on_segment: Optional[Callable[[Tuple[float, float, float], object], None]] = None,
         allow_abort: bool = True,
     ) -> Tuple[float, float, float]:
-        """Send one single-axis move at a time and report position after each one.
+        """Send lid moves one segment at a time (single-axis or XY) and report position.
 
         Stop is honored before the next segment is sent. Virtual mode applies the
         commanded point without opening a serial port.
@@ -252,8 +278,8 @@ class CNC_Machine:
             for segment in segments:
                 if self._abort_requested(allow_abort):
                     raise CNCMotionAbort("Stop requested before the next lid move", pos)
-                axis, target, _feed = self._segment_command(segment)
-                pos = self._position_after(pos, axis, target)
+                axis, a, b, _feed = self._segment_command(segment)
+                pos = self._position_after(pos, axis, a, b)
                 self._virtual_pos = pos
                 if on_segment is not None:
                     on_segment(pos, segment)
@@ -266,9 +292,12 @@ class CNC_Machine:
                 for segment in segments:
                     if self._abort_requested(allow_abort):
                         raise CNCMotionAbort("Stop requested before the next lid move", pos)
-                    axis, target, feed = self._segment_command(segment)
-                    self._position_after(pos, axis, target)
-                    line = format_single_axis_gcode(axis, target, feed)
+                    axis, a, b, feed = self._segment_command(segment)
+                    self._position_after(pos, axis, a, b)
+                    if axis == "xy":
+                        line = format_xy_gcode(a, b, feed)
+                    else:
+                        line = format_single_axis_gcode(axis, a, feed)
                     ser.write(line.encode())
                     try:
                         self._wait_idle(ser, allow_abort=allow_abort)
