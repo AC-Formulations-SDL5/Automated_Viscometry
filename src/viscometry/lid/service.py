@@ -439,6 +439,9 @@ class LidToolService:
     def _acquire(self) -> None:
         if self.web.is_running:
             raise LidToolError("Testing is unavailable during an active viscometry run", 409)
+        wash = getattr(self.web, "wash_trial", None)
+        if wash is not None and getattr(wash, "busy", False):
+            raise LidToolError("Wash trial is busy — wait until it finishes.", 409)
         if not self._motion_lock.acquire(blocking=False):
             raise LidToolError("Lid tool is already moving", 409)
         self.busy = True

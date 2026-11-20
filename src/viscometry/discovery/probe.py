@@ -21,9 +21,9 @@ def sample_window_should_stop(
 ) -> bool:
     """Whether the current sample window is enough to end the measurement.
 
-    Every run can stop when the coefficient of variation is under the threshold.
-    A discovery probe also stops once the window mean is under its torque ceiling,
-    so an in-range sample does not sit through the rest of the probe duration.
+    A measurement stops early only when the torque readings in the current
+    sample window have stabilized (coefficient of variation strictly below threshold).
+    In-range probes must never stop prematurely before stabilizing.
     """
     if window_size <= 0 or len(recent_torques) < window_size:
         return False
@@ -34,7 +34,7 @@ def sample_window_should_stop(
     variance = sum((value - mean) ** 2 for value in window) / len(window)
     if (variance ** 0.5) / mean < float(cv_threshold):
         return True
-    return duck_ceiling_pct is not None and mean < float(duck_ceiling_pct)
+    return False
 
 
 def mean_torque_from_measurements(measurements: Optional[List[dict]]) -> Optional[float]:

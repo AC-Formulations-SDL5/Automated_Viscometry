@@ -1274,6 +1274,68 @@
                     </div>
                 </section>
 
+                <section class="card wash-trial-card" id="wash-trial-card">
+                    <div class="card-title-row">
+                        <h2>Wash Station Trial</h2>
+                        <span id="wash-trial-state-pill" class="wash-trial-state-pill">Idle</span>
+                    </div>
+                    <p class="form-hint">
+                        Dip the spindle 0.2&nbsp;mm above a calibrated cell’s rough hitpoint to dirty it with sample, then run the full wash and dry sequence. Use this to screen solvents.
+                    </p>
+                    <div class="wash-trial-note">
+                        Only calibrated cells are selectable. Fast scrub raises oscillation feed and removes inter-stroke dwells.
+                    </div>
+
+                    <div class="wash-trial-panel-grid">
+                        <article class="wash-trial-panel">
+                            <div class="wash-trial-panel-meta">
+                                <h3>Sample cell</h3>
+                                <span class="wash-trial-panel-caption">Calibrated rough hitpoint required</span>
+                            </div>
+                            <label class="wash-trial-field" for="wash-trial-cell">
+                                <span>Cell</span>
+                                <select id="wash-trial-cell" class="wash-trial-select" aria-label="Wash trial cell"></select>
+                            </label>
+                            <div class="wash-trial-dip-meta mono" id="wash-trial-dip-preview">
+                                Select a calibrated cell
+                            </div>
+                        </article>
+
+                        <article class="wash-trial-panel">
+                            <div class="wash-trial-panel-meta">
+                                <h3>Scrub profile</h3>
+                                <span class="wash-trial-panel-caption">CNC oscillation in the wash bath</span>
+                            </div>
+                            <label class="ui-switch-row wash-trial-fast-row" for="wash-trial-fast-scrub">
+                                <span class="ui-switch ui-switch--accent-orange">
+                                    <input type="checkbox" id="wash-trial-fast-scrub">
+                                    <span class="ui-switch-track" aria-hidden="true"></span>
+                                </span>
+                                <span class="ui-switch-label">Fast scrub</span>
+                            </label>
+                            <p class="form-hint wash-trial-scrub-hint" id="wash-trial-scrub-hint">
+                                Default: F1000 with 1&nbsp;s dwells · Fast: F3000, no dwell
+                            </p>
+                        </article>
+
+                        <article class="wash-trial-panel wash-trial-panel-actions">
+                            <div class="wash-trial-panel-meta">
+                                <h3>Run</h3>
+                                <span class="wash-trial-panel-caption" id="wash-trial-phase-caption">Ready</span>
+                            </div>
+                            <div class="wash-trial-actions">
+                                <button type="button" id="wash-trial-run" class="btn control-btn-start wash-trial-action-btn">
+                                    Dirty &amp; wash
+                                </button>
+                                <button type="button" id="wash-trial-stop" class="btn subtle control-btn-stop wash-trial-stop-btn">
+                                    Stop
+                                </button>
+                            </div>
+                            <p class="wash-trial-message" id="wash-trial-message" aria-live="polite"></p>
+                        </article>
+                    </div>
+                </section>
+
                 <section class="card lid-tool-card" id="lid-tool-card">
                     <div class="card-title-row">
                         <h2>Lid Tool</h2>

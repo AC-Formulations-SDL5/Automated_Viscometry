@@ -350,6 +350,10 @@ class ViscometryDashboard {
         this.lidStep = 1;
         this.lidStepMode = "preset";
         this.lidRequestInFlight = false;
+        this.washTrialStatus = null;
+        this.washTrialRequestInFlight = false;
+        this.washTrialPollTimer = null;
+        this.washTrialCellZs = {};
         this.manualTerminateQueued = false;
         this.cellTerminationReasons = new Map();
         /** @type {Map<number, Map<string, string>>} cellId -> rpmKey -> active|dropped */
@@ -1124,6 +1128,7 @@ class ViscometryDashboard {
         }
         if (tabId === "testing-tab") {
             this.fetchTestingStatus();
+            this.fetchWashTrialStatus();
             this.fetchLidStatus();
         }
         if (tabId === "layout-tab") {
@@ -2791,7 +2796,7 @@ class ViscometryDashboard {
             let rpm = row.rpm;
             let torque = row.torque;
             let status = row.status || "pending";
-            if ((rpm == null || torque == null) && probe) {
+            if ((rpm == null || torque == null) && probe && (status === "pending" || status === "probing")) {
                 rpm = probe.rpm;
                 torque = probe.torque;
                 status = status === "on_target" ? status : "probing";
@@ -6118,9 +6123,13 @@ class ViscometryDashboard {
     applyCalibrationStatus(summary) {
         if (!summary) return;
         this.calibrationSummary = summary;
+        this.washTrialCellZs = summary.cells && typeof summary.cells === "object"
+            ? { ...summary.cells }
+            : {};
         this.updateCalibrationCellsStatusPill(summary);
         this.updateDiscoveryCalibrationPill(summary);
         this.updateZStartOffsetAvailability();
+        this.refreshWashTrialCellOptions();
         if (this.activeTabId === "discovery-tab") {
             this.validateDiscoveryCells();
             this.rebuildDiscoveryEtaTable();
@@ -6557,8 +6566,10 @@ class ViscometryDashboard {
     }
 
     bindTestingControls() {
+        this.bindWashTrialControls();
         this.bindLidControls();
         if (!this.el.testingActionButtons) {
+            this.updateWashTrialUi();
             this.updateLidUi();
             return;
         }
@@ -6593,12 +6604,16 @@ class ViscometryDashboard {
                 ...status.devices,
             };
         }
+        if (status.wash_trial && typeof status.wash_trial === "object") {
+            this.applyWashTrialStatus(status.wash_trial);
+        }
         if (this.el.testingRunLockPill && !this.isRunning) {
             this.el.testingRunLockPill.textContent = this.testingSessionConnected
                 ? "Idle - Testing connected"
                 : "Idle - Testing ready (auto-connect on action)";
         }
         this.updateTestingUi();
+        this.updateWashTrialUi();
     }
 
     updateTestingTabAvailability() {
@@ -6622,6 +6637,7 @@ class ViscometryDashboard {
         } else {
             this.updateTestingUi();
         }
+        this.updateWashTrialUi();
         this.updateLidUi();
     }
 
@@ -6664,6 +6680,270 @@ class ViscometryDashboard {
         } finally {
             this.testingRequestInFlight.delete(requestKey);
             this.updateTestingUi();
+        }
+    }
+
+    bindWashTrialControls() {
+        const card = document.getElementById("wash-trial-card");
+        this.el.washTrialCard = card;
+        this.el.washTrialStatePill = document.getElementById("wash-trial-state-pill");
+        this.el.washTrialCell = document.getElementById("wash-trial-cell");
+        this.el.washTrialDipPreview = document.getElementById("wash-trial-dip-preview");
+        this.el.washTrialFastScrub = document.getElementById("wash-trial-fast-scrub");
+        this.el.washTrialScrubHint = document.getElementById("wash-trial-scrub-hint");
+        this.el.washTrialPhaseCaption = document.getElementById("wash-trial-phase-caption");
+        this.el.washTrialRun = document.getElementById("wash-trial-run");
+        this.el.washTrialStop = document.getElementById("wash-trial-stop");
+        this.el.washTrialMessage = document.getElementById("wash-trial-message");
+        if (!card) {
+            this.updateWashTrialUi();
+            return;
+        }
+        this.el.washTrialCell?.addEventListener("change", () => this.updateWashTrialUi());
+        this.el.washTrialFastScrub?.addEventListener("change", () => this.updateWashTrialUi());
+        this.el.washTrialRun?.addEventListener("click", () => this.runWashTrial());
+        this.el.washTrialStop?.addEventListener("click", () => this.stopWashTrial());
+        this.refreshWashTrialCellOptions();
+        this.updateWashTrialUi();
+    }
+
+    fetchWashTrialStatus() {
+        fetch("/api/testing/wash_trial")
+            .then((response) => response.json())
+            .then((status) => this.applyWashTrialStatus(status))
+            .catch(() => {
+                /* non-fatal while tab is idle */
+            });
+    }
+
+    applyWashTrialStatus(status) {
+        if (!status || typeof status !== "object") {
+            return;
+        }
+        this.washTrialStatus = status;
+        if (Array.isArray(status.calibrated_cells) && status.calibrated_cells.length) {
+            // Prefer live calibration Z map when available; otherwise keep cell list.
+            this.refreshWashTrialCellOptions(status.calibrated_cells);
+        }
+        this.updateWashTrialUi();
+    }
+
+    refreshWashTrialCellOptions(calibratedCells) {
+        const select = this.el.washTrialCell;
+        if (!select) {
+            return;
+        }
+        const fromStatus = Array.isArray(calibratedCells) ? calibratedCells : null;
+        const fromCal = Object.keys(this.washTrialCellZs || {})
+            .map((k) => Number(k))
+            .filter((n) => Number.isInteger(n) && n >= 1 && n <= 18);
+        const cells = (fromStatus && fromStatus.length ? fromStatus : fromCal)
+            .map((n) => Number(n))
+            .filter((n) => Number.isInteger(n) && n >= 1 && n <= 18)
+            .sort((a, b) => a - b);
+        const previous = select.value;
+        select.innerHTML = "";
+        if (!cells.length) {
+            const option = document.createElement("option");
+            option.value = "";
+            option.textContent = "No calibrated cells";
+            select.appendChild(option);
+            select.disabled = true;
+            return;
+        }
+        select.disabled = this.isRunning || Boolean(this.washTrialStatus?.busy);
+        cells.forEach((cell) => {
+            const option = document.createElement("option");
+            option.value = String(cell);
+            const rough = this.washTrialCellZs?.[String(cell)];
+            option.textContent = rough != null && rough !== ""
+                ? `Cell ${cell} (rough ${Number(rough).toFixed(3)} mm)`
+                : `Cell ${cell}`;
+            select.appendChild(option);
+        });
+        if (previous && cells.includes(Number(previous))) {
+            select.value = previous;
+        }
+    }
+
+    updateWashTrialUi() {
+        const status = this.washTrialStatus || {};
+        const busy = Boolean(status.busy) || this.washTrialRequestInFlight;
+        const phase = String(status.phase || (busy ? "running" : "idle"));
+        const hasCells = Boolean(this.el.washTrialCell?.options?.length)
+            && this.el.washTrialCell.value !== "";
+        const locked = this.isRunning;
+
+        if (this.el.washTrialCard) {
+            this.el.washTrialCard.classList.toggle("is-running", busy);
+        }
+        if (this.el.washTrialStatePill) {
+            const pill = this.el.washTrialStatePill;
+            pill.classList.remove("is-ready", "is-running", "is-error");
+            if (phase === "error" || status.last_error) {
+                pill.classList.add("is-error");
+                pill.textContent = "Error";
+            } else if (busy || phase === "stopping") {
+                pill.classList.add("is-running");
+                pill.textContent = phase === "stopping" ? "Stopping…" : "Running";
+            } else if (hasCells && !locked) {
+                pill.classList.add("is-ready");
+                pill.textContent = "Ready";
+            } else {
+                pill.textContent = locked ? "Locked" : "Idle";
+            }
+        }
+
+        const cellId = Number(this.el.washTrialCell?.value);
+        const offset = Number(status.dip_offset_mm ?? 0.2);
+        const rough = this.washTrialCellZs?.[String(cellId)];
+        if (this.el.washTrialDipPreview) {
+            if (!Number.isInteger(cellId) || cellId < 1) {
+                this.el.washTrialDipPreview.textContent = "Select a calibrated cell";
+            } else if (rough == null || rough === "") {
+                this.el.washTrialDipPreview.textContent =
+                    `Cell ${cellId} · dip = rough + ${offset.toFixed(1)} mm`;
+            } else {
+                const dip = Number(rough) + offset;
+                this.el.washTrialDipPreview.textContent =
+                    `Cell ${cellId} · rough ${Number(rough).toFixed(3)} → dip ${dip.toFixed(3)} mm (+${offset.toFixed(1)})`;
+            }
+        }
+
+        const scrub = status.scrub || {};
+        const fast = Boolean(this.el.washTrialFastScrub?.checked);
+        if (this.el.washTrialScrubHint) {
+            const feed = scrub.feed ?? 1000;
+            const feedFast = scrub.feed_fast ?? 3000;
+            const dwell = scrub.dwell_s ?? 1;
+            const dwellFast = scrub.dwell_s_fast ?? 0;
+            this.el.washTrialScrubHint.textContent = fast
+                ? `Fast: F${feedFast}, ${dwellFast}s dwell · ${scrub.count ?? 5} cycles/station`
+                : `Default: F${feed} with ${dwell}s dwells · ${scrub.count ?? 5} cycles/station`;
+        }
+
+        if (this.el.washTrialPhaseCaption) {
+            const labels = {
+                idle: "Ready",
+                preparing: "Preparing…",
+                dipping: "Dipping in sample…",
+                retracting: "Retracting…",
+                washing: "Washing / drying…",
+                stopping: "Stopping…",
+                stopped: "Stopped",
+                error: "Error",
+            };
+            this.el.washTrialPhaseCaption.textContent = labels[phase] || phase;
+        }
+
+        if (this.el.washTrialCell) {
+            this.el.washTrialCell.disabled = locked || busy || !hasCells;
+        }
+        if (this.el.washTrialFastScrub) {
+            this.el.washTrialFastScrub.disabled = locked || busy;
+        }
+        if (this.el.washTrialRun) {
+            this.el.washTrialRun.disabled = locked || busy || !hasCells;
+        }
+        if (this.el.washTrialStop) {
+            this.el.washTrialStop.disabled = locked || !busy;
+        }
+        if (this.el.washTrialMessage && !this.washTrialRequestInFlight) {
+            if (status.last_error && (phase === "error" || phase === "stopped")) {
+                this.el.washTrialMessage.textContent = status.last_error;
+                this.el.washTrialMessage.classList.add("is-error");
+            } else if (status.last_result && phase === "idle") {
+                const r = status.last_result;
+                this.el.washTrialMessage.textContent =
+                    `Last trial: cell ${r.cell} at Z=${Number(r.dip_z).toFixed(3)}`
+                    + (r.fast_scrub ? " (fast scrub)" : "");
+                this.el.washTrialMessage.classList.remove("is-error");
+            }
+        }
+    }
+
+    _startWashTrialPolling() {
+        this._stopWashTrialPolling();
+        this.washTrialPollTimer = window.setInterval(() => {
+            this.fetchWashTrialStatus();
+        }, 1500);
+    }
+
+    _stopWashTrialPolling() {
+        if (this.washTrialPollTimer != null) {
+            window.clearInterval(this.washTrialPollTimer);
+            this.washTrialPollTimer = null;
+        }
+    }
+
+    async runWashTrial() {
+        if (this.isRunning) {
+            this.pushStatusMessage("Wash trial is unavailable during an active run");
+            return;
+        }
+        if (this.washTrialRequestInFlight) {
+            return;
+        }
+        const cell = Number(this.el.washTrialCell?.value);
+        if (!Number.isInteger(cell) || cell < 1 || cell > 18) {
+            this.pushStatusMessage("Select a calibrated cell for the wash trial");
+            return;
+        }
+        const fastScrub = Boolean(this.el.washTrialFastScrub?.checked);
+        this.washTrialRequestInFlight = true;
+        this._startWashTrialPolling();
+        if (this.el.washTrialMessage) {
+            this.el.washTrialMessage.textContent = "Starting wash trial…";
+            this.el.washTrialMessage.classList.remove("is-error");
+        }
+        this.updateWashTrialUi();
+        try {
+            const response = await fetch("/api/testing/wash_trial/run", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ cell, fast_scrub: fastScrub }),
+            });
+            const payload = await response.json();
+            if (payload.wash_trial) {
+                this.applyWashTrialStatus(payload.wash_trial);
+            }
+            if (!response.ok || !payload.ok) {
+                if (this.el.washTrialMessage) {
+                    this.el.washTrialMessage.textContent = payload.error || "Wash trial failed";
+                    this.el.washTrialMessage.classList.add("is-error");
+                }
+                this.pushStatusMessage(payload.error || "Wash trial failed");
+                return;
+            }
+            this.pushStatusMessage(payload.message || `Wash trial complete for cell ${cell}`);
+            if (this.el.washTrialMessage) {
+                this.el.washTrialMessage.textContent = payload.message || "Wash trial complete";
+                this.el.washTrialMessage.classList.remove("is-error");
+            }
+        } catch {
+            if (this.el.washTrialMessage) {
+                this.el.washTrialMessage.textContent = "Wash trial request failed";
+                this.el.washTrialMessage.classList.add("is-error");
+            }
+            this.pushStatusMessage("Wash trial request failed");
+        } finally {
+            this.washTrialRequestInFlight = false;
+            this._stopWashTrialPolling();
+            this.fetchWashTrialStatus();
+            this.updateWashTrialUi();
+        }
+    }
+
+    async stopWashTrial() {
+        try {
+            const response = await fetch("/api/testing/wash_trial/stop", { method: "POST" });
+            const payload = await response.json();
+            if (payload.wash_trial) {
+                this.applyWashTrialStatus(payload.wash_trial);
+            }
+            this.pushStatusMessage(payload.message || "Wash trial stop requested");
+        } catch {
+            this.pushStatusMessage("Failed to stop wash trial");
         }
     }
 
@@ -7086,7 +7366,8 @@ class ViscometryDashboard {
         const hasActiveTestingDevice = Object.values(this.testingDeviceStates).some((state) =>
             state === "running" || state === "pending" || state === "error"
         );
-        if (activeTab !== "testing-tab" && !hasActiveTestingDevice) {
+        const washBusy = Boolean(this.washTrialStatus?.busy) || this.washTrialRequestInFlight;
+        if (activeTab !== "testing-tab" && !hasActiveTestingDevice && !washBusy) {
             return;
         }
         this.testingGateInProgress = true;
@@ -7137,12 +7418,13 @@ class ViscometryDashboard {
             node.textContent = stateToLabel[state] || "Idle";
         });
 
+        const washBusy = Boolean(this.washTrialStatus?.busy) || this.washTrialRequestInFlight;
         this.el.testingActionButtons?.forEach((btn) => {
             const device = btn.dataset.testingDevice;
             const action = btn.dataset.testingAction;
             const state = this.testingDeviceStates[device] || "idle";
             const isRequestActive = this.testingRequestInFlight.has(`${device}:start`) || this.testingRequestInFlight.has(`${device}:stop`);
-            btn.disabled = this.isRunning || isRequestActive;
+            btn.disabled = this.isRunning || isRequestActive || washBusy;
             const isActiveAction =
                 (action === "start" && state === "idle") ||
                 (action === "stop" && state === "running");

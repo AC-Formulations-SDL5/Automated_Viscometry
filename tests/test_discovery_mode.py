@@ -539,12 +539,20 @@ class TestDiscoverRpmStage2(unittest.TestCase):
 
 
 class TestSampleWindowStop(unittest.TestCase):
-    def test_noisy_in_range_discovery_probe_stops(self):
+    def test_noisy_in_range_discovery_probe_does_not_stop_until_stable(self):
         from viscometry.discovery.probe import sample_window_should_stop
 
-        self.assertTrue(
+        self.assertFalse(
             sample_window_should_stop(
                 [8.0, 12.0, 9.0],
+                window_size=3,
+                cv_threshold=0.005,
+                duck_ceiling_pct=80.0,
+            )
+        )
+        self.assertTrue(
+            sample_window_should_stop(
+                [10.0, 10.01, 9.99],
                 window_size=3,
                 cv_threshold=0.005,
                 duck_ceiling_pct=80.0,
@@ -803,6 +811,50 @@ class TestReachableTorqueWindow(unittest.TestCase):
         self.assertEqual(result.get("status"), "ladder_window_unreachable")
         self.assertFalse(result.get("screening_rpms"))
         self.assertIn("45%", result.get("ladder_failure_reason") or "")
+
+    def test_high_viscosity_skips_lower_targets_and_autofills_matching_slot(self):
+        from unittest.mock import patch
+        from viscometry.discovery.mode import discover_rpm_stage2
+
+        class _HighViscProbe:
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, cell_id, z_mm, rpm):
+                r = float(rpm)
+                self.calls.append(r)
+                if r >= 1.0:
+                    return 95.0  # over-range hello
+                # Between 0.1 and 0.15, torque goes from 30% to 45%
+                return 30.0 + (r - 0.1) * (15.0 / 0.05)
+
+        probe = _HighViscProbe()
+        cfg = self._cfg(
+            discovery_stage2_enabled=True,
+            hello_probe_rpm=5.0,
+            rpm_min=0.1,
+            rpm_max=200.0,
+            ladder_max_iterations_per_target=6,
+        )
+        with patch("viscometry.discovery.mode.get_bulk_probe_z", return_value=-65.0):
+            result = discover_rpm_stage2(1, probe, config=cfg, max_screening_rpms=6)
+
+        self.assertEqual(result.get("status"), "converged")
+        self.assertEqual(result.get("rpm_30"), 0.1)
+        self.assertAlmostEqual(result.get("torque_30"), 30.0, places=1)
+        self.assertIsNone(result.get("rpm_20"))
+        self.assertIsNone(result.get("rpm_25"))
+
+        rungs = {r["target_pct"]: r for r in result.get("screening_rungs", [])}
+        self.assertEqual(rungs[20.0]["status"], "out_of_range")
+        self.assertEqual(rungs[25.0]["status"], "out_of_range")
+        self.assertEqual(rungs[30.0]["status"], "on_target")
+        self.assertEqual(rungs[30.0]["rpm"], 0.1)
+
+        speeds = result.get("screening_rpms", [])
+        self.assertEqual(len(speeds), 6)
+        self.assertAlmostEqual(speeds[0], 0.10, places=2)
+        self.assertAlmostEqual(speeds[-1], 0.15, places=2)
 
 
 if __name__ == "__main__":

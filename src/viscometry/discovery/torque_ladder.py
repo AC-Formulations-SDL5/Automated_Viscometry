@@ -263,7 +263,7 @@ def select_screening_rpms(
         if len(selected) >= cap:
             break
         rpm = round_rpm_2dp(clamp_hardware_rpm(math.exp(log_rpm), rpm_min=rpm_min, rpm_max=rpm_max))
-        if any(abs(rpm - have) < 0.015 for have in selected):
+        if any(abs(rpm - have) < 0.005 for have in selected):
             continue
         if n_probe <= 0.05 or k_coeff <= 0:
             continue

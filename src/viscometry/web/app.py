@@ -22,6 +22,7 @@ from viscometry.calibration.store import (
 )
 from viscometry.lid.service import LidToolError, LidToolService
 from viscometry.paths import EXPERIMENT_HISTORY_PATH, WEB_STATIC, WEB_TEMPLATES
+from viscometry.wash_trial.service import WashTrialError, WashTrialService
 from viscometry.timing.bootstrap import ensure_training_file
 from viscometry.timing.features import rows_from_commit
 from viscometry.timing.model import (
@@ -391,6 +392,7 @@ class ViscometryWebInterface:
         self.WASH_STATION2_X = 383
         self.WASH_STATION2_Y = 147
         self.lid_tool = LidToolService(self)
+        self.wash_trial = WashTrialService(self)
         # Session lid markers for the next/current experiment run.
         self.lid_phase: Optional[str] = None  # None | "picking_up"
         self.lid_phase_cell: Optional[int] = None
@@ -698,6 +700,44 @@ class ViscometryWebInterface:
                 return jsonify({'ok': True, 'message': 'Stop requested', 'lid': self.lid_tool.status()})
             except Exception as e:
                 print(f"Error in api_testing_lid_stop: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/wash_trial', methods=['GET'])
+        def api_testing_wash_trial_status():
+            try:
+                return jsonify(self.wash_trial.status())
+            except Exception as e:
+                print(f"Error in api_testing_wash_trial_status: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/wash_trial/run', methods=['POST'])
+        def api_testing_wash_trial_run():
+            payload = request.get_json(silent=True) or {}
+            try:
+                cell = int(payload.get('cell'))
+            except (TypeError, ValueError):
+                return jsonify({
+                    'ok': False,
+                    'error': 'Cell must be between 1 and 18.',
+                    'wash_trial': self.wash_trial.status(),
+                }), 400
+            fast_scrub = bool(payload.get('fast_scrub', False))
+            return self._wash_trial_response(
+                lambda: self.wash_trial.run(cell, fast_scrub=fast_scrub)
+            )
+
+        @self.app.route('/api/testing/wash_trial/stop', methods=['POST'])
+        def api_testing_wash_trial_stop():
+            try:
+                self.wash_trial.request_stop()
+                self.update_status('Testing: wash trial stop requested')
+                return jsonify({
+                    'ok': True,
+                    'message': 'Stop requested',
+                    'wash_trial': self.wash_trial.status(),
+                })
+            except Exception as e:
+                print(f"Error in api_testing_wash_trial_stop: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/experiment_history', methods=['GET', 'POST'])
@@ -2291,12 +2331,30 @@ class ViscometryWebInterface:
             print(f"Error in lid tool request: {exc}")
             return jsonify({'ok': False, 'error': str(exc)}), 500
 
+    def _wash_trial_response(self, action):
+        try:
+            return jsonify(action())
+        except WashTrialError as exc:
+            status = self.wash_trial.status()
+            status['busy'] = False
+            return jsonify({
+                'ok': False,
+                'error': str(exc),
+                'wash_trial': status,
+            }), exc.status_code
+        except Exception as exc:
+            print(f"Error in wash trial request: {exc}")
+            return jsonify({'ok': False, 'error': str(exc)}), 500
+
     def request_start(self):
         """Mark that the experiment should start."""
         self._reject_start_if_review_pending()
         if getattr(self, 'lid_tool', None) is not None and self.lid_tool.busy:
             self.lid_tool.request_stop()
             raise ValueError('Lid tool is still moving. Wait until it stops before starting a run.')
+        if getattr(self, 'wash_trial', None) is not None and self.wash_trial.busy:
+            self.wash_trial.request_stop()
+            raise ValueError('Wash trial is still running. Wait until it stops before starting a run.')
         try:
             self.stop_all_testing_devices()
         except Exception:
@@ -3045,6 +3103,11 @@ class ViscometryWebInterface:
             except Exception:
                 pass
             try:
+                if getattr(self, 'wash_trial', None) is not None:
+                    self.wash_trial.request_stop()
+            except Exception:
+                pass
+            try:
                 self.stop_all_testing_devices()
             except Exception:
                 pass
@@ -3104,13 +3167,15 @@ class ViscometryWebInterface:
         with self.testing_control_lock:
             states = dict(self.testing_device_states)
             busy = bool(self.testing_request_in_progress)
+        wash_busy = bool(getattr(self.wash_trial, 'busy', False)) if getattr(self, 'wash_trial', None) else False
         return {
             'enabled': not self.is_running,
             'is_running': self.is_running,
-            'busy': busy,
+            'busy': busy or wash_busy,
             'connected': bool(self.testing_session_connected and self.pump_controller),
             'last_error': self.testing_session_last_error,
             'devices': states,
+            'wash_trial': self.wash_trial.status() if getattr(self, 'wash_trial', None) else None,
         }
 
     def _set_testing_device_state(self, device: str, state: str):
@@ -3193,6 +3258,12 @@ class ViscometryWebInterface:
             return jsonify({'ok': False, 'error': f"Unknown action '{action}'"}), 400
         if self.is_running:
             return jsonify({'ok': False, 'error': 'Testing is unavailable during an active viscometry run'}), 409
+        if getattr(self, 'wash_trial', None) is not None and self.wash_trial.busy:
+            return jsonify({
+                'ok': False,
+                'error': 'Wash trial is running — wait until it finishes.',
+                'testing_status': self.get_testing_status(),
+            }), 409
         with self.testing_control_lock:
             self.testing_request_in_progress = True
             self.testing_device_states[device] = 'pending'
@@ -3235,6 +3306,11 @@ class ViscometryWebInterface:
 
     def stop_all_testing_devices(self) -> Dict:
         mapping = self._testing_device_command_map()
+        try:
+            if getattr(self, 'wash_trial', None) is not None and self.wash_trial.busy:
+                self.wash_trial.request_stop()
+        except Exception:
+            pass
         with self.testing_control_lock:
             self.testing_request_in_progress = True
         try:

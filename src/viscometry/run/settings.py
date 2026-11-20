@@ -46,6 +46,17 @@ PUMP_VIRTUAL = False
 STATION1_FILL_DURATION = 22  # reduced by 3s from previous 25s
 STATION1_DRAIN_DURATION = 25  # increased by 5s from previous 20s
 
+# Wash scrub motion (CNC X oscillation while spindle is in the bath)
+WASH_SCRUB_FEED = 1000           # mm/min — default scrub feed
+WASH_SCRUB_COUNT = 5             # full left/right cycles per station
+WASH_SCRUB_DWELL_S = 1.0         # pause after each half-stroke (s)
+WASH_SCRUB_FEED_FAST = 3000      # mm/min — fast-scrub toggle
+WASH_SCRUB_DWELL_S_FAST = 0.0    # no dwell in fast mode
+
+# Testing-tab wash trial: dip into a calibrated sample cell, then wash
+WASH_TRIAL_DIP_OFFSET_MM = 0.2   # mm above rough hitpoint
+WASH_TRIAL_DIP_DWELL_S = 3.0     # seconds immersed to dirty the spindle
+
 # Wash station 1 coordinates
 WASH_STATION1_X = 383    #387
 WASH_STATION1_Y = 68

@@ -437,11 +437,44 @@ def get_selected_cells():
         raise ValueError(f"Invalid TESTING_MODE: {TESTING_MODE}. Must be 'full', 'row', or 'custom'.")
 
 
+def _resolve_scrub_params(
+    scrub_feed: Optional[int] = None,
+    scrub_count: Optional[int] = None,
+    scrub_dwell_s: Optional[float] = None,
+    *,
+    fast_scrub: bool = False,
+) -> Tuple[int, int, float]:
+    """Return (feed, count, dwell_s) for wash-station X oscillations."""
+    feed = int(
+        scrub_feed
+        if scrub_feed is not None
+        else (WASH_SCRUB_FEED_FAST if fast_scrub else WASH_SCRUB_FEED)
+    )
+    count = int(scrub_count if scrub_count is not None else WASH_SCRUB_COUNT)
+    dwell = float(
+        scrub_dwell_s
+        if scrub_dwell_s is not None
+        else (WASH_SCRUB_DWELL_S_FAST if fast_scrub else WASH_SCRUB_DWELL_S)
+    )
+    if feed < 100:
+        raise ValueError(f"scrub_feed must be >= 100 mm/min, got {feed}")
+    if count < 1:
+        raise ValueError(f"scrub_count must be >= 1, got {count}")
+    if dwell < 0:
+        raise ValueError(f"scrub_dwell_s must be >= 0, got {dwell}")
+    return feed, count, dwell
+
+
 def perform_washing_sequence(
     cnc: CNC_Machine,
     pump: PumpESP32,
     global_cell: int,
     fill_thread: Optional[threading.Thread] = None,
+    *,
+    scrub_feed: Optional[int] = None,
+    scrub_count: Optional[int] = None,
+    scrub_dwell_s: Optional[float] = None,
+    fast_scrub: bool = False,
 ):
     """
     Washing sequence with concurrent fill/drain overlap.
@@ -449,8 +482,17 @@ def perform_washing_sequence(
     PRE-CONDITION: CNC has retracted to safe Z at the cell XY (_finish_cell_measurement).
     _pump_fill_station1() and _motor1_start() may already be running in background threads
     started only after successful retract.
+
+    Optional scrub_* / fast_scrub knobs only affect CNC oscillation feed, cycle count,
+    and inter-stroke dwell. Station 2 dry-scrub remains part of the sequence.
     """
-    print(f"\nStarting Washing Sequence for Cell {global_cell} (concurrent-overlap mode)")
+    feed, cycles, dwell_s = _resolve_scrub_params(
+        scrub_feed, scrub_count, scrub_dwell_s, fast_scrub=fast_scrub
+    )
+    print(
+        f"\nStarting Washing Sequence for Cell {global_cell} "
+        f"(concurrent-overlap mode, scrub feed={feed}, cycles={cycles}, dwell={dwell_s:.2f}s)"
+    )
     web_interface.update_status(f"Washing after Cell {global_cell}")
     drain_thread: Optional[threading.Thread] = None
 
@@ -472,15 +514,17 @@ def perform_washing_sequence(
         web_interface.update_status("Wash Station 1: scrubbing")
         cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
 
-        print("Step W3: Performing 5 oscillating wash movements...")
-        for i in range(5):
+        print(f"Step W3: Performing {cycles} oscillating wash movements (feed={feed})...")
+        for i in range(cycles):
             raise_if_stop_requested()
-            print(f"  Oscillation {i+1}/5: Moving to X=390")
-            cnc.move_to_point(390, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-            sleep_with_stop(1)
-            print(f"  Oscillation {i+1}/5: Moving back to X={WASH_STATION1_X}")
-            cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=1000)
-            sleep_with_stop(1)
+            print(f"  Oscillation {i+1}/{cycles}: Moving to X=390")
+            cnc.move_to_point(390, WASH_STATION1_Y, WASH_STATION1_Z, speed=feed)
+            if dwell_s > 0:
+                sleep_with_stop(dwell_s)
+            print(f"  Oscillation {i+1}/{cycles}: Moving back to X={WASH_STATION1_X}")
+            cnc.move_to_point(WASH_STATION1_X, WASH_STATION1_Y, WASH_STATION1_Z, speed=feed)
+            if dwell_s > 0:
+                sleep_with_stop(dwell_s)
 
         print("Step W4: Raising CNC from Station 1 and starting concurrent drain...")
         web_interface.update_status("Wash Station 1: draining (concurrent)")
@@ -497,15 +541,17 @@ def perform_washing_sequence(
         web_interface.update_status("Wash Station 2: scrubbing | Drying Station: scrubbing")
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
 
-        print("Step W7: Performing 5 oscillating dry-scrub movements...")
-        for i in range(5):
+        print(f"Step W7: Performing {cycles} oscillating dry-scrub movements (feed={feed})...")
+        for i in range(cycles):
             raise_if_stop_requested()
-            print(f"  Oscillation {i+1}/5: Moving to X=390")
-            cnc.move_to_point(390, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-            sleep_with_stop(1)
-            print(f"  Oscillation {i+1}/5: Moving back to X={WASH_STATION2_X}")
-            cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=1000)
-            sleep_with_stop(1)
+            print(f"  Oscillation {i+1}/{cycles}: Moving to X=390")
+            cnc.move_to_point(390, WASH_STATION2_Y, WASH_STATION2_Z, speed=feed)
+            if dwell_s > 0:
+                sleep_with_stop(dwell_s)
+            print(f"  Oscillation {i+1}/{cycles}: Moving back to X={WASH_STATION2_X}")
+            cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, WASH_STATION2_Z, speed=feed)
+            if dwell_s > 0:
+                sleep_with_stop(dwell_s)
 
         print("Step W8: Raising CNC from Station 2 and stopping Motor M2...")
         cnc.move_to_point(WASH_STATION2_X, WASH_STATION2_Y, 0, speed=500)
@@ -537,6 +583,102 @@ def perform_washing_sequence(
         except Exception as cleanup_error:
             print(f"Error during cleanup: {cleanup_error}")
         raise
+
+
+def _set_wash_trial_phase(phase: str) -> None:
+    """Best-effort UI phase update for an in-flight Testing-tab wash trial."""
+    try:
+        wt = getattr(web_interface, "wash_trial", None)
+        if wt is not None:
+            wt.phase = str(phase)
+    except Exception:
+        pass
+
+
+def run_wash_trial_dirty_and_wash(
+    cnc: CNC_Machine,
+    pump: PumpESP32,
+    global_cell: int,
+    *,
+    fast_scrub: bool = False,
+    dip_offset_mm: float = WASH_TRIAL_DIP_OFFSET_MM,
+    dip_dwell_s: float = WASH_TRIAL_DIP_DWELL_S,
+) -> Dict[str, Any]:
+    """
+    Testing-tab solvent trial: dip spindle into a calibrated cell, then run the
+    standard wash (+ dry) sequence. Does not start the viscometer.
+    """
+    try:
+        cell_id = int(global_cell)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Cell must be between 1 and 18.") from exc
+    if cell_id < 1 or cell_id > 18:
+        raise ValueError("Cell must be between 1 and 18.")
+
+    cal = load_calibration()
+    cells = cal.get("cells", {}) if isinstance(cal, dict) else {}
+    cal_key = str(cell_id)
+    if cal_key not in cells:
+        raise ValueError(
+            f"Cell {cell_id} is not calibrated — wash trial requires a rough hitpoint."
+        )
+    try:
+        rough_z = float(cells[cal_key])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Cell {cell_id} has an invalid calibration Z.") from exc
+
+    offset = float(dip_offset_mm)
+    if offset < 0:
+        raise ValueError("dip_offset_mm must be >= 0")
+    dip_z = rough_z + offset
+    row_number, local_cell = global_cell_to_row_and_local(cell_id)
+
+    print(
+        f"\nWash trial: Cell {cell_id} dip at Z={dip_z:.3f} "
+        f"(rough {rough_z:.3f} + {offset:.3f} mm), fast_scrub={fast_scrub}"
+    )
+    web_interface.set_current_cell(cell_id)
+    _set_wash_trial_phase("dipping")
+    web_interface.update_status(
+        f"Wash trial: dipping Cell {cell_id} at Z={dip_z:.3f} (dirty spindle)"
+    )
+
+    raise_if_stop_requested()
+    x_pos, y_pos, _ = move_to_cell_position(cnc, row_number, local_cell, dip_z)
+    web_interface.update_position(x_pos, y_pos, dip_z)
+    sleep_with_stop(float(dip_dwell_s))
+
+    raise_if_stop_requested()
+    _set_wash_trial_phase("retracting")
+    web_interface.update_status(f"Wash trial: retracting from Cell {cell_id}")
+    cnc.retract_z_at_cell(x_pos, y_pos, z_safe=0, speed=Z_FEED_RATE)
+    sleep_with_stop(1)
+    web_interface.update_position(x_pos, y_pos, 0)
+
+    raise_if_stop_requested()
+    _set_wash_trial_phase("washing")
+    web_interface.update_status(
+        f"Wash trial: pre-filling wash station after Cell {cell_id}"
+    )
+    fill_thread = _run_in_thread(_pump_fill_station1, pump)
+    _run_in_thread(_motor1_start, pump)
+
+    perform_washing_sequence(
+        cnc,
+        pump,
+        cell_id,
+        fill_thread=fill_thread,
+        fast_scrub=bool(fast_scrub),
+    )
+    _set_wash_trial_phase("idle")
+    web_interface.update_status(f"Wash trial complete for Cell {cell_id}")
+    return {
+        "cell": cell_id,
+        "rough_z": rough_z,
+        "dip_z": dip_z,
+        "dip_offset_mm": offset,
+        "fast_scrub": bool(fast_scrub),
+    }
 
 def _cell_xy_for_global(global_cell: int) -> Tuple[int, float, float]:
     """Return (row_number, x_pos, y_pos) for a global cell id."""
@@ -1235,18 +1377,10 @@ def measure_torque_at_rpm(
                             )
                         ):
                             recent_mean = statistics.mean(recent_torques)
-                            under_discovery_ceiling = (
-                                duck_above_pct_on_first_sample is not None
-                                and recent_mean < float(duck_above_pct_on_first_sample)
+                            print(
+                                f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD} "
+                                f"(mean {recent_mean:.2f}%)"
                             )
-                            if under_discovery_ceiling:
-                                print(
-                                    f"      [DISCOVERY WINDOW] {len(recent_torques)} samples, "
-                                    f"mean {recent_mean:.2f}% under "
-                                    f"{float(duck_above_pct_on_first_sample):.2f}% — stopping probe"
-                                )
-                            else:
-                                print(f"      [SMART EXIT] Torque stabilized at CV < {SMART_CV_THRESHOLD}")
                             smart_exit_fired = True
                             break
                     sample_index += 1
