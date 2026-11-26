@@ -17,6 +17,10 @@ class DeviceState:
         self.dev: Optional[ViscometerProtocol] = None
         self.opened: bool = False
         self.current_rpm: float = 0.0
+        self.port: str = "COM6"
+        self.baud: int = 115200
+        self.timeout: float = 1.0
+        self.spindle_k: float = 992.47
 
 STATE = DeviceState()
 
@@ -33,32 +37,76 @@ def ensure_open():
     if not (STATE.dev and STATE.opened):
         raise RuntimeError("device not initialized; call 'init' first")
 
-# Command handlers
-def cmd_init(i, msg):
-    port = msg.get("port", "COM6")
-    baud = int(msg.get("baud", 115200))
-    timeout = float(msg.get("timeout", 1.0))
-    spindle_k = float(msg.get("spindle_k", 992.47))
-
+def _close_device():
     if STATE.dev:
         try:
             STATE.dev.close()
         except Exception:
             pass
-        STATE.dev = None
-        STATE.opened = False
+    STATE.dev = None
+    STATE.opened = False
 
-    STATE.dev = ViscometerProtocol(port=port, baud=baud, spindle_k=spindle_k, timeout_s=timeout)
+def _open_device(port: str, baud: int, timeout: float, spindle_k: float):
+    _close_device()
+    STATE.port = str(port)
+    STATE.baud = int(baud)
+    STATE.timeout = float(timeout)
+    STATE.spindle_k = float(spindle_k)
+    STATE.dev = ViscometerProtocol(
+        port=STATE.port,
+        baud=STATE.baud,
+        spindle_k=STATE.spindle_k,
+        timeout_s=STATE.timeout,
+    )
     STATE.dev.connect()
     STATE.opened = True
     STATE.current_rpm = 0.0
+
+# Command handlers
+def cmd_init(i, msg):
+    port = msg.get("port", STATE.port or "COM6")
+    baud = int(msg.get("baud", STATE.baud or 115200))
+    timeout = float(msg.get("timeout", STATE.timeout or 1.0))
+    spindle_k = float(msg.get("spindle_k", STATE.spindle_k or 992.47))
+
+    _open_device(port, baud, timeout, spindle_k)
 
     raw, cleaned = STATE.dev.send_command("I", wait_first_line=True)
     try:
         STATE.dev.stop_spindle()
     except Exception:
         pass
-    return ok(i, data={"proto": PROTO_VERSION, "identify_raw": raw, "port": port, "baud": baud})
+    return ok(i, data={
+        "proto": PROTO_VERSION,
+        "identify_raw": cleaned or raw,
+        "port": STATE.port,
+        "baud": STATE.baud,
+        "reconnected": False,
+    })
+
+def cmd_reconnect(i, msg):
+    """Close and reopen the COM port without killing the worker process."""
+    port = msg.get("port", STATE.port or "COM6")
+    baud = int(msg.get("baud", STATE.baud or 115200))
+    timeout = float(msg.get("timeout", STATE.timeout or 1.0))
+    spindle_k = float(msg.get("spindle_k", STATE.spindle_k or 992.47))
+
+    # Brief pause so Windows can release a stale USB handle after lid/idle faults.
+    time.sleep(0.35)
+    _open_device(port, baud, timeout, spindle_k)
+
+    raw, cleaned = STATE.dev.send_command("I", wait_first_line=True)
+    try:
+        STATE.dev.stop_spindle()
+    except Exception:
+        pass
+    return ok(i, data={
+        "proto": PROTO_VERSION,
+        "identify_raw": cleaned or raw,
+        "port": STATE.port,
+        "baud": STATE.baud,
+        "reconnected": True,
+    })
 
 def cmd_status(i, _msg):
     return ok(i, data={
@@ -102,9 +150,18 @@ def cmd_stop(i, _msg):
 def cmd_quit(i, _msg):
     try:
         if STATE.dev:
-            STATE.dev.stop_streaming()
-            STATE.dev.stop_spindle()
-            STATE.dev.close()
+            try:
+                STATE.dev.stop_streaming()
+            except Exception:
+                pass
+            try:
+                STATE.dev.stop_spindle()
+            except Exception:
+                pass
+            try:
+                STATE.dev.close()
+            except Exception:
+                pass
     finally:
         STATE.opened = False
         STATE.dev = None
@@ -112,6 +169,7 @@ def cmd_quit(i, _msg):
 
 HANDLERS = {
     "init": cmd_init,
+    "reconnect": cmd_reconnect,
     "status": cmd_status,
     "identify": cmd_identify,
     "zero": cmd_zero,

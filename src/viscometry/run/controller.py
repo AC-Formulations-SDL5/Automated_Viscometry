@@ -784,10 +784,7 @@ def _finish_cell_measurement(
     )
     # #endregion agent log
 
-    try:
-        client.stop()
-    except Exception:
-        pass
+    client.safe_stop(reason=f"Cell {global_cell} finish", soft=True)
 
     if (
         start_wash_prefill
@@ -1123,7 +1120,7 @@ def wait_for_torque_relaxation(
       3. Safety timeout: guarantees the run resumes within timeout_s (default: 90s).
       Plus emergency abort handling via raise_if_stop_requested().
     """
-    client.stop()
+    client.safe_stop(reason="duck recovery", soft=True)
     web_interface.set_current_rpm(0.0)
 
     start_time = time.time()
@@ -1414,7 +1411,7 @@ def measure_torque_at_rpm(
             print(f"      Warning: timing window log failed: {timing_exc}")
         
         # Stop spindle after measurement
-        client.stop()
+        client.safe_stop(reason=f"RPM {format_rpm(rpm)} done", soft=True)
         web_interface.set_current_rpm(0)
 
         # Post-overrange recovery check for discovery probes
@@ -1452,10 +1449,10 @@ def measure_torque_at_rpm(
             
     except Exception as e:
         print(f"      Error measuring torque at RPM {format_rpm(rpm)}: {e}")
+        client.safe_stop(reason=f"RPM {format_rpm(rpm)} error", soft=True)
         try:
-            client.stop()
             web_interface.set_current_rpm(0)
-        except:
+        except Exception:
             pass
         return None
 
@@ -2604,6 +2601,7 @@ def main():
                     for cell in (LIDS_ON_CELLS or [])
                     if str(cell).strip()
                 }
+                did_lid_pickup = False
                 if (
                     not is_calibration_like_run
                     and global_cell in lids_marked
@@ -2620,6 +2618,7 @@ def main():
                             on_status=web_interface.update_status,
                             on_position=lambda x, y, z: web_interface.update_position(x, y, z),
                         )
+                        did_lid_pickup = True
                         web_interface.clear_lid_on_cell(global_cell)
                         try:
                             LIDS_ON_CELLS[:] = [
@@ -2645,19 +2644,46 @@ def main():
                             web_interface.set_lid_phase(None)
                     raise_if_stop_requested()
 
-                # Auto-zero the viscometer sensor before testing each cell
+                # Refresh COM link after long CNC idle (lid / wash) before cell measure.
+                link_reason = (
+                    f"Cell {global_cell} after lid pickup"
+                    if did_lid_pickup
+                    else f"Cell {global_cell} before measure"
+                )
                 try:
-                    print(f"Auto-zeroing viscometer for Cell {global_cell}...")
-                    web_interface.update_status(f"Auto-zeroing viscometer for Cell {global_cell}")
-                    client.zero()
+                    web_interface.update_status(
+                        f"Cell {global_cell}: checking viscometer link"
+                    )
+                    client.ensure_alive(
+                        reason=link_reason,
+                        # Lid pickup is long enough that proactive reopen is safest.
+                        idle_reconnect_s=15.0 if did_lid_pickup else 45.0,
+                    )
+                except Exception as link_exc:
+                    print(
+                        f"Warning: Viscometer ensure_alive failed for Cell {global_cell}: "
+                        f"{link_exc}"
+                    )
+                    web_interface.update_status(
+                        f"Cell {global_cell}: viscometer link weak — attempting reconnect"
+                    )
+
+                # Auto-zero the viscometer sensor before testing each cell
+                print(f"Auto-zeroing viscometer for Cell {global_cell}...")
+                web_interface.update_status(f"Auto-zeroing viscometer for Cell {global_cell}")
+                zero_ok = client.safe_zero(reason=f"Cell {global_cell}", soft=True)
+                if zero_ok is not None:
                     print("Viscometer auto-zero completed")
-                except Exception as e:
-                    print(f"Warning: Failed to auto-zero viscometer: {e}")
+                else:
+                    print(
+                        f"Warning: Failed to auto-zero viscometer for Cell {global_cell} "
+                        "(continuing after soft failure)"
+                    )
 
                 sleep_with_stop(5)
-                # Stop viscometer once at safe position
-                client.stop()
-                
+                # Stop viscometer once at safe position (never abort the run here).
+                client.safe_stop(reason=f"Cell {global_cell} pre-measure", soft=True)
+
                 try:
                     # Resolve per-cell RPMs before the cell test
                     cell_rpms = get_rpms_for_cell(global_cell)
@@ -3052,9 +3078,9 @@ def main():
             web_interface.set_instrument_status(cnc=False, viscometer=False, pump=False)
             try:
                 if client:
-                    client.stop()
+                    client.safe_stop(reason="cleanup", soft=True)
                     client.close()
-            except:
+            except Exception:
                 pass
             try:
                 if pump:

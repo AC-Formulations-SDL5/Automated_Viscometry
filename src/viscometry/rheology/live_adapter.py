@@ -256,9 +256,17 @@ def prepare_sweep_arrays(
     torque_floor_pct: float,
     hit_point_z: Optional[float],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, List[float], List[float]]:
-    """Pretrim, re-zero height; return h_norm, torque_pct, drag, norm_offset, pretrim lists."""
+    """Pretrim, re-zero height; return h_norm, torque_pct, drag, norm_offset, pretrim lists.
+
+    When ``hit_point_z`` is provided, ``h_norm = 0`` is that labeled hit (CNC Z),
+    not merely ``min(kept heights)``. That keeps τ(hit) / K,n consistent with the
+    user-labeled final-Z actual hit used in offline notebooks.
+    """
     pre_h, pre_d, pre_t, _ = _apply_pretrims(points, torque_floor_pct, hit_point_z)
-    norm_offset = float(np.min(pre_h)) if len(pre_h) else 0.0
+    if hit_point_z is not None and np.isfinite(float(hit_point_z)):
+        norm_offset = float(hit_point_z)
+    else:
+        norm_offset = float(np.min(pre_h)) if len(pre_h) else 0.0
     pretrim_z, pretrim_drag = _lists_from_arrays(pre_h, pre_d, 0.0)
     h_norm = pre_h - norm_offset if len(pre_h) else np.array([], dtype=float)
     return h_norm, pre_t, pre_d, norm_offset, pretrim_z, pretrim_drag
