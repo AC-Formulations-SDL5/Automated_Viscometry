@@ -1546,6 +1546,59 @@ body.lid-confirm-active {
     border-color: var(--color-red-border);
 }
 
+.testing-viscometer-health {
+    margin-top: 12px;
+}
+
+.testing-viscometer-hint {
+    margin: 8px 0 0;
+}
+
+.testing-viscometer-detail {
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: var(--color-yellow-text);
+    background: rgba(255, 159, 10, 0.12);
+    border: 1px solid rgba(255, 159, 10, 0.35);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    word-break: break-word;
+}
+
+.testing-viscometer-health.is-ok .testing-viscometer-detail {
+    color: var(--color-green-text);
+    background: var(--color-green-badge-bg);
+    border-color: var(--color-green-border);
+}
+
+.testing-viscometer-health.is-error .testing-viscometer-detail {
+    color: var(--color-red-text);
+    background: var(--color-red-badge-bg);
+    border-color: var(--color-red-border);
+}
+
+.testing-viscometer-health.is-ok {
+    border-color: var(--color-green-border);
+    box-shadow: 0 0 16px rgba(46, 160, 67, 0.16);
+}
+
+.testing-viscometer-health.is-ok .testing-device-status {
+    color: var(--color-green-text);
+    background: var(--color-green-badge-bg);
+    border-color: var(--color-green-border);
+}
+
+.testing-viscometer-health.is-checking {
+    border-color: rgba(255, 159, 10, 0.55);
+    box-shadow: 0 0 16px rgba(255, 159, 10, 0.2);
+}
+
+.testing-viscometer-health.is-checking .testing-device-status {
+    color: var(--color-yellow-text);
+    background: rgba(255, 159, 10, 0.16);
+    border-color: rgba(255, 159, 10, 0.5);
+}
+
 .wash-trial-card {
     display: flex;
     flex-direction: column;
