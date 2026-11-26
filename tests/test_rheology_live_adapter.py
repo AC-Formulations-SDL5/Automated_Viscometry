@@ -101,6 +101,27 @@ class TestRheologyLiveAdapter(unittest.TestCase):
         self.assertTrue(all(z >= hitpoint_z - 1e-9 for z in pre_z_hit))
         self.assertAlmostEqual(max(pre_z_hit), -65.20, places=2)
         self.assertAlmostEqual(min(pre_z_hit), hitpoint_z, places=2)
+        # h_norm zeros to the labeled hit, not an arbitrary kept min
+        self.assertAlmostEqual(_no2, hitpoint_z, places=6)
+        self.assertAlmostEqual(float(np.min(h_hit)), 0.0, places=6)
+
+    def test_prepare_sweep_zeros_to_labeled_hit_not_min_kept(self):
+        """If hit sits between samples, h_norm=0 is still the labeled hit Z."""
+        points = [
+            {"height": -65.20, "rotational_drag": 1.0, "torque_percent": 40.0},
+            {"height": -65.22, "rotational_drag": 1.1, "torque_percent": 42.0},
+            {"height": -65.24, "rotational_drag": 1.2, "torque_percent": 44.0},
+            {"height": -65.26, "rotational_drag": 1.3, "torque_percent": 46.0},
+        ]
+        hitpoint_z = -65.25  # between -65.24 and -65.26; deeper sample trimmed
+        h_norm, _t, _d, norm_offset, pre_z, _pd = prepare_sweep_arrays(
+            points, torque_floor_pct=0.0, hit_point_z=hitpoint_z
+        )
+        self.assertAlmostEqual(norm_offset, hitpoint_z, places=6)
+        self.assertTrue(all(z >= hitpoint_z - 1e-9 for z in pre_z))
+        self.assertTrue(np.all(h_norm >= -1e-9))
+        # deepest kept is -65.24 → h_norm = 0.01 above labeled hit
+        self.assertAlmostEqual(float(np.min(h_norm)), -65.24 - hitpoint_z, places=6)
 
     def test_r2_gate_rejects_noisy_flat_sweep(self):
         h = np.linspace(0.5, 4.0, 10)
