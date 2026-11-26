@@ -19,6 +19,8 @@ def test_probe_viscometer_success(tmp_path: Path):
         "baud": 115200,
     }
     fake_client.identify.return_value = {"raw": "I....", "cleaned": "IDENT"}
+    fake_client.reconnect.return_value = {"reconnected": True}
+    fake_client.ping.return_value = {"cleaned": "IDENT"}
 
     with patch.object(health_mod, "ViscometerClient", return_value=fake_client), patch.object(
         health_mod, "WORKER32_DIR", tmp_path
@@ -28,8 +30,11 @@ def test_probe_viscometer_success(tmp_path: Path):
     assert result["ok"] is True
     assert result["state"] == "ok"
     assert result["port"]
+    assert result.get("reconnect_ok") is True
     fake_client.init.assert_called_once()
     fake_client.identify.assert_called_once()
+    fake_client.reconnect.assert_called_once()
+    fake_client.ping.assert_called_once()
     fake_client.close.assert_called_once()
 
 

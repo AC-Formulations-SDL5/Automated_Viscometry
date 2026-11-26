@@ -90,17 +90,36 @@ def probe_viscometer(*, reidentify: bool = True) -> Dict[str, Any]:
                 # init already talked to the device; treat re-identify failure as soft warn
                 identify_raw = f"re-identify failed: {id_exc}"
 
+        # Exercise reconnect path used after lid/idle so Testing matches run behavior.
+        reconnect_ok = False
+        try:
+            client.reconnect(reason="health check")
+            client.ping()
+            reconnect_ok = True
+        except Exception as reconnect_exc:
+            return {
+                "ok": False,
+                "state": "error",
+                "message": "Viscometer opened but reconnect/ping failed",
+                "error": str(reconnect_exc),
+                "port": port,
+                "baud": baud,
+                "elapsed_s": round(time.time() - started, 3),
+                "identify": identify_raw,
+            }
+
         elapsed = round(time.time() - started, 3)
         return {
             "ok": True,
             "state": "ok",
-            "message": f"Connected on {port} @ {baud}",
+            "message": f"Connected on {port} @ {baud} (reconnect OK)",
             "port": port,
             "baud": baud,
             "elapsed_s": elapsed,
             "identify_raw": init_data.get("identify_raw") if isinstance(init_data, dict) else None,
             "identify": identify_raw,
             "proto": init_data.get("proto") if isinstance(init_data, dict) else None,
+            "reconnect_ok": reconnect_ok,
         }
     except Exception as exc:
         return {
