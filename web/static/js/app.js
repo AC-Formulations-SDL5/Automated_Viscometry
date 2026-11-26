@@ -354,6 +354,13 @@ class ViscometryDashboard {
         this.washTrialRequestInFlight = false;
         this.washTrialPollTimer = null;
         this.washTrialCellZs = {};
+        this.viscometerHealth = {
+            state: "idle",
+            ok: null,
+            message: "Not checked yet",
+            error: null,
+        };
+        this.viscometerCheckInFlight = false;
         this.manualTerminateQueued = false;
         this.cellTerminationReasons = new Map();
         /** @type {Map<number, Map<string, string>>} cellId -> rpmKey -> active|dropped */
@@ -598,6 +605,10 @@ class ViscometryDashboard {
             testingStatusDryingRotor: document.getElementById("testing-status-drying-rotor"),
             testingStatusFillingPump: document.getElementById("testing-status-filling-pump"),
             testingStatusDrainingPump: document.getElementById("testing-status-draining-pump"),
+            testingViscometerCard: document.getElementById("testing-viscometer-card"),
+            testingStatusViscometer: document.getElementById("testing-status-viscometer"),
+            testingViscometerDetail: document.getElementById("testing-viscometer-detail"),
+            testingViscometerCheck: document.getElementById("testing-viscometer-check"),
             calibrateTabButton: document.getElementById("calibrate-tab-button"),
             controlsTabButton: document.getElementById("controls-tab-button"),
             discoveryTabButton: document.getElementById("discovery-tab-button"),
@@ -1129,6 +1140,7 @@ class ViscometryDashboard {
         if (tabId === "testing-tab") {
             this.fetchTestingStatus();
             this.fetchWashTrialStatus();
+            this.fetchViscometerHealth();
             this.fetchLidStatus();
         }
         if (tabId === "layout-tab") {
@@ -6568,8 +6580,10 @@ class ViscometryDashboard {
     bindTestingControls() {
         this.bindWashTrialControls();
         this.bindLidControls();
+        this.bindViscometerHealthControls();
         if (!this.el.testingActionButtons) {
             this.updateWashTrialUi();
+            this.updateViscometerHealthUi();
             this.updateLidUi();
             return;
         }
@@ -6582,6 +6596,125 @@ class ViscometryDashboard {
         });
         this.updateTestingUi();
         this.updateTestingTabAvailability();
+    }
+
+    bindViscometerHealthControls() {
+        this.el.testingViscometerCheck?.addEventListener("click", () => {
+            this.checkViscometerHealth();
+        });
+        this.updateViscometerHealthUi();
+    }
+
+    fetchViscometerHealth() {
+        fetch("/api/testing/viscometer")
+            .then((response) => response.json())
+            .then((status) => this.applyViscometerHealth(status))
+            .catch(() => {
+                /* non-fatal while tab is idle */
+            });
+    }
+
+    applyViscometerHealth(status) {
+        if (!status || typeof status !== "object") {
+            return;
+        }
+        this.viscometerHealth = {
+            ...this.viscometerHealth,
+            ...status,
+        };
+        this.updateViscometerHealthUi();
+    }
+
+    updateViscometerHealthUi() {
+        const health = this.viscometerHealth || {};
+        const state = this.viscometerCheckInFlight
+            ? "checking"
+            : String(health.state || "idle");
+        const card = this.el.testingViscometerCard;
+        const pill = this.el.testingStatusViscometer;
+        const detail = this.el.testingViscometerDetail;
+        const btn = this.el.testingViscometerCheck;
+
+        if (card) {
+            card.classList.toggle("is-checking", state === "checking" || state === "busy");
+            card.classList.toggle("is-ok", state === "ok");
+            card.classList.toggle("is-error", state === "error");
+            card.classList.toggle("is-pending", state === "checking");
+        }
+        if (pill) {
+            const labels = {
+                idle: "Idle",
+                checking: "Checking…",
+                busy: "Busy",
+                ok: "OK",
+                error: "Error",
+            };
+            pill.textContent = labels[state] || state;
+        }
+        if (detail) {
+            if (state === "checking") {
+                detail.textContent = "Opening COM session and identifying instrument…";
+            } else if (state === "ok") {
+                const port = health.port != null ? `${health.port}` : "—";
+                const baud = health.baud != null ? `@ ${health.baud}` : "";
+                const elapsed = health.elapsed_s != null ? ` · ${health.elapsed_s}s` : "";
+                detail.textContent = `${health.message || "Connected"} (${port} ${baud})${elapsed}`.replace("  ", " ");
+            } else if (state === "error" || state === "busy") {
+                const err = health.error || health.message || "Viscometer check failed";
+                detail.textContent = err;
+            } else {
+                detail.textContent = health.message || "Not checked yet";
+            }
+        }
+        if (btn) {
+            const washBusy = Boolean(this.washTrialStatus?.busy) || this.washTrialRequestInFlight;
+            btn.disabled = this.isRunning || this.viscometerCheckInFlight || washBusy || this.testingBackendBusy;
+        }
+    }
+
+    async checkViscometerHealth() {
+        if (this.isRunning) {
+            this.pushStatusMessage("Viscometer check unavailable during an active run");
+            return;
+        }
+        if (this.viscometerCheckInFlight) {
+            return;
+        }
+        this.viscometerCheckInFlight = true;
+        this.viscometerHealth = {
+            ...this.viscometerHealth,
+            state: "checking",
+            ok: null,
+            message: "Checking viscometer connection…",
+            error: null,
+        };
+        this.updateViscometerHealthUi();
+        this.updateTestingUi();
+        try {
+            const response = await fetch("/api/testing/viscometer/check", { method: "POST" });
+            const payload = await response.json();
+            this.applyViscometerHealth(payload);
+            if (payload.testing_status) {
+                this.applyTestingStatus(payload.testing_status);
+            }
+            if (payload.ok) {
+                this.pushStatusMessage(payload.message || "Viscometer OK");
+            } else {
+                this.pushStatusMessage(payload.error || payload.message || "Viscometer check failed");
+            }
+        } catch {
+            this.applyViscometerHealth({
+                state: "error",
+                ok: false,
+                message: "Viscometer check request failed",
+                error: "Network or server error during viscometer check",
+            });
+            this.pushStatusMessage("Viscometer check request failed");
+        } finally {
+            this.viscometerCheckInFlight = false;
+            this.updateViscometerHealthUi();
+            this.updateTestingUi();
+        }
     }
 
     fetchTestingStatus() {
@@ -6607,6 +6740,9 @@ class ViscometryDashboard {
         if (status.wash_trial && typeof status.wash_trial === "object") {
             this.applyWashTrialStatus(status.wash_trial);
         }
+        if (status.viscometer && typeof status.viscometer === "object") {
+            this.applyViscometerHealth(status.viscometer);
+        }
         if (this.el.testingRunLockPill && !this.isRunning) {
             this.el.testingRunLockPill.textContent = this.testingSessionConnected
                 ? "Idle - Testing connected"
@@ -6614,6 +6750,7 @@ class ViscometryDashboard {
         }
         this.updateTestingUi();
         this.updateWashTrialUi();
+        this.updateViscometerHealthUi();
     }
 
     updateTestingTabAvailability() {
@@ -6638,6 +6775,7 @@ class ViscometryDashboard {
             this.updateTestingUi();
         }
         this.updateWashTrialUi();
+        this.updateViscometerHealthUi();
         this.updateLidUi();
     }
 
@@ -6836,14 +6974,15 @@ class ViscometryDashboard {
             this.el.washTrialPhaseCaption.textContent = labels[phase] || phase;
         }
 
+        const viscoBusy = this.viscometerCheckInFlight;
         if (this.el.washTrialCell) {
-            this.el.washTrialCell.disabled = locked || busy || !hasCells;
+            this.el.washTrialCell.disabled = locked || busy || viscoBusy || !hasCells;
         }
         if (this.el.washTrialFastScrub) {
-            this.el.washTrialFastScrub.disabled = locked || busy;
+            this.el.washTrialFastScrub.disabled = locked || busy || viscoBusy;
         }
         if (this.el.washTrialRun) {
-            this.el.washTrialRun.disabled = locked || busy || !hasCells;
+            this.el.washTrialRun.disabled = locked || busy || viscoBusy || !hasCells;
         }
         if (this.el.washTrialStop) {
             this.el.washTrialStop.disabled = locked || !busy;
@@ -7405,6 +7544,9 @@ class ViscometryDashboard {
         };
 
         this.el.testingDevices?.forEach((card) => {
+            if (card.id === "testing-viscometer-card") {
+                return;
+            }
             const device = card.dataset.device;
             const state = this.testingDeviceStates[device] || "idle";
             card.classList.toggle("is-running", state === "running");
@@ -7419,12 +7561,13 @@ class ViscometryDashboard {
         });
 
         const washBusy = Boolean(this.washTrialStatus?.busy) || this.washTrialRequestInFlight;
+        const viscoBusy = this.viscometerCheckInFlight;
         this.el.testingActionButtons?.forEach((btn) => {
             const device = btn.dataset.testingDevice;
             const action = btn.dataset.testingAction;
             const state = this.testingDeviceStates[device] || "idle";
             const isRequestActive = this.testingRequestInFlight.has(`${device}:start`) || this.testingRequestInFlight.has(`${device}:stop`);
-            btn.disabled = this.isRunning || isRequestActive || washBusy;
+            btn.disabled = this.isRunning || isRequestActive || washBusy || viscoBusy;
             const isActiveAction =
                 (action === "start" && state === "idle") ||
                 (action === "stop" && state === "running");

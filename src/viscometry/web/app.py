@@ -276,6 +276,16 @@ class ViscometryWebInterface:
         self.testing_pump_port = os.getenv('VISCOMETRY_PUMP_PORT', 'COM7')
         self.testing_pump_baud = int(os.getenv('VISCOMETRY_PUMP_BAUD', '115200'))
         self.testing_pump_virtual = os.getenv('VISCOMETRY_PUMP_VIRTUAL', '0') == '1'
+        self.viscometer_health: Dict[str, Any] = {
+            'state': 'idle',
+            'ok': None,
+            'message': 'Not checked yet',
+            'error': None,
+            'port': None,
+            'baud': None,
+            'checked_at': None,
+        }
+        self._viscometer_health_lock = threading.Lock()
         self.experiment_history_path = str(EXPERIMENT_HISTORY_PATH)
         self.experiment_history = []
         self.cell_termination_reasons: Dict[int, str] = {}
@@ -739,6 +749,26 @@ class ViscometryWebInterface:
             except Exception as e:
                 print(f"Error in api_testing_wash_trial_stop: {e}")
                 return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/viscometer', methods=['GET'])
+        def api_testing_viscometer_status():
+            try:
+                return jsonify(self.get_viscometer_health())
+            except Exception as e:
+                print(f"Error in api_testing_viscometer_status: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/testing/viscometer/check', methods=['POST'])
+        def api_testing_viscometer_check():
+            try:
+                result = self.check_viscometer_health()
+                status_code = 200 if result.get('ok') else 502
+                if result.get('state') == 'busy':
+                    status_code = 409
+                return jsonify(result), status_code
+            except Exception as e:
+                print(f"Error in api_testing_viscometer_check: {e}")
+                return jsonify({'ok': False, 'state': 'error', 'error': str(e)}), 500
 
         @self.app.route('/api/experiment_history', methods=['GET', 'POST'])
         def experiment_history():
@@ -3155,6 +3185,95 @@ class ViscometryWebInterface:
         if virtual is not None:
             self.testing_pump_virtual = bool(virtual)
 
+    def get_viscometer_health(self) -> Dict[str, Any]:
+        with self._viscometer_health_lock:
+            return dict(self.viscometer_health)
+
+    def check_viscometer_health(self) -> Dict[str, Any]:
+        """Probe the viscometer COM link via a short-lived 32-bit worker session."""
+        if self.is_running:
+            result = {
+                'ok': False,
+                'state': 'busy',
+                'message': 'Viscometer check unavailable during an active run',
+                'error': 'A viscometry run owns the instrument serial port.',
+            }
+            with self._viscometer_health_lock:
+                self.viscometer_health.update(result)
+                self.viscometer_health['checked_at'] = time.time()
+            return {**self.get_viscometer_health(), 'testing_status': self.get_testing_status()}
+
+        lid = getattr(self, 'lid_tool', None)
+        wash = getattr(self, 'wash_trial', None)
+        if (lid is not None and getattr(lid, 'busy', False)) or (
+            wash is not None and getattr(wash, 'busy', False)
+        ):
+            result = {
+                'ok': False,
+                'state': 'busy',
+                'message': 'Viscometer check unavailable while Testing motion is active',
+                'error': 'Wait for lid tool or wash trial to finish.',
+            }
+            with self._viscometer_health_lock:
+                self.viscometer_health.update(result)
+                self.viscometer_health['checked_at'] = time.time()
+            return {**self.get_viscometer_health(), 'testing_status': self.get_testing_status()}
+
+        with self.testing_control_lock:
+            if self.testing_request_in_progress:
+                result = {
+                    'ok': False,
+                    'state': 'busy',
+                    'message': 'Another testing action is in progress',
+                }
+                with self._viscometer_health_lock:
+                    self.viscometer_health.update(result)
+                    self.viscometer_health['checked_at'] = time.time()
+                return {**self.get_viscometer_health(), 'testing_status': self.get_testing_status()}
+            self.testing_request_in_progress = True
+
+        with self._viscometer_health_lock:
+            self.viscometer_health.update({
+                'state': 'checking',
+                'ok': None,
+                'message': 'Checking viscometer connection…',
+                'error': None,
+            })
+
+        self.update_status('Testing: checking viscometer connection')
+        try:
+            from viscometry.hardware.viscometer.health import probe_viscometer
+
+            probe = probe_viscometer(reidentify=True)
+            checked_at = time.time()
+            with self._viscometer_health_lock:
+                self.viscometer_health = {
+                    'state': str(probe.get('state') or ('ok' if probe.get('ok') else 'error')),
+                    'ok': bool(probe.get('ok')),
+                    'message': str(
+                        probe.get('message')
+                        or ('Connected' if probe.get('ok') else 'Viscometer check failed')
+                    ),
+                    'error': probe.get('error'),
+                    'port': probe.get('port'),
+                    'baud': probe.get('baud'),
+                    'elapsed_s': probe.get('elapsed_s'),
+                    'identify': probe.get('identify') or probe.get('identify_raw'),
+                    'proto': probe.get('proto'),
+                    'checked_at': checked_at,
+                }
+            if probe.get('ok'):
+                self.update_status(
+                    f"Testing: viscometer OK ({probe.get('port')} @ {probe.get('baud')})"
+                )
+            else:
+                err = probe.get('error') or probe.get('message') or 'check failed'
+                self.update_status(f"Testing: viscometer check failed — {err}")
+            return {**self.get_viscometer_health(), 'testing_status': self.get_testing_status()}
+        finally:
+            with self.testing_control_lock:
+                self.testing_request_in_progress = False
+
     def _testing_device_command_map(self) -> Dict[str, Dict[str, bytes]]:
         return {
             'washing_rotor': {'start': b"M1", 'stop': b"SM1"},
@@ -3176,6 +3295,7 @@ class ViscometryWebInterface:
             'last_error': self.testing_session_last_error,
             'devices': states,
             'wash_trial': self.wash_trial.status() if getattr(self, 'wash_trial', None) else None,
+            'viscometer': self.get_viscometer_health(),
         }
 
     def _set_testing_device_state(self, device: str, state: str):
